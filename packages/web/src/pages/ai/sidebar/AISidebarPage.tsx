@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Sidebar, Annotation, MCPConfigure, Button, Typography, Tag, Tabs, TabPane, Toast } from '@douyinfe/semi-ui';
+import type { MCPReactOption } from '@douyinfe/semi-ui/lib/es/sideBar/mcpConfigure/content';
 import { PanelRight, PanelRightClose, Search, FileText, Code2, Wrench, Bot, Palette } from 'lucide-react';
 
 const { Title, Text, Paragraph } = Typography;
@@ -208,7 +209,7 @@ export default function AISidebarPage() {
   const [annotationKey, setAnnotationKey] = useState<string | string[]>(['source-1']);
   const [codeActiveKey, setCodeActiveKey] = useState<string | string[]>([]);
   const [fileActiveKey, setFileActiveKey] = useState<string | string[]>([]);
-  const [mcpOptions, setMcpOptions] = useState(INITIAL_MCP_OPTIONS);
+  const [mcpOptions, setMcpOptions] = useState<MCPReactOption[]>(INITIAL_MCP_OPTIONS);
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 64px)', overflow: 'hidden', gap: 0 }}>

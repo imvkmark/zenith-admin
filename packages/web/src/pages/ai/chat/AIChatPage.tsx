@@ -305,13 +305,15 @@ export default function AIChatPage() {
   );
 
   const handleMessageSend = useCallback(
-    (content: { text?: string }) => {
-      if (!content.text?.trim()) return;
+    (content: { inputContents?: { type: string; text?: string }[]; text?: string }) => {
+      // 兼容 MessageContent (inputContents) 和直接 { text } 调用
+      const text = content.text ?? content.inputContents?.find(c => c.type === 'text')?.text;
+      if (!text?.trim()) return;
 
       const userMsg: Message = {
         id: nextMsgId(),
         role: 'user',
-        content: content.text,
+        content: text,
         createdAt: Date.now(),
         status: 'completed',
       };
@@ -332,7 +334,7 @@ export default function AIChatPage() {
       const modelLabel = MODEL_OPTIONS.find(m => m.value === configureValues.model)?.label ?? 'GPT-4o';
       const thinkModeLabel = THINK_MODE_OPTIONS.find(m => m.value === configureValues.thinkMode)?.label ?? '极速';
       const webSearchOn = configureValues.webSearch ? '✅ 开启' : '❌ 关闭';
-      const mockReply = `感谢您的提问："${content.text}"。\n\n这是一个演示页面，用于展示 Semi Design 的 **AI Chat 组件**能力。在实际项目中，您需要接入真实的 AI 服务（如 OpenAI、通义千问等），通过后端 API 转发请求并支持流式响应（SSE / WebSocket）。\n\n**当前输入框配置区状态：**\n\n| 配置项 | 当前值 |\n|--------|--------|\n| 模型 | ${modelLabel} |\n| 思考模式 | ${thinkModeLabel} |\n| 联网搜索 | ${webSearchOn} |\n\n**接入步骤参考：**\n\n1. 在后端新增 \`/api/ai/chat\` 端点，使用 OpenAI SDK 或 DashScope SDK 发起请求\n2. 前端使用 \`fetch\` + \`ReadableStream\` 处理流式响应\n3. 利用 \`streamingChatCompletionToMessage()\` 转换数据格式，更新 \`chats\` 状态`;
+      const mockReply = `感谢您的提问："${text}"。\n\n这是一个演示页面，用于展示 Semi Design 的 **AI Chat 组件**能力。在实际项目中，您需要接入真实的 AI 服务（如 OpenAI、通义千问等），通过后端 API 转发请求并支持流式响应（SSE / WebSocket）。\n\n**当前输入框配置区状态：**\n\n| 配置项 | 当前值 |\n|--------|--------|\n| 模型 | ${modelLabel} |\n| 思考模式 | ${thinkModeLabel} |\n| 联网搜索 | ${webSearchOn} |\n\n**接入步骤参考：**\n\n1. 在后端新增 \`/api/ai/chat\` 端点，使用 OpenAI SDK 或 DashScope SDK 发起请求\n2. 前端使用 \`fetch\` + \`ReadableStream\` 处理流式响应\n3. 利用 \`streamingChatCompletionToMessage()\` 转换数据格式，更新 \`chats\` 状态`;
 
       let i = 0;
       const interval = setInterval(() => {
@@ -511,7 +513,7 @@ export default function AIChatPage() {
               type="button"
               value={align}
               onChange={(e) => setAlign(e.target.value as 'leftRight' | 'leftAlign')}
-              size="small"
+              buttonSize="small"
             >
               <Radio value="leftRight"><AlignJustify size={12} /></Radio>
               <Radio value="leftAlign"><AlignLeft size={12} /></Radio>
@@ -522,8 +524,8 @@ export default function AIChatPage() {
         {/* 对话内容 */}
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <AIChatDialogue
-            ref={dialogueRef as React.RefObject<AIChatDialogue>}
-            chats={messages as Parameters<typeof AIChatDialogue>[0]['chats']}
+            ref={dialogueRef as any}
+            chats={messages as any}
             roleConfig={roleConfig}
             hints={generating ? [] : HINTS}
             align={align}
@@ -568,7 +570,8 @@ export default function AIChatPage() {
                   options={THINK_MODE_OPTIONS}
                 />
                 <Configure.Mcp
-                  field="mcp"
+                  showConfigure={false}
+                  onConfigureButtonClick={() => Toast.info('MCP 配置面板')}
                   options={[
                     { icon: <Bot size={14} />, label: 'Semi MCP', value: 'semi-mcp', active: true },
                     { icon: <Wrench size={14} />, label: 'Code Exec', value: 'code-exec', active: false },
