@@ -178,10 +178,18 @@ export function applyThemeColor(color: ThemeColor, isDark: boolean): void {
   root.style.setProperty('--color-sidebar-text-active', isDark ? '#ffffff' : vars.primary);
 
   // Semi Design CSS 变量覆盖
-  root.style.setProperty('--semi-color-primary', vars.primary);
-  root.style.setProperty('--semi-color-primary-hover', vars.hover);
-  root.style.setProperty('--semi-color-primary-active', vars.active);
-  root.style.setProperty('--semi-color-primary-light-default', vars.lightDefault);
-  root.style.setProperty('--semi-color-primary-light-hover', vars.lightHover);
-  root.style.setProperty('--semi-color-primary-light-active', vars.lightActive);
+  // 必须同时设置在 html 和 body 上：Semi Design 通过 <style> 标签在 body 上注入默认值，
+  // 而 CSS 自定义属性的继承规则会让 body 上的值覆盖 html(:root) 上的值。
+  const semiVars: [string, string][] = [
+    ['--semi-color-primary', vars.primary],
+    ['--semi-color-primary-hover', vars.hover],
+    ['--semi-color-primary-active', vars.active],
+    ['--semi-color-primary-light-default', vars.lightDefault],
+    ['--semi-color-primary-light-hover', vars.lightHover],
+    ['--semi-color-primary-light-active', vars.lightActive],
+  ];
+  for (const [name, value] of semiVars) {
+    root.style.setProperty(name, value);
+    document.body.style.setProperty(name, value);
+  }
 }
