@@ -502,6 +502,7 @@ export default function AIChatPage() {
               value={mode}
               onChange={(v) => setMode(v as 'bubble' | 'noBubble' | 'userBubble')}
               size="small"
+              placeholder="请选择模式"
               style={{ width: 110 }}
               optionList={[
                 { value: 'bubble', label: '双侧气泡' },

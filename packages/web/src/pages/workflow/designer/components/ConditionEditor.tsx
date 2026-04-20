@@ -214,6 +214,7 @@ export default function ConditionEditor({
                     value={rule.operator}
                     onChange={(v) => updateRule(gi, ri, { operator: v as ConditionOperator })}
                     optionList={operatorOptions}
+                    placeholder="选择条件"
                     style={{ width: 100 }}
                     size="small"
                   />

@@ -115,6 +115,7 @@ export default function OperationLogStatsPanel() {
         <Select
           value={days}
           onChange={(v) => setDays(v as number)}
+          placeholder="请选择时间范围"
           style={{ width: 140 }}
         >
           {DAYS_OPTIONS.map((o) => (

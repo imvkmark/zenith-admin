@@ -224,7 +224,7 @@ export default function SystemConfigsPage() {
             rules={[{ required: true, message: '请输入配置键' }]}
             disabled={!!editingConfig}
           />
-          <Form.Input field="configValue" label="配置值" rules={[{ required: true, message: '请输入配置值' }]} />
+          <Form.Input field="configValue" label="配置值" placeholder="请输入配置值" rules={[{ required: true, message: '请输入配置值' }]} />
           <Form.Select
             field="configType"
             label="类型"
@@ -232,7 +232,7 @@ export default function SystemConfigsPage() {
             style={{ width: '100%' }}
             loading={configTypeLoading}
           />
-          <Form.TextArea field="description" label="描述" maxCount={256} />
+          <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} />
         </Form>
       </Modal>
     </div>

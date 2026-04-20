@@ -124,6 +124,7 @@ export default function FieldConfigPanel({
                 onChange={(v) => onChange({ precision: v as number })}
                 min={0}
                 max={6}
+                placeholder="请输入小数位数"
                 style={{ width: '100%' }}
               />
             </div>
@@ -136,6 +137,7 @@ export default function FieldConfigPanel({
               <Select
                 value={field.currency ?? 'CNY'}
                 onChange={(v) => onChange({ currency: v as string })}
+                placeholder="请选择币种"
                 style={{ width: '100%' }}
                 optionList={CURRENCY_OPTIONS}
               />
@@ -149,6 +151,7 @@ export default function FieldConfigPanel({
               <Select
                 value={field.dateFormat ?? 'YYYY-MM-DD'}
                 onChange={(v) => onChange({ dateFormat: v as string })}
+                placeholder="请选择日期格式"
                 style={{ width: '100%' }}
                 optionList={DATE_FORMAT_OPTIONS}
               />
@@ -164,6 +167,7 @@ export default function FieldConfigPanel({
                 onChange={(v) => onChange({ maxCount: v as number })}
                 min={1}
                 max={20}
+                placeholder="请输入最大数量"
                 style={{ width: '100%' }}
               />
             </div>
@@ -214,6 +218,7 @@ export default function FieldConfigPanel({
                 <InputNumber
                   min={2} max={4}
                   value={field.columns?.length || 2}
+                  placeholder="请输入列数"
                   onChange={(val) => {
                     const num = Number(val) || 2;
                     const existing = field.columns || [];
@@ -231,6 +236,7 @@ export default function FieldConfigPanel({
                   <InputNumber
                     min={1} max={24}
                     value={col.span}
+                    placeholder="请输入列宽"
                     onChange={(val) => {
                       const newCols = [...(field.columns || [])];
                       newCols[i] = { ...newCols[i], span: Number(val) || 1 };
@@ -320,6 +326,7 @@ export default function FieldConfigPanel({
                           visibilityCondition: { ...field.visibilityCondition!, field: v as string },
                         })
                       }
+                      placeholder="请选择字段"
                       style={{ width: '100%' }}
                       optionList={conditionFields.map(f => ({ value: f.key, label: f.label }))}
                     />
@@ -333,6 +340,7 @@ export default function FieldConfigPanel({
                           visibilityCondition: { ...field.visibilityCondition!, operator: v as 'eq' | 'neq' | 'in' | 'contains' },
                         })
                       }
+                      placeholder="请选择条件"
                       style={{ width: '100%' }}
                       optionList={[
                         { value: 'eq', label: '等于' },
@@ -452,6 +460,7 @@ function DetailChildrenEditor({
             size="small"
             value={child.type}
             onChange={(v) => updateChild(i, { type: v as WorkflowFormFieldType })}
+            placeholder="选择类型"
             style={{ width: 90 }}
             optionList={DETAIL_CHILD_TYPES}
           />

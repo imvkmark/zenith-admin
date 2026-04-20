@@ -556,8 +556,8 @@ export default function WorkflowDesignerPage() {
         okButtonProps={{ loading: saving }}
       >
         <Form getFormApi={api => { editFormApi.current = api; }}>
-          <Form.Input field="name" label="流程名称" rules={[{ required: true, message: '请输入流程名称' }]} />
-          <Form.TextArea field="description" label="描述" />
+          <Form.Input field="name" label="流程名称" placeholder="请输入流程名称" rules={[{ required: true, message: '请输入流程名称' }]} />
+          <Form.TextArea field="description" label="描述" placeholder="请输入描述" />
         </Form>
       </Modal>
 
@@ -584,6 +584,7 @@ export default function WorkflowDesignerPage() {
           <Form.Input
             field="label"
             label="节点名称"
+            placeholder="请输入节点名称"
             rules={[{ required: true, message: '请输入节点名称' }]}
           />
           {selectedNodeData?.type === 'approve' && (

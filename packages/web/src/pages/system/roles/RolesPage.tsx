@@ -301,9 +301,9 @@ export default function RolesPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Input field="name" label="角色名称" rules={[{ required: true, message: '请输入角色名称' }]} />
-          <Form.Input field="code" label="角色编码" rules={[{ required: true, message: '请输入角色编码' }]} />
-          <Form.Input field="description" label="描述" />
+          <Form.Input field="name" label="角色名称" placeholder="请输入角色名称" rules={[{ required: true, message: '请输入角色名称' }]} />
+          <Form.Input field="code" label="角色编码" placeholder="请输入角色编码" rules={[{ required: true, message: '请输入角色编码' }]} />
+          <Form.Input field="description" label="描述" placeholder="请输入描述" />
           <Form.Select field="status" label="状态" style={{ width: '100%' }}
             optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
           />

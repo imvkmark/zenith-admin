@@ -69,6 +69,7 @@ export default function NodeConfigModal({
         <Form.Input
           field="name"
           label="节点名称"
+          placeholder="请输入节点名称"
           rules={[{ required: true, message: '请输入节点名称' }]}
         />
 
@@ -134,9 +135,10 @@ export default function NodeConfigModal({
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
             <Form.Slot label="延迟时间">
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Form.InputNumber field="delayValue" min={1} initValue={1} style={{ width: 100 }} />
+                <Form.InputNumber field="delayValue" placeholder="请输入" min={1} initValue={1} style={{ width: 100 }} />
                 <Select
                   defaultValue="hour"
+                  placeholder="选择单位"
                   optionList={[
                     { value: 'minute', label: '分钟' },
                     { value: 'hour', label: '小时' },

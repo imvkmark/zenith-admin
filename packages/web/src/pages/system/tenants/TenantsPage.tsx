@@ -253,10 +253,10 @@ export default function TenantsPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Input field="name" label="租户名称" rules={[{ required: true, message: '请输入租户名称' }]} />
+          <Form.Input field="name" label="租户名称" placeholder="请输入租户名称" rules={[{ required: true, message: '请输入租户名称' }]} />
           <Form.Input field="code" label="租户编码" rules={[{ required: true, message: '请输入租户编码' }]} disabled={!!editingTenant} />
-          <Form.Input field="contactName" label="联系人" />
-          <Form.Input field="contactPhone" label="联系电话" />
+          <Form.Input field="contactName" label="联系人" placeholder="请输入联系人" />
+          <Form.Input field="contactPhone" label="联系电话" placeholder="请输入联系电话" />
           <Form.InputNumber field="maxUsers" label="最大用户数" min={1} placeholder="不填则不限" />
           <Form.Select
             field="status"
@@ -267,7 +267,7 @@ export default function TenantsPage() {
             ]}
           />
           <Form.DatePicker field="expireAt" label="到期时间" type="dateTime" placeholder="不填则永不过期" />
-          <Form.TextArea field="remark" label="备注" rows={3} />
+          <Form.TextArea field="remark" label="备注" placeholder="请输入备注" rows={3} />
         </Form>
       </Modal>
     </div>

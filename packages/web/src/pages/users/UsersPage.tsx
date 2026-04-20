@@ -523,30 +523,31 @@ export default function UsersPage() {
           {editingUser ? (
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
+                <Form.Input field="nickname" label="昵称" placeholder="请输入昵称" rules={[{ required: true, message: '请输入昵称' }]} />
               </Col>
               <Col span={12}>
-                <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+                <Form.Input field="email" label="邮箱" placeholder="请输入邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
               </Col>
             </Row>
           ) : (
             <>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Input field="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]} />
+                  <Form.Input field="username" label="用户名" placeholder="请输入用户名" rules={[{ required: true, message: '请输入用户名' }]} />
                 </Col>
                 <Col span={12}>
-                  <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
+                  <Form.Input field="nickname" label="昵称" placeholder="请输入昵称" rules={[{ required: true, message: '请输入昵称' }]} />
                 </Col>
               </Row>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+                  <Form.Input field="email" label="邮箱" placeholder="请输入邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
                 </Col>
                 <Col span={12}>
                   <Form.Input
                     field="password"
                     label="密码"
+                    placeholder="请输入密码"
                     type="password"
                     rules={[{ required: true, message: '请输入密码' }]}
                     helpText={formatPasswordPolicyHint(passwordPolicy)}
@@ -633,6 +634,7 @@ export default function UsersPage() {
           <Form.Input
             field="password"
             label="新密码"
+            placeholder="请输入新密码"
             mode="password"
             rules={[
               { required: true, message: '请输入新密码' },
@@ -642,6 +644,7 @@ export default function UsersPage() {
           <Form.Input
             field="confirmPassword"
             label="确认密码"
+            placeholder="请再次输入新密码"
             mode="password"
             rules={[{ required: true, message: '请确认新密码' }]}
           />

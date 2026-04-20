@@ -154,6 +154,7 @@ export default function AdvancedSettingsTab({
                 onChange={(v) => handleTimeoutChange({ duration: v as number })}
                 min={1}
                 max={720}
+                placeholder="请输入超时时间"
                 style={{ width: 100 }}
               />
               <span style={{ fontSize: 13 }}>小时</span>
@@ -179,6 +180,7 @@ export default function AdvancedSettingsTab({
                   onChange={(v) => handleTimeoutChange({ remindCount: v as number })}
                   min={1}
                   max={10}
+                  placeholder="请输入"
                   style={{ width: 100 }}
                 />
                 <span style={{ fontSize: 13 }}>次</span>

@@ -325,26 +325,26 @@ export default function DepartmentsPage() {
           />
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Input field="name" label="部门名称" rules={[{ required: true, message: '请输入部门名称' }]} />
+              <Form.Input field="name" label="部门名称" placeholder="请输入部门名称" rules={[{ required: true, message: '请输入部门名称' }]} />
             </Col>
             <Col span={12}>
-              <Form.Input field="code" label="部门编码" rules={[{ required: true, message: '请输入部门编码' }]} />
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input field="leader" label="负责人" />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="phone" label="联系电话" />
+              <Form.Input field="code" label="部门编码" placeholder="请输入部门编码" rules={[{ required: true, message: '请输入部门编码' }]} />
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Input field="email" label="邮箱" />
+              <Form.Input field="leader" label="负责人" placeholder="请输入负责人" />
             </Col>
             <Col span={12}>
-              <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
+              <Form.Input field="phone" label="联系电话" placeholder="请输入联系电话" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="email" label="邮箱" placeholder="请输入邮箱" />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="sort" label="排序" placeholder="请输入排序" min={0} style={{ width: '100%' }} />
             </Col>
           </Row>
           <Row gutter={16}>

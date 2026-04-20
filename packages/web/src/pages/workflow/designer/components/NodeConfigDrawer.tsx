@@ -224,6 +224,7 @@ export default function NodeConfigDrawer({
               <Select
                 value={(props.delayType as string) ?? 'fixed'}
                 onChange={(v) => handlePropsChange({ delayType: v })}
+                placeholder="请选择延迟类型"
                 style={{ width: '100%' }}
                 optionList={[
                   { value: 'fixed', label: '固定时长' },
@@ -237,11 +238,13 @@ export default function NodeConfigDrawer({
                   value={(props.delayValue as number) ?? 1}
                   onChange={(v) => handlePropsChange({ delayValue: v })}
                   min={1}
+                  placeholder="请输入时长"
                   style={{ width: 120 }}
                 />
                 <Select
                   value={(props.delayUnit as string) ?? 'hour'}
                   onChange={(v) => handlePropsChange({ delayUnit: v })}
+                  placeholder="选择单位"
                   style={{ width: 100 }}
                   optionList={DELAY_UNIT_OPTIONS}
                 />
@@ -273,6 +276,7 @@ export default function NodeConfigDrawer({
               <Select
                 value={(props.triggerType as string) ?? 'webhook'}
                 onChange={(v) => handlePropsChange({ triggerType: v })}
+                placeholder="请选择触发类型"
                 style={{ width: '100%' }}
                 optionList={TRIGGER_TYPE_OPTIONS}
               />
@@ -283,6 +287,7 @@ export default function NodeConfigDrawer({
                   <Select
                     value={(props.httpMethod as string) ?? 'POST'}
                     onChange={(v) => handlePropsChange({ httpMethod: v })}
+                    placeholder="请选择请求方式"
                     style={{ width: '100%' }}
                     optionList={[
                       { value: 'GET', label: 'GET' },

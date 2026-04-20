@@ -352,12 +352,14 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     <Form.Input
                       field="nickname"
                       label="昵称"
+                      placeholder="请输入昵称"
                       rules={[{ required: true, message: '昵称不能为空' }]}
                       style={{ width: 320 }}
                     />
                     <Form.Input
                       field="email"
                       label="邮箱"
+                      placeholder="请输入邮箱"
                       rules={[
                         { required: true, message: '邮箱不能为空' },
                         { type: 'email', message: '邮箱格式不正确' },
@@ -382,6 +384,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     <Form.Input
                       field="oldPassword"
                       label="原密码"
+                      placeholder="请输入原密码"
                       mode="password"
                       rules={[{ required: true, message: '请输入原密码' }]}
                       style={{ width: 320 }}
@@ -389,6 +392,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     <Form.Input
                       field="newPassword"
                       label="新密码"
+                      placeholder="请输入新密码"
                       mode="password"
                       rules={[
                         { required: true, message: '请输入新密码' },
@@ -400,6 +404,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     <Form.Input
                       field="confirmPassword"
                       label="确认密码"
+                      placeholder="请再次输入新密码"
                       mode="password"
                       rules={[{ required: true, message: '请确认新密码' }]}
                       style={{ width: 320 }}

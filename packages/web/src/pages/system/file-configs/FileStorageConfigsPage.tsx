@@ -413,7 +413,7 @@ export default function FileStorageConfigsPage() {
               <Switch checked={formIsDefault} onChange={(checked) => setFormIsDefault(checked)} />
             </div>
           </div>
-          <Form.Input field="name" label="配置名称" rules={[{ required: true, message: '请输入配置名称' }]} />
+          <Form.Input field="name" label="配置名称" placeholder="请输入配置名称" rules={[{ required: true, message: '请输入配置名称' }]} />
           <Form.Select
             field="provider"
             label="存储类型"
@@ -442,13 +442,14 @@ export default function FileStorageConfigsPage() {
 
           {formProvider === 'oss' && (
             <>
-              <Form.Input field="ossRegion" label="Region" rules={[{ required: true, message: '请输入 OSS Region' }]} />
-              <Form.Input field="ossEndpoint" label="Endpoint" rules={[{ required: true, message: '请输入 OSS Endpoint' }]} />
-              <Form.Input field="ossBucket" label="Bucket" rules={[{ required: true, message: '请输入 OSS Bucket' }]} />
-              <Form.Input field="ossAccessKeyId" label="AccessKey ID" rules={[{ required: true, message: '请输入 AccessKey ID' }]} />
+              <Form.Input field="ossRegion" label="Region" placeholder="请输入 OSS Region" rules={[{ required: true, message: '请输入 OSS Region' }]} />
+              <Form.Input field="ossEndpoint" label="Endpoint" placeholder="请输入 OSS Endpoint" rules={[{ required: true, message: '请输入 OSS Endpoint' }]} />
+              <Form.Input field="ossBucket" label="Bucket" placeholder="请输入 OSS Bucket" rules={[{ required: true, message: '请输入 OSS Bucket' }]} />
+              <Form.Input field="ossAccessKeyId" label="AccessKey ID" placeholder="请输入 AccessKey ID" rules={[{ required: true, message: '请输入 AccessKey ID' }]} />
               <Form.Input
                 field="ossAccessKeySecret"
                 label="AccessKey Secret"
+                placeholder="请输入 AccessKey Secret"
                 type="password"
                 rules={[{ required: true, message: '请输入 AccessKey Secret' }]}
               />
@@ -457,13 +458,14 @@ export default function FileStorageConfigsPage() {
 
           {formProvider === 's3' && (
             <>
-              <Form.Input field="s3Region" label="Region" rules={[{ required: true, message: '请输入 S3 Region' }]} />
+              <Form.Input field="s3Region" label="Region" placeholder="请输入 S3 Region" rules={[{ required: true, message: '请输入 S3 Region' }]} />
               <Form.Input field="s3Endpoint" label="Endpoint" placeholder="可选，用于兼容 S3 协议的自定义存储" />
-              <Form.Input field="s3Bucket" label="Bucket" rules={[{ required: true, message: '请输入 S3 Bucket' }]} />
-              <Form.Input field="s3AccessKeyId" label="Access Key ID" rules={[{ required: true, message: '请输入 Access Key ID' }]} />
+              <Form.Input field="s3Bucket" label="Bucket" placeholder="请输入 S3 Bucket" rules={[{ required: true, message: '请输入 S3 Bucket' }]} />
+              <Form.Input field="s3AccessKeyId" label="Access Key ID" placeholder="请输入 Access Key ID" rules={[{ required: true, message: '请输入 Access Key ID' }]} />
               <Form.Input
                 field="s3SecretAccessKey"
                 label="Secret Access Key"
+                placeholder="请输入 Secret Access Key"
                 type="password"
                 rules={[{ required: true, message: '请输入 Secret Access Key' }]}
               />
@@ -475,10 +477,11 @@ export default function FileStorageConfigsPage() {
             <>
               <Form.Input field="cosRegion" label="Region" placeholder="例如 ap-guangzhou" rules={[{ required: true, message: '请输入 COS Region' }]} />
               <Form.Input field="cosBucket" label="Bucket" placeholder="例如 my-bucket-1250000000" rules={[{ required: true, message: '请输入 COS Bucket' }]} />
-              <Form.Input field="cosSecretId" label="SecretId" rules={[{ required: true, message: '请输入 SecretId' }]} />
+              <Form.Input field="cosSecretId" label="SecretId" placeholder="请输入 SecretId" rules={[{ required: true, message: '请输入 SecretId' }]} />
               <Form.Input
                 field="cosSecretKey"
                 label="SecretKey"
+                placeholder="请输入 SecretKey"
                 type="password"
                 rules={[{ required: true, message: '请输入 SecretKey' }]}
               />

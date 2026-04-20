@@ -310,11 +310,11 @@ export default function MenusPage() {
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Input field="title" label="菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
+              <Form.Input field="title" label="菜单名称" placeholder="请输入菜单名称" rules={[{ required: true, message: '请输入菜单名称' }]} />
             </Col>
             {(menuType === 'menu' || menuType === 'directory') && (
               <Col span={12}>
-                <Form.Input field="path" label="路由路径" rules={[{ required: true, message: '请输入路由路径' }]} />
+                <Form.Input field="path" label="路由路径" placeholder="请输入路由路径" rules={[{ required: true, message: '请输入路由路径' }]} />
               </Col>
             )}
             {menuType === 'menu' && (
@@ -329,7 +329,7 @@ export default function MenusPage() {
             )}
             {menuType === 'button' && (
               <Col span={12}>
-                <Form.Input field="permission" label="权限标识" rules={[{ required: true, message: '请输入权限标识' }]} />
+                <Form.Input field="permission" label="权限标识" placeholder="请输入权限标识" rules={[{ required: true, message: '请输入权限标识' }]} />
               </Col>
             )}
             {menuType !== 'button' && (
@@ -340,7 +340,7 @@ export default function MenusPage() {
               </Col>
             )}
             <Col span={12}>
-              <Form.InputNumber field="sort" label="排序" initValue={0} min={0} style={{ width: '100%' }} />
+              <Form.InputNumber field="sort" label="排序" placeholder="请输入排序" initValue={0} min={0} style={{ width: '100%' }} />
             </Col>
           </Row>
 

@@ -274,16 +274,16 @@ export default function PositionsPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Input field="name" label="岗位名称" rules={[{ required: true, message: '请输入岗位名称' }]} />
-          <Form.Input field="code" label="岗位编码" rules={[{ required: true, message: '请输入岗位编码' }]} />
-          <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
+          <Form.Input field="name" label="岗位名称" placeholder="请输入岗位名称" rules={[{ required: true, message: '请输入岗位名称' }]} />
+          <Form.Input field="code" label="岗位编码" placeholder="请输入岗位编码" rules={[{ required: true, message: '请输入岗位编码' }]} />
+          <Form.InputNumber field="sort" label="排序" placeholder="请输入排序" min={0} style={{ width: '100%' }} />
           <Form.Select
             field="status"
             label="状态"
             optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
             style={{ width: '100%' }}
           />
-          <Form.TextArea field="remark" label="备注" maxCount={256} />
+          <Form.TextArea field="remark" label="备注" placeholder="请输入备注" maxCount={256} />
         </Form>
       </Modal>
     </div>

@@ -303,7 +303,7 @@ export default function CronJobsPage() {
             if (typeof v.cronExpression === 'string') setCronExprValue(v.cronExpression);
           }}
         >
-          <Form.Input field="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]} />
+          <Form.Input field="name" label="任务名称" placeholder="请输入任务名称" rules={[{ required: true, message: '请输入任务名称' }]} />
           <Form.Input
             field="cronExpression"
             label="Cron 表达式"
@@ -337,7 +337,7 @@ export default function CronJobsPage() {
             ]}
             style={{ width: '100%' }}
           />
-          <Form.TextArea field="description" label="描述" maxCount={256} />
+          <Form.TextArea field="description" label="描述" placeholder="请输入描述" maxCount={256} />
         </Form>
       </Modal>
 
