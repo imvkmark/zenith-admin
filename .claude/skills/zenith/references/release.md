@@ -36,7 +36,19 @@ npm install --package-lock-only
 
 ---
 
-## Step 4：更新 `docs/changelog/index.md`
+## Step 4：本地构建验证
+
+提交前必须确认本地构建通过，避免 CI 失败：
+
+```bash
+npm run build
+```
+
+构建成功（无错误输出，退出码 0）后再进行下一步。如有错误须先修复再继续。
+
+---
+
+## Step 5：更新 `docs/changelog/index.md`
 
 在文件顶部（第一个 `---` 分隔符之后，上一版本记录之前）**追加**当前版本的变更记录：
 
@@ -61,7 +73,7 @@ npm install --package-lock-only
 
 ---
 
-## Step 5：提交并推送 tag
+## Step 6：提交并推送 tag
 
 ```bash
 # 将变更提交到 master
@@ -76,7 +88,7 @@ git push origin vX.Y.Z
 
 ---
 
-## Step 6：等待 GitHub Actions 完成
+## Step 7：等待 GitHub Actions 完成
 
 - `release.yml` 触发后会自动：构建产物 → 打包 zip → 提取 Changelog → 发布 GitHub Release
 - 发布产物包含：`zenith-admin-server-vX.Y.Z.zip`（后端）和 `zenith-admin-web-vX.Y.Z.zip`（前端静态文件）
