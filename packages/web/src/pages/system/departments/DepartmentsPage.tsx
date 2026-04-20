@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
+  Col,
   Form,
   Input,
   Modal,
+  Row,
   Select,
   Space,
   Table,
@@ -303,15 +305,14 @@ export default function DepartmentsPage() {
           setEditingDepartment(null);
         }}
         onOk={handleModalOk}
-        width={520}
+        width={660}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           key={editingDepartment?.id ?? 'new-department'}
           getFormApi={(api) => { formApi.current = api; }}
           initValues={formInitValues}
-          labelPosition="left"
-          labelWidth={90}
+          labelPosition="top"
         >
           <Form.TreeSelect
             field="parentId"
@@ -322,18 +323,40 @@ export default function DepartmentsPage() {
             filterTreeNode
             expandAll
           />
-          <Form.Input field="name" label="部门名称" rules={[{ required: true, message: '请输入部门名称' }]} />
-          <Form.Input field="code" label="部门编码" rules={[{ required: true, message: '请输入部门编码' }]} />
-          <Form.Input field="leader" label="负责人" />
-          <Form.Input field="phone" label="联系电话" />
-          <Form.Input field="email" label="邮箱" />
-          <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
-          <Form.Select
-            field="status"
-            label="状态"
-            optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
-            style={{ width: '100%' }}
-          />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="name" label="部门名称" rules={[{ required: true, message: '请输入部门名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="code" label="部门编码" rules={[{ required: true, message: '请输入部门编码' }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="leader" label="负责人" />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="phone" label="联系电话" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="email" label="邮箱" />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select
+                field="status"
+                label="状态"
+                optionList={statusItems.map((item) => ({ value: item.value, label: item.label }))}
+                style={{ width: '100%' }}
+              />
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>
