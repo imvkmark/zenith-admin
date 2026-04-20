@@ -13,6 +13,8 @@ import {
   DatePicker,
   Upload,
   Typography,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Download, Trash2, FileUp } from 'lucide-react';
@@ -500,7 +502,7 @@ export default function UsersPage() {
           setEditingUser(null);
         }}
         onOk={handleModalOk}
-        width={520}
+        width={660}
         closeOnEsc
         bodyStyle={{ paddingBottom: 24 }}
       >
@@ -508,56 +510,88 @@ export default function UsersPage() {
           key={editingUser?.id ?? 'new-user'}
           getFormApi={(api) => { formApi.current = api; }}
           initValues={formInitValues}
-          labelPosition="left"
-          labelWidth={80}
+          labelPosition="top"
         >
-          {!editingUser && (
-            <Form.Input field="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]} />
+          {editingUser ? (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
+              </Col>
+              <Col span={12}>
+                <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+              </Col>
+            </Row>
+          ) : (
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]} />
+                </Col>
+                <Col span={12}>
+                  <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
+                </Col>
+                <Col span={12}>
+                  <Form.Input
+                    field="password"
+                    label="密码"
+                    type="password"
+                    rules={[{ required: true, message: '请输入密码' }]}
+                    helpText={formatPasswordPolicyHint(passwordPolicy)}
+                  />
+                </Col>
+              </Row>
+            </>
           )}
-          <Form.Input field="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]} />
-          <Form.Input field="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]} />
-          {!editingUser && (
-            <Form.Input
-              field="password"
-              label="密码"
-              type="password"
-              rules={[{ required: true, message: '请输入密码' }]}
-              helpText={formatPasswordPolicyHint(passwordPolicy)}
-            />
-          )}
-          <Form.TreeSelect
-            field="departmentId"
-            label="所属部门"
-            style={{ width: '100%' }}
-            treeData={departmentTreeData}
-            placeholder="请选择所属部门"
-            filterTreeNode
-            expandAll
-            showClear
-          />
-          <Form.Select
-            field="positionIds"
-            label="岗位"
-            style={{ width: '100%' }}
-            multiple
-            filter
-            showClear
-            optionList={positionOptionList}
-          />
-          <Form.Select
-            field="roleIds"
-            label="角色"
-            style={{ width: '100%' }}
-            multiple
-            filter
-            optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
-          />
-          <Form.Select
-            field="status"
-            label="状态"
-            style={{ width: '100%' }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-          />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.TreeSelect
+                field="departmentId"
+                label="所属部门"
+                style={{ width: '100%' }}
+                treeData={departmentTreeData}
+                placeholder="请选择所属部门"
+                filterTreeNode
+                expandAll
+                showClear
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="positionIds"
+                label="岗位"
+                style={{ width: '100%' }}
+                multiple
+                filter
+                showClear
+                optionList={positionOptionList}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select
+                field="roleIds"
+                label="角色"
+                style={{ width: '100%' }}
+                multiple
+                filter
+                optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="status"
+                label="状态"
+                style={{ width: '100%' }}
+                optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+              />
+            </Col>
+          </Row>
         </Form>
       </Modal>
 
