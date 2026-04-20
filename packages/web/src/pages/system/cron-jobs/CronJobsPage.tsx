@@ -261,13 +261,11 @@ export default function CronJobsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<Space>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
           {hasPermission('system:cronjob:create') && (
             <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
           )}
-        </Space>}
+        </>}
       />
 
       <Table

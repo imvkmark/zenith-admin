@@ -197,8 +197,6 @@ export default function TenantsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<Space>
           <Button
             icon={<Download size={14} />}
             loading={exportLoading}
@@ -219,7 +217,7 @@ export default function TenantsPage() {
               新增
             </Button>
           )}
-        </Space>}
+        </>}
       />
 
       <Table

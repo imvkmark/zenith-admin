@@ -278,12 +278,10 @@ export default function MessageTemplatesPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={
-          hasPermission('system:message-template:create') ? (
+          {hasPermission('system:message-template:create') && (
             <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
-          ) : null
-        }
+          )}
+        </>}
       />
 
       <Table

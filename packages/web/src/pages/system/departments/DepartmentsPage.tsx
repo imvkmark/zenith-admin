@@ -270,8 +270,6 @@ export default function DepartmentsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        </>}
-        right={<Space>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/departments/export', '部门列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:department:create') && <Button
             type="secondary"
@@ -283,7 +281,7 @@ export default function DepartmentsPage() {
           >
             新增
           </Button>}
-        </Space>}
+        </>}
       />
 
       <Table
