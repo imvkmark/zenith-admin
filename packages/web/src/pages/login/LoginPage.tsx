@@ -97,7 +97,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   };
 
   const renderLoginForm = () => (
-    <Form onSubmit={handleLogin} style={{ marginTop: 12 }}>
+    <Form onSubmit={handleLogin} style={{ marginTop: 12 }} requiredMark={false}>
       {config.multiTenantMode && (
         <Form.Input
           field="tenantCode"
@@ -109,7 +109,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
       )}
       <Form.Input
         field="username"
-        label="用户名"
+        noLabel
         placeholder="请输入用户名"
         prefix={<User />}
         rules={[{ required: true, message: '请输入用户名' }]}
@@ -117,7 +117,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
       />
       <Form.Input
         field="password"
-        label="密码"
+        noLabel
         type="password"
         placeholder="请输入密码"
         prefix={<Lock />}
@@ -129,7 +129,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
           <div style={{ flex: 1 }}>
             <Form.Input
               field="captchaCode"
-              label="验证码"
+              noLabel
               placeholder="请输入验证码"
               rules={[{ required: true, message: '请输入验证码' }]}
               size="large"
@@ -185,33 +185,33 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
     <Form onSubmit={handleRegister} style={{ marginTop: 12 }}>
       <Form.Input
         field="username"
-        label="用户名"
-        placeholder="3~32 个字符"
+        noLabel
+        placeholder="用户名（3~32 个字符）"
         prefix={<User />}
         rules={[{ required: true, message: '请输入用户名' }]}
         size="large"
       />
       <Form.Input
         field="nickname"
-        label="昵称"
-        placeholder="请输入昵称"
+        noLabel
+        placeholder="昵称"
         prefix={<AtSign />}
         rules={[{ required: true, message: '请输入昵称' }]}
         size="large"
       />
       <Form.Input
         field="email"
-        label="邮箱"
-        placeholder="请输入邮箱"
+        noLabel
+        placeholder="邮箱"
         prefix={<Mail />}
         rules={[{ required: true, type: 'string', message: '请输入邮箱' }]}
         size="large"
       />
       <Form.Input
         field="password"
-        label="密码"
+        noLabel
         type="password"
-        placeholder="至少6个字符"
+        placeholder="密码（至少6个字符）"
         prefix={<Lock />}
         rules={[{ required: true, message: '请输入密码' }]}
         size="large"
