@@ -299,7 +299,7 @@ export default function RolesPage() {
           getFormApi={(api) => formApi.current = api}
           initValues={editingRole ?? { status: 'active' }}
           labelPosition="left"
-          labelWidth={80}
+          labelWidth={90}
         >
           <Form.Input field="name" label="角色名称" rules={[{ required: true, message: '请输入角色名称' }]} />
           <Form.Input field="code" label="角色编码" rules={[{ required: true, message: '请输入角色编码' }]} />
