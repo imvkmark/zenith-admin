@@ -370,7 +370,7 @@ export default function MonitorPage() {
   return (
     <div className="monitor-page">
       <div className="responsive-toolbar monitor-header">
-        <div className="responsive-toolbar__right monitor-header__actions">
+        <div className="monitor-header__actions">
           {lastUpdated && (
             <Text type="tertiary" size="small">
               最后更新：{formatDateTime(lastUpdated)}

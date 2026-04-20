@@ -12,7 +12,7 @@ export function SearchToolbar({ children, className }: SearchToolbarProps) {
   return (
     <div className="search-area">
       <div className={className ? `responsive-toolbar ${className}` : 'responsive-toolbar'}>
-        <Space wrap>{children}</Space>
+        <Space wrap style={{ width: '100%' }}>{children}</Space>
       </div>
     </div>
   );

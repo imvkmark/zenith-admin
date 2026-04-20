@@ -254,7 +254,7 @@ export default function DictsPage() {
             onChange={(v) => setKeyword(v)}
             onEnterPress={handleSearch}
             showClear
-            style={{ width: 'min(280px, 100%)' }}
+            style={{ width: 220 }}
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
