@@ -254,34 +254,32 @@ export default function XxxPage() {
     <div className="page-container">
       {/* 搜索区：使用 SearchToolbar 组件 */}
       {/* 具体写法参考 packages/web/src/pages/users/UsersPage.tsx */}
-      <SearchToolbar
-        left={<>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索名称..."
-            value={searchParams.keyword}
-            onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-            showClear
-            style={{ width: 220 }}
-            onEnterPress={handleSearch}
-          />
-          <Select
-            placeholder="全部状态"
-            value={searchParams.status || undefined}
-            onChange={(v) =>
-              setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))
-            }
-            showClear
-            style={{ width: 120 }}
-            optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          {hasPermission('system:xxx:create') && (
-            <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
-          )}
-        </>}
-      />
+      <SearchToolbar>
+        <Input
+          prefix={<Search size={14} />}
+          placeholder="搜索名称..."
+          value={searchParams.keyword}
+          onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+          showClear
+          style={{ width: 220 }}
+          onEnterPress={handleSearch}
+        />
+        <Select
+          placeholder="全部状态"
+          value={searchParams.status || undefined}
+          onChange={(v) =>
+            setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))
+          }
+          showClear
+          style={{ width: 120 }}
+          optionList={statusItems.map((i) => ({ value: i.value, label: i.label }))}
+        />
+        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+        {hasPermission('system:xxx:create') && (
+          <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+        )}
+      </SearchToolbar>
 
       {/* 数据表格 */}
       <Table

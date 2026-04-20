@@ -10,11 +10,10 @@
 
 ### Props
 
-| Prop | 类型 | 说明 |
-|------|------|------|
-| `left` | `ReactNode` | 搜索输入框、下拉筛选、查询/重置按钮、新增等操作按钮，自动用 `<Space wrap>` 包裹 |
-| `className` | `string` | 附加 CSS 类名，应用到外层容器 |
-| `children` | `ReactNode` | 工具栏下方的附加内容（如提示文字） |
+| Prop        | 类型        | 说明                                                                        |
+| ----------- | ----------- | --------------------------------------------------------------------------- |
+| `children`  | `ReactNode` | 工具栏内容（搜索输入框、下拉筛选、查询/重置按钮、新增等操作按钮），自动用 `<Space wrap>` 包裹 |
+| `className` | `string`    | 附加 CSS 类名，应用到外层容器                                               |
 
 ### 使用示例
 
@@ -23,37 +22,35 @@ import { SearchToolbar } from '../../components/SearchToolbar';
 import { Input, Button, Select } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Plus } from 'lucide-react';
 
-<SearchToolbar
-  left={<>
-    <Input
-      prefix={<Search size={14} />}
-      placeholder="请输入名称"
-      value={keyword}
-      onChange={setKeyword}
-      showClear
-      style={{ width: 200 }}
-    />
-    <Select
-      placeholder="请选择状态"
-      value={status}
-      onChange={(v) => setStatus(v as string)}
-      allowClear
-      style={{ width: 120 }}
-    >
-      <Select.Option value="active">启用</Select.Option>
-      <Select.Option value="inactive">禁用</Select.Option>
-    </Select>
-    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-    <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
-  </>}
-/>
+<SearchToolbar>
+  <Input
+    prefix={<Search size={14} />}
+    placeholder="请输入名称"
+    value={keyword}
+    onChange={setKeyword}
+    showClear
+    style={{ width: 200 }}
+  />
+  <Select
+    placeholder="请选择状态"
+    value={status}
+    onChange={(v) => setStatus(v as string)}
+    allowClear
+    style={{ width: 120 }}
+  >
+    <Select.Option value="active">启用</Select.Option>
+    <Select.Option value="inactive">禁用</Select.Option>
+  </Select>
+  <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+</SearchToolbar>
 ```
 
 ### 注意事项
 
 - 按钮文案统一为**「查询」「重置」「新增」**
-- `left` 内的元素会自动换行（`wrap`），响应式友好
+- `children` 内的元素会自动换行（`wrap`），响应式友好
 
 ---
 
