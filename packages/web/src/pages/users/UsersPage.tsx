@@ -646,26 +646,7 @@ export default function UsersPage() {
         }
         width={560}
       >
-        {!importResult ? (
-          <div style={{ padding: '16px 0' }}>
-            <div style={{ marginBottom: 12 }}>
-              <Button type="tertiary" icon={<Download size={14} />} onClick={handleImportTemplate}>下载导入模板</Button>
-              <Typography.Text type="tertiary" style={{ marginLeft: 8, fontSize: 12 }}>请先下载模板，按格式填写后上传</Typography.Text>
-            </div>
-            <Upload
-              accept=".xlsx,.xls"
-              limit={1}
-              action=""
-              beforeUpload={({ file }) => {
-                importFileRef.current = file.fileInstance ?? null;
-                return false;
-              }}
-              onRemove={() => { importFileRef.current = null; }}
-            >
-              <Button icon={<FileUp size={14} />}>选择文件</Button>
-            </Upload>
-          </div>
-        ) : (
+        {importResult ? (
           <div>
             <div style={{ marginBottom: 12 }}>
               <Space>
@@ -686,6 +667,25 @@ export default function UsersPage() {
                 rowKey="row"
               />
             )}
+          </div>
+        ) : (
+          <div style={{ padding: '16px 0' }}>
+            <div style={{ marginBottom: 12 }}>
+              <Button type="tertiary" icon={<Download size={14} />} onClick={handleImportTemplate}>下载导入模板</Button>
+              <Typography.Text type="tertiary" style={{ marginLeft: 8, fontSize: 12 }}>请先下载模板，按格式填写后上传</Typography.Text>
+            </div>
+            <Upload
+              accept=".xlsx,.xls"
+              limit={1}
+              action=""
+              beforeUpload={({ file }) => {
+                importFileRef.current = file.fileInstance ?? null;
+                return false;
+              }}
+              onRemove={() => { importFileRef.current = null; }}
+            >
+              <Button icon={<FileUp size={14} />}>选择文件</Button>
+            </Upload>
           </div>
         )}
       </Modal>
