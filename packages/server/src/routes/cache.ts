@@ -1,10 +1,18 @@
-import { Hono } from 'hono';
+/**
+ * 缓存管理路由 —— 使用 `@hono/zod-openapi` 编写的试点实现之二。
+ *
+ * 相比 `sessions.ts`，本文件演示更完整的要素：
+ *  - Query 参数的 Zod schema 与 `c.req.valid('query')`
+ *  - JSON body 的 Zod schema 与 `c.req.valid('json')`
+ *  - 多种业务错误码（400 / 403 / 404）与统一响应体
+ */
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
 import { config } from '../config';
 
-const cacheRouter = new Hono();
+const cacheRouter = new OpenAPIHono();
 
 cacheRouter.use('*', authMiddleware);
 
@@ -18,19 +26,15 @@ const CATEGORY_MAP: Record<string, string> = {
   login_lock: '登录锁定',
 };
 
-/** 从 key 提取原始前缀段（如 session、blacklist） */
 function getSegment(key: string): string {
   const stripped = key.startsWith(keyPrefix) ? key.slice(keyPrefix.length) : key;
   return stripped.split(':')[0] ?? stripped;
 }
 
-/** 根据 key 提取中文分类标签 */
 function getCategory(key: string): string {
-  const seg = getSegment(key);
-  return CATEGORY_MAP[seg] ?? '其他';
+  return CATEGORY_MAP[getSegment(key)] ?? '其他';
 }
 
-/** 用 SCAN 命令安全枚举匹配 pattern 的所有 key */
 async function scanKeys(pattern: string): Promise<string[]> {
   const keys: string[] = [];
   let cursor = '0';
@@ -42,12 +46,8 @@ async function scanKeys(pattern: string): Promise<string[]> {
   return keys;
 }
 
-/** 获取 key 的类型、TTL 和预览值 */
 async function getKeyMeta(key: string) {
-  const [type, ttl] = await Promise.all([
-    redis.type(key),
-    redis.ttl(key),
-  ]);
+  const [type, ttl] = await Promise.all([redis.type(key), redis.ttl(key)]);
 
   let value: string | null = null;
   let size = 0;
@@ -84,66 +84,140 @@ async function getKeyMeta(key: string) {
   };
 }
 
-/** GET /api/cache - 列出所有缓存 key */
-cacheRouter.get('/', guard({ permission: 'system:cache:list' }), async (c) => {
-  const keyword = c.req.query('keyword') ?? '';
+// ─── Schemas ───────────────────────────────────────────────────────────────
+const CacheItemSchema = z.object({
+  key: z.string(),
+  displayKey: z.string(),
+  segment: z.string(),
+  category: z.string(),
+  type: z.string(),
+  ttl: z.number(),
+  size: z.number(),
+  value: z.string().nullable(),
+}).openapi('CacheItem');
 
+const GenericResponse = z.object({
+  code: z.number(),
+  message: z.string(),
+  data: z.unknown(),
+});
+
+const CacheListResponse = z.object({
+  code: z.literal(0),
+  message: z.string(),
+  data: z.object({ list: z.array(CacheItemSchema), total: z.number() }),
+});
+
+const CountResponse = z.object({
+  code: z.literal(0),
+  message: z.string(),
+  data: z.object({ count: z.number() }),
+});
+
+// ─── Routes ────────────────────────────────────────────────────────────────
+const listRoute = createRoute({
+  method: 'get',
+  path: '/',
+  tags: ['Cache'],
+  summary: '列出所有缓存 key（可按关键词过滤）',
+  security: [{ BearerAuth: [] }],
+  middleware: [guard({ permission: 'system:cache:list' })] as const,
+  request: {
+    query: z.object({
+      keyword: z.string().optional().openapi({ example: 'session' }),
+    }),
+  },
+  responses: {
+    200: { content: { 'application/json': { schema: CacheListResponse } }, description: '缓存列表' },
+  },
+});
+
+cacheRouter.openapi(listRoute, async (c) => {
+  const { keyword } = c.req.valid('query');
   let keys = await scanKeys(`${keyPrefix}*`);
-
-  if (keyword) {
-    keys = keys.filter((k) => k.includes(keyword));
-  }
-
-  // 按 key 名排序
+  if (keyword) keys = keys.filter((k) => k.includes(keyword));
   keys.sort((a, b) => a.localeCompare(b));
-
   const items = await Promise.all(keys.map(getKeyMeta));
-
-  return c.json({ code: 0, message: 'success', data: { list: items, total: items.length } });
+  return c.json({ code: 0 as const, message: 'success', data: { list: items, total: items.length } }, 200);
 });
 
-/** DELETE /api/cache - 删除指定 key（body: { key }） */
-cacheRouter.delete('/', guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '删除缓存' } }), async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const key: string | undefined = body?.key;
-  if (!key) {
-    return c.json({ code: 400, message: '参数错误：缺少 key', data: null }, 400);
-  }
+const deleteOneRoute = createRoute({
+  method: 'delete',
+  path: '/',
+  tags: ['Cache'],
+  summary: '删除指定 key',
+  security: [{ BearerAuth: [] }],
+  middleware: [
+    guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '删除缓存' } }),
+  ] as const,
+  request: {
+    body: {
+      content: { 'application/json': { schema: z.object({ key: z.string().openapi({ example: 'zenith:session:abc' }) }) } },
+    },
+  },
+  responses: {
+    200: { content: { 'application/json': { schema: GenericResponse } }, description: '删除成功' },
+    400: { content: { 'application/json': { schema: GenericResponse } }, description: '参数错误' },
+    403: { content: { 'application/json': { schema: GenericResponse } }, description: '命名空间不匹配' },
+    404: { content: { 'application/json': { schema: GenericResponse } }, description: 'key 不存在' },
+  },
+});
 
-  // 安全校验：只允许删除属于当前命名空间的 key
-  if (!key.startsWith(keyPrefix)) {
-    return c.json({ code: 403, message: '只能删除当前命名空间的缓存', data: null }, 403);
-  }
-
+cacheRouter.openapi(deleteOneRoute, async (c) => {
+  const { key } = c.req.valid('json');
+  if (!key) return c.json({ code: 400, message: '参数错误：缺少 key', data: null }, 400);
+  if (!key.startsWith(keyPrefix)) return c.json({ code: 403, message: '只能删除当前命名空间的缓存', data: null }, 403);
   const deleted = await redis.del(key);
-  if (deleted === 0) {
-    return c.json({ code: 404, message: 'key 不存在', data: null }, 404);
-  }
-
-  return c.json({ code: 0, message: '删除成功', data: null });
+  if (deleted === 0) return c.json({ code: 404, message: 'key 不存在', data: null }, 404);
+  return c.json({ code: 0, message: '删除成功', data: null }, 200);
 });
 
-/** DELETE /api/cache/by-category - 删除指定分类下的所有缓存（body: { segment }） */
-cacheRouter.delete('/by-category', guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '删除分类缓存' } }), async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const segment: string | undefined = body?.segment;
-  if (!segment) {
-    return c.json({ code: 400, message: '参数错误：缺少 segment', data: null }, 400);
-  }
+const deleteByCategoryRoute = createRoute({
+  method: 'delete',
+  path: '/by-category',
+  tags: ['Cache'],
+  summary: '按分类批量删除',
+  security: [{ BearerAuth: [] }],
+  middleware: [
+    guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '删除分类缓存' } }),
+  ] as const,
+  request: {
+    body: {
+      content: { 'application/json': { schema: z.object({ segment: z.string().openapi({ example: 'session' }) }) } },
+    },
+  },
+  responses: {
+    200: { content: { 'application/json': { schema: CountResponse } }, description: '删除成功' },
+    400: { content: { 'application/json': { schema: GenericResponse } }, description: '参数错误' },
+  },
+});
+
+cacheRouter.openapi(deleteByCategoryRoute, async (c) => {
+  const { segment } = c.req.valid('json');
+  if (!segment) return c.json({ code: 400, message: '参数错误：缺少 segment', data: null }, 400);
   const keys = await scanKeys(`${keyPrefix}${segment}:*`);
-  if (keys.length > 0) {
-    await redis.del(...keys);
-  }
-  return c.json({ code: 0, message: `已删除 ${keys.length} 条缓存`, data: { count: keys.length } });
+  if (keys.length > 0) await redis.del(...keys);
+  return c.json({ code: 0 as const, message: `已删除 ${keys.length} 条缓存`, data: { count: keys.length } }, 200);
 });
 
-/** DELETE /api/cache/all - 清空当前命名空间所有缓存 */
-cacheRouter.delete('/all', guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '清空所有缓存' } }), async (c) => {
+const deleteAllRoute = createRoute({
+  method: 'delete',
+  path: '/all',
+  tags: ['Cache'],
+  summary: '清空当前命名空间所有缓存',
+  security: [{ BearerAuth: [] }],
+  middleware: [
+    guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '清空所有缓存' } }),
+  ] as const,
+  responses: {
+    200: { content: { 'application/json': { schema: CountResponse } }, description: '清空成功' },
+  },
+});
+
+cacheRouter.openapi(deleteAllRoute, async (c) => {
   const keys = await scanKeys(`${keyPrefix}*`);
-  if (keys.length > 0) {
-    await redis.del(...keys);
-  }
-  return c.json({ code: 0, message: `已清空 ${keys.length} 条缓存`, data: { count: keys.length } });
+  if (keys.length > 0) await redis.del(...keys);
+  return c.json({ code: 0 as const, message: `已清空 ${keys.length} 条缓存`, data: { count: keys.length } }, 200);
 });
 
 export default cacheRouter;
