@@ -97,8 +97,8 @@ await db.insert(xxxTable).values({
 ```ts
 import { getDataScopeCondition } from '../lib/data-scope';
 
-// Hono 实例必须声明 Variables 类型，才能正确推断 c.get('user') 的返回类型
-const xxxRouter = new Hono<{ Variables: { user: JwtPayload } }>();
+// OpenAPIHono 实例必须声明 Variables 类型，才能正确推断 c.get('user') 的返回类型
+const xxxRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
 
 // 在 GET / 列表接口中追加 conditions：
 const currentUserId = c.get('user').userId;
@@ -271,19 +271,21 @@ npm run db:migrate
 - 包含所有前端展示所需的字段（含关联实体的冗余字段）
 - 时间字段序列化为 `string`（ISO 格式）
 
-**Step 5** — `packages/server/src/routes/xxx.ts`：创建 Hono Router
+**Step 5** — `packages/server/src/routes/xxx.ts`：创建 OpenAPIHono Router
 - `use('*', authMiddleware)` 保护所有路由
-- 实现标准 5 个端点：`GET /`（list+分页）、`POST /`（create）、`PUT /:id`（update）、`DELETE /:id`（delete）、`GET /:id`（可选，详情）
-- 每个写操作用 `guard({ permission, audit })` 包裹
+- 使用 `OpenAPIHono + createRoute` 实现标准 5 个端点：`GET /`（list+分页）、`POST /`（create）、`PUT /{id}`（update）、`DELETE /{id}`（delete）、`GET /{id}`（可选，详情）
+- 路径风格用 `/{id}` 而非 `/:id`（OpenAPI 规范）
+- 每个写操作在 `middleware: [guard({ permission, audit })] as const` 中包裹
+- Schema 在路由文件内本地用 Zod v4 重新声明（**不从 `@zenith/shared` 导入**，因 shared 仍是 Zod v3）
+- DTO 响应使用 `z.looseObject({}).openapi('XxxName')` 作为不透明类型
 
 **Step 6** — `packages/server/src/index.ts`：注册路由
 ```ts
 app.route('/api/xxx', xxxRoutes);
 ```
 
-**Step 6b** — `packages/server/src/openapi.ts`：更新 OpenAPI Spec
-在 `paths` 中为新模块添加接口定义（列表、新增、更新、删除），并在 `tags` 数组末尾追加标签。
-详细示例参考 [crud-backend.md](./references/crud-backend.md) 的「更新 OpenAPI Spec」章节。
+**Step 6b** — OpenAPI Spec 自动生成
+`@hono/zod-openapi` 会从各路由的 `createRoute(...)` 定义自动汇总 OpenAPI spec，**无需手动维护** `src/openapi.ts`。新路由注册到 `app` 后刷新 `/api/openapi.json` 即可看到新接口，无需额外操作。
 
 #### 前端（参考 [crud-frontend.md](./references/crud-frontend.md)）
 
@@ -326,7 +328,7 @@ app.route('/api/xxx', xxxRoutes);
 | **无图标文字按钮** | 操作列按钮只用纯文字，不加图标 |
 | **搜索栏布局** | 使用 `SearchToolbar` 组件（`components/SearchToolbar.tsx`），参考 `UsersPage.tsx` |
 | **表格样式** | 统一 `<Table bordered>` |
-| **响应码规范** | 成功 `{ code: 0, message: 'ok', data: T }`，失败 `{ code: 400, message: '...', data: null }` |
+| **响应码规范** | 成功 `{ code: 0 as const, message: 'ok', data: T }`（必须 `as const`），失败 `{ code: 400, message: '...', data: null }`，每个 `c.json(...)` 第二参数必须显式带状态码 `, 200)` |
 | **分页格式** | 列表接口返回 `{ list, total, page, pageSize }` |
 | **数据权限** | 业务数据模块在 Step 0 必须询问是否需要 dataScope 过滤；配置数据（角色/菜单/字典）无需过滤 |
 | **多租户隔离** | 业务数据表添加 `tenantId` 字段，查询用 `tenantCondition(table, user)`，创建用 `getCreateTenantId(user)`；关闭多租户时两者均返回 `null`/`undefined`，无需额外判断 |

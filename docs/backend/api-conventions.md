@@ -55,7 +55,7 @@ const user = c.get('user'); // JwtPayload
 
 ## 参数校验
 
-所有入参通过 `@hono/zod-validator` 的 `zValidate` 中间件（封装在 `packages/server/src/lib/validate.ts`）直接挂载到路由，验证结果自动注入 `c.req.valid()`。
+所有入参通过 `@hono/zod-openapi` 的 `createRoute` 中 `request.body / request.params / request.query` 定义的 Zod schema 自动校验，验证结果通过 `c.req.valid()` 读取。
 
 校验失败时统一返回：
 
@@ -70,16 +70,23 @@ const user = c.get('user'); // JwtPayload
 推荐写法：
 
 ```typescript
-import { zValidate } from '../lib/validate';
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { apiResponse, paginatedResponse, jsonContent, MessageResponse, ErrorResponse, PaginationQuery } from '../lib/openapi-schemas';
 
-// 直接作为路由中间件挂载，handler 中通过 c.req.valid() 取已验证数据
-router.post('/', guard({ permission: '...' }), zValidate('json', createXxxSchema), async (c) => {
+const xxxRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+
+// 路由内通过 c.req.valid() 取已验证的类型安全数据
+xxxRouter.openapi(createRoute({
+  method: 'post', path: '/',
+  request: { body: { content: jsonContent(createXxxSchema), required: true } },
+  responses: { 200: { content: jsonContent(apiResponse(XxxDTO)), description: 'ok' } },
+}), async (c) => {
   const data = c.req.valid('json');  // 类型安全，已验证
   // ...
 });
 ```
 
-> `zValidate` 内部调用 `zValidator`（`@hono/zod-validator`），并统一错误响应格式。禁止在路由 handler 中再次手动调用 `schema.safeParse()`。
+> 路由文件内本地用 **Zod v4** 重新声明所需的 schema（`@zenith/shared` 中的 schema 是 Zod v3，不可直接用于 `createRoute`）。共享的辅助类型内廾在 `packages/server/src/lib/openapi-schemas.ts`。
 
 ## 常用错误码
 
@@ -97,7 +104,7 @@ router.post('/', guard({ permission: '...' }), zValidate('json', createXxxSchema
 - 按资源拆分到 `packages/server/src/routes/`
 - 保持资源命名直观，如 `users.ts`、`roles.ts`、`dicts.ts`
 - 和前端页面、共享 schema 尽量保持一一对应，便于排查问题
-- 每个路由文件使用 `Hono` 实例，在 `src/routes/index.ts` 统一注册
+- 每个路由文件使用 `OpenAPIHono` 实例，在 `src/index.ts` 统一注册
 
 ## 数据删除规范
 
