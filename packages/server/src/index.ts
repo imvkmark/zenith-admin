@@ -8,6 +8,7 @@ import { requestId } from 'hono/request-id';
 import { bodyLimit } from 'hono/body-limit';
 import { timeout } from 'hono/timeout';
 import { HTTPException } from 'hono/http-exception';
+import { contextStorage } from 'hono/context-storage';
 import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { swaggerUI } from '@hono/swagger-ui';
@@ -55,6 +56,8 @@ const startTime = Date.now();
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
 app.use('*', requestId());
+// AsyncLocalStorage 上下文（允许 currentUser()/getCtx() 在辅助函数中零参取值）
+app.use('*', contextStorage());
 app.use('*', secureHeaders({
   crossOriginResourcePolicy: 'cross-origin', // API 允许跨域访问
   crossOriginOpenerPolicy: false,             // 纯 API 服务，不适用

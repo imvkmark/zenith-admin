@@ -35,7 +35,8 @@ npm run db:seed        # 填充初始种子数据
 
 - **框架**：Hono v4，通过 `@hono/node-server` 运行在 Node.js
 - **路由**：所有路由挂载在 `/api` 前缀，文件位于 `src/routes/`
-- **认证**：JWT Bearer Token，7 天有效期；`src/middleware/auth.ts` 中 `authMiddleware` 注入 `c.set('user', payload)`
+- **认证**：JWT Bearer Token，7 天有效期；`src/middleware/auth.ts` 中 `authMiddleware` 注入 `c.set('user', payload)`；签发/校验统一走 `src/lib/jwt.ts` 的 `signToken` / `verifyToken`（基于 `hono/jwt`）
+- **请求上下文**：全局挂载 `hono/context-storage`，辅助函数可用 `src/lib/context.ts` 的 `currentUser()` / `getCtx()` 零参取值，无需再层层透传 `c` 或 `user`
 - **验证**：所有入参必须通过 `schema.safeParse()` 校验；失败返回 `{ code: 400, message: '...' }`
 - **统一响应**：`{ code: 0, message: 'success', data: T }`，失败时 `code` 为非零值
 - **数据库**：Drizzle ORM + PostgreSQL，schema 定义在 `src/db/schema.ts`，迁移文件在 `drizzle/`

@@ -34,6 +34,12 @@
 - 所有原 `jwt.sign` / `jwt.verify` 调用位置（`middleware/auth`、`routes/auth`、`routes/oauth`、`routes/ws` 以及测试）统一替换为异步 API
 - 对外行为不变，保留原有 Bearer Token + blacklist + touchSession 业务链路
 
+#### 引入请求上下文存储
+
+- 全局启用 Hono 官方 `hono/context-storage` 中间件
+- 新增 [packages/server/src/lib/context.ts](packages/server/src/lib/context.ts)，暴露 `currentUser()` / `currentUserOrNull()` / `getCtx()`，允许辅助函数零参取请求上下文
+- `lib/tenant.ts` 新增零参便捷重载 `tenantScope(table)` / `currentCreateTenantId()`，既有 `tenantCondition(table, user)` / `getCreateTenantId(user)` 保持兼容
+
 ---
 
 ## v0.3.1 - 2026-05-03

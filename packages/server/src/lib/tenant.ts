@@ -55,3 +55,21 @@ export function getCreateTenantId(user: JwtPayload): number | null {
   if (!config.multiTenantMode) return null;
   return getEffectiveTenantId(user);
 }
+
+// ─── 零参便捷重载：依赖 `contextStorage()` 中间件 ─────────────────────────
+// 新代码可直接写 `tenantScope(table)`、`currentCreateTenantId()`，无需手动传 user。
+// 既有显式传参 API 保持不变。
+
+// 延迟导入避免循环：context.ts 依赖 middleware/auth 的类型，无运行时依赖
+import { currentUser } from './context';
+
+/** `tenantCondition` 的零参版本：自动读取当前请求用户。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function tenantScope<T extends { tenantId: any }>(table: T): SQL | undefined {
+  return tenantCondition(table, currentUser());
+}
+
+/** `getCreateTenantId` 的零参版本：自动读取当前请求用户。 */
+export function currentCreateTenantId(): number | null {
+  return getCreateTenantId(currentUser());
+}
