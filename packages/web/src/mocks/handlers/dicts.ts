@@ -7,9 +7,11 @@ export const dictsHandlers = [
   http.get('/api/dicts', ({ request }) => {
     const url = new URL(request.url);
     const keyword = url.searchParams.get('keyword') ?? '';
+    const status = url.searchParams.get('status') ?? '';
 
     const list = mockDicts.filter((d) => {
       if (keyword && !d.name.includes(keyword) && !d.code.includes(keyword)) return false;
+      if (status && d.status !== status) return false;
       return true;
     });
     return HttpResponse.json({ code: 0, message: 'ok', data: list });

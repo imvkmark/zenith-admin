@@ -24,11 +24,14 @@ function toDictItem(row: typeof dictItems.$inferSelect) {
 
 dictsRouter.get('/', guard({ permission: 'system:dict:list' }), async (c) => {
   const keyword = c.req.query('keyword') ?? '';
+  const status = c.req.query('status') ?? '';
   const tc = tenantCondition(dicts, c.get('user'));
   const list = await db.select().from(dicts).where(tc).orderBy(dicts.id);
-  const filtered = keyword
-    ? list.filter((d) => d.name.includes(keyword) || d.code.includes(keyword))
-    : list;
+  const filtered = list.filter((d) => {
+    if (keyword && !d.name.includes(keyword) && !d.code.includes(keyword)) return false;
+    if (status && d.status !== status) return false;
+    return true;
+  });
   return c.json({ code: 0, message: 'ok', data: filtered.map(toDict) });
 });
 

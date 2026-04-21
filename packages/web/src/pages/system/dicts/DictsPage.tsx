@@ -3,6 +3,7 @@ import {
   Table,
   Button,
   Input,
+  Select,
   Tag,
   Space,
   Modal,
@@ -33,6 +34,8 @@ export default function DictsPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [submittedStatus, setSubmittedStatus] = useState('');
   const [dictModalVisible, setDictModalVisible] = useState(false);
   const [editingDict, setEditingDict] = useState<Dict | null>(null);
 
@@ -49,7 +52,10 @@ export default function DictsPage() {
   const fetchDicts = useCallback(async () => {
     setDictsLoading(true);
     try {
-      const res = await request.get<Dict[]>(`/api/dicts?keyword=${encodeURIComponent(submittedKeyword)}`);
+      const params = new URLSearchParams();
+      if (submittedKeyword) params.set('keyword', submittedKeyword);
+      if (submittedStatus) params.set('status', submittedStatus);
+      const res = await request.get<Dict[]>(`/api/dicts?${params.toString()}`);
       if (res.code === 0) {
         setDicts(res.data);
         if (selectedDict && !res.data.some((d) => d.id === selectedDict.id)) {
@@ -60,7 +66,7 @@ export default function DictsPage() {
     } finally {
       setDictsLoading(false);
     }
-  }, [submittedKeyword, selectedDict]);
+  }, [submittedKeyword, submittedStatus, selectedDict]);
 
   const fetchItems = useCallback(async (dictId: number) => {
     setItemsLoading(true);
@@ -76,11 +82,14 @@ export default function DictsPage() {
 
   function handleSearch() {
     setSubmittedKeyword(keyword);
+    setSubmittedStatus(statusFilter);
   }
 
   function handleReset() {
     setKeyword('');
     setSubmittedKeyword('');
+    setStatusFilter('');
+    setSubmittedStatus('');
   }
 
   const selectDict = (dict: Dict) => {
@@ -256,6 +265,17 @@ export default function DictsPage() {
             showClear
             style={{ width: 220 }}
           />
+          <Select
+            placeholder="状态"
+            showClear
+            value={statusFilter || undefined}
+            onChange={(val) => setStatusFilter((val as string) ?? '')}
+            style={{ width: 120 }}
+          >
+            {statusItems.map((i) => (
+              <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
+            ))}
+          </Select>
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
