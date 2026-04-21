@@ -110,6 +110,7 @@ import { xxxs } from '../db/schema';
 import { createXxxSchema, updateXxxSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
+import { zValidate } from '../lib/validate';
 
 const xxxRouter = new Hono();
 
@@ -190,14 +191,8 @@ xxxRouter.get('/', guard({ permission: 'system:xxx:list' }), async (c) => {
 xxxRouter.post('/', guard({
   permission: 'system:xxx:create',
   audit: { description: '创建XXX', module: 'XXX管理' },
-}), async (c) => {
-  const body = await c.req.json();
-  const result = createXxxSchema.safeParse(body);
-  if (!result.success) {
-    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
-  }
-
-  const { ...data } = result.data;
+}), zValidate('json', createXxxSchema), async (c) => {
+  const data = c.req.valid('json');
 
   try {
     const [row] = await db.insert(xxxs).values(data).returning();
@@ -216,17 +211,13 @@ xxxRouter.post('/', guard({
 xxxRouter.put('/:id', guard({
   permission: 'system:xxx:update',
   audit: { description: '更新XXX', module: 'XXX管理' },
-}), async (c) => {
+}), zValidate('json', updateXxxSchema), async (c) => {
   const id = Number(c.req.param('id'));
-  const body = await c.req.json();
-  const result = updateXxxSchema.safeParse(body);
-  if (!result.success) {
-    return c.json({ code: 400, message: result.error.issues[0].message, data: null }, 400);
-  }
+  const data = c.req.valid('json');
 
   const [row] = await db
     .update(xxxs)
-    .set({ ...result.data, updatedAt: new Date() })
+    .set({ ...data, updatedAt: new Date() })
     .where(eq(xxxs.id, id))
     .returning();
 

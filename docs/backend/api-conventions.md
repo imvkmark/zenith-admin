@@ -55,27 +55,31 @@ const user = c.get('user'); // JwtPayload
 
 ## 参数校验
 
-所有入参必须通过 `schema.safeParse()` 进行校验。
+所有入参通过 `@hono/zod-validator` 的 `zValidate` 中间件（封装在 `packages/server/src/lib/validate.ts`）直接挂载到路由，验证结果自动注入 `c.req.valid()`。
 
-校验失败时，应返回：
+校验失败时统一返回：
 
 ```json
 {
   "code": 400,
-  "message": "参数错误"
+  "message": "<Zod 校验错误信息>",
+  "data": null
 }
 ```
 
 推荐写法：
 
 ```typescript
-const body = await c.req.json();
-const result = createUserSchema.safeParse(body);
-if (!result.success) {
-  return c.json({ code: 400, message: result.error.issues[0]?.message ?? '参数错误' });
-}
-const data = result.data;
+import { zValidate } from '../lib/validate';
+
+// 直接作为路由中间件挂载，handler 中通过 c.req.valid() 取已验证数据
+router.post('/', guard({ permission: '...' }), zValidate('json', createXxxSchema), async (c) => {
+  const data = c.req.valid('json');  // 类型安全，已验证
+  // ...
+});
 ```
+
+> `zValidate` 内部调用 `zValidator`（`@hono/zod-validator`），并统一错误响应格式。禁止在路由 handler 中再次手动调用 `schema.safeParse()`。
 
 ## 常用错误码
 
