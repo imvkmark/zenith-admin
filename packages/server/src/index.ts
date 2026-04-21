@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { logger as honoLogger } from 'hono/logger';
 import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { swaggerUI } from '@hono/swagger-ui';
@@ -9,7 +10,6 @@ import logger from './lib/logger';
 import { db } from './db/index';
 import redis from './lib/redis';
 import { sql } from 'drizzle-orm';
-import { httpLogger } from './middleware/logger';
 import { ipAccessMiddleware } from './middleware/ip-access';
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
@@ -48,7 +48,7 @@ const startTime = Date.now();
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
 app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
-app.use('*', httpLogger);
+app.use('*', honoLogger((msg) => logger.info(msg)));
 app.use('/api/*', ipAccessMiddleware);
 
 app.route('/api/auth', authRoutes);
