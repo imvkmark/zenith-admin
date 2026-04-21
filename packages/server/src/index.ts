@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
+import { timing } from 'hono/timing';
 import { serve } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { swaggerUI } from '@hono/swagger-ui';
@@ -52,6 +53,9 @@ app.use('*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const stripAnsi = (str: string) => str.replaceAll(ANSI_RE, '');
 app.use('*', honoLogger((msg) => logger.info(stripAnsi(msg))));
+if (config.serverTimingEnabled) {
+  app.use('*', timing());
+}
 app.use('/api/*', ipAccessMiddleware);
 
 app.route('/api/auth', authRoutes);

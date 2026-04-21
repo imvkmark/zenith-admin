@@ -5,6 +5,7 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'zenith-admin-secret',
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin',
   multiTenantMode: process.env.MULTI_TENANT_MODE === 'true',
+  serverTimingEnabled: process.env.SERVER_TIMING_ENABLED === 'true',
   redis: {
     // 优先使用 REDIS_URL（支持带密码的连接，如 redis://:password@127.0.0.1:6379/0）
     url: process.env.REDIS_URL,

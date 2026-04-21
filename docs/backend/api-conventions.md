@@ -114,3 +114,42 @@ const data = result.data;
 - 类型统一放到 `@zenith/shared/src/types.ts`
 - Zod schema 统一放到 `@zenith/shared/src/validation.ts`
 - 枚举和常量统一放到 `@zenith/shared/src/constants.ts`
+
+## Server-Timing 性能分析头
+
+当 `SERVER_TIMING_ENABLED=true`（默认值）时，服务端会自动在每个响应中附加 [`Server-Timing`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing) 响应头：
+
+```http
+Server-Timing: total;dur=45.2;desc="Total Response Time"
+```
+
+**使用方式：**
+
+打开 Chrome DevTools → Network → 选中任意 API 请求 → Timing 面板，即可查看各阶段耗时。
+
+若需要对某个路由内部的关键操作（如数据库查询）埋点，可使用 `hono/timing` 提供的工具函数：
+
+```typescript
+import { startTime, endTime } from 'hono/timing';
+import type { TimingVariables } from 'hono/timing';
+
+// 路由 handler 中使用
+app.get('/api/heavy', async (c) => {
+  startTime(c, 'db');
+  const data = await db.query.users.findMany();
+  endTime(c, 'db');
+  return c.json({ code: 0, data });
+});
+```
+
+响应头将包含：
+
+```http
+Server-Timing: total;dur=45.2;desc="Total Response Time", db;dur=12.3
+```
+
+**环境变量配置：**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `SERVER_TIMING_ENABLED` | `false` | 设为 `true` 可开启，生产环境建议保持关闭以避免暴露内部耗时信息 |
