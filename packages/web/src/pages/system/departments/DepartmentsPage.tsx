@@ -13,7 +13,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { Search, Plus, RotateCcw, Download } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import type { Department } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
@@ -109,6 +109,26 @@ export default function DepartmentsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const { items: statusItems } = useDictItems('common_status');
+
+  const [expandedRowKeys, setExpandedRowKeys] = useState<(string | number)[]>([]);
+
+  const allRowKeys = useMemo(() => {
+    const keys: number[] = [];
+    function collect(items: Department[]) {
+      for (const item of items) {
+        keys.push(item.id);
+        if (item.children?.length) collect(item.children);
+      }
+    }
+    collect(data);
+    return keys;
+  }, [data]);
+
+  const isAllExpanded = expandedRowKeys.length > 0 && expandedRowKeys.length >= allRowKeys.length;
+
+  function toggleExpandAll() {
+    setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
+  }
 
   const fetchDepartments = useCallback(async (params = searchParams) => {
     setLoading(true);
@@ -269,6 +289,13 @@ export default function DepartmentsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          <Button
+            type="tertiary"
+            icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+            onClick={toggleExpandAll}
+          >
+            {isAllExpanded ? '全部折叠' : '全部展开'}
+          </Button>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/departments/export', '部门列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:department:create') && <Button
             type="secondary"
@@ -291,6 +318,8 @@ export default function DepartmentsPage() {
         rowKey="id"
         pagination={false}
         empty="暂无数据"
+        expandedRowKeys={expandedRowKeys}
+        onExpandedRowsChange={(rows) => setExpandedRowKeys(rows?.filter((r): r is Department => 'id' in r).map((r) => r.id) ?? [])}
       />
 
       <Modal
