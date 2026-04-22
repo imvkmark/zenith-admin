@@ -122,12 +122,11 @@ export interface Xxx {
 > 然后在路由中导入：`import { XxxDTO } from '../lib/openapi-dtos';`。**严禁在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**，以免 Swagger Components 重复/冲突。
 
 ```ts
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { and, eq, like, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db/index';
 import { xxxs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   apiResponse, paginatedResponse, jsonContent,
@@ -138,8 +137,8 @@ import { XxxDTO } from '../lib/openapi-dtos';
 // 可直接从 @zenith/shared 导入（shared 已升级至 Zod v4）
 // import { createXxxSchema, updateXxxSchema } from '@zenith/shared';
 
-const xxxRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
-xxxRouter.use('*', authMiddleware);
+// 不使用 <AuthEnv> 泛型，不添加全局 use('*', authMiddleware)
+const xxxRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 // 若 @zenith/shared 中的 schema 不满足需求（如需 coerce），可在本地声明
 const createXxxSchema = z.object({
@@ -150,106 +149,121 @@ const createXxxSchema = z.object({
 const updateXxxSchema = createXxxSchema.partial();
 
 // ─── GET / — 分页列表 ────────────────────────────────────────────────────
-xxxRouter.openapi(createRoute({
-  method: 'get', path: '/',
-  tags: ['XXX管理'], summary: 'XXX列表',
-  security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:xxx:list' })] as const,
-  request: {
-    query: PaginationQuery.extend({
-      keyword: z.string().optional(),
-      status: z.enum(['active', 'disabled']).optional(),
-      startTime: z.string().optional(),
-      endTime: z.string().optional(),
-    }),
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/',
+    tags: ['XXX管理'], summary: 'XXX列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:xxx:list' })] as const,
+    request: {
+      query: PaginationQuery.extend({
+        keyword: z.string().optional(),
+        status: z.enum(['active', 'disabled']).optional(),
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+      }),
+    },
+    responses: {
+      ...commonErrorResponses,
+      200: { content: jsonContent(paginatedResponse(XxxDTO)), description: 'ok' },
+    },
+  }),
+  handler: async (c) => {
+    const { page = 1, pageSize = 10, keyword, status, startTime, endTime } = c.req.valid('query');
+    const conditions = [];
+    if (keyword) conditions.push(like(xxxs.name, `%${keyword}%`));
+    if (status)    conditions.push(eq(xxxs.status, status));
+    if (startTime) conditions.push(gte(xxxs.createdAt, new Date(startTime)));
+    if (endTime)   conditions.push(lte(xxxs.createdAt, new Date(endTime)));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(xxxs).where(where);
+    const rows = await db.select().from(xxxs).where(where)
+      .limit(pageSize).offset((page - 1) * pageSize).orderBy(xxxs.id);
+    return c.json({ code: 0 as const, message: 'ok', data: { list: rows, total: Number(count), page, pageSize } }, 200);
   },
-  responses: {
-    ...commonErrorResponses,
-    200: { content: jsonContent(paginatedResponse(XxxDTO)), description: 'ok' },
-  },
-}), async (c) => {
-  const { page = 1, pageSize = 10, keyword, status, startTime, endTime } = c.req.valid('query');
-  const conditions = [];
-  if (keyword) conditions.push(like(xxxs.name, `%${keyword}%`));
-  if (status)    conditions.push(eq(xxxs.status, status));
-  if (startTime) conditions.push(gte(xxxs.createdAt, new Date(startTime)));
-  if (endTime)   conditions.push(lte(xxxs.createdAt, new Date(endTime)));
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
-  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(xxxs).where(where);
-  const rows = await db.select().from(xxxs).where(where)
-    .limit(pageSize).offset((page - 1) * pageSize).orderBy(xxxs.id);
-  return c.json({ code: 0 as const, message: 'ok', data: { list: rows, total: Number(count), page, pageSize } }, 200);
 });
 
 // ─── POST / — 创建 ────────────────────────────────────────────────────────
-xxxRouter.openapi(createRoute({
-  method: 'post', path: '/',
-  tags: ['XXX管理'], summary: '创建 XXX',
-  security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:xxx:create', audit: { description: '创建 XXX', module: 'XXX管理' } })] as const,
-  request: { body: { content: jsonContent(createXxxSchema), required: true } },
-  responses: {
-    ...commonErrorResponses,
-    200: { content: jsonContent(apiResponse(XxxDTO)), description: '创建成功' },
-  },
-}), async (c) => {
-  const data = c.req.valid('json');
-  try {
-    const [row] = await db.insert(xxxs).values(data).returning();
-    return c.json({ code: 0 as const, message: '创建成功', data: row }, 200);
-  } catch (err: unknown) {
-    if ((err as { code?: string }).code === '23505') {
-      return c.json({ code: 400, message: '该名称已存在', data: null }, 400);
+const createRoute_ = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/',
+    tags: ['XXX管理'], summary: '创建 XXX',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:xxx:create', audit: { description: '创建 XXX', module: 'XXX管理' } })] as const,
+    request: { body: { content: jsonContent(createXxxSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      200: { content: jsonContent(apiResponse(XxxDTO)), description: '创建成功' },
+    },
+  }),
+  handler: async (c) => {
+    const data = c.req.valid('json');
+    try {
+      const [row] = await db.insert(xxxs).values(data).returning();
+      return c.json({ code: 0 as const, message: '创建成功', data: row }, 200);
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === '23505') {
+        return c.json({ code: 400, message: '该名称已存在', data: null }, 400);
+      }
+      throw err;
     }
-    throw err;
-  }
+  },
 });
 
 // ─── PUT /{id} — 更新 ────────────────────────────────────────────────────
-xxxRouter.openapi(createRoute({
-  method: 'put', path: '/{id}',
-  tags: ['XXX管理'], summary: '更新 XXX',
-  security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:xxx:update', audit: { description: '更新 XXX', module: 'XXX管理' } })] as const,
-  request: {
-    params: z.object({ id: z.coerce.number() }),
-    body: { content: jsonContent(updateXxxSchema), required: true },
+const updateRoute_ = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}',
+    tags: ['XXX管理'], summary: '更新 XXX',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:xxx:update', audit: { description: '更新 XXX', module: 'XXX管理' } })] as const,
+    request: {
+      params: z.object({ id: z.coerce.number() }),
+      body: { content: jsonContent(updateXxxSchema), required: true },
+    },
+    responses: {
+      ...commonErrorResponses,
+      200: { content: jsonContent(apiResponse(XxxDTO)), description: '更新成功' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const data = c.req.valid('json');
+    const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
+    if (before) setAuditBeforeData(c, before);
+    const [row] = await db.update(xxxs).set({ ...data, updatedAt: new Date() }).where(eq(xxxs.id, id)).returning();
+    if (!row) return c.json({ code: 404, message: 'XXX不存在', data: null }, 404);
+    return c.json({ code: 0 as const, message: '更新成功', data: row }, 200);
   },
-  responses: {
-    ...commonErrorResponses,
-    200: { content: jsonContent(apiResponse(XxxDTO)), description: '更新成功' },
-    404: { content: jsonContent(ErrorResponse), description: '不存在' },
-  },
-}), async (c) => {
-  const { id } = c.req.valid('param');
-  const data = c.req.valid('json');
-  const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
-  if (before) setAuditBeforeData(c, before);
-  const [row] = await db.update(xxxs).set({ ...data, updatedAt: new Date() }).where(eq(xxxs.id, id)).returning();
-  if (!row) return c.json({ code: 404, message: 'XXX不存在', data: null }, 404);
-  return c.json({ code: 0 as const, message: '更新成功', data: row }, 200);
 });
 
 // ─── DELETE /{id} — 删除 ──────────────────────────────────────────────────
-xxxRouter.openapi(createRoute({
-  method: 'delete', path: '/{id}',
-  tags: ['XXX管理'], summary: '删除 XXX',
-  security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:xxx:delete', audit: { description: '删除 XXX', module: 'XXX管理' } })] as const,
-  request: { params: z.object({ id: z.coerce.number() }) },
-  responses: {
-    ...commonErrorResponses,
-    200: { content: jsonContent(MessageResponse), description: '删除成功' },
-    404: { content: jsonContent(ErrorResponse), description: '不存在' },
+const deleteRoute_ = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/{id}',
+    tags: ['XXX管理'], summary: '删除 XXX',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:xxx:delete', audit: { description: '删除 XXX', module: 'XXX管理' } })] as const,
+    request: { params: z.object({ id: z.coerce.number() }) },
+    responses: {
+      ...commonErrorResponses,
+      200: { content: jsonContent(MessageResponse), description: '删除成功' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
+    if (before) setAuditBeforeData(c, before);
+    const [deleted] = await db.delete(xxxs).where(eq(xxxs.id, id)).returning();
+    if (!deleted) return c.json({ code: 404, message: 'XXX不存在', data: null }, 404);
+    return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
   },
-}), async (c) => {
-  const { id } = c.req.valid('param');
-  const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
-  if (before) setAuditBeforeData(c, before);
-  const [deleted] = await db.delete(xxxs).where(eq(xxxs.id, id)).returning();
-  if (!deleted) return c.json({ code: 404, message: 'XXX不存在', data: null }, 404);
-  return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
 });
+
+// 统一注册所有路由（必须在 export 之前）
+xxxRouter.openapiRoutes([listRoute, createRoute_, updateRoute_, deleteRoute_] as const);
 
 export default xxxRouter;
 ```

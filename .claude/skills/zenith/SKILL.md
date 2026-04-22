@@ -272,11 +272,11 @@ npm run db:migrate
 - 时间字段序列化为 `string`（ISO 格式）
 
 **Step 5** — `packages/server/src/routes/xxx.ts`：创建 OpenAPIHono Router
-- 使用 `new OpenAPIHono<AuthEnv>({ defaultHook: validationHook })` 初始化（`AuthEnv` 从 `'../middleware/auth'` 导入，`validationHook` 从 `'../lib/openapi-schemas'` 导入），确保 Zod 校验失败时返回标准 `{ code: 400, message, data: null }` 格式
-- `use('*', authMiddleware)` 保护所有路由
-- 使用 `OpenAPIHono + createRoute` 实现标准 5 个端点：`GET /`（list+分页）、`POST /`（create）、`PUT /{id}`（update）、`DELETE /{id}`（delete）、`GET /{id}`（可选，详情）
+- 使用 `new OpenAPIHono({ defaultHook: validationHook })` 初始化（`validationHook` 从 `'../lib/openapi-schemas'` 导入）；**不使用** `<AuthEnv>` 泛型，**不** 添加全局 `router.use('*', authMiddleware)`
+- 使用 `defineOpenAPIRoute({ route: createRoute({ ..., middleware: [authMiddleware, guard({ permission, audit })] as const, ... }), handler: async (c) => { ... }, })` 定义每个受保护路由；公开路由（不需鉴权）在 `createRoute` 中设置 `security: []` 且不添加 `middleware`
+- 所有路由定义后，调用 `router.openapiRoutes([route1, route2, ...] as const)` 统一注册（放在 `export default` 之前）
+- 实现标准 5 个端点：`GET /`（list+分页）、`POST /`（create）、`PUT /{id}`（update）、`DELETE /{id}`（delete）、`GET /{id}`（可选，详情）
 - 路径风格用 `/{id}` 而非 `/:id`（OpenAPI 规范）
-- 每个写操作在 `middleware: [guard({ permission, audit })] as const` 中包裹
 - Schema 可直接从 `@zenith/shared/src/validation.ts` 导入（shared 已升级至 Zod v4，与 `@hono/zod-openapi` 一致）；若需要 coerce 或特殊处理，可在路由文件内本地声明
 - **实体 DTO 必须从中心仓库导入**：`import { XxxDTO } from '../lib/openapi-dtos';`。若是全新实体，先在 `packages/server/src/lib/dtos/` 下对应子文件（按业务域拆分：`iam` / `auth` / `dict` / `files` / `logs` / `notices` / `system` / `workflow` / `dashboard` / `region` / `messages`）中添加 `export const XxxDTO = z.object({...}).openapi('Xxx');`，再在路由中导入。**严禁在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**（会导致 Swagger Components 重复）
 

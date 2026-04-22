@@ -37,6 +37,7 @@ npm run db:seed        # 填充初始种子数据
 - **路由**：所有路由挂载在 `/api` 前缀，文件位于 `src/routes/`
 - **认证**：JWT Bearer Token，7 天有效期；`src/middleware/auth.ts` 中 `authMiddleware` 注入 `c.set('user', payload)`；签发/校验统一走 `src/lib/jwt.ts` 的 `signToken` / `verifyToken`（基于 `hono/jwt`）
 - **请求上下文**：全局挂载 `hono/context-storage`，辅助函数可用 `src/lib/context.ts` 的 `currentUser()` / `getCtx()` 零参取值，无需再层层透传 `c` 或 `user`
+- **路由定义模式**：所有路由文件统一使用 `defineOpenAPIRoute` + `router.openapiRoutes()` 模式（参考 `src/routes/api-tokens.ts`）。不使用 `<AuthEnv>` 泛型，不添加全局 `router.use('*', authMiddleware)`；每个受保护路由在 `createRoute` 的 `middleware: [authMiddleware, guard(...)] as const` 中显式声明。收集所有路由常量后调用 `router.openapiRoutes([route1, route2, ...] as const)` 统一注册
 - **验证**：所有入参通过 `@hono/zod-openapi` 的 `createRoute` 声明 Zod schema 后自动校验，路由内用 `c.req.valid()` 取已验证数据；`defaultHook: validationHook` 自动将校验失败转为 `{ code: 400, message: '...', data: null }`
 - **DTO 中心化**：所有响应实体 DTO 按业务域拆分至 `src/lib/dtos/`（`iam.ts` / `auth.ts` / `dict.ts` / `files.ts` / `logs.ts` / `notices.ts` / `system.ts` / `workflow.ts` / `dashboard.ts` / `region.ts` / `messages.ts`），通过 `src/lib/openapi-dtos.ts`（re-export barrel）对外统一暴露。各路由文件通过 `import { XxxDTO } from '../lib/openapi-dtos'` 导入，**新增实体请直接在对应子文件中维护**。**禁止在路由文件内本地声明带 `.openapi('EntityName')` 的实体 DTO**，避免 Swagger Components 重复/冲突
 - **统一响应**：`{ code: 0, message: 'success', data: T }`，失败时 `code` 为非零值
