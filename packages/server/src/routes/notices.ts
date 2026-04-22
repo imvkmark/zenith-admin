@@ -24,7 +24,7 @@ const createNoticeSchema = z.object({
   priority: z.string().min(1).max(32).default('medium'),
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(noticeRecipientSchema).optional().default([]),
-  publishTime: z.string().datetime({ offset: true }).optional().nullable(),
+  publishTime: z.iso.datetime({ offset: true }).optional().nullable(),
 });
 const updateNoticeSchema = createNoticeSchema.partial();
 
