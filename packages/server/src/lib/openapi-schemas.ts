@@ -7,7 +7,22 @@
  *
  * 分页响应：{ list, total, page, pageSize }
  */
-import { z } from '@hono/zod-openapi';
+import { z, type Hook } from '@hono/zod-openapi';
+
+/**
+ * 统一验证失败 Hook：将 Zod 校验错误转为 { code: 400, message, data: null }
+ * 在 new OpenAPIHono({ defaultHook: validationHook }) 中使用
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const validationHook: Hook<any, any, any, any> = (result, c) => {
+  if (!result.success) {
+    const first = result.error.issues?.[0];
+    const field = first?.path?.join('.') ?? '';
+    const msg = first?.message ?? '请求参数错误';
+    const message = field ? `${field}: ${msg}` : msg;
+    return c.json({ code: 400, message, data: null }, 400);
+  }
+};
 
 /** 通用成功响应封装：code=0 + 任意 data */
 export function apiResponse<T extends z.ZodTypeAny>(data: T) {

@@ -4,41 +4,18 @@ import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { createFileStorageConfigSchema as _createSchema, updateFileStorageConfigSchema as _updateSchema } from '@zenith/shared';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const fileStorageConfigsRouter = new OpenAPIHono();
+const fileStorageConfigsRouter = new OpenAPIHono({ defaultHook: validationHook });
 fileStorageConfigsRouter.use('*', authMiddleware);
 
 const FileStorageConfigDTO = z.looseObject({}).openapi('FileStorageConfig');
 
-const createFileStorageConfigSchema = z.object({
-  name: z.string().min(1).max(64),
-  provider: z.enum(['local', 'oss', 's3', 'cos']),
-  status: z.enum(['active', 'disabled']).default('active'),
-  isDefault: z.boolean().default(false),
-  basePath: z.string().max(256).optional(),
-  localRootPath: z.string().max(512).optional(),
-  ossRegion: z.string().max(64).optional(),
-  ossEndpoint: z.string().max(128).optional(),
-  ossBucket: z.string().max(128).optional(),
-  ossAccessKeyId: z.string().max(128).optional(),
-  ossAccessKeySecret: z.string().max(256).optional(),
-  s3Region: z.string().max(64).optional(),
-  s3Endpoint: z.string().max(256).optional(),
-  s3Bucket: z.string().max(128).optional(),
-  s3AccessKeyId: z.string().max(128).optional(),
-  s3SecretAccessKey: z.string().max(256).optional(),
-  s3ForcePathStyle: z.boolean().optional(),
-  cosRegion: z.string().max(64).optional(),
-  cosBucket: z.string().max(128).optional(),
-  cosSecretId: z.string().max(128).optional(),
-  cosSecretKey: z.string().max(256).optional(),
-  remark: z.string().max(256).optional(),
-});
-const updateFileStorageConfigSchema = createFileStorageConfigSchema.partial();
+const createFileStorageConfigSchema = _createSchema;
+const updateFileStorageConfigSchema = _updateSchema;
 
 type StorageInput = z.infer<typeof createFileStorageConfigSchema>;
-type StorageUpdateInput = z.infer<typeof updateFileStorageConfigSchema>;
 
 function toFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect) {
   return {

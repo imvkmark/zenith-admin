@@ -5,21 +5,11 @@ import { emailConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { JwtPayload } from '../middleware/auth';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-// 本地 v4 schema（与 shared v3 等价）
-const emailConfigSchema = z.object({
-  smtpHost: z.string().min(1).max(128).optional(),
-  smtpPort: z.number().int().min(1).max(65535).default(465),
-  smtpUser: z.string().min(1).max(128).optional(),
-  smtpPassword: z.string().max(256).optional(),
-  fromName: z.string().max(64).default('Zenith Admin'),
-  fromEmail: z.string().max(128).optional(),
-  encryption: z.enum(['none', 'ssl', 'tls']).default('ssl'),
-  status: z.enum(['active', 'disabled']).default('active'),
-});
+import { emailConfigSchema } from '@zenith/shared';
 
-const emailConfigRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const emailConfigRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 emailConfigRouter.use('*', authMiddleware);
 
 // ─── Schemas ───────────────────────────────────────────────────────────────

@@ -7,9 +7,9 @@ import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { isPlatformAdmin } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const tenantsRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const tenantsRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 
 tenantsRoute.use('*', authMiddleware);
 tenantsRoute.use('*', async (c, next) => {
@@ -29,7 +29,7 @@ const createTenantSchema = z.object({
   contactName: z.string().max(50).optional(),
   contactPhone: z.string().max(20).optional(),
   status: z.enum(['active', 'disabled']).default('active'),
-  expireAt: z.string().optional().nullable(),
+  expireAt: z.string().datetime({ offset: true }).optional().nullable(),
   maxUsers: z.number().int().positive().optional().nullable(),
   remark: z.string().max(500).optional(),
 });

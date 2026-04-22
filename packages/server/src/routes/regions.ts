@@ -5,9 +5,9 @@ import { regions } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { Region } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const regionsRouter = new OpenAPIHono();
+const regionsRouter = new OpenAPIHono({ defaultHook: validationHook });
 regionsRouter.use('*', authMiddleware);
 
 function toRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {

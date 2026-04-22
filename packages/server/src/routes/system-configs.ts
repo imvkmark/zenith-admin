@@ -8,9 +8,9 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { getPasswordPolicy } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const systemConfigsRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const systemConfigsRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 const configTypeValues = ['string', 'number', 'boolean', 'json'] as const;
 
 // ─── Schemas ───────────────────────────────────────────────────────────────

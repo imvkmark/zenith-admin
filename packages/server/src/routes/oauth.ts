@@ -11,9 +11,9 @@ import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
 import { generateTokenId, registerSession } from '../lib/session-manager';
 import type { OAuthProviderType } from '@zenith/shared';
 import { OAUTH_PROVIDERS } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const oauth = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const oauth = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 
 const VALID_PROVIDERS = new Set<string>(OAUTH_PROVIDERS);
 

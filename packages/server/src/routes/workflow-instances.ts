@@ -7,24 +7,17 @@ import { guard } from '../middleware/guard';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
 import type { JwtPayload } from '../middleware/auth';
+import { createWorkflowInstanceSchema, approveWorkflowTaskSchema, rejectWorkflowTaskSchema } from '@zenith/shared';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { apiResponse, ErrorResponse, PaginationQuery, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
 type Env = { Variables: { user: JwtPayload } };
-const router = new OpenAPIHono<Env>();
+const router = new OpenAPIHono<Env>({ defaultHook: validationHook });
 router.use('*', authMiddleware);
 
 const WorkflowInstanceDTO = z.looseObject({}).openapi('WorkflowInstance');
 const WorkflowInstanceListDTO = z.looseObject({}).openapi('WorkflowInstanceListItem');
 const WorkflowInstanceAllDTO = z.looseObject({}).openapi('WorkflowInstanceAll');
-
-const createWorkflowInstanceSchema = z.object({
-  definitionId: z.number().int().positive(),
-  title: z.string().min(1).max(128),
-  formData: z.record(z.string(), z.unknown()).nullable().optional(),
-});
-const approveWorkflowTaskSchema = z.object({ comment: z.string().max(500).optional() });
-const rejectWorkflowTaskSchema = z.object({ comment: z.string().min(1).max(500) });
 
 function toTask(row: typeof workflowTasks.$inferSelect, assigneeName?: string | null, assigneeAvatar?: string | null) {
   return {

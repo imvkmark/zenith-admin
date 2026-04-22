@@ -6,9 +6,9 @@ import { sql } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
-import { apiResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const monitorRouter = new OpenAPIHono();
+const monitorRouter = new OpenAPIHono({ defaultHook: validationHook });
 monitorRouter.use('*', authMiddleware);
 
 function getCpuUsage(): Promise<number> {

@@ -8,10 +8,10 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { validateFlowData } from '../lib/workflow-engine';
 import type { JwtPayload } from '../middleware/auth';
 import type { WorkflowFlowData } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
 type Env = { Variables: { user: JwtPayload } };
-const router = new OpenAPIHono<Env>();
+const router = new OpenAPIHono<Env>({ defaultHook: validationHook });
 router.use('*', authMiddleware);
 
 const WorkflowDefinitionDTO = z.looseObject({}).openapi('WorkflowDefinition');

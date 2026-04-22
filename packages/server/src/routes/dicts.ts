@@ -7,27 +7,10 @@ import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
+import { createDictSchema, updateDictSchema, createDictItemSchema, updateDictItemSchema } from '@zenith/shared';
 
-// 本地 v4 schemas
-const createDictSchema = z.object({
-  name: z.string().min(1).max(64),
-  code: z.string().min(1).max(64).regex(/^[a-z_]+$/),
-  description: z.string().max(256).optional(),
-  status: z.enum(['active', 'disabled']).default('active'),
-});
-const updateDictSchema = createDictSchema.partial();
-const createDictItemSchema = z.object({
-  label: z.string().min(1).max(64),
-  value: z.string().min(1).max(64),
-  color: z.string().max(32).optional(),
-  sort: z.number().int().default(0),
-  status: z.enum(['active', 'disabled']).default('active'),
-  remark: z.string().max(256).optional(),
-});
-const updateDictItemSchema = createDictItemSchema.partial();
-
-const dictsRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const dictsRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 dictsRouter.use('*', authMiddleware);
 
 function toDict(row: typeof dicts.$inferSelect) {

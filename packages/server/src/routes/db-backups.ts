@@ -7,15 +7,11 @@ import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
 import logger from '../lib/logger';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-// 本地 v4 schema
-const createBackupSchema = z.object({
-  type: z.enum(['pg_dump', 'drizzle_export']),
-  name: z.string().min(1).max(128).optional(),
-});
+import { createBackupSchema } from '@zenith/shared';
 
-const backups = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const backups = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 backups.use('*', authMiddleware);
 
 // ─── Schemas ───────────────────────────────────────────────────────────────

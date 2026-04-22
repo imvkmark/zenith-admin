@@ -7,9 +7,9 @@ import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { apiResponse, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const loginLogsRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const loginLogsRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 loginLogsRoute.use('/*', authMiddleware);
 
 // ─── Schemas ───────────────────────────────────────────────────────────────

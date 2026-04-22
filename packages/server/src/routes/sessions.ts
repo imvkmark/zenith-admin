@@ -15,8 +15,9 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { sendToUser, closeUserConnections } from '../lib/ws-manager';
+import { validationHook } from '../lib/openapi-schemas';
 
-const sessionsRoute = new OpenAPIHono();
+const sessionsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
 sessionsRoute.use('/*', authMiddleware);
 

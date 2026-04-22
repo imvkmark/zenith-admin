@@ -7,20 +7,17 @@ import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import type { JwtPayload } from '../middleware/auth';
+import { noticeRecipientSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
 type Env = { Variables: { user: JwtPayload } };
-const noticesRouter = new OpenAPIHono<Env>();
+const noticesRouter = new OpenAPIHono<Env>({ defaultHook: validationHook });
 noticesRouter.use('*', authMiddleware);
 
 const NoticeDTO = z.looseObject({}).openapi('Notice');
 const NoticeReadStatsDTO = z.looseObject({}).openapi('NoticeReadStats');
 
-const noticeRecipientSchema = z.object({
-  recipientType: z.enum(['user', 'role', 'dept']),
-  recipientId: z.number().int().positive(),
-});
 const createNoticeSchema = z.object({
   title: z.string().min(1).max(128),
   content: z.string().min(1).max(4096),
@@ -29,7 +26,7 @@ const createNoticeSchema = z.object({
   priority: z.string().min(1).max(32).default('medium'),
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(noticeRecipientSchema).optional().default([]),
-  publishTime: z.string().optional().nullable(),
+  publishTime: z.string().datetime({ offset: true }).optional().nullable(),
 });
 const updateNoticeSchema = createNoticeSchema.partial();
 

@@ -14,9 +14,9 @@ import { unlockUser } from '../lib/session-manager';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import type { Role, Position, User } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook } from '../lib/openapi-schemas';
 
-const usersRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const usersRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 usersRouter.use('*', authMiddleware);
 
 // DTOs

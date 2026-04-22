@@ -8,9 +8,10 @@ import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUsersSchema } from '@zenith/shared';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const rolesRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const rolesRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 rolesRouter.use('*', authMiddleware);
 
 function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
@@ -25,16 +26,6 @@ function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
 // ─── Schemas ───────────────────────────────────────────────────────────────
 const RoleDTO = z.looseObject({}).openapi('Role');
 const UserDTO = z.looseObject({}).openapi('UserBrief');
-const createRoleSchema = z.object({
-  name: z.string().min(1).max(64),
-  code: z.string().min(1).max(64).regex(/^[a-z_]+$/),
-  description: z.string().max(256).optional(),
-  status: z.enum(['active', 'disabled']).default('active'),
-  dataScope: z.enum(['all', 'dept', 'self']).default('all'),
-});
-const updateRoleSchema = createRoleSchema.partial();
-const assignRoleMenusSchema = z.object({ menuIds: z.array(z.number().int()) });
-const assignRoleUsersSchema = z.object({ userIds: z.array(z.number().int()) });
 
 // ─── Routes ────────────────────────────────────────────────────────────────
 const listRoute = createRoute({
@@ -214,7 +205,7 @@ rolesRouter.openapi(assignMenusRoute, async (c) => {
 
   await db.delete(roleMenus).where(eq(roleMenus.roleId, id));
   if (data.menuIds.length > 0) {
-    await db.insert(roleMenus).values(data.menuIds.map((menuId) => ({ roleId: id, menuId })));
+    await db.insert(roleMenus).values(data.menuIds.map((menuId: number) => ({ roleId: id, menuId })));
   }
 
   clearUserPermissionCache();
@@ -298,7 +289,7 @@ rolesRouter.openapi(assignUsersRoute, async (c) => {
 
   await db.delete(userRoles).where(eq(userRoles.roleId, id));
   if (data.userIds.length > 0) {
-    await db.insert(userRoles).values(data.userIds.map((userId) => ({ userId, roleId: id })));
+    await db.insert(userRoles).values(data.userIds.map((userId: number) => ({ userId, roleId: id })));
   }
 
   clearUserPermissionCache();

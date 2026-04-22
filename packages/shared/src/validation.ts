@@ -145,7 +145,7 @@ export const createDictItemSchema = z.object({
 export const updateDictItemSchema = createDictItemSchema.partial();
 
 // ─── 文件管理 Schema ─────────────────────────────────────────────────────────
-export const createFileStorageConfigSchema = z.object({
+const baseFileStorageConfigSchema = z.object({
   name: z.string().min(1, '配置名称不能为空').max(64),
   provider: z.enum(['local', 'oss', 's3', 'cos']),
   status: z.enum(['active', 'disabled']).default('active'),
@@ -172,7 +172,9 @@ export const createFileStorageConfigSchema = z.object({
   cosSecretId: z.string().max(128).optional(),
   cosSecretKey: z.string().max(256).optional(),
   remark: z.string().max(256).optional(),
-}).superRefine((data, ctx) => {
+});
+
+export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRefine((data, ctx) => {
   if (data.provider === 'local' && !data.localRootPath) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
   }
@@ -202,7 +204,7 @@ export const createFileStorageConfigSchema = z.object({
   }
 });
 
-export const updateFileStorageConfigSchema = createFileStorageConfigSchema;
+export const updateFileStorageConfigSchema = baseFileStorageConfigSchema.partial();
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -359,7 +361,7 @@ export type MessageChannel = typeof MESSAGE_CHANNELS[number];
 export const createMessageTemplateSchema = z.object({
   name: z.string().min(1, '模板名称不能为空').max(100),
   code: z.string().min(1, '模板编码不能为空').max(100).regex(/^[a-zA-Z]\w*$/, '编码只能包含字母、数字和下划线，且以字母开头'),
-  channel: z.enum(['email', 'sms', 'in_app'], { required_error: '请选择渠道类型' }),
+  channel: z.enum(['email', 'sms', 'in_app'], { error: '请选择渠道类型' }),
   subject: z.string().max(200).optional(),
   content: z.string().min(1, '模板内容不能为空'),
   variables: z.string().optional(),
@@ -370,7 +372,7 @@ export const createMessageTemplateSchema = z.object({
 export const updateMessageTemplateSchema = createMessageTemplateSchema.partial();
 
 export const previewMessageTemplateSchema = z.object({
-  variables: z.record(z.string()),
+  variables: z.record(z.string(), z.string()),
 });
 
 export type CreateMessageTemplateInput = z.infer<typeof createMessageTemplateSchema>;
@@ -436,7 +438,7 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
 export const createWorkflowDefinitionSchema = z.object({
   name: z.string().min(1, '流程名称不能为空').max(64),
   description: z.string().max(500).nullable().optional(),
-  flowData: z.record(z.unknown()).nullable().optional(),
+  flowData: z.record(z.string(), z.unknown()).nullable().optional(),
   formFields: z.array(workflowFormFieldSchema).nullable().optional(),
   status: z.enum(['draft', 'published', 'disabled']).default('draft'),
 });
@@ -446,7 +448,7 @@ export const updateWorkflowDefinitionSchema = createWorkflowDefinitionSchema.par
 export const createWorkflowInstanceSchema = z.object({
   definitionId: z.number().int().positive('请选择流程'),
   title: z.string().min(1, '申请标题不能为空').max(128),
-  formData: z.record(z.unknown()).nullable().optional(),
+  formData: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const approveWorkflowTaskSchema = z.object({

@@ -6,20 +6,13 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import type { JwtPayload } from '../middleware/auth';
 import type { OAuthProviderType } from '@zenith/shared';
-import { apiResponse, ErrorResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-// 本地 v4 schema（与 @zenith/shared 中的 v3 schema 等价；避免跨 zod v3/v4 类型冲突）
-const updateOauthConfigSchema = z.object({
-  clientId: z.string().max(256).default(''),
-  clientSecret: z.string().max(512).default(''),
-  agentId: z.string().max(128).nullable().optional(),
-  corpId: z.string().max(128).nullable().optional(),
-  enabled: z.boolean().default(false),
-});
+import { updateOauthConfigSchema } from '@zenith/shared';
 
 const VALID_PROVIDERS: OAuthProviderType[] = ['github', 'dingtalk', 'wechat_work'];
 
-const oauthConfigRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const oauthConfigRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 oauthConfigRouter.use('*', authMiddleware);
 
 // ─── Schemas ───────────────────────────────────────────────────────────────

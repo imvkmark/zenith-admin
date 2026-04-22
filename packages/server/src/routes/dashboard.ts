@@ -7,9 +7,9 @@ import { isSuperAdmin } from '../lib/permissions';
 import { getOnlineCount } from '../lib/session-manager';
 import type { JwtPayload } from '../middleware/auth';
 import { tenantCondition } from '../lib/tenant';
-import { apiResponse, ErrorResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const dashboardRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const dashboardRoute = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 
 dashboardRoute.use('/*', authMiddleware);
 

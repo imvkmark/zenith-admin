@@ -7,9 +7,9 @@ import { guard } from '../middleware/guard';
 import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
 import type { JwtPayload } from '../middleware/auth';
 import type { Menu } from '@zenith/shared';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const menusRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const menusRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 menusRouter.use('*', authMiddleware);
 
 function toMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> {
@@ -61,12 +61,12 @@ const MenuDTO = z.looseObject({}).openapi('Menu');
 const createMenuSchema = z.object({
   parentId: z.coerce.number().int().default(0),
   title: z.string().min(1).max(64),
-  name: z.string().optional(),
-  path: z.string().optional(),
-  component: z.string().optional(),
-  icon: z.string().optional(),
+  name: z.string().max(64).optional(),
+  path: z.string().max(256).optional(),
+  component: z.string().max(256).optional(),
+  icon: z.string().max(64).optional(),
   type: z.enum(['directory', 'menu', 'button']).default('menu'),
-  permission: z.string().optional(),
+  permission: z.string().max(128).optional(),
   sort: z.coerce.number().int().default(0),
   status: z.enum(['active', 'disabled']).default('active'),
   visible: z.boolean().default(true),

@@ -7,25 +7,14 @@ import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import type { Department } from '@zenith/shared';
+import { createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const departmentsRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const departmentsRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 departmentsRouter.use('*', authMiddleware);
 
 const DepartmentDTO = z.looseObject({}).openapi('Department');
-
-const createDepartmentSchema = z.object({
-  parentId: z.number().int().min(0).default(0),
-  name: z.string().min(1).max(64),
-  code: z.string().min(1).max(64).regex(/^\w+$/),
-  leader: z.string().max(32).optional(),
-  phone: z.string().max(32).optional(),
-  email: z.string().max(128).optional(),
-  sort: z.number().int().default(0),
-  status: z.enum(['active', 'disabled']).default('active'),
-});
-const updateDepartmentSchema = createDepartmentSchema.partial();
 
 function toDepartment(row: typeof departments.$inferSelect): Omit<Department, 'children'> {
   return {

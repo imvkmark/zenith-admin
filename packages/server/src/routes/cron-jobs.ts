@@ -6,26 +6,14 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression, getRegisteredHandlers } from '../lib/cron-scheduler';
 import { exportToExcel } from '../lib/excel-export';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const cronJobsRoute = new OpenAPIHono();
+const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
 cronJobsRoute.use('*', authMiddleware);
 
 const CronJobDTO = z.looseObject({}).openapi('CronJob');
 const CronJobLogDTO = z.looseObject({}).openapi('CronJobLog');
-
-const createCronJobSchema = z.object({
-  name: z.string().min(1).max(64),
-  cronExpression: z.string().min(1).max(128),
-  handler: z.string().min(1).max(128),
-  params: z.string().max(4096).nullable().optional(),
-  status: z.enum(['active', 'disabled']).default('disabled'),
-  description: z.string().max(256).default(''),
-  retryCount: z.number().int().min(0).max(10).default(0),
-  retryInterval: z.number().int().min(0).default(0),
-  monitorTimeout: z.number().int().min(0).nullable().optional(),
-});
-const updateCronJobSchema = createCronJobSchema.partial();
 
 function toCronJob(row: typeof cronJobs.$inferSelect) {
   return {

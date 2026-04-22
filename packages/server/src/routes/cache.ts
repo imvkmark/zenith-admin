@@ -11,8 +11,9 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
 import { config } from '../config';
+import { validationHook } from '../lib/openapi-schemas';
 
-const cacheRouter = new OpenAPIHono();
+const cacheRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 cacheRouter.use('*', authMiddleware);
 

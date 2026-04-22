@@ -5,9 +5,10 @@ import { messageTemplates } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { previewMessageTemplateSchema } from '@zenith/shared';
+import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent , validationHook } from '../lib/openapi-schemas';
 
-const messageTemplatesRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>();
+const messageTemplatesRouter = new OpenAPIHono<{ Variables: { user: JwtPayload } }>({ defaultHook: validationHook });
 messageTemplatesRouter.use('*', authMiddleware);
 
 function toMessageTemplate(row: typeof messageTemplates.$inferSelect) {
@@ -28,13 +29,12 @@ const createMessageTemplateSchema = z.object({
   code: z.string().min(1).max(100).regex(/^[a-zA-Z]\w*$/),
   channel: z.enum(['email', 'sms', 'in_app']),
   subject: z.string().max(200).optional(),
-  content: z.string(),
+  content: z.string().min(1),
   variables: z.string().optional(),
   status: z.enum(['active', 'disabled']).default('active'),
   remark: z.string().max(500).optional(),
 });
 const updateMessageTemplateSchema = createMessageTemplateSchema.partial();
-const previewMessageTemplateSchema = z.object({ variables: z.record(z.string(), z.string()) });
 const PreviewResultDTO = z.object({ subject: z.string().nullable(), content: z.string() });
 
 // ─── Routes ────────────────────────────────────────────────────────────────

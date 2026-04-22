@@ -16,9 +16,9 @@ import { generateCaptcha, verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
 import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { isPlatformAdmin } from '../lib/tenant';
-import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent } from '../lib/openapi-schemas';
+import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook } from '../lib/openapi-schemas';
 
-const auth = new OpenAPIHono();
+const auth = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── 本地 Zod v4 schemas ─────────────────────────────────────────────────────
 const loginSchema = z.object({
