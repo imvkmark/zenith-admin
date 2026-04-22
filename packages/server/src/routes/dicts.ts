@@ -22,8 +22,8 @@ function toDictItem(row: typeof dictItems.$inferSelect) {
 }
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
-const DictDTO = z.object({}).passthrough().openapi('Dict');
-const DictItemDTO = z.object({}).passthrough().openapi('DictItem');
+const DictDTO = z.looseObject({}).openapi('Dict');
+const DictItemDTO = z.looseObject({}).openapi('DictItem');
 
 // ─── 字典 CRUD ────────────────────────────────────────────────────────────────
 

@@ -25,7 +25,6 @@ const EmailConfigDTO = z
     updatedAt: z.union([z.string(), z.date()]).nullable().optional(),
     createdAt: z.union([z.string(), z.date()]).nullable().optional(),
   })
-  .passthrough()
   .openapi('EmailConfig');
 
 const TestEmailBody = z.object({ email: z.string() });

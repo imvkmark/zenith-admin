@@ -29,7 +29,7 @@ const createTenantSchema = z.object({
   contactName: z.string().max(50).optional(),
   contactPhone: z.string().max(20).optional(),
   status: z.enum(['active', 'disabled']).default('active'),
-  expireAt: z.string().datetime({ offset: true }).optional().nullable(),
+  expireAt: z.iso.datetime({ offset: true }).optional().nullable(),
   maxUsers: z.number().int().positive().optional().nullable(),
   remark: z.string().max(500).optional(),
 });

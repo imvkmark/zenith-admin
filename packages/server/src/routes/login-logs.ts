@@ -23,7 +23,6 @@ const LoginLogItem = z
     userAgent: z.string().nullable().optional(),
     createdAt: z.string(),
   })
-  .passthrough()
   .openapi('LoginLogItem');
 
 // ─── Routes ────────────────────────────────────────────────────────────────

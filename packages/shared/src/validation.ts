@@ -176,13 +176,13 @@ const baseFileStorageConfigSchema = z.object({
 
 export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRefine((data, ctx) => {
   if (data.provider === 'local' && !data.localRootPath) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
+    ctx.addIssue({ code: 'custom', message: '本地磁盘配置需要填写存储目录', path: ['localRootPath'] });
   }
   if (data.provider === 'oss') {
     const requiredFields: Array<keyof typeof data> = ['ossRegion', 'ossEndpoint', 'ossBucket', 'ossAccessKeyId', 'ossAccessKeySecret'];
     for (const field of requiredFields) {
       if (!data[field]) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'OSS 配置项不能为空', path: [field] });
+        ctx.addIssue({ code: 'custom', message: 'OSS 配置项不能为空', path: [field] });
       }
     }
   }
@@ -190,7 +190,7 @@ export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRe
     const requiredFields: Array<keyof typeof data> = ['s3Region', 's3Bucket', 's3AccessKeyId', 's3SecretAccessKey'];
     for (const field of requiredFields) {
       if (!data[field]) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'S3 配置项不能为空', path: [field] });
+        ctx.addIssue({ code: 'custom', message: 'S3 配置项不能 为空', path: [field] });
       }
     }
   }
@@ -198,7 +198,7 @@ export const createFileStorageConfigSchema = baseFileStorageConfigSchema.superRe
     const requiredFields: Array<keyof typeof data> = ['cosRegion', 'cosBucket', 'cosSecretId', 'cosSecretKey'];
     for (const field of requiredFields) {
       if (!data[field]) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '腾讯云 COS 配置项不能为空', path: [field] });
+        ctx.addIssue({ code: 'custom', message: '腾讯云 COS 配 置项不能为空', path: [field] });
       }
     }
   }
@@ -243,7 +243,7 @@ export const createNoticeSchema = z.object({
   priority: z.string().min(1).max(32).default('medium'),
   targetType: z.enum(['all', 'specific']).default('all'),
   recipients: z.array(noticeRecipientSchema).optional().default([]),
-  publishTime: z.string().datetime({ offset: true }).optional().nullable(),
+  publishTime: z.iso.datetime({ offset: true }).optional().nullable(),
 });
 
 export const updateNoticeSchema = createNoticeSchema.partial();
@@ -338,7 +338,7 @@ export const createTenantSchema = z.object({
   contactName: z.string().max(50).optional(),
   contactPhone: z.string().max(20).optional(),
   status: z.enum(['active', 'disabled']).default('active'),
-  expireAt: z.string().datetime({ offset: true }).optional().nullable(),
+  expireAt: z.iso.datetime({ offset: true }).optional().nullable(),
   maxUsers: z.number().int().positive().optional().nullable(),
   remark: z.string().max(500).optional(),
 });

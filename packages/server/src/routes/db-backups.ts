@@ -32,7 +32,6 @@ const BackupItem = z
     createdByName: z.string().nullable().optional(),
     createdAt: z.string(),
   })
-  .passthrough()
   .openapi('DbBackupItem');
 
 const BackupCreated = z.object({
