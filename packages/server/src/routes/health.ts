@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
 import redis from '../lib/redis';
@@ -19,8 +19,8 @@ const HealthDTO = z
 
 const health = new OpenAPIHono({ defaultHook: validationHook });
 
-health.openapi(
-  createRoute({
+const healthRoute = defineOpenAPIRoute({
+  route: createRoute({
     method: 'get',
     path: '/',
     tags: ['服务状态'],
@@ -34,7 +34,7 @@ health.openapi(
       },
     },
   }),
-  async (c) => {
+  handler: async (c) => {
     const checks: Record<string, 'ok' | 'error'> = {};
     try {
       await db.execute(sql`SELECT 1`);
@@ -61,6 +61,8 @@ health.openapi(
       },
     });
   },
-);
+});
+
+health.openapiRoutes([healthRoute] as const);
 
 export default health;

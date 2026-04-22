@@ -1,26 +1,25 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { desc, eq, like, and, sql, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { LoginLogDTO as LoginLogItem } from '../lib/openapi-dtos';
 
-const loginLogsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
-loginLogsRoute.use('/*', authMiddleware);
+const loginLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── Routes ────────────────────────────────────────────────────────────────
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['LoginLogs'],
   summary: '登录日志分页查询',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:log:login' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
   request: {
     query: z.object({
       page: z.coerce.number().optional(),
@@ -35,9 +34,8 @@ const listRoute = createRoute({
     200: { content: jsonContent(paginatedResponse(LoginLogItem)), description: '登录日志列表' },
     ...commonErrorResponses,
   },
-});
-
-loginLogsRoute.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const q = c.req.valid('query');
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
@@ -79,15 +77,17 @@ loginLogsRoute.openapi(listRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const exportRoute = createRoute({
+const exportRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/export',
   tags: ['LoginLogs'],
   summary: '导出登录日志 Excel',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:log:login' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:log:login' })] as const,
   responses: {
     200: {
       description: 'Excel 文件',
@@ -98,9 +98,8 @@ const exportRoute = createRoute({
       },
     },
   },
-});
-
-loginLogsRoute.openapi(exportRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const rows = await db
     .select()
     .from(loginLogs)
@@ -121,6 +120,9 @@ loginLogsRoute.openapi(exportRoute, async (c) => {
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=login-logs.xlsx');
   return c.body(buffer);
+  },
 });
+
+loginLogsRoute.openapiRoutes([listRoute, exportRoute] as const);
 
 export default loginLogsRoute;

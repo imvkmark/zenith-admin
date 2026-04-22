@@ -1,16 +1,15 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { eq, like, and, sql, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { tenants } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { isPlatformAdmin } from '../lib/tenant';
 import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { TenantDTO } from '../lib/openapi-dtos';
 
-const tenantsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
+const tenantsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
 tenantsRoute.use('*', authMiddleware);
 tenantsRoute.use('*', async (c, next) => {
@@ -44,7 +43,8 @@ function toTenant(row: typeof tenants.$inferSelect) {
 }
 
 // GET /
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['Tenants'],
@@ -52,8 +52,8 @@ const listRoute = createRoute({
   security: [{ BearerAuth: [] }],
   request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional() }) },
   responses: { 200: { content: jsonContent(paginatedResponse(TenantDTO)), description: 'ok' }, ...commonErrorResponses },
-});
-tenantsRoute.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { page = 1, pageSize = 10, keyword, status } = c.req.valid('query');
   const conditions = [];
   if (keyword) conditions.push(like(tenants.name, `%${keyword}%`));
@@ -62,32 +62,36 @@ tenantsRoute.openapi(listRoute, async (c) => {
   const [{ count }] = await db.select({ count: sql<number>`cast(count(*) as integer)` }).from(tenants).where(where);
   const rows = await db.select().from(tenants).where(where).orderBy(desc(tenants.id)).limit(pageSize).offset((page - 1) * pageSize);
   return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toTenant), total: Number(count), page, pageSize } }, 200);
+  },
 });
 
 // GET /all
-const allRoute = createRoute({
+const allRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/all',
   tags: ['Tenants'],
   summary: '全部租户',
   security: [{ BearerAuth: [] }],
   responses: { 200: { content: jsonContent(apiResponse(z.array(TenantDTO))), description: 'ok' }, ...commonErrorResponses },
-});
-tenantsRoute.openapi(allRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const rows = await db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).orderBy(tenants.id);
   return c.json({ code: 0 as const, message: 'ok', data: rows }, 200);
+  },
 });
 
 // GET /export
-const exportRouteDef = createRoute({
+const exportRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/export',
   tags: ['Tenants'],
   summary: '导出租户',
   security: [{ BearerAuth: [] }],
   responses: { 200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' } },
-});
-tenantsRoute.openapi(exportRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const rows = await db.select().from(tenants).orderBy(desc(tenants.id));
   const buffer = await exportToExcel(
     [
@@ -107,10 +111,12 @@ tenantsRoute.openapi(exportRouteDef, async (c) => {
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=tenants.xlsx');
   return c.body(buffer) as never;
+  },
 });
 
 // GET /{id}
-const detailRoute = createRoute({
+const detailRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/{id}',
   tags: ['Tenants'],
@@ -121,16 +127,18 @@ const detailRoute = createRoute({
     200: { content: jsonContent(apiResponse(TenantDTO)), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-});
-tenantsRoute.openapi(detailRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const [row] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
   if (!row) return c.json({ code: 404, message: '租户不存在', data: null }, 404);
   return c.json({ code: 0 as const, message: 'ok', data: toTenant(row) }, 200);
+  },
 });
 
 // POST /
-const createRouteDef = createRoute({
+const createRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/',
   tags: ['Tenants'],
@@ -142,17 +150,19 @@ const createRouteDef = createRoute({
     200: { content: jsonContent(apiResponse(TenantDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-});
-tenantsRoute.openapi(createRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const data = c.req.valid('json');
   const [existing] = await db.select().from(tenants).where(eq(tenants.code, data.code)).limit(1);
   if (existing) return c.json({ code: 400, message: '租户编码已存在', data: null }, 400);
   const [row] = await db.insert(tenants).values({ ...data, expireAt: data.expireAt ? new Date(data.expireAt) : null }).returning();
   return c.json({ code: 0 as const, message: '创建成功', data: toTenant(row) }, 200);
+  },
 });
 
 // PUT /{id}
-const updateRouteDef = createRoute({
+const updateRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/{id}',
   tags: ['Tenants'],
@@ -165,8 +175,8 @@ const updateRouteDef = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-});
-tenantsRoute.openapi(updateRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   if (data.code) {
@@ -182,10 +192,12 @@ tenantsRoute.openapi(updateRouteDef, async (c) => {
   const [row] = await db.update(tenants).set(values).where(eq(tenants.id, id)).returning();
   if (!row) return c.json({ code: 404, message: '租户不存在', data: null }, 404);
   return c.json({ code: 0 as const, message: '更新成功', data: toTenant(row) }, 200);
+  },
 });
 
 // DELETE /{id}
-const deleteRouteDef = createRoute({
+const deleteRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/{id}',
   tags: ['Tenants'],
@@ -197,12 +209,15 @@ const deleteRouteDef = createRoute({
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-});
-tenantsRoute.openapi(deleteRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const [row] = await db.delete(tenants).where(eq(tenants.id, id)).returning();
   if (!row) return c.json({ code: 404, message: '租户不存在', data: null }, 404);
   return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+  },
 });
+
+tenantsRoute.openapiRoutes([listRoute, allRoute, exportRouteDef, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
 
 export default tenantsRoute;

@@ -1,9 +1,8 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { eq, and, like, or, gte, lte, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { roles, roleMenus, userRoles, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
@@ -12,8 +11,7 @@ import { createRoleSchema, updateRoleSchema, assignRoleMenusSchema, assignRoleUs
 import { apiResponse, paginatedResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { RoleDTO, UserDTO } from '../lib/openapi-dtos';
 
-const rolesRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
-rolesRouter.use('*', authMiddleware);
+const rolesRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
   return {
@@ -25,33 +23,35 @@ function toRole(row: typeof roles.$inferSelect, menuIds?: number[]) {
 }
 
 // ─── Routes ────────────────────────────────────────────────────────────────
-const allRoute = createRoute({
+const allRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/all',
   tags: ['Roles'],
   summary: '全量角色（供下拉框）',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
   request: {},
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(RoleDTO))), description: '全量角色' },
   },
-});
-
-rolesRouter.openapi(allRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const tc = tenantCondition(roles, c.get('user'));
   const list = await db.select().from(roles).where(tc).orderBy(roles.id);
   return c.json({ code: 0 as const, message: 'ok', data: list.map((r) => toRole(r)) }, 200);
+  },
 });
 
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['Roles'],
   summary: '角色列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
   request: {
     query: z.object({
       keyword: z.string().optional(),
@@ -66,9 +66,8 @@ const listRoute = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(RoleDTO)), description: '角色列表' },
   },
-});
-
-rolesRouter.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const q = c.req.valid('query');
   const { page = 1, pageSize = 10 } = q;
   const conditions = [];
@@ -87,24 +86,25 @@ rolesRouter.openapi(listRoute, async (c) => {
   const list = await db.select().from(roles).where(finalWhere).orderBy(roles.id).limit(pageSize).offset((page - 1) * pageSize);
 
   return c.json({ code: 0 as const, message: 'ok', data: { list: list.map((r) => toRole(r)), total, page, pageSize } }, 200);
+  },
 });
 
-const getOneRoute = createRoute({
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/{id}',
   tags: ['Roles'],
   summary: '获取单个角色（含 menuIds）',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(RoleDTO)), description: '角色详情' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
-});
-
-rolesRouter.openapi(getOneRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const [role] = await db
     .select()
@@ -116,24 +116,25 @@ rolesRouter.openapi(getOneRoute, async (c) => {
   const assignments = await db.select({ menuId: roleMenus.menuId }).from(roleMenus).where(eq(roleMenus.roleId, id));
   const menuIds = assignments.map((a) => a.menuId);
   return c.json({ code: 0 as const, message: 'ok', data: toRole(role, menuIds) }, 200);
+  },
 });
 
-const createRoleRoute = createRoute({
+const createRoleRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/',
   tags: ['Roles'],
   summary: '新增角色',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:create', audit: { description: '创建角色', module: '角色管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:create', audit: { description: '创建角色', module: '角色管理' } })] as const,
   request: { body: { content: jsonContent(createRoleSchema), required: true } },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(RoleDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '编码冲突' },
   },
-});
-
-rolesRouter.openapi(createRoleRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const data = c.req.valid('json');
   try {
     const [role] = await db
@@ -147,15 +148,17 @@ rolesRouter.openapi(createRoleRoute, async (c) => {
     }
     throw err;
   }
+  },
 });
 
-const updateRoleRoute = createRoute({
+const updateRoleRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/{id}',
   tags: ['Roles'],
   summary: '更新角色',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:update', audit: { description: '更新角色', module: '角色管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:update', audit: { description: '更新角色', module: '角色管理' } })] as const,
   request: {
     params: z.object({ id: z.coerce.number() }),
     body: { content: jsonContent(updateRoleSchema), required: true },
@@ -165,9 +168,8 @@ const updateRoleRoute = createRoute({
     200: { content: jsonContent(apiResponse(RoleDTO)), description: '更新成功' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
-});
-
-rolesRouter.openapi(updateRoleRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const [role] = await db
@@ -177,24 +179,25 @@ rolesRouter.openapi(updateRoleRoute, async (c) => {
     .returning();
   if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
   return c.json({ code: 0 as const, message: '更新成功', data: toRole(role) }, 200);
+  },
 });
 
-const deleteRoute = createRoute({
+const deleteRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/{id}',
   tags: ['Roles'],
   summary: '删除角色',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:delete', audit: { description: '删除角色', module: '角色管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
-});
-
-rolesRouter.openapi(deleteRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const [deleted] = await db
     .delete(roles)
@@ -202,15 +205,17 @@ rolesRouter.openapi(deleteRoute, async (c) => {
     .returning();
   if (!deleted) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
   return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+  },
 });
 
-const assignMenusRoute = createRoute({
+const assignMenusRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/{id}/menus',
   tags: ['Roles'],
   summary: '分配角色菜单',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:assign', audit: { description: '分配角色菜单', module: '角色管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分配角色菜单', module: '角色管理' } })] as const,
   request: {
     params: z.object({ id: z.coerce.number() }),
     body: { content: jsonContent(assignRoleMenusSchema), required: true },
@@ -220,9 +225,8 @@ const assignMenusRoute = createRoute({
     200: { content: jsonContent(MessageResponse), description: '菜单权限已更新' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
-});
-
-rolesRouter.openapi(assignMenusRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const [role] = await db
@@ -239,24 +243,25 @@ rolesRouter.openapi(assignMenusRoute, async (c) => {
 
   clearUserPermissionCache();
   return c.json({ code: 0 as const, message: '菜单权限已更新', data: null }, 200);
+  },
 });
 
-const getUsersRoute = createRoute({
+const getUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/{id}/users',
   tags: ['Roles'],
   summary: '获取角色关联用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(UserDTO))), description: '用户列表' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
-});
-
-rolesRouter.openapi(getUsersRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const [role] = await db
     .select({ id: roles.id })
@@ -288,15 +293,17 @@ rolesRouter.openapi(getUsersRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const assignUsersRoute = createRoute({
+const assignUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/{id}/users',
   tags: ['Roles'],
   summary: '分配角色用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:assign', audit: { description: '分配角色用户', module: '角色管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:assign', audit: { description: '分配角色用户', module: '角色管理' } })] as const,
   request: {
     params: z.object({ id: z.coerce.number() }),
     body: { content: jsonContent(assignRoleUsersSchema), required: true },
@@ -306,9 +313,8 @@ const assignUsersRoute = createRoute({
     200: { content: jsonContent(MessageResponse), description: '用户分配已更新' },
     404: { content: jsonContent(ErrorResponse), description: '角色不存在' },
   },
-});
-
-rolesRouter.openapi(assignUsersRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const [role] = await db
@@ -325,15 +331,17 @@ rolesRouter.openapi(assignUsersRoute, async (c) => {
 
   clearUserPermissionCache();
   return c.json({ code: 0 as const, message: '用户分配已更新', data: null }, 200);
+  },
 });
 
-const exportRoute = createRoute({
+const exportRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/export',
   tags: ['Roles'],
   summary: '导出角色列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:role:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:role:list' })] as const,
   responses: {
     ...commonErrorResponses,
     200: {
@@ -341,9 +349,8 @@ const exportRoute = createRoute({
       description: 'Excel 文件',
     },
   },
-});
-
-rolesRouter.openapi(exportRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const rows = await db.select().from(roles).where(tenantCondition(roles, c.get('user')));
   const buffer = await exportToExcel(
     [
@@ -360,6 +367,9 @@ rolesRouter.openapi(exportRoute, async (c) => {
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=roles.xlsx');
   return c.body(buffer) as never;
+  },
 });
+
+rolesRouter.openapiRoutes([allRoute, listRoute, getOneRoute, createRoleRoute, updateRoleRoute, deleteRoute, assignMenusRoute, getUsersRoute, assignUsersRoute, exportRoute] as const);
 
 export default rolesRouter;

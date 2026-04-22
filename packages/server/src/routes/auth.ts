@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
@@ -86,7 +86,8 @@ async function getUserRoles(userId: number) {
 }
 
 // ─── GET /captcha ────────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const captchaRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/captcha',
   tags: ['Auth'],
@@ -96,15 +97,18 @@ auth.openapi(createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(CaptchaDTO)), description: 'ok' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const enabled = await getConfigBoolean('captcha_enabled', false);
   if (!enabled) return c.json({ code: 0 as const, message: 'ok', data: { enabled: false, captchaId: '', svg: '' } }, 200);
   const result = generateCaptcha();
   return c.json({ code: 0 as const, message: 'ok', data: { enabled: true, captchaId: result.captchaId, svg: result.captchaImage } }, 200);
+  },
 });
 
 // ─── POST /login ─────────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const loginRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/login',
   tags: ['Auth'],
@@ -118,7 +122,8 @@ auth.openapi(createRoute({
     403: { content: jsonContent(ErrorResponse), description: '禁用/过期' },
     423: { content: jsonContent(ErrorResponse), description: '账号被锁定' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const captchaEnabled = await getConfigBoolean('captcha_enabled', false);
   const body = c.req.valid('json');
   if (captchaEnabled) {
@@ -225,10 +230,12 @@ auth.openapi(createRoute({
       requirePasswordChange,
     },
   }, 200);
+  },
 });
 
 // ─── POST /register ──────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const registerRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/register',
   tags: ['Auth'],
@@ -241,7 +248,8 @@ auth.openapi(createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     403: { content: jsonContent(ErrorResponse), description: '注册关闭' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const allowRegistration = await getConfigBoolean('allow_registration', false);
   if (!allowRegistration) return c.json({ code: 403, message: '系统已关闭注册功能', data: null }, 403);
   const { username, nickname, email, password } = c.req.valid('json');
@@ -291,10 +299,12 @@ auth.openapi(createRoute({
       token: { accessToken, refreshToken },
     },
   }, 200);
+  },
 });
 
 // ─── POST /refresh ───────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const refreshRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/refresh',
   tags: ['Auth'],
@@ -308,7 +318,8 @@ auth.openapi(createRoute({
     401: { content: jsonContent(ErrorResponse), description: '无效令牌' },
     403: { content: jsonContent(ErrorResponse), description: '账号禁用' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { refreshToken: token } = c.req.valid('json');
   try {
     const payload = await verifyToken<{ userId: number; username: string; type?: string; jti?: string; tenantId?: number | null }>(token);
@@ -326,10 +337,12 @@ auth.openapi(createRoute({
   } catch {
     return c.json({ code: 401, message: 'refresh token 已过期', data: null }, 401);
   }
+  },
 });
 
 // ─── POST /logout ────────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const logoutRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/logout',
   tags: ['Auth'],
@@ -340,14 +353,17 @@ auth.openapi(createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   if (payload.jti) await removeSession(payload.jti);
   return c.json({ code: 0 as const, message: '已退出登录', data: null }, 200);
+  },
 });
 
 // ─── GET /me ─────────────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const meRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/me',
   tags: ['Auth'],
@@ -359,7 +375,8 @@ auth.openapi(createRoute({
     200: { content: jsonContent(apiResponse(UserProfileDTO)), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
   if (!user) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
@@ -397,10 +414,12 @@ auth.openapi(createRoute({
       updatedAt: user.updatedAt.toISOString(),
     },
   }, 200);
+  },
 });
 
 // ─── PUT /profile ────────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const profileRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/profile',
   tags: ['Auth'],
@@ -413,7 +432,8 @@ auth.openapi(createRoute({
     200: { content: jsonContent(apiResponse(UserProfileDTO)), description: '已更新' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const data = c.req.valid('json');
   if (data.email) {
@@ -428,10 +448,12 @@ auth.openapi(createRoute({
     message: '资料已更新',
     data: { ...userInfo, roles: userRoleList, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() },
   }, 200);
+  },
 });
 
 // ─── PUT /password ───────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const passwordRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/password',
   tags: ['Auth'],
@@ -445,7 +467,8 @@ auth.openapi(createRoute({
     400: { content: jsonContent(ErrorResponse), description: '原密码错误' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const data = c.req.valid('json');
   const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
@@ -455,10 +478,12 @@ auth.openapi(createRoute({
   const hashed = await bcrypt.hash(data.newPassword, 10);
   await db.update(users).set({ password: hashed, passwordUpdatedAt: new Date(), updatedAt: new Date() }).where(eq(users.id, payload.userId));
   return c.json({ code: 0 as const, message: '密码修改成功', data: null }, 200);
+  },
 });
 
 // ─── GET /my-login-logs ──────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const myLoginLogsRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/my-login-logs',
   tags: ['Auth'],
@@ -470,7 +495,8 @@ auth.openapi(createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(LogRowDTO)), description: 'ok' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const { page = 1, pageSize = 10, status, startTime, endTime } = c.req.valid('query');
   const conditions = [eq(loginLogs.userId, payload.userId)];
@@ -485,10 +511,12 @@ auth.openapi(createRoute({
     message: 'ok',
     data: { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: Number(count), page, pageSize },
   }, 200);
+  },
 });
 
 // ─── GET /my-operation-logs ──────────────────────────────────────────────────
-auth.openapi(createRoute({
+const myOperationLogsRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/my-operation-logs',
   tags: ['Auth'],
@@ -500,7 +528,8 @@ auth.openapi(createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(LogRowDTO)), description: 'ok' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const { page = 1, pageSize = 10, module, startTime, endTime } = c.req.valid('query');
   const conditions = [eq(operationLogs.userId, payload.userId)];
@@ -515,10 +544,12 @@ auth.openapi(createRoute({
     message: 'ok',
     data: { list: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), total: Number(count), page, pageSize },
   }, 200);
+  },
 });
 
 // ─── GET /my-sessions ────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const mySessionsRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/my-sessions',
   tags: ['Auth'],
@@ -529,7 +560,8 @@ auth.openapi(createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(SessionDTO))), description: 'ok' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const allSessions = await getOnlineSessions();
   const mySessions = allSessions.filter((s) => s.userId === payload.userId);
@@ -546,10 +578,12 @@ auth.openapi(createRoute({
       isCurrent: s.tokenId === payload.jti,
     })),
   }, 200);
+  },
 });
 
 // ─── DELETE /my-sessions/others ──────────────────────────────────────────────
-auth.openapi(createRoute({
+const deleteOtherSessionsRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/my-sessions/others',
   tags: ['Auth'],
@@ -560,16 +594,19 @@ auth.openapi(createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.object({ count: z.number() }))), description: 'ok' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const allSessions = await getOnlineSessions();
   const others = allSessions.filter((s) => s.userId === payload.userId && s.tokenId !== payload.jti);
   await Promise.all(others.map((s) => forceLogout(s.tokenId)));
   return c.json({ code: 0 as const, message: `已退出 ${others.length} 个其他设备`, data: { count: others.length } }, 200);
+  },
 });
 
 // ─── DELETE /my-sessions/{tokenId} ───────────────────────────────────────────
-auth.openapi(createRoute({
+const deleteSessionRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/my-sessions/{tokenId}',
   tags: ['Auth'],
@@ -583,7 +620,8 @@ auth.openapi(createRoute({
     400: { content: jsonContent(ErrorResponse), description: '不能操作当前设备' },
     404: { content: jsonContent(ErrorResponse), description: '会话不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   const { tokenId } = c.req.valid('param');
   if (tokenId === payload.jti) return c.json({ code: 400, message: '不能退出当前设备，请使用退出登录功能', data: null }, 400);
@@ -592,10 +630,12 @@ auth.openapi(createRoute({
   if (!session) return c.json({ code: 404, message: '会话不存在或已过期', data: null }, 404);
   await forceLogout(tokenId);
   return c.json({ code: 0 as const, message: '已退出该设备', data: null }, 200);
+  },
 });
 
 // ─── POST /switch-tenant ─────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const switchTenantRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/switch-tenant',
   tags: ['Auth'],
@@ -609,7 +649,8 @@ auth.openapi(createRoute({
     403: { content: jsonContent(ErrorResponse), description: '无权限' },
     404: { content: jsonContent(ErrorResponse), description: '租户不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   if (!isPlatformAdmin(payload)) return c.json({ code: 403, message: '仅平台超管可切换租户', data: null }, 403);
   const { tenantId: targetTenantId } = c.req.valid('json');
@@ -648,10 +689,12 @@ auth.openapi(createRoute({
     message: targetTenantId === null ? '已切换回平台视角' : '已切换租户视角',
     data: { accessToken: newAccessToken, refreshToken: newRefreshToken, viewingTenantId: targetTenantId },
   }, 200);
+  },
 });
 
 // ─── GET /tenants ────────────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const authTenantsRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/tenants',
   tags: ['Auth'],
@@ -663,15 +706,18 @@ auth.openapi(createRoute({
     200: { content: jsonContent(apiResponse(z.array(TenantItemDTO))), description: 'ok' },
     403: { content: jsonContent(ErrorResponse), description: '无权限' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = getAuthUser(c as { get: (key: 'user') => unknown });
   if (!isPlatformAdmin(payload)) return c.json({ code: 403, message: '无权限', data: null }, 403);
   const rows = await db.select({ id: tenants.id, name: tenants.name, code: tenants.code, status: tenants.status }).from(tenants).where(eq(tenants.status, 'active'));
   return c.json({ code: 0 as const, message: 'ok', data: rows }, 200);
+  },
 });
 
 // ─── POST /forgot-password ───────────────────────────────────────────────────
-auth.openapi(createRoute({
+const forgotPasswordRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/forgot-password',
   tags: ['Auth'],
@@ -683,7 +729,8 @@ auth.openapi(createRoute({
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     403: { content: jsonContent(ErrorResponse), description: '功能未开启' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const enabled = await getConfigBoolean('forgot_password_enabled');
   if (!enabled) return c.json({ code: 403, message: '忘记密码功能未开启', data: null }, 403);
   const { email } = c.req.valid('json');
@@ -709,10 +756,12 @@ auth.openapi(createRoute({
     }
   }
   return c.json({ code: 0 as const, message: '如邮箱已注册，重置链接已发送至您的邮箱', data: null }, 200);
+  },
 });
 
 // ─── POST /reset-password ────────────────────────────────────────────────────
-auth.openapi(createRoute({
+const resetPasswordRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/reset-password',
   tags: ['Auth'],
@@ -724,7 +773,8 @@ auth.openapi(createRoute({
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '链接无效' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { token, newPassword } = c.req.valid('json');
   const now = new Date();
   const [record] = await db.select().from(passwordResetTokens)
@@ -737,6 +787,9 @@ auth.openapi(createRoute({
     await tx.update(passwordResetTokens).set({ usedAt: now }).where(eq(passwordResetTokens.id, record.id));
   });
   return c.json({ code: 0 as const, message: '密码已重置，请使用新密码登录', data: null }, 200);
+  },
 });
+
+auth.openapiRoutes([captchaRoute, loginRoute, registerRoute, refreshRoute, logoutRoute, meRoute, profileRoute, passwordRoute, myLoginLogsRoute, myOperationLogsRoute, mySessionsRoute, deleteOtherSessionsRoute, deleteSessionRoute, switchTenantRoute, authTenantsRoute, forgotPasswordRoute, resetPasswordRoute] as const);
 
 export default auth;

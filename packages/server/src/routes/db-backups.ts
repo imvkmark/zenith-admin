@@ -1,9 +1,8 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { db } from '../db';
 import { dbBackups, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
 import logger from '../lib/logger';
@@ -12,8 +11,7 @@ import { DbBackupItemDTO as BackupItem } from '../lib/openapi-dtos';
 
 import { createBackupSchema } from '@zenith/shared';
 
-const backups = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
-backups.use('*', authMiddleware);
+const backups = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
 const BackupCreated = z.object({
@@ -23,13 +21,14 @@ const BackupCreated = z.object({
 });
 
 // ─── Routes ────────────────────────────────────────────────────────────────
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['DbBackups'],
   summary: '数据库备份列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:db-backup:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:db-backup:list' })] as const,
   request: {
     query: z.object({
       page: z.coerce.number().optional(),
@@ -42,9 +41,8 @@ const listRoute = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(BackupItem)), description: '备份列表' },
   },
-});
-
-backups.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const q = c.req.valid('query');
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
@@ -101,15 +99,18 @@ backups.openapi(listRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const createRouteDef = createRoute({
+const createRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/',
   tags: ['DbBackups'],
   summary: '创建数据库备份',
   security: [{ BearerAuth: [] }],
   middleware: [
+    authMiddleware,
     guard({
       permission: 'system:db-backup:create',
       audit: { description: '创建数据库备份', module: '数据库备份' },
@@ -122,9 +123,8 @@ const createRouteDef = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(BackupCreated)), description: '备份任务已创建' },
   },
-});
-
-backups.openapi(createRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const payload = c.get('user');
   const { type, name } = c.req.valid('json');
   const timestamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
@@ -153,15 +153,18 @@ backups.openapi(createRouteDef, async (c) => {
     },
     200,
   );
+  },
 });
 
-const deleteRoute = createRoute({
+const deleteRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/{id}',
   tags: ['DbBackups'],
   summary: '删除数据库备份记录',
   security: [{ BearerAuth: [] }],
   middleware: [
+    authMiddleware,
     guard({
       permission: 'system:db-backup:delete',
       audit: { description: '删除数据库备份', module: '数据库备份' },
@@ -176,9 +179,8 @@ const deleteRoute = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '无效 ID' },
     404: { content: jsonContent(ErrorResponse), description: '备份记录不存在' },
   },
-});
-
-backups.openapi(deleteRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   if (!id) return c.json({ code: 400, message: '无效 ID', data: null }, 400);
 
@@ -188,6 +190,9 @@ backups.openapi(deleteRoute, async (c) => {
   }
 
   return c.json({ code: 0 as const, message: '已删除', data: null }, 200);
+  },
 });
+
+backups.openapiRoutes([listRoute, createRouteDef, deleteRoute] as const);
 
 export default backups;

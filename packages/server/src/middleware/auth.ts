@@ -49,3 +49,15 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     return c.json({ code: 401, message: '登录已过期', data: null }, 401);
   }
 });
+
+/**
+ * 全局 ContextVariableMap 扩展：让 c.get('user') / c.get('auditBeforeData')
+ * 在所有路由处理器（包括 defineOpenAPIRoute handler）中均可类型安全访问，
+ * 无需为每个路由器重复声明 AuthEnv 泛型。
+ */
+declare module 'hono' {
+  interface ContextVariableMap {
+    user: JwtPayload;
+    auditBeforeData: string | undefined;
+  }
+}

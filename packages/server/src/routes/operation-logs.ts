@@ -1,26 +1,24 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { apiResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { OperationLogDTO, OperationLogStatsDTO as StatsDTO } from '../lib/openapi-dtos';
 
-const operationLogsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
+const operationLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
-operationLogsRoute.use('/*', authMiddleware);
-
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['OperationLogs'],
   summary: '操作日志分页列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:log:operation' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:log:operation' })] as const,
   request: {
     query: z.object({
       page: z.coerce.number().optional(),
@@ -37,9 +35,8 @@ const listRoute = createRoute({
     }),
   },
   responses: { 200: { content: jsonContent(paginatedResponse(OperationLogDTO)), description: '日志列表' }, ...commonErrorResponses },
-});
-
-operationLogsRoute.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const q = c.req.valid('query');
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
@@ -87,20 +84,21 @@ operationLogsRoute.openapi(listRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const statsRoute = createRoute({
+const statsRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/stats',
   tags: ['OperationLogs'],
   summary: '操作日志统计',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:log:operation' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:log:operation' })] as const,
   request: { query: z.object({ days: z.coerce.number().optional() }) },
   responses: { 200: { content: jsonContent(apiResponse(StatsDTO)), description: '统计结果' }, ...commonErrorResponses },
-});
-
-operationLogsRoute.openapi(statsRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { days: daysRaw } = c.req.valid('query');
   const days = Math.min(Math.max(Number(daysRaw) || 90, 7), 365);
   const startDate = new Date();
@@ -154,24 +152,25 @@ operationLogsRoute.openapi(statsRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const exportRoute = createRoute({
+const exportRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/export',
   tags: ['OperationLogs'],
   summary: '导出操作日志 Excel',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:log:operation' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:log:operation' })] as const,
   responses: {
     200: {
       content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } },
       description: 'Excel 文件',
     },
   },
-});
-
-operationLogsRoute.openapi(exportRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const rows = await db.select().from(operationLogs).where(tenantCondition(operationLogs, c.get('user'))).orderBy(desc(operationLogs.id));
   const buffer = await exportToExcel(
     [
@@ -192,6 +191,9 @@ operationLogsRoute.openapi(exportRoute, async (c) => {
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=operation-logs.xlsx');
   return c.body(buffer) as never;
+  },
 });
+
+operationLogsRoute.openapiRoutes([listRoute, statsRoute, exportRoute] as const);
 
 export default operationLogsRoute;

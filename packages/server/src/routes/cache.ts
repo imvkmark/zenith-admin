@@ -6,7 +6,7 @@
  *  - JSON body 的 Zod schema 与 `c.req.valid('json')`
  *  - 多种业务错误码（400 / 403 / 404）与统一响应体
  */
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import redis from '../lib/redis';
@@ -15,8 +15,6 @@ import { validationHook } from '../lib/openapi-schemas';
 import { CacheItemDTO as CacheItemSchema } from '../lib/openapi-dtos';
 
 const cacheRouter = new OpenAPIHono({ defaultHook: validationHook });
-
-cacheRouter.use('*', authMiddleware);
 
 const { keyPrefix } = config.redis;
 
@@ -106,13 +104,14 @@ const CountResponse = z.object({
 });
 
 // ─── Routes ────────────────────────────────────────────────────────────────
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['Cache'],
   summary: '列出所有缓存 key（可按关键词过滤）',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:cache:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:cache:list' })] as const,
   request: {
     query: z.object({
       keyword: z.string().optional().openapi({ example: 'session' }),
@@ -121,24 +120,26 @@ const listRoute = createRoute({
   responses: {
     200: { content: { 'application/json': { schema: CacheListResponse } }, description: '缓存列表' },
   },
-});
-
-cacheRouter.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { keyword } = c.req.valid('query');
   let keys = await scanKeys(`${keyPrefix}*`);
   if (keyword) keys = keys.filter((k) => k.includes(keyword));
   keys.sort((a, b) => a.localeCompare(b));
   const items = await Promise.all(keys.map(getKeyMeta));
   return c.json({ code: 0 as const, message: 'success', data: { list: items, total: items.length } }, 200);
+  },
 });
 
-const deleteOneRoute = createRoute({
+const deleteOneRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/',
   tags: ['Cache'],
   summary: '删除指定 key',
   security: [{ BearerAuth: [] }],
   middleware: [
+    authMiddleware,
     guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '删除缓存' } }),
   ] as const,
   request: {
@@ -152,24 +153,26 @@ const deleteOneRoute = createRoute({
     403: { content: { 'application/json': { schema: GenericResponse } }, description: '命名空间不匹配' },
     404: { content: { 'application/json': { schema: GenericResponse } }, description: 'key 不存在' },
   },
-});
-
-cacheRouter.openapi(deleteOneRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { key } = c.req.valid('json');
   if (!key) return c.json({ code: 400, message: '参数错误：缺少 key', data: null }, 400);
   if (!key.startsWith(keyPrefix)) return c.json({ code: 403, message: '只能删除当前命名空间的缓存', data: null }, 403);
   const deleted = await redis.del(key);
   if (deleted === 0) return c.json({ code: 404, message: 'key 不存在', data: null }, 404);
   return c.json({ code: 0, message: '删除成功', data: null }, 200);
+  },
 });
 
-const deleteByCategoryRoute = createRoute({
+const deleteByCategoryRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/by-category',
   tags: ['Cache'],
   summary: '按分类批量删除',
   security: [{ BearerAuth: [] }],
   middleware: [
+    authMiddleware,
     guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '删除分类缓存' } }),
   ] as const,
   request: {
@@ -181,34 +184,38 @@ const deleteByCategoryRoute = createRoute({
     200: { content: { 'application/json': { schema: CountResponse } }, description: '删除成功' },
     400: { content: { 'application/json': { schema: GenericResponse } }, description: '参数错误' },
   },
-});
-
-cacheRouter.openapi(deleteByCategoryRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { segment } = c.req.valid('json');
   if (!segment) return c.json({ code: 400, message: '参数错误：缺少 segment', data: null }, 400);
   const keys = await scanKeys(`${keyPrefix}${segment}:*`);
   if (keys.length > 0) await redis.del(...keys);
   return c.json({ code: 0 as const, message: `已删除 ${keys.length} 条缓存`, data: { count: keys.length } }, 200);
+  },
 });
 
-const deleteAllRoute = createRoute({
+const deleteAllRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/all',
   tags: ['Cache'],
   summary: '清空当前命名空间所有缓存',
   security: [{ BearerAuth: [] }],
   middleware: [
+    authMiddleware,
     guard({ permission: 'system:cache:delete', audit: { module: '缓存管理', description: '清空所有缓存' } }),
   ] as const,
   responses: {
     200: { content: { 'application/json': { schema: CountResponse } }, description: '清空成功' },
   },
-});
-
-cacheRouter.openapi(deleteAllRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const keys = await scanKeys(`${keyPrefix}*`);
   if (keys.length > 0) await redis.del(...keys);
   return c.json({ code: 0 as const, message: `已清空 ${keys.length} 条缓存`, data: { count: keys.length } }, 200);
+  },
 });
+
+cacheRouter.openapiRoutes([listRoute, deleteOneRoute, deleteByCategoryRoute, deleteAllRoute] as const);
 
 export default cacheRouter;

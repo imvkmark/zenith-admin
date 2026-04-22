@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 import { db } from '../db';
@@ -10,7 +10,6 @@ import { apiResponse, jsonContent, validationHook, commonErrorResponses } from '
 import { MonitorDTO } from '../lib/openapi-dtos';
 
 const monitorRouter = new OpenAPIHono({ defaultHook: validationHook });
-monitorRouter.use('*', authMiddleware);
 
 function getCpuUsage(): Promise<number> {
   return new Promise((resolve) => {
@@ -126,17 +125,17 @@ async function getDbInfo() {
   }
 }
 
-const statusRoute = createRoute({
+const statusRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['Monitor'],
   summary: '获取服务器监控信息',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:monitor:view' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:monitor:view' })] as const,
   responses: { 200: { content: jsonContent(apiResponse(MonitorDTO)), description: '监控数据' }, ...commonErrorResponses },
-});
-
-monitorRouter.openapi(statusRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const [cpuUsage, dbInfo, redisInfo] = await Promise.all([getCpuUsage(), getDbInfo(), getRedisInfo()]);
 
   const totalMem = os.totalmem();
@@ -186,6 +185,9 @@ monitorRouter.openapi(statusRoute, async (c) => {
   };
 
   return c.json({ code: 0 as const, message: 'success', data }, 200);
+  },
 });
+
+monitorRouter.openapiRoutes([statusRoute] as const);
 
 export default monitorRouter;

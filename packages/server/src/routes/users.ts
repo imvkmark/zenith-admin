@@ -1,11 +1,11 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import bcrypt from 'bcryptjs';
 import { eq, like, sql, and, or, inArray, gte, lte } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { db } from '../db';
 import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv, JwtPayload } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { exportToExcel } from '../lib/excel-export';
@@ -17,8 +17,7 @@ import type { Role, Position, User } from '@zenith/shared';
 import { apiResponse, ErrorResponse, MessageResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { UserDTO, ImportResultDTO } from '../lib/openapi-dtos';
 
-const usersRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
-usersRouter.use('*', authMiddleware);
+const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 // Schemas (zod v4 local)
 const createUserSchema = z.object({
@@ -176,17 +175,19 @@ async function toPublicUsers(rows: UserListRow[]): Promise<User[]> {
 }
 
 // GET /all  全量用户（供下拉框）
-usersRouter.openapi(createRoute({
+const getAllUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get', path: '/all',
   tags: ['Users'], summary: '全量用户（供下拉框）',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:list' })] as const,
   request: {},
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(UserDTO))), description: '全量用户' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const payload = c.get('user');
   const tc = tenantCondition(users, payload);
   const list = await db
@@ -203,14 +204,16 @@ usersRouter.openapi(createRoute({
     .orderBy(users.id);
   const publicUsers = await toPublicUsers(list);
   return c.json({ code: 0 as const, message: 'ok', data: publicUsers }, 200);
+  },
 });
 
 // GET /
-usersRouter.openapi(createRoute({
+const listUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get', path: '/',
   tags: ['Users'], summary: '用户列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:list' })] as const,
   request: { query: PaginationQuery.extend({
     keyword: z.string().optional(), phone: z.string().optional(),
     departmentId: z.coerce.number().optional(), status: z.enum(['active', 'disabled']).optional(),
@@ -220,7 +223,8 @@ usersRouter.openapi(createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(UserDTO)), description: 'ok' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { page = 1, pageSize = 10, keyword, phone, departmentId, status, startTime, endTime } = c.req.valid('query');
   const conditions = [];
   if (keyword) conditions.push(or(like(users.username, `%${keyword}%`), like(users.nickname, `%${keyword}%`), like(users.email, `%${keyword}%`)));
@@ -256,21 +260,24 @@ usersRouter.openapi(createRoute({
     .orderBy(users.id);
   const publicUsers = await toPublicUsers(list);
   return c.json({ code: 0 as const, message: 'ok', data: { list: publicUsers, total: Number(count), page, pageSize } }, 200);
+  },
 });
 
 // POST /
-usersRouter.openapi(createRoute({
+const createUserRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post', path: '/',
   tags: ['Users'], summary: '创建用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:create', audit: { description: '创建用户', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:create', audit: { description: '创建用户', module: '用户管理' } })] as const,
   request: { body: { content: jsonContent(createUserSchema), required: true } },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(UserDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const data = c.req.valid('json');
   const policy = await getPasswordPolicy();
   const policyError = validatePassword(data.password, policy);
@@ -311,21 +318,24 @@ usersRouter.openapi(createRoute({
     }
     throw err;
   }
+  },
 });
 
 // DELETE /batch
-usersRouter.openapi(createRoute({
+const batchDeleteUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete', path: '/batch',
   tags: ['Users'], summary: '批量删除用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:delete', audit: { description: '批量删除用户', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:delete', audit: { description: '批量删除用户', module: '用户管理' } })] as const,
   request: { body: { content: jsonContent(batchIdsSchema), required: true } },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { ids } = c.req.valid('json');
   if (!Array.isArray(ids) || ids.length === 0) return c.json({ code: 400, message: '请选择要删除的用户', data: null }, 400);
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
@@ -333,40 +343,46 @@ usersRouter.openapi(createRoute({
   const tc = tenantCondition(users, c.get('user'));
   await db.delete(users).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
   return c.json({ code: 0 as const, message: `已删除 ${validIds.length} 个用户`, data: null }, 200);
+  },
 });
 
 // PUT /batch-status
-usersRouter.openapi(createRoute({
+const batchStatusUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put', path: '/batch-status',
   tags: ['Users'], summary: '批量修改用户状态',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:update', audit: { description: '批量修改用户状态', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:update', audit: { description: '批量修改用户状态', module: '用户管理' } })] as const,
   request: { body: { content: jsonContent(batchStatusSchema), required: true } },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { ids, status } = c.req.valid('json');
   if (!Array.isArray(ids) || ids.length === 0) return c.json({ code: 400, message: '请选择要操作的用户', data: null }, 400);
   const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
   const tc = tenantCondition(users, c.get('user'));
   await db.update(users).set({ status, updatedAt: new Date() }).where(tc ? and(inArray(users.id, validIds), tc) : inArray(users.id, validIds));
   return c.json({ code: 0 as const, message: '状态已更新', data: null }, 200);
+  },
 });
 
 // GET /import-template
-usersRouter.openapi(createRoute({
+const importTemplateRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get', path: '/import-template',
   tags: ['Users'], summary: '下载导入模板',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:import' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:import' })] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('用户导入模板');
   sheet.columns = [
@@ -392,14 +408,16 @@ usersRouter.openapi(createRoute({
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=user_import_template.xlsx');
   return c.body(buffer);
+  },
 });
 
 // POST /import
-usersRouter.openapi(createRoute({
+const importUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post', path: '/import',
   tags: ['Users'], summary: '导入用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:import', audit: { description: '导入用户', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:import', audit: { description: '导入用户', module: '用户管理' } })] as const,
   request: {
     body: { content: { 'multipart/form-data': { schema: z.object({ file: z.any() }) } }, required: true },
   },
@@ -408,7 +426,8 @@ usersRouter.openapi(createRoute({
     200: { content: jsonContent(apiResponse(ImportResultDTO)), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '文件无效' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const formData = await c.req.formData();
   const file = formData.get('file') as File | null;
   if (!file) return c.json({ code: 400, message: '请上传文件', data: null }, 400);
@@ -503,19 +522,22 @@ usersRouter.openapi(createRoute({
     }
   }
   return c.json({ code: 0 as const, message: '导入完成', data: { total: dataRows.length, success, failed: errors.length, errors } }, 200);
+  },
 });
 
 // GET /export
-usersRouter.openapi(createRoute({
+const exportUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get', path: '/export',
   tags: ['Users'], summary: '导出用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:list' })] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const tc = tenantCondition(users, c.get('user'));
   const list = await db
     .select({
@@ -543,14 +565,16 @@ usersRouter.openapi(createRoute({
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=users.xlsx');
   return c.body(buffer);
+  },
 });
 
 // PUT /{id}/password
-usersRouter.openapi(createRoute({
+const updateUserPasswordRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put', path: '/{id}/password',
   tags: ['Users'], summary: '修改用户密码',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:update', audit: { description: '修改用户密码', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:update', audit: { description: '修改用户密码', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(resetUserPasswordSchema), required: true } },
   responses: {
     ...commonErrorResponses,
@@ -558,7 +582,8 @@ usersRouter.openapi(createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const policy = await getPasswordPolicy();
@@ -570,35 +595,40 @@ usersRouter.openapi(createRoute({
   const hashedPassword = await bcrypt.hash(data.password, 10);
   await db.update(users).set({ password: hashedPassword, updatedAt: new Date() }).where(eq(users.id, id));
   return c.json({ code: 0 as const, message: '密码修改成功', data: null }, 200);
+  },
 });
 
 // POST /{id}/unlock
-usersRouter.openapi(createRoute({
+const unlockUserRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post', path: '/{id}/unlock',
   tags: ['Users'], summary: '解锁账号',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:update', audit: { description: '解除账号锁定', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:update', audit: { description: '解除账号锁定', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const tc = tenantCondition(users, c.get('user'));
   const [user] = await db.select({ username: users.username }).from(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).limit(1);
   if (!user) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   await unlockUser(user.username);
   return c.json({ code: 0 as const, message: '解锁成功', data: null }, 200);
+  },
 });
 
 // PUT /{id}
-usersRouter.openapi(createRoute({
+const updateUserRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put', path: '/{id}',
   tags: ['Users'], summary: '更新用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:update', audit: { description: '更新用户', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:update', audit: { description: '更新用户', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateUserSchema), required: true } },
   responses: {
     ...commonErrorResponses,
@@ -606,7 +636,8 @@ usersRouter.openapi(createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   const [beforeUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
@@ -648,21 +679,24 @@ usersRouter.openapi(createRoute({
     createdAt: user.createdAt, updatedAt: user.updatedAt,
   }]))[0];
   return c.json({ code: 0 as const, message: '更新成功', data: publicUser }, 200);
+  },
 });
 
 // DELETE /{id}
-usersRouter.openapi(createRoute({
+const deleteUserRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete', path: '/{id}',
   tags: ['Users'], summary: '删除用户',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:user:delete', audit: { description: '删除用户', module: '用户管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:user:delete', audit: { description: '删除用户', module: '用户管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '用户不存在' },
   },
-}), async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const [beforeUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (beforeUser) {
@@ -673,6 +707,9 @@ usersRouter.openapi(createRoute({
   const [deleted] = await db.delete(users).where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
   if (!deleted) return c.json({ code: 404, message: '用户不存在', data: null }, 404);
   return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+  },
 });
+
+usersRouter.openapiRoutes([getAllUsersRoute, listUsersRoute, createUserRoute, batchDeleteUsersRoute, batchStatusUsersRoute, importTemplateRoute, importUsersRoute, exportUsersRoute, updateUserPasswordRoute, unlockUserRoute, updateUserRoute, deleteUserRoute] as const);
 
 export default usersRouter;

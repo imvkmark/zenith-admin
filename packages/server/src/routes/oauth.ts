@@ -1,11 +1,11 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import crypto from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
 import { users, userRoles, roles, userOauthAccounts } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv, JwtPayload } from '../middleware/auth';
+import type { JwtPayload } from '../middleware/auth';
 import { signToken } from '../lib/jwt';
 import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
 import { generateTokenId, registerSession } from '../lib/session-manager';
@@ -14,7 +14,7 @@ import { OAUTH_PROVIDERS } from '@zenith/shared';
 import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { OAuthAccountDTO, OAuthAuthUrlDTO, LoginResultDTO } from '../lib/openapi-dtos';
 
-const oauth = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
+const oauth = new OpenAPIHono({ defaultHook: validationHook });
 
 const VALID_PROVIDERS = new Set<string>(OAUTH_PROVIDERS);
 
@@ -47,7 +47,8 @@ async function issueTokens(user: { id: number; username: string }, roleCodes: st
 const OAuthCallbackDTO = LoginResultDTO;
 
 // GET /accounts
-const accountsRoute = createRoute({
+const accountsRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/accounts',
   tags: ['OAuth'],
@@ -58,8 +59,8 @@ const accountsRoute = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(OAuthAccountDTO))), description: 'ok' },
   },
-});
-oauth.openapi(accountsRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const payload = c.get('user');
   const accounts = await db
     .select({
@@ -77,10 +78,12 @@ oauth.openapi(accountsRoute, async (c) => {
     message: 'ok',
     data: accounts.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })),
   }, 200);
+  },
 });
 
 // GET /{provider}
-const authUrlRoute = createRoute({
+const authUrlRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/{provider}',
   tags: ['OAuth'],
@@ -92,8 +95,8 @@ const authUrlRoute = createRoute({
     200: { content: jsonContent(apiResponse(OAuthAuthUrlDTO)), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-});
-oauth.openapi(authUrlRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { provider } = c.req.valid('param');
   if (!isValidProvider(provider)) return c.json({ code: 400, message: '不支持的 OAuth 提供方', data: null }, 400);
   if (!(await isProviderConfigured(provider))) return c.json({ code: 400, message: '该 OAuth 提供方尚未配置，请联系管理员', data: null }, 400);
@@ -101,10 +104,12 @@ oauth.openapi(authUrlRoute, async (c) => {
   const oauthProvider = await getOAuthProvider(provider);
   const authUrl = oauthProvider.getAuthUrl(state);
   return c.json({ code: 0 as const, message: 'ok', data: { authUrl, state } }, 200);
+  },
 });
 
 // POST /{provider}/callback
-const callbackRoute = createRoute({
+const callbackRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/{provider}/callback',
   tags: ['OAuth'],
@@ -121,8 +126,8 @@ const callbackRoute = createRoute({
     403: { content: jsonContent(ErrorResponse), description: '账号已禁用' },
     404: { content: jsonContent(z.object({ code: z.number(), message: z.string(), data: z.looseObject({}) })), description: '未找到匹配账号' },
   },
-});
-oauth.openapi(callbackRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { provider } = c.req.valid('param');
   if (!isValidProvider(provider)) return c.json({ code: 400, message: '不支持的 OAuth 提供方', data: null }, 400);
   if (!(await isProviderConfigured(provider))) return c.json({ code: 400, message: '该 OAuth 提供方尚未配置', data: null }, 400);
@@ -210,10 +215,12 @@ oauth.openapi(callbackRoute, async (c) => {
       token: { accessToken, refreshToken },
     },
   }, 200);
+  },
 });
 
 // POST /bind
-const bindRoute = createRoute({
+const bindRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/bind',
   tags: ['OAuth'],
@@ -226,8 +233,8 @@ const bindRoute = createRoute({
     200: { content: jsonContent(MessageResponse), description: 'ok' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-});
-oauth.openapi(bindRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const payload = c.get('user');
   const { provider, code } = c.req.valid('json');
   if (!provider || !code) return c.json({ code: 400, message: '缺少参数', data: null }, 400);
@@ -270,10 +277,12 @@ oauth.openapi(bindRoute, async (c) => {
   });
 
   return c.json({ code: 0 as const, message: '绑定成功', data: null }, 200);
+  },
 });
 
 // DELETE /unbind/{provider}
-const unbindRoute = createRoute({
+const unbindRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/unbind/{provider}',
   tags: ['OAuth'],
@@ -287,8 +296,8 @@ const unbindRoute = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '未找到' },
   },
-});
-oauth.openapi(unbindRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const payload = c.get('user');
   const { provider } = c.req.valid('param');
   if (!isValidProvider(provider)) return c.json({ code: 400, message: '不支持的 OAuth 提供方', data: null }, 400);
@@ -298,6 +307,9 @@ oauth.openapi(unbindRoute, async (c) => {
     .returning();
   if (result.length === 0) return c.json({ code: 404, message: '未找到该绑定', data: null }, 404);
   return c.json({ code: 0 as const, message: '已解绑', data: null }, 200);
+  },
 });
+
+oauth.openapiRoutes([accountsRoute, authUrlRoute, callbackRoute, bindRoute, unbindRoute] as const);
 
 export default oauth;

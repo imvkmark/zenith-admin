@@ -10,7 +10,7 @@
  *
  * 对外行为保持和原实现完全一致，因此可以和手写 openapi.ts 共存。
  */
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { getOnlineSessions, forceLogout } from '../lib/session-manager';
@@ -19,8 +19,6 @@ import { validationHook, paginatedResponse, jsonContent, commonErrorResponses } 
 import { OnlineSessionDTO as SessionItemSchema } from '../lib/openapi-dtos';
 
 const sessionsRoute = new OpenAPIHono({ defaultHook: validationHook });
-
-sessionsRoute.use('/*', authMiddleware);
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
 const SessionListResponse = paginatedResponse(SessionItemSchema);
@@ -32,13 +30,14 @@ const ForceLogoutResponse = z.object({
 });
 
 // ─── Routes ────────────────────────────────────────────────────────────────
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['Sessions'],
   summary: '获取在线会话列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:session:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:session:list' })] as const,
   request: {
     query: z.object({
       page: z.coerce.number().int().min(1).optional().default(1),
@@ -53,9 +52,8 @@ const listRoute = createRoute({
       description: '在线会话列表',
     },
   },
-});
-
-sessionsRoute.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const q = c.req.valid('query');
   const page = q.page ?? 1;
   const pageSize = q.pageSize ?? 10;
@@ -95,15 +93,18 @@ sessionsRoute.openapi(listRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const forceLogoutRoute = createRoute({
+const forceLogoutRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/{tokenId}',
   tags: ['Sessions'],
   summary: '强制指定会话下线',
   security: [{ BearerAuth: [] }],
   middleware: [
+    authMiddleware,
     guard({ permission: 'system:session:forceLogout', audit: { module: '会话管理', description: '强制下线' } }),
   ] as const,
   request: {
@@ -116,9 +117,8 @@ const forceLogoutRoute = createRoute({
     200: { content: { 'application/json': { schema: ForceLogoutResponse } }, description: '下线成功' },
     404: { content: { 'application/json': { schema: ForceLogoutResponse } }, description: '会话不存在' },
   },
-});
-
-sessionsRoute.openapi(forceLogoutRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { tokenId } = c.req.valid('param');
   const allSessions = await getOnlineSessions();
   const session = allSessions.find((s) => s.tokenId === tokenId);
@@ -131,6 +131,9 @@ sessionsRoute.openapi(forceLogoutRoute, async (c) => {
     setTimeout(() => closeUserConnections(session.userId, '强制下线'), 500);
   }
   return c.json({ code: 0, message: '已强制下线', data: null }, 200);
+  },
 });
+
+sessionsRoute.openapiRoutes([listRoute, forceLogoutRoute] as const);
 
 export default sessionsRoute;

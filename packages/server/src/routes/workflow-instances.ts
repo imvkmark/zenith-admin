@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { workflowDefinitions, workflowInstances, workflowTasks, users } from '../db/schema';
@@ -6,15 +6,12 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
-import type { JwtPayload } from '../middleware/auth';
 import { createWorkflowInstanceSchema, approveWorkflowTaskSchema, rejectWorkflowTaskSchema } from '@zenith/shared';
 import type { WorkflowFlowData } from '@zenith/shared';
 import { apiResponse, ErrorResponse, PaginationQuery, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO } from '../lib/openapi-dtos';
 
-type Env = { Variables: { user: JwtPayload } };
-const router = new OpenAPIHono<Env>({ defaultHook: validationHook });
-router.use('*', authMiddleware);
+const router = new OpenAPIHono({ defaultHook: validationHook });
 
 function toTask(row: typeof workflowTasks.$inferSelect, assigneeName?: string | null, assigneeAvatar?: string | null) {
   return {
@@ -61,20 +58,21 @@ function toInstance(
 }
 
 // GET /instances
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/instances',
   tags: ['WorkflowInstances'],
   summary: '我的申请列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:instance:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
   request: { query: PaginationQuery.extend({ status: z.string().optional() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(WorkflowInstanceDTO)), description: 'ok' },
   },
-});
-router.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   const { page = 1, pageSize = 20, status } = c.req.valid('query');
   const tc = tenantCondition(workflowInstances, user);
@@ -97,23 +95,25 @@ router.openapi(listRoute, async (c) => {
     message: 'ok',
     data: { list: rows.map((r) => toInstance(r.inst, r)), total: Number(total), page, pageSize },
   }, 200);
+  },
 });
 
 // GET /instances/pending-mine
-const pendingMineRoute = createRoute({
+const pendingMineRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/instances/pending-mine',
   tags: ['WorkflowInstances'],
   summary: '待我审批列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:task:handle' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:task:handle' })] as const,
   request: { query: PaginationQuery },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(WorkflowInstanceListItemDTO)), description: 'ok' },
   },
-});
-router.openapi(pendingMineRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   const { page = 1, pageSize = 20 } = c.req.valid('query');
   const [{ total }] = await db
@@ -141,23 +141,25 @@ router.openapi(pendingMineRoute, async (c) => {
       pageSize,
     },
   }, 200);
+  },
 });
 
 // GET /instances/all
-const allRoute = createRoute({
+const allRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/instances/all',
   tags: ['WorkflowInstances'],
   summary: '全局流程实例列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:instance:monitor' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
   request: { query: PaginationQuery.extend({ status: z.string().optional(), keyword: z.string().optional() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(WorkflowInstanceAllDTO)), description: 'ok' },
   },
-});
-router.openapi(allRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { page = 1, pageSize = 20, status, keyword } = c.req.valid('query');
   const conditions = [];
   if (status) conditions.push(eq(workflowInstances.status, status as 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn'));
@@ -191,16 +193,18 @@ router.openapi(allRoute, async (c) => {
     message: 'ok',
     data: { stats, list: rows.map((r) => toInstance(r.inst, r)), total: Number(total), page, pageSize },
   }, 200);
+  },
 });
 
 // GET /instances/{id}
-const detailRoute = createRoute({
+const detailRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/instances/{id}',
   tags: ['WorkflowInstances'],
   summary: '实例详情',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:instance:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
@@ -208,8 +212,8 @@ const detailRoute = createRoute({
     403: { content: jsonContent(ErrorResponse), description: '无权查看' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-});
-router.openapi(detailRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
   const tc = tenantCondition(workflowInstances, user);
@@ -240,16 +244,18 @@ router.openapi(detailRoute, async (c) => {
     message: 'ok',
     data: toInstance(rows[0].inst, { ...rows[0], tasks }),
   }, 200);
+  },
 });
 
 // POST /instances
-const createInstanceRoute = createRoute({
+const createInstanceRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/instances',
   tags: ['WorkflowInstances'],
   summary: '发起流程',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:instance:create', audit: { description: '发起流程申请', module: '工作流管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:instance:create', audit: { description: '发起流程申请', module: '工作流管理' } })] as const,
   request: { body: { content: jsonContent(createWorkflowInstanceSchema), required: true } },
   responses: {
     ...commonErrorResponses,
@@ -257,8 +263,8 @@ const createInstanceRoute = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '流程定义不存在' },
   },
-});
-router.openapi(createInstanceRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   const data = c.req.valid('json');
   const [def] = await db.select().from(workflowDefinitions).where(and(eq(workflowDefinitions.id, data.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
@@ -295,16 +301,18 @@ router.openapi(createInstanceRoute, async (c) => {
     );
   }
   return c.json({ code: 0 as const, message: '申请已提交', data: toInstance(instance) }, 200);
+  },
 });
 
 // POST /instances/{id}/withdraw
-const withdrawRoute = createRoute({
+const withdrawRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/instances/{id}/withdraw',
   tags: ['WorkflowInstances'],
   summary: '撤回申请',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:instance:create', audit: { description: '撤回流程申请', module: '工作流管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:instance:create', audit: { description: '撤回流程申请', module: '工作流管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
@@ -313,8 +321,8 @@ const withdrawRoute = createRoute({
     403: { content: jsonContent(ErrorResponse), description: '无权操作' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-});
-router.openapi(withdrawRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   const { id } = c.req.valid('param');
   const tc = tenantCondition(workflowInstances, user);
@@ -328,16 +336,18 @@ router.openapi(withdrawRoute, async (c) => {
     .where(and(eq(workflowTasks.instanceId, id), eq(workflowTasks.status, 'pending')));
   const [updated] = await db.update(workflowInstances).set({ status: 'withdrawn', updatedAt: new Date() }).where(and(...conditions)).returning();
   return c.json({ code: 0 as const, message: '已撤回', data: toInstance(updated) }, 200);
+  },
 });
 
 // POST /tasks/{taskId}/approve
-const approveRoute = createRoute({
+const approveRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/tasks/{taskId}/approve',
   tags: ['WorkflowInstances'],
   summary: '审批通过',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:task:handle', audit: { description: '审批通过', module: '工作流管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:task:handle', audit: { description: '审批通过', module: '工作流管理' } })] as const,
   request: {
     params: z.object({ taskId: z.coerce.number() }),
     body: { content: jsonContent(approveWorkflowTaskSchema), required: false },
@@ -349,8 +359,8 @@ const approveRoute = createRoute({
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
     500: { content: jsonContent(ErrorResponse), description: '数据异常' },
   },
-});
-router.openapi(approveRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   const { taskId } = c.req.valid('param');
   const body = await c.req.json().catch(() => ({}));
@@ -402,16 +412,18 @@ router.openapi(approveRoute, async (c) => {
   }
   const [updated] = await db.update(workflowInstances).set({ currentNodeKey: advanceResult.currentNodeKeys[0] ?? null, updatedAt: new Date() }).where(eq(workflowInstances.id, inst.id)).returning();
   return c.json({ code: 0 as const, message: '审批通过，流程已推进', data: toInstance(updated) }, 200);
+  },
 });
 
 // POST /tasks/{taskId}/reject
-const rejectRoute = createRoute({
+const rejectRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/tasks/{taskId}/reject',
   tags: ['WorkflowInstances'],
   summary: '审批驳回',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'workflow:task:handle', audit: { description: '审批驳回', module: '工作流管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'workflow:task:handle', audit: { description: '审批驳回', module: '工作流管理' } })] as const,
   request: {
     params: z.object({ taskId: z.coerce.number() }),
     body: { content: jsonContent(rejectWorkflowTaskSchema), required: true },
@@ -423,8 +435,8 @@ const rejectRoute = createRoute({
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
     500: { content: jsonContent(ErrorResponse), description: '数据异常' },
   },
-});
-router.openapi(rejectRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   const { taskId } = c.req.valid('param');
   const body = await c.req.json().catch(() => ({}));
@@ -439,6 +451,9 @@ router.openapi(rejectRoute, async (c) => {
   await db.update(workflowTasks).set({ status: 'rejected', comment: result.data.comment, actionAt: new Date() }).where(eq(workflowTasks.id, taskId));
   const [updated] = await db.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null, updatedAt: new Date() }).where(eq(workflowInstances.id, inst.id)).returning();
   return c.json({ code: 0 as const, message: '已驳回', data: toInstance(updated) }, 200);
+  },
 });
+
+router.openapiRoutes([listRoute, pendingMineRoute, allRoute, detailRoute, createInstanceRoute, withdrawRoute, approveRoute, rejectRoute] as const);
 
 export default router;

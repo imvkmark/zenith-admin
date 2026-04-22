@@ -1,36 +1,34 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { emailConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import type { AuthEnv } from '../middleware/auth';
 import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { EmailConfigDTO } from '../lib/openapi-dtos';
 
 import { emailConfigSchema } from '@zenith/shared';
 
-const emailConfigRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
-emailConfigRouter.use('*', authMiddleware);
+const emailConfigRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
 const TestEmailBody = z.object({ email: z.string() });
 
 // ─── Routes ────────────────────────────────────────────────────────────────
-const getRoute = createRoute({
+const getRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['EmailConfig'],
   summary: '获取邮件配置',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:email-config:view' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:email-config:view' })] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(EmailConfigDTO)), description: '邮件配置' },
   },
-});
-
-emailConfigRouter.openapi(getRoute, async (c) => {
+  }),
+  handler: async (c) => {
   let [config] = await db.select().from(emailConfigs).limit(1);
   if (!config) {
     const [created] = await db.insert(emailConfigs).values({}).returning();
@@ -38,15 +36,18 @@ emailConfigRouter.openapi(getRoute, async (c) => {
   }
   const { smtpPassword: _masked, ...safeConfig } = config;
   return c.json({ code: 0 as const, message: 'success', data: safeConfig }, 200);
+  },
 });
 
-const updateRoute = createRoute({
+const updateRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/',
   tags: ['EmailConfig'],
   summary: '更新邮件配置',
   security: [{ BearerAuth: [] }],
   middleware: [
+    authMiddleware,
     guard({
       permission: 'system:email-config:update',
       audit: { description: '更新邮件配置', module: '邮件配置' },
@@ -59,9 +60,8 @@ const updateRoute = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(EmailConfigDTO)), description: '保存成功' },
   },
-});
-
-emailConfigRouter.openapi(updateRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const data = c.req.valid('json');
   const [config] = await db.select().from(emailConfigs).limit(1);
   if (!config) {
@@ -78,15 +78,17 @@ emailConfigRouter.openapi(updateRoute, async (c) => {
     .where(eq(emailConfigs.id, config.id))
     .returning();
   return c.json({ code: 0 as const, message: '保存成功', data: updated }, 200);
+  },
 });
 
-const testRoute = createRoute({
+const testRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/test',
   tags: ['EmailConfig'],
   summary: '发送测试邮件',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:email-config:update' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:email-config:update' })] as const,
   request: {
     body: { content: jsonContent(TestEmailBody), required: true },
   },
@@ -96,9 +98,8 @@ const testRoute = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误或配置不完整' },
     500: { content: jsonContent(ErrorResponse), description: '发送失败' },
   },
-});
-
-emailConfigRouter.openapi(testRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const toEmail = body?.email as string | undefined;
   if (!toEmail?.includes('@')) {
@@ -150,6 +151,9 @@ emailConfigRouter.openapi(testRoute, async (c) => {
       500,
     );
   }
+  },
 });
+
+emailConfigRouter.openapiRoutes([getRoute, updateRoute, testRoute] as const);
 
 export default emailConfigRouter;

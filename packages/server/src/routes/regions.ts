@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { regions } from '../db/schema';
@@ -9,7 +9,6 @@ import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHoo
 import { RegionDTO } from '../lib/openapi-dtos';
 
 const regionsRouter = new OpenAPIHono({ defaultHook: validationHook });
-regionsRouter.use('*', authMiddleware);
 
 function toRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
   return {
@@ -78,13 +77,14 @@ const createRegionSchema = z.object({
 const updateRegionSchema = createRegionSchema.partial();
 
 // ─── Routes ────────────────────────────────────────────────────────────────
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['Regions'],
   summary: '地区树形结构',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:region:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:region:list' })] as const,
   request: {
     query: z.object({
       keyword: z.string().optional(),
@@ -96,50 +96,51 @@ const listRoute = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(RegionDTO))), description: '地区树' },
   },
-});
-
-regionsRouter.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const q = c.req.valid('query');
   const rows = await db.select().from(regions).orderBy(asc(regions.sort), asc(regions.code));
   const tree = buildTree(rows.map(toRegion));
   const data = q.keyword || q.status || q.level ? filterTree(tree, q.keyword ?? '', q.status, q.level) : tree;
   return c.json({ code: 0 as const, message: 'ok', data }, 200);
+  },
 });
 
-const flatRoute = createRoute({
+const flatRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/flat',
   tags: ['Regions'],
   summary: '平铺地区列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:region:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:region:list' })] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(RegionDTO))), description: '平铺地区列表' },
   },
-});
-
-regionsRouter.openapi(flatRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const rows = await db.select().from(regions).orderBy(asc(regions.sort), asc(regions.code));
   return c.json({ code: 0 as const, message: 'ok', data: rows.map(toRegion) }, 200);
+  },
 });
 
-const createRegionRoute = createRoute({
+const createRegionRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/',
   tags: ['Regions'],
   summary: '新增地区',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:region:create', audit: { description: '创建地区', module: '地区管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:region:create', audit: { description: '创建地区', module: '地区管理' } })] as const,
   request: { body: { content: jsonContent(createRegionSchema), required: true } },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(RegionDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '父级不存在或代码重复' },
   },
-});
-
-regionsRouter.openapi(createRegionRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const data = c.req.valid('json');
   if (data.parentCode) {
     const [parent] = await db.select({ code: regions.code }).from(regions).where(eq(regions.code, data.parentCode));
@@ -164,15 +165,17 @@ regionsRouter.openapi(createRegionRoute, async (c) => {
     }
     throw err;
   }
+  },
 });
 
-const updateRegionRoute = createRoute({
+const updateRegionRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/{id}',
   tags: ['Regions'],
   summary: '更新地区',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:region:update', audit: { description: '更新地区', module: '地区管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:region:update', audit: { description: '更新地区', module: '地区管理' } })] as const,
   request: {
     params: z.object({ id: z.coerce.number() }),
     body: { content: jsonContent(updateRegionSchema), required: true },
@@ -183,9 +186,8 @@ const updateRegionRoute = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '父级错误或重复' },
     404: { content: jsonContent(ErrorResponse), description: '地区不存在' },
   },
-});
-
-regionsRouter.openapi(updateRegionRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   if (data.parentCode) {
@@ -211,15 +213,17 @@ regionsRouter.openapi(updateRegionRoute, async (c) => {
     }
     throw err;
   }
+  },
 });
 
-const deleteRoute = createRoute({
+const deleteRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/{id}',
   tags: ['Regions'],
   summary: '删除地区',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:region:delete', audit: { description: '删除地区', module: '地区管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:region:delete', audit: { description: '删除地区', module: '地区管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
@@ -227,9 +231,8 @@ const deleteRoute = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '存在子地区' },
     404: { content: jsonContent(ErrorResponse), description: '地区不存在' },
   },
-});
-
-regionsRouter.openapi(deleteRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const [current] = await db.select({ code: regions.code }).from(regions).where(eq(regions.id, id));
   if (!current) return c.json({ code: 404, message: '地区不存在', data: null }, 404);
@@ -241,6 +244,9 @@ regionsRouter.openapi(deleteRoute, async (c) => {
 
   await db.delete(regions).where(eq(regions.id, id));
   return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+  },
 });
+
+regionsRouter.openapiRoutes([listRoute, flatRoute, createRegionRoute, updateRegionRoute, deleteRoute] as const);
 
 export default regionsRouter;

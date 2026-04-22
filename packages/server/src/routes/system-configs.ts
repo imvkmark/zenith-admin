@@ -1,9 +1,8 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { eq, like, and, sql, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { systemConfigs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { getPasswordPolicy } from '../lib/password-policy';
@@ -11,7 +10,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { apiResponse, ErrorResponse, MessageResponse, paginatedResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { SystemConfigDTO, PublicConfigDTO, PasswordPolicyDTO } from '../lib/openapi-dtos';
 
-const systemConfigsRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
+const systemConfigsRoute = new OpenAPIHono({ defaultHook: validationHook });
 const configTypeValues = ['string', 'number', 'boolean', 'json'] as const;
 const createSystemConfigSchema = z.object({
   configKey: z.string().min(1).max(128).regex(/^[\w.]+$/),
@@ -22,7 +21,8 @@ const createSystemConfigSchema = z.object({
 const updateSystemConfigSchema = createSystemConfigSchema.partial();
 
 // ─── Public routes ─────────────────────────────────────────────────────────
-const publicGetRoute = createRoute({
+const publicGetRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/public/{key}',
   tags: ['SystemConfigs'],
@@ -33,9 +33,8 @@ const publicGetRoute = createRoute({
     200: { content: jsonContent(apiResponse(PublicConfigDTO)), description: '配置值' },
     404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
   },
-});
-
-systemConfigsRoute.openapi(publicGetRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { key } = c.req.valid('param');
   const [row] = await db.select().from(systemConfigs).where(eq(systemConfigs.configKey, key)).limit(1);
   if (!row) {
@@ -49,9 +48,11 @@ systemConfigsRoute.openapi(publicGetRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const passwordPolicyRoute = createRoute({
+const passwordPolicyRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/password-policy',
   tags: ['SystemConfigs'],
@@ -60,23 +61,23 @@ const passwordPolicyRoute = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(PasswordPolicyDTO)), description: '密码策略' },
   },
-});
-
-systemConfigsRoute.openapi(passwordPolicyRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const policy = await getPasswordPolicy();
   return c.json({ code: 0 as const, message: 'success', data: policy }, 200);
+  },
 });
 
 // ─── Protected routes ──────────────────────────────────────────────────────
-systemConfigsRoute.use('/*', authMiddleware);
 
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['SystemConfigs'],
   summary: '配置分页列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:config:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:config:list' })] as const,
   request: {
     query: z.object({
       page: z.coerce.number().optional(),
@@ -89,9 +90,8 @@ const listRoute = createRoute({
     ...commonErrorResponses,
     200: { content: jsonContent(paginatedResponse(SystemConfigDTO)), description: '配置列表' },
   },
-});
-
-systemConfigsRoute.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const q = c.req.valid('query');
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
@@ -130,24 +130,25 @@ systemConfigsRoute.openapi(listRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const createConfigRoute = createRoute({
+const createConfigRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/',
   tags: ['SystemConfigs'],
   summary: '新增配置',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:config:create', audit: { module: '系统配置', description: '新增配置' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:config:create', audit: { module: '系统配置', description: '新增配置' } })] as const,
   request: { body: { content: jsonContent(createSystemConfigSchema), required: true } },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(SystemConfigDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '配置键已存在' },
   },
-});
-
-systemConfigsRoute.openapi(createConfigRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const data = c.req.valid('json');
   const [existing] = await db
     .select()
@@ -169,15 +170,17 @@ systemConfigsRoute.openapi(createConfigRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const updateConfigRoute = createRoute({
+const updateConfigRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/{id}',
   tags: ['SystemConfigs'],
   summary: '更新配置',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:config:update', audit: { module: '系统配置', description: '更新配置' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:config:update', audit: { module: '系统配置', description: '更新配置' } })] as const,
   request: {
     params: z.object({ id: z.coerce.number() }),
     body: { content: jsonContent(updateSystemConfigSchema), required: true },
@@ -188,9 +191,8 @@ const updateConfigRoute = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '配置键已存在' },
     404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
   },
-});
-
-systemConfigsRoute.openapi(updateConfigRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
 
@@ -224,24 +226,25 @@ systemConfigsRoute.openapi(updateConfigRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const deleteRoute = createRoute({
+const deleteRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/{id}',
   tags: ['SystemConfigs'],
   summary: '删除配置',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:config:delete', audit: { module: '系统配置', description: '删除配置' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:config:delete', audit: { module: '系统配置', description: '删除配置' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(MessageResponse), description: '删除成功' },
     404: { content: jsonContent(ErrorResponse), description: '配置不存在' },
   },
-});
-
-systemConfigsRoute.openapi(deleteRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const tc = tenantCondition(systemConfigs, c.get('user'));
   const [row] = await db
@@ -252,15 +255,17 @@ systemConfigsRoute.openapi(deleteRoute, async (c) => {
     return c.json({ code: 404, message: '配置不存在', data: null }, 404);
   }
   return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+  },
 });
 
-const exportRoute = createRoute({
+const exportRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/export',
   tags: ['SystemConfigs'],
   summary: '导出系统配置 Excel',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:config:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:config:list' })] as const,
   responses: {
     ...commonErrorResponses,
     200: {
@@ -268,9 +273,8 @@ const exportRoute = createRoute({
       description: 'Excel 文件',
     },
   },
-});
-
-systemConfigsRoute.openapi(exportRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const rows = await db
     .select()
     .from(systemConfigs)
@@ -290,6 +294,9 @@ systemConfigsRoute.openapi(exportRoute, async (c) => {
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=system-configs.xlsx');
   return c.body(buffer) as never;
+  },
 });
+
+systemConfigsRoute.openapiRoutes([publicGetRoute, passwordPolicyRoute, listRoute, createConfigRoute, updateConfigRoute, deleteRoute, exportRoute] as const);
 
 export default systemConfigsRoute;

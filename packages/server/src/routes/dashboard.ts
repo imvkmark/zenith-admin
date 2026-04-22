@@ -1,33 +1,31 @@
-import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute } from '@hono/zod-openapi';
 import { sql, and, gte, lt, eq, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { users, loginLogs, operationLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { isSuperAdmin } from '../lib/permissions';
 import { getOnlineCount } from '../lib/session-manager';
-import type { AuthEnv } from '../middleware/auth';
 import { tenantCondition } from '../lib/tenant';
 import { apiResponse, ErrorResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { DashboardStatsDTO as StatsDTO, DashboardChartsDTO as ChartsDTO } from '../lib/openapi-dtos';
 
-const dashboardRoute = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
+const dashboardRoute = new OpenAPIHono({ defaultHook: validationHook });
 
-dashboardRoute.use('/*', authMiddleware);
-
-const statsRoute = createRoute({
+const statsRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/stats',
   tags: ['Dashboard'],
   summary: '仪表盘统计',
   security: [{ BearerAuth: [] }],
+  middleware: [authMiddleware] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(StatsDTO)), description: '统计数据' },
     403: { content: jsonContent(ErrorResponse), description: '无权限' },
   },
-});
-
-dashboardRoute.openapi(statsRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   if (!isSuperAdmin(user.roles)) {
     return c.json({ code: 403, message: '无权限', data: null }, 403);
@@ -84,22 +82,24 @@ dashboardRoute.openapi(statsRoute, async (c) => {
     },
     200,
   );
+  },
 });
 
-const chartsRoute = createRoute({
+const chartsRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/charts',
   tags: ['Dashboard'],
   summary: '仪表盘图表数据',
   security: [{ BearerAuth: [] }],
+  middleware: [authMiddleware] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(ChartsDTO)), description: '图表数据' },
     403: { content: jsonContent(ErrorResponse), description: '无权限' },
   },
-});
-
-dashboardRoute.openapi(chartsRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const user = c.get('user');
   if (!isSuperAdmin(user.roles)) {
     return c.json({ code: 403, message: '无权限', data: null }, 403);
@@ -198,6 +198,9 @@ dashboardRoute.openapi(chartsRoute, async (c) => {
     },
     200,
   );
+  },
 });
+
+dashboardRoute.openapiRoutes([statsRouteDef, chartsRouteDef] as const);
 
 export default dashboardRoute;

@@ -1,9 +1,8 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { asc, eq, and } from 'drizzle-orm';
 import { db } from '../db';
 import { departments, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
-import type { AuthEnv } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import type { Department } from '@zenith/shared';
@@ -12,8 +11,7 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { apiResponse, ErrorResponse, MessageResponse, jsonContent, validationHook, commonErrorResponses } from '../lib/openapi-schemas';
 import { DepartmentDTO } from '../lib/openapi-dtos';
 
-const departmentsRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
-departmentsRouter.use('*', authMiddleware);
+const departmentsRouter = new OpenAPIHono({ defaultHook: validationHook });
 
 function toDepartment(row: typeof departments.$inferSelect): Omit<Department, 'children'> {
   return {
@@ -82,20 +80,21 @@ async function ensureParentValid(parentId: number, currentId?: number) {
   return null;
 }
 
-const listRoute = createRoute({
+const listRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/',
   tags: ['Departments'],
   summary: '部门树',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:department:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:department:list' })] as const,
   request: { query: z.object({ keyword: z.string().optional(), status: z.string().optional() }) },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(DepartmentDTO))), description: '部门树' },
   },
-});
-departmentsRouter.openapi(listRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const { keyword = '', status } = c.req.valid('query');
   const user = c.get('user');
   const tc = tenantCondition(departments, user);
@@ -103,41 +102,45 @@ departmentsRouter.openapi(listRoute, async (c) => {
   const tree = buildTree(rows.map(toDepartment));
   const data = keyword || status ? filterTree(tree, keyword, status) : tree;
   return c.json({ code: 0 as const, message: 'ok', data }, 200);
+  },
 });
 
-const flatRoute = createRoute({
+const flatRoute = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/flat',
   tags: ['Departments'],
   summary: '部门扁平列表',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:department:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:department:list' })] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(z.array(DepartmentDTO))), description: '列表' },
   },
-});
-departmentsRouter.openapi(flatRoute, async (c) => {
+  }),
+  handler: async (c) => {
   const tc = tenantCondition(departments, c.get('user'));
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
   return c.json({ code: 0 as const, message: 'ok', data: rows.map(toDepartment) }, 200);
+  },
 });
 
-const createRouteDef = createRoute({
+const createRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'post',
   path: '/',
   tags: ['Departments'],
   summary: '创建部门',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:department:create', audit: { description: '创建部门', module: '部门管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:department:create', audit: { description: '创建部门', module: '部门管理' } })] as const,
   request: { body: { content: jsonContent(createDepartmentSchema), required: true } },
   responses: {
     ...commonErrorResponses,
     200: { content: jsonContent(apiResponse(DepartmentDTO)), description: '创建成功' },
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
   },
-});
-departmentsRouter.openapi(createRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const data = c.req.valid('json');
   const parentError = await ensureParentValid(data.parentId);
   if (parentError) return c.json({ code: 400, message: parentError, data: null }, 400);
@@ -150,15 +153,17 @@ departmentsRouter.openapi(createRouteDef, async (c) => {
     }
     throw error;
   }
+  },
 });
 
-const updateRouteDef = createRoute({
+const updateRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'put',
   path: '/{id}',
   tags: ['Departments'],
   summary: '更新部门',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:department:update', audit: { description: '更新部门', module: '部门管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:department:update', audit: { description: '更新部门', module: '部门管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }), body: { content: jsonContent(updateDepartmentSchema), required: true } },
   responses: {
     ...commonErrorResponses,
@@ -166,8 +171,8 @@ const updateRouteDef = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '参数错误' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-});
-departmentsRouter.openapi(updateRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const data = c.req.valid('json');
   if (data.parentId !== undefined) {
@@ -187,15 +192,17 @@ departmentsRouter.openapi(updateRouteDef, async (c) => {
     }
     throw error;
   }
+  },
 });
 
-const deleteRouteDef = createRoute({
+const deleteRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'delete',
   path: '/{id}',
   tags: ['Departments'],
   summary: '删除部门',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:department:delete', audit: { description: '删除部门', module: '部门管理' } })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:department:delete', audit: { description: '删除部门', module: '部门管理' } })] as const,
   request: { params: z.object({ id: z.coerce.number() }) },
   responses: {
     ...commonErrorResponses,
@@ -203,8 +210,8 @@ const deleteRouteDef = createRoute({
     400: { content: jsonContent(ErrorResponse), description: '不可删除' },
     404: { content: jsonContent(ErrorResponse), description: '不存在' },
   },
-});
-departmentsRouter.openapi(deleteRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const { id } = c.req.valid('param');
   const tc = tenantCondition(departments, c.get('user'));
   const [department] = await db.select({ id: departments.id }).from(departments).where(and(eq(departments.id, id), tc)).limit(1);
@@ -215,21 +222,23 @@ departmentsRouter.openapi(deleteRouteDef, async (c) => {
   if (boundUser) return c.json({ code: 400, message: '该部门下仍有关联用户，无法删除', data: null }, 400);
   await db.delete(departments).where(and(eq(departments.id, id), tc));
   return c.json({ code: 0 as const, message: '删除成功', data: null }, 200);
+  },
 });
 
-const exportRouteDef = createRoute({
+const exportRouteDef = defineOpenAPIRoute({
+  route: createRoute({
   method: 'get',
   path: '/export',
   tags: ['Departments'],
   summary: '导出部门',
   security: [{ BearerAuth: [] }],
-  middleware: [guard({ permission: 'system:department:list' })] as const,
+  middleware: [authMiddleware, guard({ permission: 'system:department:list' })] as const,
   responses: {
     ...commonErrorResponses,
     200: { content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: z.string() } }, description: 'Excel 文件' },
   },
-});
-departmentsRouter.openapi(exportRouteDef, async (c) => {
+  }),
+  handler: async (c) => {
   const tc = tenantCondition(departments, c.get('user'));
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort));
   const buffer = await exportToExcel(
@@ -248,6 +257,9 @@ departmentsRouter.openapi(exportRouteDef, async (c) => {
   c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   c.header('Content-Disposition', 'attachment; filename=departments.xlsx');
   return c.body(buffer) as never;
+  },
 });
+
+departmentsRouter.openapiRoutes([listRoute, flatRoute, createRouteDef, updateRouteDef, deleteRouteDef, exportRouteDef] as const);
 
 export default departmentsRouter;
