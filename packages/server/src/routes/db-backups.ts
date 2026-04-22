@@ -127,7 +127,7 @@ const createRouteDef = createRoute({
 backups.openapi(createRouteDef, async (c) => {
   const payload = c.get('user');
   const { type, name } = c.req.valid('json');
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
   const backupName = name || `${type}-${timestamp}`;
 
   const [backup] = await db
