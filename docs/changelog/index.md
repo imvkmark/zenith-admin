@@ -4,6 +4,59 @@
 
 ---
 
+## v0.5.0 - 2026-04-22
+
+### Added
+
+#### 实体 DTO 中心化架构
+
+- 所有响应实体 DTO 按业务域拆分至 `packages/server/src/lib/dtos/`（`iam` / `auth` / `dict` / `files` / `logs` / `notices` / `system` / `workflow` / `dashboard` / `region` / `messages`）
+- 通过 `src/lib/openapi-dtos.ts` 统一 re-export，各路由通过 `import { XxxDTO } from '../lib/openapi-dtos'` 导入，禁止路由内本地声明 `.openapi('EntityName')` 的 DTO
+
+#### 统一路由定义模式
+
+- 全面迁移至 `defineOpenAPIRoute` + `router.openapiRoutes()` 模式
+- 移除 `<AuthEnv>` 泛型和全局 `router.use('*', authMiddleware)`，每个受保护路由在 `createRoute.middleware` 中显式声明鉴权
+- 覆盖用户、角色、工作流实例/定义、会话管理、租户管理等核心路由
+
+#### 统一验证失败响应（validationHook）
+
+- 新增 `validationHook`，所有 `OpenAPIHono` 实例通过 `defaultHook: validationHook` 将 Zod 校验失败统一转为 `{ code: 400, message, data: null }` 标准格式
+
+#### 安全防护增强
+
+- 新增 CSRF 防护（`hono/csrf`）：通过 `ALLOWED_ORIGINS` 环境变量配置白名单
+- 新增接口限流（`hono-rate-limiter` + Redis）：对高危认证接口限制请求频率，超限返回 `code: 429`
+
+#### OpenAPI 文档升级至 3.1.0
+
+- 使用 `app.doc31` 替代 `app.doc`，输出 OpenAPI 3.1.0 规范
+
+#### 全量数据接口
+
+- 用户、岗位、角色模块新增 `/get/all` 接口，支持不分页的全量数据获取
+
+#### 服务端分页扩展
+
+- 字典、角色、文件存储配置、操作日志、岗位、会话列表等模块支持服务端分页
+- 前端对应页面新增 `pageSize` 状态，支持用户动态调整每页条目数
+
+### Changed
+
+- 共享层 `@zenith/shared` 升级至 Zod v4（`^4.3.6`），与 `@hono/zod-openapi@1.x` 保持一致
+- 认证中间件重构：使用 Hono 官方 JWT 中间件替代自定义 JWT 验证逻辑
+- 上下文管理优化：使用 `tryGetContext` 替代 `getCtx`，简化错误处理
+- 路由中间件统一改用 `hono/factory` 的 `createMiddleware`
+
+### Fixed
+
+- 修复通知模块发布时间（`publishTime`）字段类型验证逻辑
+- 修复文件存储配置更新时合并逻辑，确保状态字段正确保留
+- 修复数据库备份时间戳格式化（冒号/点号替换）导致的文件名错误
+- 修复邮件配置测试发送时的邮箱与 SMTP 信息校验条件
+
+---
+
 ## v0.4.0 - 2026-04-22
 
 ### Added
