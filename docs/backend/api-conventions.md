@@ -34,7 +34,7 @@
 项目采用 **Access Token + Refresh Token 双 token** 机制：
 
 | Token | 存储 Key | 说明 |
-|-------|----------|------|
+| --- | --- | --- |
 | Access Token | `zenith_token` | 短期 token，附在每次请求头中 |
 | Refresh Token | `zenith_refresh_token` | 长期 token，用于在 Access Token 过期时自动续期 |
 
@@ -120,7 +120,7 @@ xxxRouter.openapi(createRoute({
 ## 常用错误码
 
 | code | 含义 |
-|------|------|
+| --- | --- |
 | `0` | 成功 |
 | `400` | 参数校验失败 |
 | `401` | 未登录或 token 无效 |
@@ -191,7 +191,7 @@ Server-Timing: total;dur=45.2;desc="Total Response Time", db;dur=12.3
 **环境变量配置：**
 
 | 变量 | 默认值 | 说明 |
-|------|--------|------|
+| --- | --- | --- |
 | `SERVER_TIMING_ENABLED` | `false` | 设为 `true` 可开启，生产环境建议保持关闭以避免暴露内部耗时信息 |
 
 ## 请求体大小限制与请求超时
@@ -215,7 +215,7 @@ Server-Timing: total;dur=45.2;desc="Total Response Time", db;dur=12.3
 
 **环境变量配置：**
 
-| 变量                 | 默认值 | 说明                                                                                        |
-| -------------------- | ------ | ------------------------------------------------------------------------------------------- |
-| `REQUEST_BODY_LIMIT` | `0`    | 请求体大小上限（字节）。`0` 或未设置 = 不限制。常用值：`10485760` (10MB)、`104857600` (100MB) |
-| `REQUEST_TIMEOUT_MS` | `0`    | 请求超时时间（毫秒）。`0` 或未设置 = 不启用                                                 |
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `REQUEST_BODY_LIMIT` | `0` | 请求体大小上限（字节）。`0` 或未设置 = 不限制。常用值：`10485760` (10MB)、`104857600` (100MB) |
+| `REQUEST_TIMEOUT_MS` | `0` | 请求超时时间（毫秒）。`0` 或未设置 = 不启用 |
