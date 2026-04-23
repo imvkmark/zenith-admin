@@ -389,3 +389,131 @@ if (before) {
 新路由通过 `app.route()` 注册后，刷新 [`http://localhost:3300/api/docs`](http://localhost:3300/api/docs) 即可看到新接口。
 
 > **要点**：每个路由的 `createRoute()` 里的 `tags` 字段就是 Swagger UI 中的分组标签，无需在任何地方另外注册。
+
+---
+
+## 数据权限过滤（dataScope）
+
+> 仅业务数据模块需要；配置数据（角色/菜单/字典）无需过滤。
+
+### 前提：业务表必须有 `department_id` 字段
+
+```ts
+// packages/server/src/db/schema.ts
+export const xxxs = pgTable('xxxs', {
+  // ...其他字段
+  departmentId: integer('department_id').references(() => departments.id),
+});
+```
+
+> **设计原则**：`department_id` 在创建时从创建人部门写入，之后不跟随人员调岗变动。过滤逻辑是 `WHERE data.department_id IN (我的部门及子部门)`，而非反查创建人当前部门。
+
+### 列表接口中追加 scopeCondition
+
+```ts
+import { getDataScopeCondition } from '../lib/data-scope';
+
+// ⚠️ 需要 AuthEnv 泛型以正确推断 c.get('user') 类型
+const xxxRouter = new OpenAPIHono<AuthEnv>({ defaultHook: validationHook });
+
+// 在 GET / 列表 handler 中：
+const currentUserId = c.get('user').userId;
+const scopeCondition = await getDataScopeCondition({
+  currentUserId,
+  deptColumn: xxxs.departmentId,  // 目标表的 department_id 列
+  ownerColumn: xxxs.id,            // 用于 self 过滤的主键列
+});
+if (scopeCondition) conditions.push(scopeCondition);
+```
+
+### 创建接口中自动填入部门
+
+```ts
+// POST / 创建 handler 中：
+const [creator] = await db.select({ departmentId: users.departmentId })
+  .from(users).where(eq(users.id, currentUserId)).limit(1);
+
+await db.insert(xxxs).values({
+  ...validatedData,
+  departmentId: creator?.departmentId ?? null,
+});
+```
+
+### dataScope 取值说明
+
+| 值 | 含义 | 可见范围 |
+| --- | --- | --- |
+| `all` | 全部数据 | 所有记录（不过滤） |
+| `dept` | 本部门 | 与当前用户同 `department_id` 的记录 |
+| `self` | 仅本人 | 由 `ownerColumn = currentUserId` 标识的记录 |
+
+---
+
+## 批量操作后端路由（DELETE /batch）
+
+> **路由顺序关键**：`DELETE /batch` 必须注册在 `DELETE /{id}` **之前**，否则 `/batch` 会被匹配为 `id = "batch"`。
+
+```ts
+// ✅ 正确顺序：/batch 在 /{id} 之前
+const batchDeleteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/batch',
+    tags: ['XXX管理'], summary: '批量删除 XXX',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:xxx:delete', audit: { description: '批量删除 XXX', module: 'XXX管理' } })] as const,
+    request: { body: { content: jsonContent(z.object({ ids: z.array(z.number().int()) })), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      200: { content: jsonContent(MessageResponse), description: '批量删除成功' },
+    },
+  }),
+  handler: async (c) => {
+    const { ids } = c.req.valid('json');
+    if (!ids || ids.length === 0) {
+      return c.json({ code: 400, message: '请选择要删除的记录', data: null }, 400);
+    }
+    await db.delete(xxxs).where(inArray(xxxs.id, ids));
+    return c.json({ code: 0 as const, message: `已删除 ${ids.length} 条记录`, data: null }, 200);
+  },
+});
+
+// /${id} 路由必须排在 /batch 之后：
+xxxRouter.openapiRoutes([..., batchDeleteRoute, deleteRoute_] as const);
+```
+
+---
+
+## 多租户隔离（tenantScope）
+
+> 仅当 `MULTI_TENANT_MODE=true` 时生效；关闭时两个工具函数均返回 `null`/`undefined`，与单实例行为兼容。
+
+### Step 1：Schema 中添加 `tenant_id`
+
+```ts
+export const xxxs = pgTable('xxxs', {
+  // ...其他字段
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+});
+```
+
+### 路由中使用
+
+```ts
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
+
+// 列表接口
+const tCond = tenantCondition(xxxs, c.get('user'));
+if (tCond) conditions.push(tCond);
+
+// 创建接口
+await db.insert(xxxs).values({
+  ...validatedData,
+  tenantId: getCreateTenantId(c.get('user')),
+});
+```
+
+### 关键约束
+
+- `tenantCondition` 在多租户关闭时返回 `undefined`，**无需**在路由中额外判断是否开启多租户
+- 平台超管在「平台视角」时同样返回 `undefined`，可查看全量数据
+- `getCreateTenantId` 在多租户关闭时返回 `null`，不影响写入

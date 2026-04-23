@@ -424,3 +424,50 @@ const { hasPermission } = useAuth();
 {hasPermission('system:xxx:update') && <Button>编辑</Button>}
 {hasPermission('system:xxx:delete') && <Button>删除</Button>}
 ```
+
+---
+
+## 批量操作前端模板
+
+> 仅在用户确认需要批量操作时添加，并非所有列表都需要。
+
+```tsx
+// 1. 状态声明
+const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+
+// 2. 批量删除 handler
+const handleBatchDelete = () => {
+  Modal.confirm({
+    title: `确认删除选中的 ${selectedRowKeys.length} 条记录？`,
+    content: '删除后无法恢复，请谨慎操作。',
+    okButtonProps: { type: 'danger', theme: 'solid' },
+    onOk: async () => {
+      const res = await request.delete<null>('/api/xxxs/batch', { ids: selectedRowKeys });
+      if (res.code === 0) {
+        Toast.success('批量删除成功');
+        setSelectedRowKeys([]);
+        void fetchXxxs();
+      }
+    },
+  });
+};
+
+// 3. 工具栏中的批量按钮（仅选中时显示，放在查询/重置按钮之后）
+{selectedRowKeys.length > 0 && hasPermission('system:xxx:delete') && (
+  <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+    批量删除 ({selectedRowKeys.length})
+  </Button>
+)}
+
+// 4. Table 增加 rowSelection
+<Table
+  rowSelection={{
+    selectedRowKeys,
+    onChange: (keys) => setSelectedRowKeys(keys as number[]),
+  }}
+  bordered
+  ...
+/>
+```
+
+> `request.delete(url, body)` 支持传请求体（`packages/web/src/utils/request.ts` 已实现）。
