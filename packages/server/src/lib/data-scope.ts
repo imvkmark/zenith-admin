@@ -1,6 +1,6 @@
 import { eq, inArray, type SQL, type AnyColumn } from 'drizzle-orm';
 import { db } from '../db';
-import { roles, userRoles, users, departments } from '../db/schema';
+import { users, departments } from '../db/schema';
 
 export interface DataScopeOptions {
   /** 当前登录用户 ID */
@@ -38,12 +38,13 @@ export interface DataScopeOptions {
 export async function getDataScopeCondition(options: DataScopeOptions): Promise<SQL | undefined> {
   const { currentUserId, deptColumn, ownerColumn } = options;
 
-  // ── 1. 查询用户的所有角色及其 dataScope ──────────────────────────────────────
-  const userRoleList = await db
-    .select({ dataScope: roles.dataScope, code: roles.code })
-    .from(userRoles)
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(eq(userRoles.userId, currentUserId));
+  // ── 1. 查询用户的角色（含 dataScope）及部门，合并为单次 RQB 请求 ──────────────
+  const userData = await db.query.users.findFirst({
+    where: eq(users.id, currentUserId),
+    columns: { departmentId: true },
+    with: { userRoles: { columns: {}, with: { role: { columns: { dataScope: true, code: true } } } } },
+  });
+  const userRoleList = userData?.userRoles.map((ur) => ur.role) ?? [];
 
   // ── 2. 计算有效权限（多角色取最宽松原则）─────────────────────────────────────
   const isSuperAdmin = userRoleList.some((r) => r.code === 'super_admin');
@@ -55,18 +56,12 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
 
   // ── 3. dept 权限：本部门及子部门 ─────────────────────────────────────────────
   if (scopeSet.has('dept') && deptColumn) {
-    const [me] = await db
-      .select({ departmentId: users.departmentId })
-      .from(users)
-      .where(eq(users.id, currentUserId))
-      .limit(1);
-
-    if (me?.departmentId) {
+    if (userData?.departmentId) {
       // 递归获取当前部门及全部子部门 ID（内存中遍历，避免复杂 CTE）
       const allDepts = await db
         .select({ id: departments.id, parentId: departments.parentId })
         .from(departments);
-      const deptIds = collectDescendants(allDepts, me.departmentId);
+      const deptIds = collectDescendants(allDepts, userData.departmentId);
       return inArray(deptColumn, deptIds);
     }
 
