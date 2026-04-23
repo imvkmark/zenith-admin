@@ -6,7 +6,7 @@ import { eq, desc, gte, lte, like, and, isNull, gt } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { users, userRoles, roles, loginLogs, tenants, operationLogs, passwordResetTokens } from '../db/schema';
+import { users, loginLogs, tenants, operationLogs, passwordResetTokens } from '../db/schema';
 import { config } from '../config';
 import { sendMail } from '../lib/email';
 import { authMiddleware } from '../middleware/auth';
@@ -78,12 +78,15 @@ function getAuthUser(c: { get: (key: 'user') => unknown }): JwtPayload {
 }
 
 async function getUserRoles(userId: number) {
-  const rows = await db
-    .select({ id: roles.id, name: roles.name, code: roles.code, description: roles.description, status: roles.status, createdAt: roles.createdAt, updatedAt: roles.updatedAt })
-    .from(userRoles)
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(eq(userRoles.userId, userId));
-  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() }));
+  const result = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: {},
+    with: { userRoles: { columns: {}, with: { role: true } } },
+  });
+  return (result?.userRoles ?? []).map(({ role: r }) => ({
+    id: r.id, name: r.name, code: r.code, description: r.description,
+    status: r.status, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
+  }));
 }
 
 // ─── GET /captcha ────────────────────────────────────────────────────────────

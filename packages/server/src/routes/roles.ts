@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { eq, and, like, or, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { roles, roleMenus, userRoles, users } from '../db/schema';
+import { roles, roleMenus, userRoles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { clearUserPermissionCache } from '../lib/permissions';
@@ -268,33 +268,22 @@ const getUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const [role] = await db
-      .select({ id: roles.id })
-      .from(roles)
-      .where(and(eq(roles.id, id), tenantCondition(roles, c.get('user'))))
-      .limit(1);
+    const role = await db.query.roles.findFirst({
+      where: and(eq(roles.id, id), tenantCondition(roles, c.get('user'))),
+      columns: {},
+      with: { userRoles: { columns: {}, with: { user: true } } },
+    });
     if (!role) return c.json({ code: 404, message: '角色不存在', data: null }, 404);
-
-    const rows = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        nickname: users.nickname,
-        email: users.email,
-        avatar: users.avatar,
-        status: users.status,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-      })
-      .from(userRoles)
-      .innerJoin(users, eq(userRoles.userId, users.id))
-      .where(eq(userRoles.roleId, id));
 
     return c.json(
       {
         code: 0 as const,
         message: 'ok',
-        data: rows.map((u) => ({ ...u, createdAt: u.createdAt.toISOString(), updatedAt: u.updatedAt.toISOString() })),
+        data: role.userRoles.map(({ user: u }) => ({
+          id: u.id, username: u.username, nickname: u.nickname, email: u.email,
+          avatar: u.avatar, status: u.status,
+          createdAt: u.createdAt.toISOString(), updatedAt: u.updatedAt.toISOString(),
+        })),
       },
       200,
     );

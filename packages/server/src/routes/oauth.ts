@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
-import { users, userRoles, roles, userOauthAccounts } from '../db/schema';
+import { users, userOauthAccounts } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import type { JwtPayload } from '../middleware/auth';
 import { signToken } from '../lib/jwt';
@@ -23,12 +23,15 @@ function isValidProvider(p: string | undefined): p is OAuthProviderType {
 }
 
 async function getUserRoles(userId: number) {
-  const rows = await db
-    .select({ id: roles.id, name: roles.name, code: roles.code, description: roles.description, status: roles.status, createdAt: roles.createdAt, updatedAt: roles.updatedAt })
-    .from(userRoles)
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(eq(userRoles.userId, userId));
-  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() }));
+  const result = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: {},
+    with: { userRoles: { columns: {}, with: { role: true } } },
+  });
+  return (result?.userRoles ?? []).map(({ role: r }) => ({
+    id: r.id, name: r.name, code: r.code, description: r.description,
+    status: r.status, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
+  }));
 }
 
 async function issueTokens(user: { id: number; username: string }, roleCodes: string[]) {

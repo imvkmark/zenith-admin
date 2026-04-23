@@ -57,52 +57,36 @@ const batchStatusSchema = z.object({ ids: z.array(z.number().int()), status: z.e
 // Helpers
 async function getUserRolesMap(userIds: number[]) {
   if (userIds.length === 0) return new Map<number, Role[]>();
-  const rows = await db
-    .select({
-      userId: userRoles.userId,
-      id: roles.id, name: roles.name, code: roles.code, description: roles.description,
-      dataScope: roles.dataScope, status: roles.status,
-      createdAt: roles.createdAt, updatedAt: roles.updatedAt,
-    })
-    .from(userRoles)
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(inArray(userRoles.userId, userIds));
+  const result = await db.query.users.findMany({
+    where: inArray(users.id, userIds),
+    columns: { id: true },
+    with: { userRoles: { columns: {}, with: { role: true } } },
+  });
   const map = new Map<number, Role[]>();
-  for (const row of rows) {
-    const { userId, ...role } = row;
-    if (!map.has(userId)) map.set(userId, []);
-    map.get(userId)!.push({
-      ...role,
-      description: role.description ?? undefined,
-      createdAt: role.createdAt.toISOString(),
-      updatedAt: role.updatedAt.toISOString(),
-    });
+  for (const u of result) {
+    map.set(u.id, u.userRoles.map(({ role: r }) => ({
+      id: r.id, name: r.name, code: r.code, description: r.description ?? undefined,
+      dataScope: r.dataScope, status: r.status,
+      createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
+    })));
   }
   return map;
 }
 
 async function getUserPositionsMap(userIds: number[]) {
   if (userIds.length === 0) return new Map<number, Position[]>();
-  const rows = await db
-    .select({
-      userId: userPositions.userId,
-      id: positions.id, name: positions.name, code: positions.code,
-      sort: positions.sort, status: positions.status, remark: positions.remark,
-      createdAt: positions.createdAt, updatedAt: positions.updatedAt,
-    })
-    .from(userPositions)
-    .innerJoin(positions, eq(userPositions.positionId, positions.id))
-    .where(inArray(userPositions.userId, userIds));
+  const result = await db.query.users.findMany({
+    where: inArray(users.id, userIds),
+    columns: { id: true },
+    with: { userPositions: { columns: {}, with: { position: true } } },
+  });
   const map = new Map<number, Position[]>();
-  for (const row of rows) {
-    const { userId, ...position } = row;
-    if (!map.has(userId)) map.set(userId, []);
-    map.get(userId)!.push({
-      ...position,
-      remark: position.remark ?? undefined,
-      createdAt: position.createdAt.toISOString(),
-      updatedAt: position.updatedAt.toISOString(),
-    });
+  for (const u of result) {
+    map.set(u.id, u.userPositions.map(({ position: p }) => ({
+      id: p.id, name: p.name, code: p.code,
+      sort: p.sort, status: p.status, remark: p.remark ?? undefined,
+      createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString(),
+    })));
   }
   return map;
 }
@@ -197,18 +181,12 @@ const getAllUsersRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const payload = c.get('user');
     const tc = tenantCondition(users, payload);
-    const list = await db
-      .select({
-        id: users.id, username: users.username, nickname: users.nickname, email: users.email,
-        phone: users.phone, avatar: users.avatar,
-        departmentId: users.departmentId, departmentName: departments.name,
-        status: users.status, passwordUpdatedAt: users.passwordUpdatedAt,
-        createdAt: users.createdAt, updatedAt: users.updatedAt,
-      })
-      .from(users)
-      .leftJoin(departments, eq(users.departmentId, departments.id))
-      .where(tc)
-      .orderBy(users.id);
+    const rawList = await db.query.users.findMany({
+      where: tc,
+      with: { department: { columns: { name: true } } },
+      orderBy: users.id,
+    });
+    const list = rawList.map(({ department, ...u }) => ({ ...u, departmentName: department?.name ?? null }));
     const publicUsers = await toPublicUsers(list);
     return c.json({ code: 0 as const, message: 'ok', data: publicUsers }, 200);
   },
@@ -250,23 +228,17 @@ const listUsersRoute = defineOpenAPIRoute({
     if (tc) conditions.push(tc);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const [count, list] = await Promise.all([
+    const [count, rawList] = await Promise.all([
       db.$count(users, where),
-      db
-        .select({
-          id: users.id, username: users.username, nickname: users.nickname, email: users.email,
-          phone: users.phone, avatar: users.avatar,
-          departmentId: users.departmentId, departmentName: departments.name,
-          status: users.status, passwordUpdatedAt: users.passwordUpdatedAt,
-          createdAt: users.createdAt, updatedAt: users.updatedAt,
-        })
-        .from(users)
-        .leftJoin(departments, eq(users.departmentId, departments.id))
-        .where(where)
-        .limit(pageSize)
-        .offset(pageOffset(page, pageSize))
-        .orderBy(users.id),
+      db.query.users.findMany({
+        where,
+        with: { department: { columns: { name: true } } },
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+        orderBy: users.id,
+      }),
     ]);
+    const list = rawList.map(({ department, ...u }) => ({ ...u, departmentName: department?.name ?? null }));
     const publicUsers = await toPublicUsers(list);
     return c.json({ code: 0 as const, message: 'ok', data: { list: publicUsers, total: Number(count), page, pageSize } }, 200);
   },
@@ -559,16 +531,15 @@ const exportUsersRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const tc = tenantCondition(users, c.get('user'));
-    const list = await db
-      .select({
-        id: users.id, username: users.username, nickname: users.nickname, email: users.email,
-        departmentName: departments.name, status: users.status,
-        passwordUpdatedAt: users.passwordUpdatedAt, createdAt: users.createdAt,
-      })
-      .from(users)
-      .leftJoin(departments, eq(users.departmentId, departments.id))
-      .where(tc)
-      .orderBy(users.id);
+    const rawList = await db.query.users.findMany({
+      where: tc,
+      with: { department: { columns: { name: true } } },
+      orderBy: users.id,
+    });
+    const list = rawList.map((u) => ({
+      id: u.id, username: u.username, nickname: u.nickname, email: u.email,
+      departmentName: u.department?.name ?? null, status: u.status, createdAt: u.createdAt,
+    }));
     const buffer = await exportToExcel(
       [
         { header: 'ID', key: 'id', width: 8 },
