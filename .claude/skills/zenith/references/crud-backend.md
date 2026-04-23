@@ -24,7 +24,7 @@ export const xxxs = pgTable('xxxs', {
   parentId:    integer('parent_id').references(() => xxxs.id, { onDelete: 'set null' }),
   // 时间戳：
   createdAt:   timestamp('created_at').defaultNow().notNull(),
-  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 // ─── 类型导出 ────────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export interface Xxx {
 
 ```ts
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { and, eq, like, sql, gte, lte } from 'drizzle-orm';
+import { and, eq, like, gte, lte } from 'drizzle-orm';
 import { db } from '../db/index';
 import { xxxs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -176,10 +176,10 @@ const listRoute = defineOpenAPIRoute({
     if (startTime) conditions.push(gte(xxxs.createdAt, new Date(startTime)));
     if (endTime)   conditions.push(lte(xxxs.createdAt, new Date(endTime)));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(xxxs).where(where);
+    const total = await db.$count(xxxs, where);
     const rows = await db.select().from(xxxs).where(where)
       .limit(pageSize).offset((page - 1) * pageSize).orderBy(xxxs.id);
-    return c.json({ code: 0 as const, message: 'ok', data: { list: rows, total: Number(count), page, pageSize } }, 200);
+    return c.json({ code: 0 as const, message: 'ok', data: { list: rows, total, page, pageSize } }, 200);
   },
 });
 
@@ -232,7 +232,7 @@ const updateRoute_ = defineOpenAPIRoute({
     const data = c.req.valid('json');
     const [before] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
     if (before) setAuditBeforeData(c, before);
-    const [row] = await db.update(xxxs).set({ ...data, updatedAt: new Date() }).where(eq(xxxs.id, id)).returning();
+    const [row] = await db.update(xxxs).set({ ...data }).where(eq(xxxs.id, id)).returning();
     if (!row) return c.json({ code: 404, message: 'XXX不存在', data: null }, 404);
     return c.json({ code: 0 as const, message: '更新成功', data: row }, 200);
   },
