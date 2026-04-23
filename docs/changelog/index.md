@@ -4,6 +4,35 @@
 
 ---
 
+## v0.6.0 - 2026-04-23
+
+### Added
+
+#### 可观测性支持（OpenTelemetry + Prometheus）
+
+- 集成 OpenTelemetry SDK，支持分布式追踪（通过环境变量 `OTEL_*` 配置）
+- 集成 Prometheus 指标暴露，新增 `/api/metrics` 端点
+- 更新 API 文档，补充健康检查与指标端点说明
+
+### Changed
+
+#### 数据库查询规范化
+
+- 分页列表的 `total` 与 `list` 统一使用 `Promise.all` 并行执行，禁止串行 `await`
+- 计数查询统一使用 `db.$count(table, where)` 工具方法，覆盖仪表盘统计、定时任务、通知、消息模板、角色管理等多个路由
+- 新增 `pageOffset(page, pageSize)` 工具函数（`src/lib/pagination.ts`），统一分页偏移量计算，禁止手写 `(page - 1) * pageSize`
+- `updatedAt` 字段通过 `.$onUpdate(() => new Date())` 自动维护，`db.update().set()` 中禁止手动传入 `updatedAt`
+
+#### 关联查询优化
+
+- 推荐使用 Drizzle RQB（`db.query.*`）替代手写 `LEFT JOIN`，用户角色查询、用户管理等路由已迁移
+
+#### 事务原子性增强
+
+- 通知接收者保存、角色菜单分配、角色用户分配、API Token 相关多步写操作统一使用 `db.transaction()` 确保原子性
+
+---
+
 ## v0.5.0 - 2026-04-22
 
 ### Added
