@@ -103,8 +103,10 @@ const listRoute = defineOpenAPIRoute({
     if (startTime) conditions.push(gte(fileStorageConfigs.updatedAt, new Date(startTime)));
     if (endTime) conditions.push(lte(fileStorageConfigs.updatedAt, new Date(endTime)));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const total = await db.$count(fileStorageConfigs, where);
-    const list = await db.select().from(fileStorageConfigs).where(where).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id)).limit(pageSize).offset((page - 1) * pageSize);
+    const [total, list] = await Promise.all([
+      db.$count(fileStorageConfigs, where),
+      db.select().from(fileStorageConfigs).where(where).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id)).limit(pageSize).offset((page - 1) * pageSize),
+    ]);
     return c.json({ code: 0 as const, message: 'ok', data: { list: list.map(toFileStorageConfig), total, page, pageSize } }, 200);
   },
 });

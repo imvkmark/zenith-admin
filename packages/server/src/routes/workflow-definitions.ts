@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, and, like, desc, sql } from 'drizzle-orm';
+import { eq, and, like, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { workflowDefinitions, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -62,15 +62,17 @@ const listRoute = defineOpenAPIRoute({
     if (keyword) conditions.push(like(workflowDefinitions.name, `%${keyword}%`));
     if (status) conditions.push(eq(workflowDefinitions.status, status as 'draft' | 'published' | 'disabled'));
     const where = conditions.length ? and(...conditions) : undefined;
-    const total = await db.$count(workflowDefinitions, where);
-    const rows = await db
-      .select({ def: workflowDefinitions, createdByName: users.nickname })
-      .from(workflowDefinitions)
-      .leftJoin(users, eq(workflowDefinitions.createdBy, users.id))
-      .where(where)
-      .orderBy(desc(workflowDefinitions.id))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
+    const [total, rows] = await Promise.all([
+      db.$count(workflowDefinitions, where),
+      db
+        .select({ def: workflowDefinitions, createdByName: users.nickname })
+        .from(workflowDefinitions)
+        .leftJoin(users, eq(workflowDefinitions.createdBy, users.id))
+        .where(where)
+        .orderBy(desc(workflowDefinitions.id))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+    ]);
     return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(r => toDefinition(r.def, r.createdByName)), total, page, pageSize } }, 200);
   },
 });

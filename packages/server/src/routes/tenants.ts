@@ -62,8 +62,10 @@ const listRoute = defineOpenAPIRoute({
     if (keyword) conditions.push(like(tenants.name, `%${keyword}%`));
     if (status === 'active' || status === 'disabled') conditions.push(eq(tenants.status, status));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const count = await db.$count(tenants, where);
-    const rows = await db.select().from(tenants).where(where).orderBy(desc(tenants.id)).limit(pageSize).offset((page - 1) * pageSize);
+    const [count, rows] = await Promise.all([
+      db.$count(tenants, where),
+      db.select().from(tenants).where(where).orderBy(desc(tenants.id)).limit(pageSize).offset((page - 1) * pageSize),
+    ]);
     return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toTenant), total: count, page, pageSize } }, 200);
   },
 });

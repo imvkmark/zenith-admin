@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { and, desc, eq, like, or, sql, gte, lte } from 'drizzle-orm';
+import { and, desc, eq, like, or, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -116,15 +116,16 @@ const listRoute = defineOpenAPIRoute({
     const tc = tenantCondition(managedFiles, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
-    const count = await db.$count(managedFiles, finalWhere);
-
-    const paginated = await db
-      .select()
-      .from(managedFiles)
-      .where(finalWhere)
-      .orderBy(desc(managedFiles.id))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
+    const [count, paginated] = await Promise.all([
+      db.$count(managedFiles, finalWhere),
+      db
+        .select()
+        .from(managedFiles)
+        .where(finalWhere)
+        .orderBy(desc(managedFiles.id))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+    ]);
 
     return c.json(
       { code: 0 as const, message: 'ok', data: { list: paginated.map(toManagedFile), total: count, page, pageSize } },

@@ -58,15 +58,16 @@ const listRoute = defineOpenAPIRoute({
     const tc = tenantCondition(operationLogs, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
-    const count = await db.$count(operationLogs, finalWhere);
-
-    const rows = await db
-      .select()
-      .from(operationLogs)
-      .where(finalWhere)
-      .orderBy(desc(operationLogs.createdAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
+    const [count, rows] = await Promise.all([
+      db.$count(operationLogs, finalWhere),
+      db
+        .select()
+        .from(operationLogs)
+        .where(finalWhere)
+        .orderBy(desc(operationLogs.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+    ]);
 
     return c.json(
       {

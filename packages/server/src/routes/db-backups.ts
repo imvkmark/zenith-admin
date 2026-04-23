@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, desc, sql, and } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { db } from '../db';
 import { dbBackups, users } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -52,31 +52,32 @@ const listRoute = defineOpenAPIRoute({
     if (q.type) conditions.push(eq(dbBackups.type, q.type));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const count = await db.$count(dbBackups, where);
-
-    const rows = await db
-      .select({
-        id: dbBackups.id,
-        name: dbBackups.name,
-        type: dbBackups.type,
-        fileId: dbBackups.fileId,
-        fileSize: dbBackups.fileSize,
-        status: dbBackups.status,
-        tables: dbBackups.tables,
-        startedAt: dbBackups.startedAt,
-        completedAt: dbBackups.completedAt,
-        durationMs: dbBackups.durationMs,
-        errorMessage: dbBackups.errorMessage,
-        createdBy: dbBackups.createdBy,
-        createdByName: users.nickname,
-        createdAt: dbBackups.createdAt,
-      })
-      .from(dbBackups)
-      .leftJoin(users, eq(dbBackups.createdBy, users.id))
-      .where(where)
-      .orderBy(desc(dbBackups.createdAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
+    const [count, rows] = await Promise.all([
+      db.$count(dbBackups, where),
+      db
+        .select({
+          id: dbBackups.id,
+          name: dbBackups.name,
+          type: dbBackups.type,
+          fileId: dbBackups.fileId,
+          fileSize: dbBackups.fileSize,
+          status: dbBackups.status,
+          tables: dbBackups.tables,
+          startedAt: dbBackups.startedAt,
+          completedAt: dbBackups.completedAt,
+          durationMs: dbBackups.durationMs,
+          errorMessage: dbBackups.errorMessage,
+          createdBy: dbBackups.createdBy,
+          createdByName: users.nickname,
+          createdAt: dbBackups.createdAt,
+        })
+        .from(dbBackups)
+        .leftJoin(users, eq(dbBackups.createdBy, users.id))
+        .where(where)
+        .orderBy(desc(dbBackups.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+    ]);
 
     return c.json(
       {

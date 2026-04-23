@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { desc, eq, like, and, sql, gte, lte } from 'drizzle-orm';
+import { desc, eq, like, and, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
@@ -51,15 +51,16 @@ const listRoute = defineOpenAPIRoute({
     const tc = tenantCondition(loginLogs, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
 
-    const count = await db.$count(loginLogs, finalWhere);
-
-    const rows = await db
-      .select()
-      .from(loginLogs)
-      .where(finalWhere)
-      .orderBy(desc(loginLogs.createdAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
+    const [count, rows] = await Promise.all([
+      db.$count(loginLogs, finalWhere),
+      db
+        .select()
+        .from(loginLogs)
+        .where(finalWhere)
+        .orderBy(desc(loginLogs.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+    ]);
 
     return c.json(
       {

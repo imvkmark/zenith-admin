@@ -80,16 +80,18 @@ const listRoute = defineOpenAPIRoute({
     if (tc) conditions.push(tc);
     if (status) conditions.push(eq(workflowInstances.status, status as 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn'));
     const where = and(...conditions);
-    const total = await db.$count(workflowInstances, where);
-    const rows = await db
-      .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar })
-      .from(workflowInstances)
-      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
-      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
-      .where(where)
-      .orderBy(desc(workflowInstances.id))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
+    const [total, rows] = await Promise.all([
+      db.$count(workflowInstances, where),
+      db
+        .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar })
+        .from(workflowInstances)
+        .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+        .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+        .where(where)
+        .orderBy(desc(workflowInstances.id))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+    ]);
     return c.json({
       code: 0 as const,
       message: 'ok',

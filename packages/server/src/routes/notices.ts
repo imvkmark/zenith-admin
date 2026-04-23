@@ -224,8 +224,10 @@ const listRoute = defineOpenAPIRoute({
     const user = c.get('user');
     const tc = tenantCondition(notices, user);
     const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
-    const total = await db.$count(notices, finalWhere);
-    const rows = await db.select().from(notices).where(finalWhere).orderBy(desc(notices.createdAt)).limit(pageSize).offset((page - 1) * pageSize);
+    const [total, rows] = await Promise.all([
+      db.$count(notices, finalWhere),
+      db.select().from(notices).where(finalWhere).orderBy(desc(notices.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+    ]);
     const noticeIds = rows.map((r) => r.id);
     const readCountRows = noticeIds.length > 0
       ? await db.select({ noticeId: noticeReads.noticeId, cnt: count() }).from(noticeReads).where(inArray(noticeReads.noticeId, noticeIds)).groupBy(noticeReads.noticeId)

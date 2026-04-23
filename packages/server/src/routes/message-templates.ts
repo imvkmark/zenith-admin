@@ -70,14 +70,16 @@ const listRoute = defineOpenAPIRoute({
     if (q.status) conditions.push(eq(messageTemplates.status, q.status));
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const total = await db.$count(messageTemplates, where);
-    const list = await db
-      .select()
-      .from(messageTemplates)
-      .where(where)
-      .orderBy(messageTemplates.id)
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
+    const [total, list] = await Promise.all([
+      db.$count(messageTemplates, where),
+      db
+        .select()
+        .from(messageTemplates)
+        .where(where)
+        .orderBy(messageTemplates.id)
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+    ]);
 
     return c.json(
       { code: 0 as const, message: 'ok', data: { list: list.map(toMessageTemplate), total, page, pageSize } },

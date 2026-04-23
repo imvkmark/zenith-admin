@@ -82,8 +82,10 @@ const listRoute = defineOpenAPIRoute({
     const conditions = [];
     if (keyword) conditions.push(like(cronJobs.name, `%${keyword}%`));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const count = await db.$count(cronJobs, where);
-    const rows = await db.select().from(cronJobs).where(where).orderBy(desc(cronJobs.id)).limit(pageSize).offset((page - 1) * pageSize);
+    const [count, rows] = await Promise.all([
+      db.$count(cronJobs, where),
+      db.select().from(cronJobs).where(where).orderBy(desc(cronJobs.id)).limit(pageSize).offset((page - 1) * pageSize),
+    ]);
     return c.json({ code: 0 as const, message: 'ok', data: { list: rows.map(toCronJob), total: count, page, pageSize } }, 200);
   },
 });
@@ -274,8 +276,10 @@ const logsRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { page = 1, pageSize = 20 } = c.req.valid('query');
-    const count = await db.$count(cronJobLogs);
-    const rows = await db.select().from(cronJobLogs).orderBy(desc(cronJobLogs.startedAt)).limit(pageSize).offset((page - 1) * pageSize);
+    const [count, rows] = await Promise.all([
+      db.$count(cronJobLogs),
+      db.select().from(cronJobLogs).orderBy(desc(cronJobLogs.startedAt)).limit(pageSize).offset((page - 1) * pageSize),
+    ]);
     const list = rows.map((r) => ({
       id: r.id, jobId: r.jobId, jobName: r.jobName, executionCount: r.executionCount,
       startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString() ?? null,
@@ -303,8 +307,10 @@ const idLogsRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { page = 1, pageSize = 20 } = c.req.valid('query');
-    const count = await db.$count(cronJobLogs, eq(cronJobLogs.jobId, id));
-    const rows = await db.select().from(cronJobLogs).where(eq(cronJobLogs.jobId, id)).orderBy(desc(cronJobLogs.startedAt)).limit(pageSize).offset((page - 1) * pageSize);
+    const [count, rows] = await Promise.all([
+      db.$count(cronJobLogs, eq(cronJobLogs.jobId, id)),
+      db.select().from(cronJobLogs).where(eq(cronJobLogs.jobId, id)).orderBy(desc(cronJobLogs.startedAt)).limit(pageSize).offset((page - 1) * pageSize),
+    ]);
     const list = rows.map((r) => ({
       id: r.id, jobId: r.jobId, jobName: r.jobName, executionCount: r.executionCount,
       startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString() ?? null,

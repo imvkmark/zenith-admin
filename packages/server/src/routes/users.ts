@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import bcrypt from 'bcryptjs';
-import { eq, like, sql, and, or, inArray, gte, lte } from 'drizzle-orm';
+import { eq, like, and, or, inArray, gte, lte } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { db } from '../db';
 import { users, userRoles, roles, departments, positions, userPositions } from '../db/schema';
@@ -249,21 +249,23 @@ const listUsersRoute = defineOpenAPIRoute({
     if (tc) conditions.push(tc);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const count = await db.$count(users, where);
-    const list = await db
-      .select({
-        id: users.id, username: users.username, nickname: users.nickname, email: users.email,
-        phone: users.phone, avatar: users.avatar,
-        departmentId: users.departmentId, departmentName: departments.name,
-        status: users.status, passwordUpdatedAt: users.passwordUpdatedAt,
-        createdAt: users.createdAt, updatedAt: users.updatedAt,
-      })
-      .from(users)
-      .leftJoin(departments, eq(users.departmentId, departments.id))
-      .where(where)
-      .limit(pageSize)
-      .offset((page - 1) * pageSize)
-      .orderBy(users.id);
+    const [count, list] = await Promise.all([
+      db.$count(users, where),
+      db
+        .select({
+          id: users.id, username: users.username, nickname: users.nickname, email: users.email,
+          phone: users.phone, avatar: users.avatar,
+          departmentId: users.departmentId, departmentName: departments.name,
+          status: users.status, passwordUpdatedAt: users.passwordUpdatedAt,
+          createdAt: users.createdAt, updatedAt: users.updatedAt,
+        })
+        .from(users)
+        .leftJoin(departments, eq(users.departmentId, departments.id))
+        .where(where)
+        .limit(pageSize)
+        .offset((page - 1) * pageSize)
+        .orderBy(users.id),
+    ]);
     const publicUsers = await toPublicUsers(list);
     return c.json({ code: 0 as const, message: 'ok', data: { list: publicUsers, total: Number(count), page, pageSize } }, 200);
   },
