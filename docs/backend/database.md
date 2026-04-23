@@ -119,3 +119,77 @@ npm run db:seed
 | `user_api_tokens` | 用户个人 API Token（用于第三方接口调用）|
 | `password_reset_tokens` | 密码重置 Token（含过期时间，支持找回密码流程）|
 | `db_backups` | 数据库备份记录（文件名、大小、状态、备份类型）|
+
+## 数据库操作规范
+
+### 计数查询
+
+使用 `db.$count(table, where)` 代替 `db.select({ total: count() }).from(table).where(where)`：
+
+```ts
+// ✅ 推荐
+const total = await db.$count(users, and(eq(users.status, 'active'), tc));
+
+// ❌ 避免（冗余 select）
+const [{ total }] = await db.select({ total: count() }).from(users).where(where);
+```
+
+如果 count 查询需要 `JOIN`（如聚合分组），则仍需使用 `db.select({ cnt: count() }).from(table).leftJoin(...).groupBy(...)`。
+
+### updatedAt 自动更新
+
+所有表的 `updatedAt` 字段在 schema 中声明了 `.$onUpdate(() => new Date())`，**无需在 update 操作中手动传入**：
+
+```ts
+// ✅ 推荐
+await db.update(users).set({ name: 'Alice' }).where(eq(users.id, id));
+
+// ❌ 避免（手动传 updatedAt 是多余的）
+await db.update(users).set({ name: 'Alice', updatedAt: new Date() }).where(eq(users.id, id));
+```
+
+### 事务处理
+
+凡是**多步写操作**需要保证原子性时，必须使用 `db.transaction()`。
+
+#### 何时需要事务
+
+| 场景 | 示例 | 是否需要事务 |
+| ---- | ---- | ------------ |
+| **replace 模式**（先 delete 再 insert） | 保存角色菜单、保存通知接收人 | ✅ 必须 |
+| **多表联写**（写入主表 + 关联表） | 创建用户同时设置角色和岗位 | ✅ 必须 |
+| **单表单次写入** | 普通 create / update / delete | ❌ 不需要 |
+
+#### 模式一：辅助函数接受 executor 参数（推荐用于可复用的写操作）
+
+```ts
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// 辅助函数接受 executor，可在事务内和事务外都调用
+async function saveItems(executor: DbTransaction | typeof db, parentId: number, items: Item[]) {
+  await executor.delete(relTable).where(eq(relTable.parentId, parentId));
+  if (items.length > 0) {
+    await executor.insert(relTable).values(items.map(i => ({ parentId, ...i })));
+  }
+}
+
+// 使用时：传入 tx 确保与主表写入在同一事务
+const row = await db.transaction(async (tx) => {
+  const [created] = await tx.insert(mainTable).values(data).returning();
+  await saveItems(tx, created.id, data.items);
+  return created;
+});
+```
+
+#### 模式二：直接内联事务（适用于一次性多步操作）
+
+```ts
+await db.transaction(async (tx) => {
+  await tx.delete(roleMenus).where(eq(roleMenus.roleId, id));
+  if (menuIds.length > 0) {
+    await tx.insert(roleMenus).values(menuIds.map(menuId => ({ roleId: id, menuId })));
+  }
+});
+```
+
+> **注意**：WebSocket 推送、发邮件等副作用操作**不要放在事务内**，应在事务成功后执行。

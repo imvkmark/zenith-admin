@@ -304,14 +304,31 @@ guard({
 
 ## 多对多关联帮助函数模板
 
+> **必须使用事务**：先 delete 再 insert 的 replace 模式，若 insert 失败会丢失数据，必须保证原子性。
+> 辅助函数接受 executor 参数，可在事务内外统一调用。
+
 ```ts
-/** 先删后插，更新 xxx 的 yyy 关联 */
-async function setXxxYyys(xxxId: number, yyyIds: number[]): Promise<void> {
-  await db.delete(xxxYyys).where(eq(xxxYyys.xxxId, xxxId));
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** 先删后插，原子性更新 xxx 的 yyy 关联（调用方需传入 tx 或 db） */
+async function setXxxYyys(executor: DbTransaction | typeof db, xxxId: number, yyyIds: number[]): Promise<void> {
+  await executor.delete(xxxYyys).where(eq(xxxYyys.xxxId, xxxId));
   if (yyyIds.length > 0) {
-    await db.insert(xxxYyys).values(yyyIds.map((yyyId) => ({ xxxId, yyyId })));
+    await executor.insert(xxxYyys).values(yyyIds.map((yyyId) => ({ xxxId, yyyId })));
   }
 }
+
+// 在创建接口中：将主表写入与关联写入放在同一事务
+const row = await db.transaction(async (tx) => {
+  const [created] = await tx.insert(xxxs).values(data).returning();
+  await setXxxYyys(tx, created.id, data.yyyIds ?? []);
+  return created;
+});
+
+// 在独立的「分配关联」接口中（无需改主表）：同样用事务确保 delete+insert 原子
+await db.transaction(async (tx) => {
+  await setXxxYyys(tx, id, data.yyyIds);
+});
 ```
 
 ## 外键引用校验帮助函数模板

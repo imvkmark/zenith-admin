@@ -336,6 +336,9 @@ app.route('/api/xxx', xxxRoutes);
 | **多租户隔离** | 业务数据表添加 `tenantId` 字段，查询用 `tenantCondition(table, user)`，创建用 `getCreateTenantId(user)`；关闭多租户时两者均返回 `null`/`undefined`，无需额外判断 |
 | **批量操作路由顺序** | `DELETE /batch` 必须注册在 `DELETE /:id` 之前，防止路由冲突 |
 | **批量按钮显示时机** | 批量操作按钮仅在 `selectedRowKeys.length > 0` 时显示，放在查询/重置按钮之后 |
+| **updatedAt 自动维护** | schema 中所有表的 `updatedAt` 已配置 `.$onUpdate(() => new Date())`，**禁止**在 `db.update().set({})` 中手动传入 `updatedAt: new Date()` |
+| **计数查询** | 单表计数统一使用 `db.$count(table, where)`，禁止 `db.select({ total: count() }).from(table).where(where)` |
+| **事务** | 多步写操作（replace 模式 delete+insert、写主表+关联表）必须用 `db.transaction()`；辅助写函数接受 `executor: DbTransaction \| typeof db` 参数；副作用（WebSocket、邮件）不放入事务 |
 
 ---
 
