@@ -49,6 +49,7 @@ import messageTemplatesRoutes from './routes/message-templates';
 import workflowDefinitionsRoutes from './routes/workflow-definitions';
 import workflowInstancesRoutes from './routes/workflow-instances';
 import healthRoutes from './routes/health';
+import logFilesRoutes from './routes/log-files';
 import { createWsRoute } from './routes/ws';
 import { initCronScheduler } from './lib/cron-scheduler';
 import { initTelemetry } from './lib/telemetry';
@@ -119,7 +120,7 @@ if (config.requestBodyLimit > 0) {
 if (config.requestTimeoutMs > 0) {
   const timeoutMs = config.requestTimeoutMs;
   // 天生长耗时的路径前缀：WebSocket、文件上传/下载、数据库备份
-  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups'];
+  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/log-files'];
 
   const timeoutMiddleware = timeout(
     timeoutMs,
@@ -181,6 +182,7 @@ app.route('/api/workflows/definitions', workflowDefinitionsRoutes);
 app.route('/api/workflows', workflowInstancesRoutes);
 app.route('/api/ws', createWsRoute(upgradeWebSocket));
 app.route('/api/health', healthRoutes);
+app.route('/api/log-files', logFilesRoutes);
 app.get('/metrics', printMetrics);
 
 // API 文档（无需认证）

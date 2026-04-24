@@ -58,3 +58,18 @@ export const OperationLogStatsDTO = z
     userStats: z.array(z.object({ username: z.string(), count: z.number() })),
   })
   .openapi('OperationLogStats');
+
+export const LogFileDTO = z
+  .object({
+    name: z.string(),
+    size: z.number(),
+    modifiedAt: z.string(),
+    isGzip: z.boolean(),
+  })
+  .openapi('LogFile');
+
+export const LogFileContentDTO = z
+  .object({
+    lines: z.array(z.string()),
+  })
+  .openapi('LogFileContent');
