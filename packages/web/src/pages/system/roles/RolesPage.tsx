@@ -227,18 +227,19 @@ export default function RolesPage() {
       },
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
-    },
-    {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 180,
       ellipsis: true,
       render: (v) => formatDateTime(v),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      align: 'center',
+      fixed: 'right',
+      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
     },
     {
       title: '操作',
