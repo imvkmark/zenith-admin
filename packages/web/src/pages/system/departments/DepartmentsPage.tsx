@@ -227,17 +227,18 @@ export default function DepartmentsPage() {
     { title: '邮箱', dataIndex: 'email', width: 200, ellipsis: true, render: (value) => value || '—' },
     { title: '排序', dataIndex: 'sort', width: 90 },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      render: (value: string) => <DictTag dictCode="common_status" value={value} />,
-    },
-    {
       title: '创建时间',
       dataIndex: 'createdAt',
       width: 180,
       ellipsis: true,
       render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      fixed: 'right',
+      render: (value: string) => <DictTag dictCode="common_status" value={value} />,
     },
     {
       title: '操作',
