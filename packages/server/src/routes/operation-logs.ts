@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { exportToExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
-import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated } from '../lib/openapi-schemas';
+import { PaginationQuery, validationHook, commonErrorResponses, ok, okPaginated } from '../lib/openapi-schemas';
 import { OperationLogDTO, OperationLogStatsDTO as StatsDTO } from '../lib/openapi-dtos';
 
 const operationLogsRoute = new OpenAPIHono({ defaultHook: validationHook });

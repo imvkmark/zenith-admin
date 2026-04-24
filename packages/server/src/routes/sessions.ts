@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { sendToUser, closeUserConnections } from '../lib/ws-manager';
-import { validationHook, jsonContent, commonErrorResponses, PaginationQuery, okPaginated } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, PaginationQuery, okPaginated } from '../lib/openapi-schemas';
 import { OnlineSessionDTO as SessionItemSchema } from '../lib/openapi-dtos';
 import { pageOffset } from '../lib/pagination';
 
