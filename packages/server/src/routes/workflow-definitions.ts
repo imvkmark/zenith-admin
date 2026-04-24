@@ -1,16 +1,12 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, and, like, desc } from 'drizzle-orm';
-import { db } from '../db';
-import { pageOffset } from '../lib/pagination';
-import { workflowDefinitions } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { validateFlowData } from '../lib/workflow-engine';
-import type { WorkflowFlowData } from '@zenith/shared';
-import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { WorkflowDefinitionDTO } from '../lib/openapi-dtos';
-import { mapDefinition } from '../services/workflow-definitions.service';
+import {
+  listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
+  updateDefinition, publishDefinition, disableDefinition, deleteDefinition,
+} from '../services/workflow-definitions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -23,75 +19,30 @@ const createWorkflowDefinitionSchema = z.object({
 });
 const updateWorkflowDefinitionSchema = createWorkflowDefinitionSchema.partial();
 
-// GET /
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['WorkflowDefinitions'],
-    summary: '流程定义列表',
+    method: 'get', path: '/', tags: ['WorkflowDefinitions'], summary: '流程定义列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
     request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional() }) },
-    responses: {
-      ...commonErrorResponses,
-      ...okPaginated(WorkflowDefinitionDTO, 'ok'),
-    },
+    responses: { ...commonErrorResponses, ...okPaginated(WorkflowDefinitionDTO, 'ok') },
   }),
-  handler: async (c) => {
-    const user = c.get('user');
-    const { page = 1, pageSize = 20, keyword, status } = c.req.valid('query');
-    const tc = tenantCondition(workflowDefinitions, user);
-    const conditions = [];
-    if (tc) conditions.push(tc);
-    if (keyword) conditions.push(like(workflowDefinitions.name, `%${keyword}%`));
-    if (status) conditions.push(eq(workflowDefinitions.status, status as 'draft' | 'published' | 'disabled'));
-    const where = conditions.length ? and(...conditions) : undefined;
-    const [total, rows] = await Promise.all([
-      db.$count(workflowDefinitions, where),
-      db.query.workflowDefinitions.findMany({
-        where,
-        with: { createdByUser: { columns: { nickname: true } } },
-        orderBy: desc(workflowDefinitions.id),
-        limit: pageSize,
-        offset: pageOffset(page, pageSize),
-      }),
-    ]);
-    return c.json(okBody({ list: rows.map(r => mapDefinition(r, r.createdByUser?.nickname ?? null)), total, page, pageSize }), 200);
-  },
+  handler: async (c) => c.json(okBody(await listDefinitions(c.get('user'), c.req.valid('query'))), 200),
 });
 
-// GET /published
 const publishedRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/published',
-    tags: ['WorkflowDefinitions'],
-    summary: '已发布列表',
+    method: 'get', path: '/published', tags: ['WorkflowDefinitions'], summary: '已发布列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:instance:create' })] as const,
-    responses: {
-      ...commonErrorResponses,
-      ...ok(z.array(WorkflowDefinitionDTO), 'ok'),
-    },
+    responses: { ...commonErrorResponses, ...ok(z.array(WorkflowDefinitionDTO), 'ok') },
   }),
-  handler: async (c) => {
-    const user = c.get('user');
-    const tc = tenantCondition(workflowDefinitions, user);
-    const conditions = [eq(workflowDefinitions.status, 'published')];
-    if (tc) conditions.push(tc);
-    const rows = await db.select().from(workflowDefinitions).where(and(...conditions)).orderBy(desc(workflowDefinitions.updatedAt));
-    return c.json(okBody(rows.map(r => mapDefinition(r))), 200);
-  },
+  handler: async (c) => c.json(okBody(await listPublishedDefinitions(c.get('user'))), 200),
 });
 
-// GET /{id}
 const detailRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/{id}',
-    tags: ['WorkflowDefinitions'],
-    summary: '流程定义详情',
+    method: 'get', path: '/{id}', tags: ['WorkflowDefinitions'], summary: '流程定义详情',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
     request: { params: IdParam },
@@ -101,57 +52,26 @@ const detailRoute = defineOpenAPIRoute({
       404: { content: jsonContent(ErrorResponse), description: '不存在' },
     },
   }),
-  handler: async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-    const tc = tenantCondition(workflowDefinitions, user);
-    const conditions = [eq(workflowDefinitions.id, id)];
-    if (tc) conditions.push(tc);
-    const row = await db.query.workflowDefinitions.findFirst({
-      where: and(...conditions),
-      with: { createdByUser: { columns: { nickname: true } } },
-    });
-    if (!row) return c.json(errBody('流程定义不存在', 404), 404);
-    return c.json(okBody(mapDefinition(row, row.createdByUser?.nickname ?? null)), 200);
-  },
+  handler: async (c) => c.json(okBody(await getDefinition(c.get('user'), c.req.valid('param').id)), 200),
 });
 
-// POST /
 const createRouteDef = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post',
-    path: '/',
-    tags: ['WorkflowDefinitions'],
-    summary: '创建流程定义',
+    method: 'post', path: '/', tags: ['WorkflowDefinitions'], summary: '创建流程定义',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:create', audit: { description: '创建流程定义', module: '工作流管理' } })] as const,
     request: { body: { content: jsonContent(createWorkflowDefinitionSchema), required: true } },
-    responses: {
-      ...commonErrorResponses,
-      ...ok(WorkflowDefinitionDTO, '创建成功'),
-    },
+    responses: { ...commonErrorResponses, ...ok(WorkflowDefinitionDTO, '创建成功') },
   }),
   handler: async (c) => {
-    const user = c.get('user');
-    const data = c.req.valid('json');
-    const [row] = await db.insert(workflowDefinitions).values({
-      ...data,
-      flowData: (data.flowData as Record<string, unknown>) ?? null,
-      formFields: (data.formFields ?? null) as unknown as Record<string, unknown>,
-      createdBy: user.userId,
-      tenantId: getCreateTenantId(user),
-    }).returning();
-    return c.json(okBody(mapDefinition(row), '创建成功'), 200);
+    const r = await createDefinition(c.get('user'), c.req.valid('json'));
+    return c.json(okBody(r, '创建成功'), 200);
   },
 });
 
-// PUT /{id}
 const updateRouteDef = defineOpenAPIRoute({
   route: createRoute({
-    method: 'put',
-    path: '/{id}',
-    tags: ['WorkflowDefinitions'],
-    summary: '更新流程定义',
+    method: 'put', path: '/{id}', tags: ['WorkflowDefinitions'], summary: '更新流程定义',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '更新流程定义', module: '工作流管理' } })] as const,
     request: { params: IdParam, body: { content: jsonContent(updateWorkflowDefinitionSchema), required: true } },
@@ -162,32 +82,14 @@ const updateRouteDef = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-    const data = c.req.valid('json');
-    const tc = tenantCondition(workflowDefinitions, user);
-    const conditions = [eq(workflowDefinitions.id, id)];
-    if (tc) conditions.push(tc);
-    const updateData: Record<string, unknown> = { ...data };
-    if (data.flowData !== undefined) updateData.flowData = data.flowData as Record<string, unknown>;
-    if (data.formFields !== undefined) updateData.formFields = data.formFields as unknown[];
-    const [updated] = await db
-      .update(workflowDefinitions)
-      .set(updateData as Partial<typeof workflowDefinitions.$inferInsert>)
-      .where(and(...conditions))
-      .returning();
-    if (!updated) return c.json(errBody('流程定义不存在', 404), 404);
-    return c.json(okBody(mapDefinition(updated), '更新成功'), 200);
+    const r = await updateDefinition(c.get('user'), c.req.valid('param').id, c.req.valid('json'));
+    return c.json(okBody(r, '更新成功'), 200);
   },
 });
 
-// POST /{id}/publish
 const publishRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post',
-    path: '/{id}/publish',
-    tags: ['WorkflowDefinitions'],
-    summary: '发布流程',
+    method: 'post', path: '/{id}/publish', tags: ['WorkflowDefinitions'], summary: '发布流程',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:publish', audit: { description: '发布流程定义', module: '工作流管理' } })] as const,
     request: { params: IdParam },
@@ -199,33 +101,14 @@ const publishRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-    const tc = tenantCondition(workflowDefinitions, user);
-    const conditions = [eq(workflowDefinitions.id, id)];
-    if (tc) conditions.push(tc);
-    const [existing] = await db.select().from(workflowDefinitions).where(and(...conditions)).limit(1);
-    if (!existing) return c.json(errBody('流程定义不存在', 404), 404);
-    const flowData = existing.flowData as WorkflowFlowData | null;
-    if (!flowData?.nodes) return c.json(errBody('请先在设计器中设计流程'), 400);
-    const validation = validateFlowData(flowData);
-    if (!validation.valid) return c.json(errBody(validation.errors[0]), 400);
-    const [updated] = await db
-      .update(workflowDefinitions)
-      .set({ status: 'published', version: existing.version + 1 })
-      .where(and(...conditions))
-      .returning();
-    return c.json(okBody(mapDefinition(updated), '发布成功'), 200);
+    const r = await publishDefinition(c.get('user'), c.req.valid('param').id);
+    return c.json(okBody(r, '发布成功'), 200);
   },
 });
 
-// POST /{id}/disable
 const disableRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post',
-    path: '/{id}/disable',
-    tags: ['WorkflowDefinitions'],
-    summary: '禁用流程',
+    method: 'post', path: '/{id}/disable', tags: ['WorkflowDefinitions'], summary: '禁用流程',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:publish', audit: { description: '禁用流程定义', module: '工作流管理' } })] as const,
     request: { params: IdParam },
@@ -236,24 +119,14 @@ const disableRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-    const tc = tenantCondition(workflowDefinitions, user);
-    const conditions = [eq(workflowDefinitions.id, id)];
-    if (tc) conditions.push(tc);
-    const [updated] = await db.update(workflowDefinitions).set({ status: 'disabled' }).where(and(...conditions)).returning();
-    if (!updated) return c.json(errBody('流程定义不存在', 404), 404);
-    return c.json(okBody(mapDefinition(updated), '禁用成功'), 200);
+    const r = await disableDefinition(c.get('user'), c.req.valid('param').id);
+    return c.json(okBody(r, '禁用成功'), 200);
   },
 });
 
-// DELETE /{id}
 const deleteRouteDef = defineOpenAPIRoute({
   route: createRoute({
-    method: 'delete',
-    path: '/{id}',
-    tags: ['WorkflowDefinitions'],
-    summary: '删除流程',
+    method: 'delete', path: '/{id}', tags: ['WorkflowDefinitions'], summary: '删除流程',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:delete', audit: { description: '删除流程定义', module: '工作流管理' } })] as const,
     request: { params: IdParam },
@@ -265,15 +138,7 @@ const deleteRouteDef = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-    const tc = tenantCondition(workflowDefinitions, user);
-    const conditions = [eq(workflowDefinitions.id, id)];
-    if (tc) conditions.push(tc);
-    const [existing] = await db.select().from(workflowDefinitions).where(and(...conditions)).limit(1);
-    if (!existing) return c.json(errBody('流程定义不存在', 404), 404);
-    if (existing.status === 'published') return c.json(errBody('已发布的流程不能删除，请先禁用'), 400);
-    await db.delete(workflowDefinitions).where(and(...conditions));
+    await deleteDefinition(c.get('user'), c.req.valid('param').id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
