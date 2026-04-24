@@ -47,6 +47,10 @@ export async function sendTestEmail(toEmail: string) {
       html: '<p>这是一封来自 <strong>Zenith Admin</strong> 的测试邮件，说明您的邮件配置正确。</p>',
     });
   } catch (err: unknown) {
-    throw new AppError(`发送失败: ${err instanceof Error ? err.message : String(err)}`, 500);
+    let msg: string;
+    if (err instanceof Error) msg = err.message;
+    else if (typeof err === 'string') msg = err;
+    else msg = JSON.stringify(err);
+    throw new AppError(`发送失败: ${msg}`, 500);
   }
 }

@@ -1,9 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, eq as eqOp, gt, gte, isNull, like, lte } from 'drizzle-orm';
 import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
-import { users, loginLogs } from '../db/schema';
-import { signToken } from '../lib/jwt';
-import { generateTokenId } from '../lib/session-manager';
+import { users, loginLogs, tenants, operationLogs, passwordResetTokens } from '../db/schema';
+import { signToken, verifyToken } from '../lib/jwt';
+import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
 import type { JwtPayload } from '../middleware/auth';
 
 // ─── 获取用户角色列表 ─────────────────────────────────────────────────────────
@@ -84,16 +84,12 @@ export function getClientInfo(headers: { get: (key: string) => string | null | u
 // ─── 以下为下沉后的登录/注册/会话业务逻辑 ─────────────────────────────────────
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq as eqOp, gt, gte, isNull, like, lte } from 'drizzle-orm';
-import { tenants, operationLogs, passwordResetTokens } from '../db/schema';
 import { config } from '../config';
 import { pageOffset } from '../lib/pagination';
 import { sendMail } from '../lib/email';
-import { verifyToken } from '../lib/jwt';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { verifyCaptcha } from '../lib/captcha';
 import { getConfigBoolean, getConfigNumber } from '../lib/system-config';
-import { registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
 import { isPlatformAdmin } from '../lib/tenant';
 import { AppError } from '../lib/errors';
 

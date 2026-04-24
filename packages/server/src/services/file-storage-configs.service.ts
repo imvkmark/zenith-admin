@@ -1,4 +1,4 @@
-import { fileStorageConfigs } from '../db/schema';
+import { fileStorageConfigs, managedFiles } from '../db/schema';
 import type { DbExecutor } from '../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared';
 import type { z } from '@hono/zod-openapi';
@@ -85,7 +85,6 @@ export async function clearDefaultFlag(executor: DbExecutor) {
 import { asc, desc, eq, and, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { managedFiles } from '../db/schema';
 import { AppError } from '../lib/errors';
 
 export interface ListFileStorageConfigsQuery {
