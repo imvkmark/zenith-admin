@@ -152,12 +152,6 @@ export default function PositionsPage() {
     { title: '岗位编码', dataIndex: 'code', width: 180, ellipsis: true },
     { title: '排序', dataIndex: 'sort', width: 90 },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      render: (value: string) => <DictTag dictCode="common_status" value={value} />,
-    },
-    {
       title: '备注',
       dataIndex: 'remark',
       ellipsis: true,
@@ -169,6 +163,13 @@ export default function PositionsPage() {
       width: 180,
       ellipsis: true,
       render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      fixed: 'right',
+      render: (value: string) => <DictTag dictCode="common_status" value={value} />,
     },
     {
       title: '操作',
