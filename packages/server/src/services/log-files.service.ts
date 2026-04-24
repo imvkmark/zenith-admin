@@ -72,3 +72,48 @@ export async function watchTail(
     signal.addEventListener('abort', () => { clearInterval(interval); resolve(); });
   });
 }
+
+// ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
+import { AppError } from '../lib/errors';
+
+export function listLogFiles() {
+  if (!fs.existsSync(LOG_DIR)) return [];
+  const entries = fs.readdirSync(LOG_DIR, { withFileTypes: true });
+  return entries
+    .filter(e => e.isFile() && (e.name.endsWith('.log') || e.name.endsWith('.log.gz')))
+    .map(e => {
+      const stat = fs.statSync(path.join(LOG_DIR, e.name));
+      return {
+        name: e.name,
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        isGzip: e.name.endsWith('.gz'),
+      };
+    })
+    .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+}
+
+export function readLogFileLines(filename: string, lines: number) {
+  const name = safeFilename(filename);
+  if (!name) throw new AppError('无效的文件名', 400);
+  const filepath = resolveLogPath(name);
+  if (!filepath || !fs.existsSync(filepath)) throw new AppError('文件不存在', 404);
+  const isGzip = name.endsWith('.gz');
+  return isGzip ? readGzipLastLines(filepath, lines) : readLastLines(filepath, lines);
+}
+
+export function deleteLogFile(filename: string) {
+  const name = safeFilename(filename);
+  if (!name) throw new AppError('无效的文件名', 400);
+  const filepath = resolveLogPath(name);
+  if (!filepath || !fs.existsSync(filepath)) throw new AppError('文件不存在', 404);
+  fs.unlinkSync(filepath);
+}
+
+export function resolveLogFile(filename: string) {
+  const name = safeFilename(filename);
+  if (!name) throw new AppError('无效的文件名', 400);
+  const filepath = resolveLogPath(name);
+  if (!filepath || !fs.existsSync(filepath)) throw new AppError('文件不存在', 404);
+  return { name, filepath };
+}

@@ -1,26 +1,21 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { and, desc, eq, like, or, gte, lte } from 'drizzle-orm';
-import { db } from '../db';
-import { pageOffset } from '../lib/pagination';
-import { fileStorageConfigs, managedFiles } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
-import { exportToExcel } from '../lib/excel-export';
-import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, errBody, okExcel, excelBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
-import { mapManagedFile } from '../services/files.service';
+import {
+  readFileContent, listManagedFiles, uploadManagedFile, deleteManagedFile, exportManagedFiles,
+} from '../services/files.service';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
 
-// ─── Routes ───────────────────────────────────────────────────────────────
+function isUploadFile(value: unknown): value is File {
+  return !!value && typeof (value as File).arrayBuffer === 'function' && typeof (value as File).name === 'string';
+}
+
 const contentRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/{id}/content',
-    tags: ['Files'],
-    summary: '公开访问文件内容',
+    method: 'get', path: '/{id}/content', tags: ['Files'], summary: '公开访问文件内容',
     request: { params: IdParam },
     responses: {
       ...commonErrorResponses,
@@ -30,17 +25,7 @@ const contentRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
-    if (!file) return c.json(errBody('文件不存在', 404), 404);
-
-    const [storageConfig] = await db
-      .select()
-      .from(fileStorageConfigs)
-      .where(eq(fileStorageConfigs.id, file.storageConfigId))
-      .limit(1);
-    if (!storageConfig) return c.json(errBody('文件存储配置不存在', 404), 404);
-
-    const storedFile = await readStoredFile(file, storageConfig);
+    const storedFile = await readFileContent(id);
     return new Response(new Uint8Array(storedFile.buffer), {
       headers: {
         'Content-Type': storedFile.contentType,
@@ -50,16 +35,9 @@ const contentRoute = defineOpenAPIRoute({
   },
 });
 
-function isUploadFile(value: unknown): value is File {
-  return !!value && typeof (value as File).arrayBuffer === 'function' && typeof (value as File).name === 'string';
-}
-
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['Files'],
-    summary: '文件分页列表',
+    method: 'get', path: '/', tags: ['Files'], summary: '文件分页列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
     request: {
@@ -70,66 +48,18 @@ const listRoute = defineOpenAPIRoute({
         endTime: z.string().optional(),
       }),
     },
-    responses: {
-      ...commonErrorResponses,
-      ...okPaginated(ManagedFileDTO, '文件列表'),
-    },
+    responses: { ...commonErrorResponses, ...okPaginated(ManagedFileDTO, '文件列表') },
   }),
-  handler: async (c) => {
-    const q = c.req.valid('query');
-    const page = Number(q.page ?? 1);
-    const pageSize = Number(q.pageSize ?? 10);
-
-    const conditions = [];
-    if (q.keyword) {
-      conditions.push(
-        or(
-          like(managedFiles.originalName, `%${q.keyword}%`),
-          like(managedFiles.objectKey, `%${q.keyword}%`),
-          like(managedFiles.storageName, `%${q.keyword}%`),
-        ),
-      );
-    }
-    if (q.provider) conditions.push(eq(managedFiles.provider, q.provider));
-    if (q.startTime) conditions.push(gte(managedFiles.createdAt, new Date(q.startTime)));
-    if (q.endTime) conditions.push(lte(managedFiles.createdAt, new Date(q.endTime)));
-
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const user = c.get('user');
-    const tc = tenantCondition(managedFiles, user);
-    const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
-
-    const [count, paginated] = await Promise.all([
-      db.$count(managedFiles, finalWhere),
-      db
-        .select()
-        .from(managedFiles)
-        .where(finalWhere)
-        .orderBy(desc(managedFiles.id))
-        .limit(pageSize)
-        .offset(pageOffset(page, pageSize)),
-    ]);
-
-    return c.json(
-      okBody({ list: paginated.map(mapManagedFile), total: count, page, pageSize }),
-      200,
-    );
-  },
+  handler: async (c) => c.json(okBody(await listManagedFiles(c.get('user'), c.req.valid('query'))), 200),
 });
 
 const uploadRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post',
-    path: '/upload',
-    tags: ['Files'],
-    summary: '上传文件',
+    method: 'post', path: '/upload', tags: ['Files'], summary: '上传文件',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:upload', audit: { description: '上传文件', module: '文件管理', recordBody: false } })] as const,
     request: {
-      body: {
-        content: { 'multipart/form-data': { schema: z.object({ file: z.string() }) } },
-        required: true,
-      },
+      body: { content: { 'multipart/form-data': { schema: z.object({ file: z.string() }) } }, required: true },
     },
     responses: {
       ...commonErrorResponses,
@@ -140,46 +70,15 @@ const uploadRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const body = await c.req.parseBody();
     const rawFile = Array.isArray(body.file) ? body.file[0] : body.file;
-    if (!isUploadFile(rawFile)) {
-      return c.json(errBody('请选择要上传的文件'), 400);
-    }
-
-    const [defaultConfig] = await db
-      .select()
-      .from(fileStorageConfigs)
-      .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'active')))
-      .limit(1);
-
-    if (!defaultConfig) {
-      return c.json(errBody('当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务'), 400);
-    }
-
-    const uploaded = await uploadFileByConfig(defaultConfig, rawFile);
-    const [created] = await db
-      .insert(managedFiles)
-      .values({
-        storageConfigId: defaultConfig.id,
-        storageName: defaultConfig.name,
-        provider: defaultConfig.provider,
-        originalName: rawFile.name,
-        objectKey: uploaded.objectKey,
-        size: uploaded.size,
-        mimeType: uploaded.mimeType,
-        extension: uploaded.extension,
-        tenantId: getCreateTenantId(c.get('user')),
-      })
-      .returning();
-
-    return c.json(okBody(mapManagedFile(created), '上传成功'), 200);
+    if (!isUploadFile(rawFile)) return c.json(errBody('请选择要上传的文件'), 400);
+    const r = await uploadManagedFile(c.get('user'), rawFile);
+    return c.json(okBody(r, '上传成功'), 200);
   },
 });
 
 const deleteRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'delete',
-    path: '/{id}',
-    tags: ['Files'],
-    summary: '删除文件',
+    method: 'delete', path: '/{id}', tags: ['Files'], summary: '删除文件',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:delete', audit: { description: '删除文件', module: '文件管理', recordBody: false } })] as const,
     request: { params: IdParam },
@@ -190,56 +89,21 @@ const deleteRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const { id } = c.req.valid('param');
-    const [file] = await db.select().from(managedFiles).where(eq(managedFiles.id, id)).limit(1);
-    if (!file) return c.json(errBody('文件不存在', 404), 404);
-
-    const [storageConfig] = await db
-      .select()
-      .from(fileStorageConfigs)
-      .where(eq(fileStorageConfigs.id, file.storageConfigId))
-      .limit(1);
-    if (storageConfig) {
-      await deleteStoredFile(file, storageConfig);
-    }
-
-    await db.delete(managedFiles).where(and(eq(managedFiles.id, id), tenantCondition(managedFiles, c.get('user'))));
+    await deleteManagedFile(c.get('user'), c.req.valid('param').id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
 const exportRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/export',
-    tags: ['Files'],
-    summary: '导出文件列表 Excel',
+    method: 'get', path: '/export', tags: ['Files'], summary: '导出文件列表 Excel',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
-    responses: {
-      ...commonErrorResponses,
-      ...okExcel('Excel 文件'),
-    },
+    responses: { ...commonErrorResponses, ...okExcel('Excel 文件') },
   }),
   handler: async (c) => {
-    const rows = await db
-      .select()
-      .from(managedFiles)
-      .where(tenantCondition(managedFiles, c.get('user')))
-      .orderBy(desc(managedFiles.id));
-    const buffer = await exportToExcel(
-      [
-        { header: 'ID', key: 'id', width: 8 },
-        { header: '文件名', key: 'originalName', width: 28 },
-        { header: '类型', key: 'mimeType', width: 18 },
-        { header: '大小(bytes)', key: 'size', width: 14 },
-        { header: '存储方式', key: 'storageProvider', width: 12 },
-        { header: '上传时间', key: 'createdAt', width: 22 },
-      ],
-      rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
-      '文件列表',
-    );
-    return excelBody(c, buffer, 'files.xlsx');
+    const { buffer, filename } = await exportManagedFiles(c.get('user'));
+    return excelBody(c, buffer, filename);
   },
 });
 

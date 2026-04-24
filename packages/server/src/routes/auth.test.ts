@@ -135,6 +135,15 @@ async function makeToken(payload: object = {}) {
 function buildApp() {
   const app = new Hono();
   app.route('/api/auth', authRoutes);
+  // 与 src/index.ts 保持一致的 AppError 全局处理
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  app.onError((err: any, c) => {
+    if (err?.statusCode && typeof err.message === 'string') {
+      const status = err.statusCode;
+      return c.json({ code: status, message: err.message, data: null }, status);
+    }
+    return c.json({ code: 500, message: '服务器内部错误', data: null }, 500);
+  });
   return app;
 }
 

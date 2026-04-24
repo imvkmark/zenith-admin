@@ -1,59 +1,30 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { streamSSE } from 'hono/streaming';
 import fs from 'node:fs';
-import path from 'node:path';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { validationHook, commonErrorResponses, ok, okMsg, ErrorResponse, jsonContent, okBody, errBody } from '../lib/openapi-schemas';
 import { LogFileDTO, LogFileContentDTO } from '../lib/openapi-dtos';
-import { safeFilename, resolveLogPath, readLastLines, readGzipLastLines, watchTail, LOG_DIR } from '../services/log-files.service';
+import {
+  readLastLines, watchTail,
+  listLogFiles, readLogFileLines, deleteLogFile, resolveLogFile,
+} from '../services/log-files.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-// ─── Routes ────────────────────────────────────────────────────────────────
-
 const listRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/',
-    tags: ['LogFiles'],
-    summary: '日志文件列表',
+    method: 'get', path: '/', tags: ['LogFiles'], summary: '日志文件列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:files' })] as const,
-    responses: {
-      ...ok(z.array(LogFileDTO), '日志文件列表'),
-      ...commonErrorResponses,
-    },
+    responses: { ...ok(z.array(LogFileDTO), '日志文件列表'), ...commonErrorResponses },
   }),
-  handler: async (c) => {
-    if (!fs.existsSync(LOG_DIR)) {
-      return c.json(okBody([], 'success'), 200);
-    }
-
-    const entries = fs.readdirSync(LOG_DIR, { withFileTypes: true });
-    const files = entries
-      .filter(e => e.isFile() && (e.name.endsWith('.log') || e.name.endsWith('.log.gz')))
-      .map(e => {
-        const stat = fs.statSync(path.join(LOG_DIR, e.name));
-        return {
-          name: e.name,
-          size: stat.size,
-          modifiedAt: stat.mtime.toISOString(),
-          isGzip: e.name.endsWith('.gz'),
-        };
-      })
-      .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
-
-    return c.json(okBody(files, 'success'), 200);
-  },
+  handler: async (c) => c.json(okBody(listLogFiles(), 'success'), 200),
 });
 
 const contentRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get',
-    path: '/:filename/content',
-    tags: ['LogFiles'],
-    summary: '读取日志文件内容（最后 N 行）',
+    method: 'get', path: '/:filename/content', tags: ['LogFiles'], summary: '读取日志文件内容（最后 N 行）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:files' })] as const,
     request: {
@@ -68,30 +39,15 @@ const contentRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const name = safeFilename(c.req.param('filename'));
-    if (!name) return c.json(errBody('无效的文件名'), 400);
-
-    const filepath = resolveLogPath(name);
-    if (!filepath || !fs.existsSync(filepath)) {
-      return c.json(errBody('文件不存在', 404), 404);
-    }
-
     const q = c.req.valid('query');
-    const n = q.lines ?? 500;
-
-    const isGzip = name.endsWith('.gz');
-    const lines = isGzip ? readGzipLastLines(filepath, n) : readLastLines(filepath, n);
-
+    const lines = readLogFileLines(c.req.param('filename'), q.lines ?? 500);
     return c.json(okBody({ lines }, 'success'), 200);
   },
 });
 
-const deleteRoute = defineOpenAPIRoute({
+const deleteApiRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'delete',
-    path: '/:filename',
-    tags: ['LogFiles'],
-    summary: '删除日志文件',
+    method: 'delete', path: '/:filename', tags: ['LogFiles'], summary: '删除日志文件',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:log:files:delete' })] as const,
     request: {
@@ -105,38 +61,20 @@ const deleteRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const name = safeFilename(c.req.param('filename'));
-    if (!name) return c.json(errBody('无效的文件名'), 400);
-
-    const filepath = resolveLogPath(name);
-    if (!filepath || !fs.existsSync(filepath)) {
-      return c.json(errBody('文件不存在', 404), 404);
-    }
-
-    fs.unlinkSync(filepath);
+    deleteLogFile(c.req.param('filename'));
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
 
-router.openapiRoutes([listRoute, contentRoute, deleteRoute] as const);
+router.openapiRoutes([listRoute, contentRoute, deleteApiRoute] as const);
 
-// ─── 非 OpenAPI 路由：文件下载 & SSE 实时追踪 ────────────────────────────
-
-/** 文件下载（原始文件） */
+// 非 OpenAPI 路由：下载 & SSE
 router.get('/:filename/download', authMiddleware, guard({ permission: 'system:log:files:download' }), async (c) => {
-  const name = safeFilename(c.req.param('filename'));
-  if (!name) return c.json(errBody('无效的文件名'), 400);
-
-  const filepath = resolveLogPath(name);
-  if (!filepath || !fs.existsSync(filepath)) {
-    return c.json(errBody('文件不存在', 404), 404);
-  }
-
+  const { name, filepath } = resolveLogFile(c.req.param('filename'));
   const stat = fs.statSync(filepath);
   const stream = fs.createReadStream(filepath);
   const { Readable } = await import('node:stream');
   const webStream = Readable.toWeb(stream) as ReadableStream;
-
   return new Response(webStream, {
     headers: {
       'Content-Type': 'application/octet-stream',
@@ -146,28 +84,17 @@ router.get('/:filename/download', authMiddleware, guard({ permission: 'system:lo
   });
 });
 
-/** SSE 实时追踪（仅支持未压缩的 .log 文件） */
 router.get('/:filename/tail', authMiddleware, guard({ permission: 'system:log:files' }), async (c) => {
-  const name = safeFilename(c.req.param('filename'));
-  if (!name || name.endsWith('.gz')) {
-    return c.json(errBody('压缩文件不支持实时追踪'), 400);
-  }
-
-  const filepath = resolveLogPath(name);
-  if (!filepath || !fs.existsSync(filepath)) {
-    return c.json(errBody('文件不存在', 404), 404);
-  }
-
+  const rawName = c.req.param('filename');
+  if (rawName.endsWith('.gz')) return c.json(errBody('压缩文件不支持实时追踪'), 400);
+  const { filepath } = resolveLogFile(rawName);
   return streamSSE(c, async (stream) => {
-    // 先发送最后 100 行作为初始内容
     const initialLines = readLastLines(filepath, 100);
     for (const line of initialLines) {
       await stream.writeSSE({ data: line, event: 'log' });
     }
-
     let position = fs.statSync(filepath).size;
     const signal = c.req.raw.signal;
-
     await watchTail(filepath, signal, position, async (newLines, newPos) => {
       position = newPos;
       for (const line of newLines) {
