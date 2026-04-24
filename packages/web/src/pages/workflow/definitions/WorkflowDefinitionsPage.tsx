@@ -104,15 +104,6 @@ export default function WorkflowDefinitionsPage() {
       render: (v: string | null) => v ?? '—',
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      render: (v: string) => {
-        const s = STATUS_MAP[v];
-        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
-      },
-    },
-    {
       title: '版本',
       dataIndex: 'version',
       width: 70,
@@ -130,6 +121,16 @@ export default function WorkflowDefinitionsPage() {
       dataIndex: 'updatedAt',
       width: 170,
       render: (v: string) => formatDateTime(v),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      fixed: 'right',
+      render: (v: string) => {
+        const s = STATUS_MAP[v];
+        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
+      },
     },
     {
       title: '操作',

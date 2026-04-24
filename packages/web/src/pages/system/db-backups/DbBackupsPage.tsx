@@ -89,12 +89,6 @@ export default function DbBackupsPage() {
       render: (v: BackupType) => <Tag size="small">{v === 'pg_dump' ? 'pg_dump' : 'Drizzle 导出'}</Tag>,
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      render: (v: BackupStatus) => <Tag color={statusColorMap[v]} size="small">{statusLabelMap[v]}</Tag>,
-    },
-    {
       title: '文件大小',
       dataIndex: 'fileSize',
       width: 100,
@@ -108,6 +102,13 @@ export default function DbBackupsPage() {
     },
     { title: '创建者', dataIndex: 'createdByName', width: 100, render: (v: string | null) => v || '-' },
     { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      fixed: 'right' as const,
+      render: (v: BackupStatus) => <Tag color={statusColorMap[v]} size="small">{statusLabelMap[v]}</Tag>,
+    },
     {
       title: '操作',
       fixed: 'right' as const,

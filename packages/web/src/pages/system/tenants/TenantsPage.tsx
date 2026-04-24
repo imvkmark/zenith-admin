@@ -109,17 +109,6 @@ export default function TenantsPage() {
     { title: '联系电话', dataIndex: 'contactPhone', width: 140, ellipsis: true, render: (v) => v || '—' },
     { title: '最大用户数', dataIndex: 'maxUsers', width: 120, align: 'center', render: (v) => v ?? '不限' },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      render: (v: string) => (
-        <Tag color={v === 'active' ? 'green' : 'red'} type="light">
-          {v === 'active' ? '正常' : '停用'}
-        </Tag>
-      ),
-    },
-    {
       title: '到期时间',
       dataIndex: 'expireAt',
       width: 180,
@@ -132,6 +121,18 @@ export default function TenantsPage() {
       width: 180,
       ellipsis: true,
       render: (v) => formatDateTime(v),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      align: 'center',
+      fixed: 'right',
+      render: (v: string) => (
+        <Tag color={v === 'active' ? 'green' : 'red'} type="light">
+          {v === 'active' ? '正常' : '停用'}
+        </Tag>
+      ),
     },
     {
       title: '操作',

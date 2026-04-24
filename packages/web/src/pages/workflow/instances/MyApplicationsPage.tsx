@@ -339,19 +339,20 @@ export default function MyApplicationsPage() {
       render: (v: string | null) => v ?? '—',
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      render: (v: string) => {
-        const s = INSTANCE_STATUS_MAP[v];
-        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
-      },
-    },
-    {
       title: '提交时间',
       dataIndex: 'createdAt',
       width: 180,
       render: (v: string) => formatDateTime(v),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      fixed: 'right',
+      render: (v: string) => {
+        const s = INSTANCE_STATUS_MAP[v];
+        return <Tag color={s?.color ?? 'grey'}>{s?.text ?? v}</Tag>;
+      },
     },
     {
       title: '操作',

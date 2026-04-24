@@ -211,12 +211,6 @@ export default function CronJobsPage() {
     { title: 'Cron 表达式', dataIndex: 'cronExpression', width: 150 },
     { title: '处理器', dataIndex: 'handler', width: 180, ellipsis: true },
     {
-      title: '状态', dataIndex: 'status', width: 90,
-      render: (v: string) => (
-        <Tag color={v === 'active' ? 'green' : 'grey'} size="small">{v === 'active' ? '启用' : '禁用'}</Tag>
-      ),
-    },
-    {
       title: '上次执行', dataIndex: 'lastRunStatus', width: 90,
       render: (v: string | null) =>
         v ? <Tag color={runStatusColor[v] ?? 'grey'} size="small">{({'success': '成功', 'fail': '失败', 'running': '运行中'} as Record<string, string>)[v] ?? v}</Tag> : '—',
@@ -226,6 +220,13 @@ export default function CronJobsPage() {
       render: (v: string | null) => v ? formatDateTime(v) : '—',
     },
     { title: '描述', dataIndex: 'description', width: 200, ellipsis: true },
+    {
+      title: '状态', dataIndex: 'status', width: 90,
+      fixed: 'right',
+      render: (v: string) => (
+        <Tag color={v === 'active' ? 'green' : 'grey'} size="small">{v === 'active' ? '启用' : '禁用'}</Tag>
+      ),
+    },
     {
       title: '操作',
       fixed: 'right',

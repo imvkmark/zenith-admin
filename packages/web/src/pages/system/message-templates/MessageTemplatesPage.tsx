@@ -188,22 +188,23 @@ export default function MessageTemplatesPage() {
     },
     { title: '模板标题', dataIndex: 'subject', width: 180, ellipsis: true, render: (v) => v || '—' },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      align: 'center',
-      render: (v: string) => (
-        <Tag color={v === 'active' ? 'green' : 'red'} type="light">
-          {v === 'active' ? '启用' : '停用'}
-        </Tag>
-      ),
-    },
-    {
       title: '更新时间',
       dataIndex: 'updatedAt',
       width: 180,
       ellipsis: true,
       render: (v) => formatDateTime(v),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      align: 'center',
+      fixed: 'right',
+      render: (v: string) => (
+        <Tag color={v === 'active' ? 'green' : 'red'} type="light">
+          {v === 'active' ? '启用' : '停用'}
+        </Tag>
+      ),
     },
     {
       title: '操作',
