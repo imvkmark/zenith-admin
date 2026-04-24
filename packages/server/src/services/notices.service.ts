@@ -1,8 +1,13 @@
-import { eq, inArray, sql, or } from 'drizzle-orm';
+import { count, desc, eq, like, and, gte, lte, inArray, sql, or } from 'drizzle-orm';
 import { db } from '../db';
 import type { DbExecutor } from '../db/types';
-import { notices, noticeRecipients, users, userRoles } from '../db/schema';
+import { notices, noticeRecipients, noticeReads, users, userRoles, roles, departments } from '../db/schema';
 import { broadcast, sendToUser } from '../lib/ws-manager';
+import { tenantCondition, getCreateTenantId } from '../lib/tenant';
+import { pageOffset } from '../lib/pagination';
+import { exportToExcel } from '../lib/excel-export';
+import { AppError } from '../lib/errors';
+import type { JwtPayload } from '../middleware/auth';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -74,4 +79,250 @@ export async function broadcastNotice(notice: ReturnType<typeof mapNotice>, noti
     deptUsers.forEach((u) => userIdSet.add(u.id));
   }
   for (const uid of userIdSet) sendToUser(uid, { type: 'notice:new', payload: notice });
+}
+
+// ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
+
+export async function listPublishedForUser(user: JwtPayload) {
+  const tc = tenantCondition(notices, user);
+  const accessFilter = buildAccessFilter(user.userId);
+  const where = and(eq(notices.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
+  const rows = await db.select().from(notices).where(where).orderBy(desc(notices.publishTime)).limit(20);
+  const readRows = await db.select({ noticeId: noticeReads.noticeId }).from(noticeReads).where(eq(noticeReads.userId, user.userId));
+  const readSet = new Set(readRows.map((r) => r.noticeId));
+  return rows.map((row) => ({ ...mapNotice(row), isRead: readSet.has(row.id) }));
+}
+
+export async function markNoticeRead(userId: number, noticeId: number) {
+  await db.insert(noticeReads).values({ noticeId, userId }).onConflictDoNothing();
+}
+
+export async function markAllNoticesRead(userId: number) {
+  const accessFilter = buildAccessFilter(userId);
+  const allPublished = await db.select({ id: notices.id }).from(notices).where(and(eq(notices.publishStatus, 'published'), accessFilter));
+  if (allPublished.length === 0) return;
+  const readRows = await db.select({ noticeId: noticeReads.noticeId }).from(noticeReads).where(eq(noticeReads.userId, userId));
+  const readSet = new Set(readRows.map((r) => r.noticeId));
+  const unreadIds = allPublished.filter((n) => !readSet.has(n.id)).map((n) => n.id);
+  if (unreadIds.length > 0) {
+    await db.insert(noticeReads).values(unreadIds.map((noticeId) => ({ noticeId, userId }))).onConflictDoNothing();
+  }
+}
+
+export async function getInbox(user: JwtPayload, q: { page?: number; pageSize?: number; isRead?: string }) {
+  const { page = 1, pageSize = 10, isRead } = q;
+  const tc = tenantCondition(notices, user);
+  const accessFilter = buildAccessFilter(user.userId);
+  const where = and(eq(notices.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
+  const [readRows, allRows] = await Promise.all([
+    db.select({ noticeId: noticeReads.noticeId }).from(noticeReads).where(eq(noticeReads.userId, user.userId)),
+    db.select().from(notices).where(where).orderBy(desc(notices.publishTime)),
+  ]);
+  const readSet = new Set(readRows.map((r) => r.noticeId));
+  let list = allRows.map((row) => ({ ...mapNotice(row), isRead: readSet.has(row.id) }));
+  if (isRead === 'true') list = list.filter((n) => n.isRead);
+  else if (isRead === 'false') list = list.filter((n) => !n.isRead);
+  const total = list.length;
+  const paged = list.slice(pageOffset(page, pageSize), page * pageSize);
+  return { list: paged, total, page, pageSize };
+}
+
+export async function listNotices(user: JwtPayload, q: { page?: number; pageSize?: number; title?: string; type?: string; publishStatus?: string; startTime?: string; endTime?: string }) {
+  const { page = 1, pageSize = 10, title, type, publishStatus, startTime, endTime } = q;
+  const conditions = [];
+  if (title) conditions.push(like(notices.title, `%${title}%`));
+  if (type) conditions.push(eq(notices.type, type));
+  if (publishStatus) conditions.push(eq(notices.publishStatus, publishStatus));
+  if (startTime) conditions.push(gte(notices.createdAt, new Date(startTime)));
+  if (endTime) conditions.push(lte(notices.createdAt, new Date(endTime)));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const tc = tenantCondition(notices, user);
+  const finalWhere = where && tc ? and(where, tc) : (tc ?? where);
+  const [total, rows] = await Promise.all([
+    db.$count(notices, finalWhere),
+    db.select().from(notices).where(finalWhere).orderBy(desc(notices.createdAt)).limit(pageSize).offset(pageOffset(page, pageSize)),
+  ]);
+  const noticeIds = rows.map((r) => r.id);
+  const readCountRows = noticeIds.length > 0
+    ? await db.select({ noticeId: noticeReads.noticeId, cnt: count() }).from(noticeReads).where(inArray(noticeReads.noticeId, noticeIds)).groupBy(noticeReads.noticeId)
+    : [];
+  const readCountMap = new Map(readCountRows.map((r) => [r.noticeId, r.cnt]));
+  return { list: rows.map((r) => ({ ...mapNotice(r), readCount: readCountMap.get(r.id) ?? 0 })), total: Number(total), page, pageSize };
+}
+
+export async function exportNotices(user: JwtPayload): Promise<{ buffer: ArrayBuffer; filename: string }> {
+  const rows = await db.select().from(notices).where(tenantCondition(notices, user)).orderBy(desc(notices.id));
+  const buffer = await exportToExcel(
+    [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: '标题', key: 'title', width: 24 },
+      { header: '类型', key: 'type', width: 12 },
+      { header: '优先级', key: 'priority', width: 10 },
+      { header: '发布状态', key: 'publishStatus', width: 12 },
+      { header: '创建人', key: 'createByName', width: 14 },
+      { header: '创建时间', key: 'createdAt', width: 22 },
+    ],
+    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    '通知公告',
+  );
+  return { buffer, filename: 'notices.xlsx' };
+}
+
+export async function batchDeleteNotices(user: JwtPayload, ids: number[]) {
+  if (!Array.isArray(ids) || ids.length === 0) throw new AppError('请选择要删除的通知', 400);
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) throw new AppError('通知ID格式无效', 400);
+  await db.delete(notices).where(and(inArray(notices.id, validIds), tenantCondition(notices, user)));
+  return validIds.length;
+}
+
+export async function getNoticeReadStats(user: JwtPayload, id: number, q: { page?: number; pageSize?: number; tab?: string }) {
+  const { page = 1, pageSize = 10, tab: rawTab } = q;
+  const tab = rawTab === 'unread' ? 'unread' : 'read';
+  const [notice] = await db.select().from(notices).where(eq(notices.id, id));
+  if (!notice) throw new AppError('通知不存在', 404);
+
+  const reads = await db.select({ userId: noticeReads.userId, readAt: noticeReads.readAt }).from(noticeReads).where(eq(noticeReads.noticeId, id));
+  const readMap = new Map(reads.map((r) => [r.userId, r.readAt]));
+
+  let targetUserIds: number[];
+  if (notice.targetType === 'all') {
+    const tc = tenantCondition(users, user);
+    const allUsers = await db.select({ id: users.id }).from(users).where(and(eq(users.status, 'active'), ...(tc ? [tc] : [])));
+    targetUserIds = allUsers.map((u) => u.id);
+  } else {
+    const recipients = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id));
+    const userIdSet = new Set<number>();
+    recipients.filter((r) => r.recipientType === 'user').forEach((r) => userIdSet.add(r.recipientId));
+    const roleIds = recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
+    if (roleIds.length > 0) {
+      const roleUsers = await db.select({ userId: userRoles.userId }).from(userRoles).where(inArray(userRoles.roleId, roleIds));
+      roleUsers.forEach((r) => userIdSet.add(r.userId));
+    }
+    const deptIds = recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId);
+    if (deptIds.length > 0) {
+      const deptUsers = await db.select({ id: users.id }).from(users).where(inArray(users.departmentId, deptIds));
+      deptUsers.forEach((u) => userIdSet.add(u.id));
+    }
+    targetUserIds = [...userIdSet];
+  }
+
+  const readCount = targetUserIds.filter((uid) => readMap.has(uid)).length;
+  const totalCount = targetUserIds.length;
+  const filteredIds = tab === 'read'
+    ? targetUserIds.filter((uid) => readMap.has(uid))
+    : targetUserIds.filter((uid) => !readMap.has(uid));
+  const total = filteredIds.length;
+  const pagedIds = filteredIds.slice(pageOffset(page, pageSize), page * pageSize);
+
+  let list: Array<{ id: number; username: string; nickname: string; avatar: string | null; readAt?: string }> = [];
+  if (pagedIds.length > 0) {
+    const userRows = await db.select({ id: users.id, username: users.username, nickname: users.nickname, avatar: users.avatar }).from(users).where(inArray(users.id, pagedIds));
+    const userMap = new Map(userRows.map((u) => [u.id, u]));
+    list = pagedIds
+      .map((uid) => userMap.get(uid))
+      .filter((u): u is NonNullable<typeof u> => u !== undefined)
+      .map((u) => ({
+        id: u.id, username: u.username, nickname: u.nickname, avatar: u.avatar,
+        ...(tab === 'read' ? { readAt: readMap.get(u.id)?.toISOString() } : {}),
+      }));
+  }
+  return { readCount, totalCount, list, total, page, pageSize };
+}
+
+export async function getNoticeDetail(user: JwtPayload, id: number) {
+  const [row] = await db.select().from(notices).where(and(eq(notices.id, id), tenantCondition(notices, user)));
+  if (!row) throw new AppError('通知不存在', 404);
+  const recipientRows = await db.select().from(noticeRecipients).where(eq(noticeRecipients.noticeId, id));
+  const userIds = recipientRows.filter((r) => r.recipientType === 'user').map((r) => r.recipientId);
+  const roleIds = recipientRows.filter((r) => r.recipientType === 'role').map((r) => r.recipientId);
+  const deptIds = recipientRows.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId);
+  const [userRows, roleRows, deptRows] = await Promise.all([
+    userIds.length ? db.select({ id: users.id, label: users.nickname }).from(users).where(inArray(users.id, userIds)) : Promise.resolve([]),
+    roleIds.length ? db.select({ id: roles.id, label: roles.name }).from(roles).where(inArray(roles.id, roleIds)) : Promise.resolve([]),
+    deptIds.length ? db.select({ id: departments.id, label: departments.name }).from(departments).where(inArray(departments.id, deptIds)) : Promise.resolve([]),
+  ]);
+  const labelMap = new Map([
+    ...userRows.map((r) => [`user:${r.id}`, r.label ?? ''] as [string, string]),
+    ...roleRows.map((r) => [`role:${r.id}`, r.label] as [string, string]),
+    ...deptRows.map((r) => [`dept:${r.id}`, r.label] as [string, string]),
+  ]);
+  const recipients = recipientRows.map((r) => ({
+    recipientType: r.recipientType,
+    recipientId: r.recipientId,
+    recipientLabel: labelMap.get(`${r.recipientType}:${r.recipientId}`) ?? '',
+  }));
+  return { ...mapNotice(row), recipients };
+}
+
+export interface CreateNoticeInput {
+  title: string; content: string; type: string;
+  publishStatus: 'draft' | 'published' | 'recalled';
+  priority: string;
+  targetType: 'all' | 'specific';
+  recipients?: Array<{ recipientType: 'user' | 'role' | 'dept'; recipientId: number }>;
+  publishTime?: string | null;
+}
+
+export async function createNotice(user: JwtPayload, data: CreateNoticeInput) {
+  const now = new Date();
+  let publishTime: Date | null = null;
+  if (data.publishTime) publishTime = new Date(data.publishTime);
+  else if (data.publishStatus === 'published') publishTime = now;
+
+  const row = await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(notices).values({
+      title: data.title,
+      content: data.content,
+      type: data.type,
+      publishStatus: data.publishStatus,
+      priority: data.priority,
+      targetType: data.targetType ?? 'all',
+      publishTime,
+      createById: user?.userId ?? null,
+      createByName: user?.username ?? null,
+      tenantId: getCreateTenantId(user),
+    }).returning();
+    const recipientList = data.targetType === 'specific' ? (data.recipients ?? []) : [];
+    await saveRecipients(tx, inserted.id, recipientList);
+    return inserted;
+  });
+
+  const notice = mapNotice(row);
+  if (row.publishStatus === 'published') await broadcastNotice(notice, row.id);
+  return notice;
+}
+
+export async function updateNotice(user: JwtPayload, id: number, data: Partial<CreateNoticeInput>) {
+  const now = new Date();
+  let publishTime: Date | null | undefined;
+  if (data.publishTime !== undefined) {
+    publishTime = data.publishTime ? new Date(data.publishTime) : null;
+  } else if (data.publishStatus === 'published') {
+    const existing = await db.select().from(notices).where(eq(notices.id, id));
+    if (existing[0] && !existing[0].publishTime) publishTime = now;
+  }
+  const updateData: Record<string, unknown> = { ...data };
+  delete updateData.recipients;
+  if (publishTime !== undefined) updateData.publishTime = publishTime;
+
+  const row = await db.transaction(async (tx) => {
+    const [updated] = await tx.update(notices).set(updateData).where(and(eq(notices.id, id), tenantCondition(notices, user))).returning();
+    if (!updated) return null;
+    if (data.targetType !== undefined || data.recipients !== undefined) {
+      const newTargetType = data.targetType ?? updated.targetType;
+      const recipientList = newTargetType === 'specific' ? (data.recipients ?? []) : [];
+      await saveRecipients(tx, id, recipientList);
+    }
+    return updated;
+  });
+  if (!row) throw new AppError('通知不存在', 404);
+  const notice = mapNotice(row);
+  if (data.publishStatus === 'published') await broadcastNotice(notice, row.id);
+  return notice;
+}
+
+export async function deleteNotice(user: JwtPayload, id: number) {
+  const [row] = await db.delete(notices).where(and(eq(notices.id, id), tenantCondition(notices, user))).returning();
+  if (!row) throw new AppError('通知不存在', 404);
 }
