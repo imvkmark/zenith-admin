@@ -115,6 +115,51 @@ xxxRouter.openapiRoutes([createXxxRoute, /* 其他路由 */] as const);
 > return c.json({ code: 404, message: '用户不存在', data: null }, 404);
 > ```
 
+## Service 层规范
+
+业务逻辑、数据映射、前置校验从路由中提取到 `packages/server/src/services/` 下，每个业务模块对应一个 `xxx.service.ts` 文件。所有路由均已完成 service 层提取。
+
+### 职责划分
+
+| 层 | 职责 | 禁止事项 |
+| --- | --- | --- |
+| **route handler** | 取参数（`c.req.valid()`）、调 service 函数、返回 HTTP 响应 | 不得包含业务逻辑、数据映射、DB 查询 |
+| **service** | 数据映射、前置校验、复杂 DB 查询、事务、关联写操作 | 不得调用 `c.json()`、访问 Hono 上下文、使用 `console.*` |
+
+### 命名约定
+
+```typescript
+// 数据映射（纯函数，DB 行 → 公开 DTO 字段）
+export function mapXxx(row: XxxRow) { ... }
+
+// 前置校验（直接 throw AppError，由全局 onError 转为 JSON 错误响应）
+export async function ensureXxxExists(id: number) {
+  const [row] = await db.select()...;
+  if (!row) throw new AppError('XXX 不存在', 404);
+  return row;
+}
+```
+
+### 错误处理：AppError
+
+`AppError` 定义在 `src/lib/errors.ts`，由 `src/index.ts` 的全局 `onError` 统一处理：
+
+```typescript
+// service 中
+throw new AppError('用户名已存在', 400);
+throw new AppError('资源不存在', 404);
+
+// 路由中（仅用于 DB 约束错误，service 层无法提前知道是否冲突）
+try {
+  await db.insert(xxxs).values(data);
+} catch (err: unknown) {
+  if ((err as { code?: string }).code === '23505') {
+    return c.json(errBody('该名称已存在'), 400);
+  }
+  throw err; // 其他错误交给全局 onError
+}
+```
+
 ## 响应实体 DTO（中心化）
 
 所有响应实体 DTO 按业务域拆分在 `packages/server/src/lib/dtos/` 下，`openapi-dtos.ts` 作为向后兼容的 re-export 入口。各路由通过 `import { XxxDTO } from '../lib/openapi-dtos'` 引用（无需修改），**新增实体请直接在对应子文件中维护**：

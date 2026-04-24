@@ -102,7 +102,50 @@ export interface Xxx {
 
 ---
 
-## Step 5：OpenAPIHono Router（`packages/server/src/routes/xxx.ts`）
+## Step 5：Service 层（`packages/server/src/services/xxx.service.ts`）
+
+业务逻辑（数据映射、参数校验、关联写操作）从路由中提取到独立的 service 文件，路由 handler 只负责参数取值、调用 service、返回 HTTP 响应。
+
+### service 文件模板
+
+```ts
+import { AppError } from '../lib/errors';
+import { db } from '../db';
+import { xxxs } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import type { XxxRow } from '../db/schema';
+
+// ─── 数据映射函数（DB 行 → 公开 DTO 字段） ──────────────────────────────
+export function mapXxx(row: XxxRow) {
+  return {
+    id:          row.id,
+    name:        row.name,
+    description: row.description ?? null,
+    status:      row.status,
+    createdAt:   row.createdAt.toISOString(),
+    updatedAt:   row.updatedAt.toISOString(),
+  };
+}
+
+// ─── 前置校验（抛 AppError，由全局 onError 转为标准 JSON 错误响应） ─────
+export async function ensureXxxExists(id: number) {
+  const [row] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
+  if (!row) throw new AppError('XXX 不存在', 404);
+  return row;
+}
+```
+
+> **约束：**
+>
+> - `mapXxx` 等数据映射函数以 `map` 前缀命名，纯函数，无副作用
+> - `ensureXxx` 等校验函数直接 `throw new AppError(msg, statusCode)` 无需返回错误码
+> - 禁止在 service 中调用 `c.json()`、直接引用 `c`、调用 `console.*`
+> - 复杂业务逻辑（RQB 查询、事务、多表操作）放在 service，路由只调用 service 函数
+> - DB 唯一约束异常（PG 错误码 `23505`）仍在路由的 `try-catch` 中捕获并返回 400（service 层无法提前知道是否冲突）
+
+---
+
+## Step 6：OpenAPIHono Router（`packages/server/src/routes/xxx.ts`）
 
 > **必读：实体 DTO 必须集中在 `packages/server/src/lib/dtos/` 子目录中（按业务域拆分：`iam` / `auth` / `dict` / `files` / `logs` / `notices` / `system` / `workflow` / `dashboard` / `region` / `messages`）。** 新增实体时先在对应子文件中添加：
 >
@@ -325,7 +368,7 @@ const rows = await db.query.users.findMany({
 
 ---
 
-## Step 6：注册路由（`packages/server/src/index.ts`）
+## Step 7：注册路由（`packages/server/src/index.ts`）
 
 在现有路由注册区域添加：
 
