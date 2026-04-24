@@ -1,59 +1,18 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { eq, and, asc } from 'drizzle-orm';
-import { db } from '../db';
-import { menus } from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { isSuperAdmin, getUserMenuIds } from '../lib/permissions';
-import type { Menu } from '@zenith/shared';
-import { ErrorResponse, jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody, errBody } from '../lib/openapi-schemas';
+import { jsonContent, validationHook, commonErrorResponses, ok, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { MenuDTO } from '../lib/openapi-dtos';
+import {
+  listUserMenuTree,
+  listMenuTree,
+  listMenusFlat,
+  createMenu,
+  updateMenu,
+  deleteMenu,
+} from '../services/menus.service';
 
 const menusRouter = new OpenAPIHono({ defaultHook: validationHook });
-
-function toMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> {
-  return {
-    id: row.id,
-    parentId: row.parentId,
-    title: row.title,
-    name: row.name ?? undefined,
-    path: row.path ?? undefined,
-    component: row.component ?? undefined,
-    icon: row.icon ?? undefined,
-    type: row.type,
-    permission: row.permission ?? undefined,
-    sort: row.sort,
-    status: row.status,
-    visible: row.visible,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function buildTree(list: Omit<Menu, 'children'>[]): Menu[] {
-  const map = new Map<number, Menu>();
-  list.forEach((item) => map.set(item.id, { ...item }));
-  const roots: Menu[] = [];
-  map.forEach((node) => {
-    if (node.parentId === 0) {
-      roots.push(node);
-    } else {
-      const parent = map.get(node.parentId);
-      if (parent) {
-        parent.children = parent.children ?? [];
-        parent.children.push(node);
-      } else {
-        roots.push(node);
-      }
-    }
-  });
-  const sortNodes = (nodes: Menu[]) => {
-    nodes.sort((a, b) => a.sort - b.sort);
-    nodes.forEach((n) => n.children && sortNodes(n.children));
-  };
-  sortNodes(roots);
-  return roots;
-}
 
 // ─── Schemas ───────────────────────────────────────────────────────────────
 
@@ -87,26 +46,8 @@ const userMenuRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const user = c.get('user');
-    const allMenus = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-
-    if (isSuperAdmin(user.roles)) {
-      return c.json(okBody(buildTree(allMenus.map(toMenu))), 200);
-    }
-
-    const allowedMenuIds = new Set(await getUserMenuIds(user.userId));
-    const idToMenu = new Map(allMenus.map((m) => [m.id, m]));
-    for (const id of new Set(allowedMenuIds)) {
-      let current = idToMenu.get(id);
-      while (current && current.parentId !== 0) {
-        if (allowedMenuIds.has(current.parentId)) break;
-        allowedMenuIds.add(current.parentId);
-        current = idToMenu.get(current.parentId);
-      }
-    }
-
-    const filtered = allMenus.filter((m) => allowedMenuIds.has(m.id) || !m.visible);
-    return c.json(okBody(buildTree(filtered.map(toMenu))), 200);
+    const tree = await listUserMenuTree();
+    return c.json(okBody(tree), 200);
   },
 });
 
@@ -124,8 +65,7 @@ const listRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-    return c.json(okBody(buildTree(list.map(toMenu))), 200);
+    return c.json(okBody(await listMenuTree()), 200);
   },
 });
 
@@ -143,8 +83,7 @@ const flatRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => {
-    const list = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
-    return c.json(okBody(list.map(toMenu)), 200);
+    return c.json(okBody(await listMenusFlat()), 200);
   },
 });
 
@@ -164,8 +103,8 @@ const createMenuRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const data = c.req.valid('json');
-    const [menu] = await db.insert(menus).values(data).returning();
-    return c.json(okBody(toMenu(menu), '创建成功'), 200);
+    const menu = await createMenu(data);
+    return c.json(okBody(menu, '创建成功'), 200);
   },
 });
 
@@ -184,19 +123,13 @@ const updateMenuRoute = defineOpenAPIRoute({
     responses: {
       ...commonErrorResponses,
       ...ok(MenuDTO, '更新成功'),
-      404: { content: jsonContent(ErrorResponse), description: '菜单不存在' },
     },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
-    const [menu] = await db
-      .update(menus)
-      .set({ ...data })
-      .where(eq(menus.id, id))
-      .returning();
-    if (!menu) return c.json(errBody('菜单不存在', 404), 404);
-    return c.json(okBody(toMenu(menu), '更新成功'), 200);
+    const menu = await updateMenu(id, data);
+    return c.json(okBody(menu, '更新成功'), 200);
   },
 });
 
@@ -216,17 +149,7 @@ const deleteMenuRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const all = await db.select({ id: menus.id, parentId: menus.parentId }).from(menus);
-    const toDelete = new Set<number>();
-    const queue = [id];
-    while (queue.length) {
-      const cur = queue.shift()!;
-      toDelete.add(cur);
-      all.filter((m) => m.parentId === cur).forEach((m) => queue.push(m.id));
-    }
-    for (const mid of toDelete) {
-      await db.delete(menus).where(and(eq(menus.id, mid)));
-    }
+    await deleteMenu(id);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });
