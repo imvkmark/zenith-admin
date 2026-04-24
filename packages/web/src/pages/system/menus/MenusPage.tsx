@@ -243,6 +243,7 @@ export default function MenusPage() {
       dataIndex: 'status',
       width: 80,
       align: 'center',
+      fixed: 'right',
       render: (val: string) => <DictTag dictCode="common_status" value={val} />,
     },
     {
@@ -250,6 +251,7 @@ export default function MenusPage() {
       dataIndex: 'visible',
       width: 80,
       align: 'center',
+      fixed: 'right',
       render: (val: boolean, row: Menu) => row.type === 'button' ? '—' : <DictTag dictCode="menu_visible" value={val ? 'show' : 'hidden'} />,
     },
     {
