@@ -170,7 +170,7 @@ export async function login(input: LoginInput) {
   const userRoleList = await getUserRoles(user.id);
   const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
 
-  const { browser, os } = uaInfo(input.ua);
+  const { browser, os } = parseUserAgent(input.ua);
   await registerSession({
     tokenId,
     userId: user.id,
