@@ -30,8 +30,9 @@ import ConditionEditor from './components/ConditionEditor';
 import FormDesigner from './components/FormDesigner';
 import FormPreview from './components/FormPreview';
 import BasicInfoPanel from './components/BasicInfoPanel';
-import AdvancedSettingsPanel, { DEFAULT_ADVANCED_SETTINGS } from './components/AdvancedSettingsPanel';
+import AdvancedSettingsPanel from './components/AdvancedSettingsPanel';
 import type { AdvancedSettingsData } from './components/AdvancedSettingsPanel';
+import { DEFAULT_ADVANCED_SETTINGS } from './components/advanced-settings';
 import './styles/flow-designer.css';
 
 // ─── 选项数据类型 ─────────────────────────────────────────────────────

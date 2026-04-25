@@ -2,27 +2,14 @@
  * 更多设置面板 — 步骤 ④ 更多设置
  */
 import { Form, Select } from '@douyinfe/semi-ui';
+import type { AdvancedSettingsData } from './advanced-settings';
+
+export type { AdvancedSettingsData } from './advanced-settings';
 
 interface AdvancedSettingsProps {
   settings: AdvancedSettingsData;
   onChange: (settings: AdvancedSettingsData) => void;
 }
-
-export interface AdvancedSettingsData {
-  allowWithdraw: boolean;
-  allowResubmit: boolean;
-  notifyInitiator: boolean;
-  autoApproveIfSameUser: boolean;
-  timeoutAction: 'none' | 'auto-approve' | 'auto-reject' | 'notify';
-}
-
-export const DEFAULT_ADVANCED_SETTINGS: AdvancedSettingsData = {
-  allowWithdraw: true,
-  allowResubmit: false,
-  notifyInitiator: true,
-  autoApproveIfSameUser: false,
-  timeoutAction: 'none',
-};
 
 export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<AdvancedSettingsProps>) {
   return (

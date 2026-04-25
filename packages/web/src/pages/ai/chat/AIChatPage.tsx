@@ -5,6 +5,9 @@ import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench 
 const { Configure } = AIChatInput;
 const { Title, Text } = Typography;
 
+type AIChatDialogueProps = React.ComponentProps<typeof AIChatDialogue>;
+type AIChatDialogueRefProp = React.ComponentPropsWithRef<typeof AIChatDialogue>['ref'];
+
 type Message = {
   id: string;
   role: 'system' | 'user' | 'assistant';
@@ -525,8 +528,8 @@ export default function AIChatPage() {
         {/* 对话内容 */}
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <AIChatDialogue
-            ref={dialogueRef as any}
-            chats={messages as any}
+            ref={dialogueRef as unknown as AIChatDialogueRefProp}
+            chats={messages as unknown as AIChatDialogueProps['chats']}
             roleConfig={roleConfig}
             hints={generating ? [] : HINTS}
             align={align}
