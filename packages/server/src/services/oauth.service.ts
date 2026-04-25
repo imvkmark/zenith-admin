@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
-import { UAParser } from 'ua-parser-js';
 import { db } from '../db';
 import { users, userOauthAccounts } from '../db/schema';
 import { getOAuthProvider, isProviderConfigured } from '../lib/oauth';
@@ -8,6 +7,7 @@ import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
 import { registerSession } from '../lib/session-manager';
 import { getUserRoles, issueTokens } from './auth.service';
+import { parseUserAgent } from '../lib/request-helpers';
 import { OAUTH_PROVIDERS, type OAuthProviderType } from '@zenith/shared';
 import { formatDateTime } from '../lib/datetime';
 
@@ -129,9 +129,7 @@ export async function handleOAuthCallback(provider: string, code: string, client
   const roleCodes = userRoleList.map((r) => r.code);
   const { accessToken, refreshToken, tokenId } = await issueTokens(user, roleCodes);
 
-  const parser = new UAParser(client.ua);
-  const browserInfo = parser.getBrowser();
-  const osInfo = parser.getOS();
+  const { browser, os } = parseUserAgent(client.ua);
 
   await registerSession({
     tokenId,
@@ -140,8 +138,8 @@ export async function handleOAuthCallback(provider: string, code: string, client
     nickname: user.nickname,
     tenantId: user.tenantId ?? null,
     ip: client.ip,
-    browser: browserInfo.name ? `${browserInfo.name} ${browserInfo.version || ''}`.trim() : 'Unknown',
-    os: osInfo.name ? `${osInfo.name} ${osInfo.version || ''}`.trim() : 'Unknown',
+    browser,
+    os,
     loginAt: new Date(),
   });
 
