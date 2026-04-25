@@ -215,7 +215,7 @@ export default function RolesPage() {
   const columns: ColumnProps<Role>[] = [
     { title: '角色名称', dataIndex: 'name', width: 160, ellipsis: true },
     { title: '角色编码', dataIndex: 'code', width: 160, ellipsis: true },
-    { title: '描述', dataIndex: 'description', ellipsis: true, render: (v) => v || '—' },
+    { title: '描述', dataIndex: 'description', width: 200, ellipsis: true, render: (v) => v || '—' },
     {
       title: '数据权限',
       dataIndex: 'dataScope',
