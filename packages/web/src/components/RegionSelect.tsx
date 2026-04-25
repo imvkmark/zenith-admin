@@ -3,7 +3,6 @@ import { Cascader } from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
 import type { Region } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { getCachedRegions, setCachedRegions } from './RegionSelect.cache';
 
 interface CascaderItem {
   label: string;
@@ -54,19 +53,15 @@ export default function RegionSelect({
   className,
   changeOnSelect = true,
 }: Readonly<RegionSelectProps>) {
-  const initialRegions = getCachedRegions();
-  const [treeData, setTreeData] = useState<CascaderItem[]>(initialRegions ?? []);
-  const [loading, setLoading] = useState(!initialRegions);
+  const [treeData, setTreeData] = useState<CascaderItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (getCachedRegions()) return;
     setLoading(true);
     request.get<Region[]>('/api/regions', { silent: true })
       .then((res) => {
         if (res.code === 0) {
-          const nextRegions = regionsToCascader(res.data);
-          setCachedRegions(nextRegions);
-          setTreeData(nextRegions);
+          setTreeData(regionsToCascader(res.data));
         }
       })
       .finally(() => setLoading(false));

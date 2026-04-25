@@ -3,7 +3,6 @@ import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import type { RegionSelectProps } from './RegionSelect';
 import RegionSelect from './RegionSelect';
-import { resetRegionSelectCacheForTest } from './RegionSelect.cache';
 import { request } from '@/utils/request';
 
 vi.mock('@/utils/request', () => ({
@@ -28,7 +27,6 @@ async function waitForRegionsLoaded(container: HTMLElement) {
 describe('RegionSelect', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetRegionSelectCacheForTest();
   });
 
   it('should render empty Cascader initially', async () => {
