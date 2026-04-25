@@ -25,6 +25,7 @@ export function mapDefinition(
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 import { eq, and, like, desc } from 'drizzle-orm';
+import { escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
@@ -39,7 +40,7 @@ export async function listDefinitions(query: { page?: number; pageSize?: number;
   const tc = tenantCondition(workflowDefinitions, user);
   const conditions = [];
   if (tc) conditions.push(tc);
-  if (keyword) conditions.push(like(workflowDefinitions.name, `%${keyword}%`));
+  if (keyword) conditions.push(like(workflowDefinitions.name, `%${escapeLike(keyword)}%`));
   if (status) conditions.push(eq(workflowDefinitions.status, status as 'draft' | 'published' | 'disabled'));
   const where = conditions.length ? and(...conditions) : undefined;
   const [total, rows] = await Promise.all([

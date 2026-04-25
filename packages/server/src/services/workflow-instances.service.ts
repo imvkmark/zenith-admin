@@ -103,13 +103,12 @@ export async function listPendingMine(query: { page?: number; pageSize?: number 
     eq(workflowInstances.status, 'running'),
     tc,
   );
-  const [{ total }, rows] = await Promise.all([
+  const [[{ total }], rows] = await Promise.all([
     db
       .select({ total: countDistinct(workflowInstances.id) })
       .from(workflowTasks)
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-      .where(where)
-      .then((r) => r),
+      .where(where),
     db
       .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
       .from(workflowTasks)
