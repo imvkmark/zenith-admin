@@ -5,7 +5,7 @@ import { notices, noticeRecipients, noticeReads, users, userRoles, roles, depart
 import { broadcast, sendToUser } from '../lib/ws-manager';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { pageOffset } from '../lib/pagination';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
 
@@ -168,7 +168,7 @@ export async function exportNotices(): Promise<{ buffer: ArrayBuffer; filename: 
       { header: '创建人', key: 'createByName', width: 14 },
       { header: '创建时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '通知公告',
   );
   return { buffer, filename: 'notices.xlsx' };

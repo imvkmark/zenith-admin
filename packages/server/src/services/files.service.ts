@@ -22,7 +22,7 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect) {
 import { and, desc, eq, like, or, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
@@ -139,7 +139,7 @@ export async function exportManagedFiles(): Promise<{ buffer: ArrayBuffer; filen
       { header: '存储方式', key: 'storageProvider', width: 12 },
       { header: '上传时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '文件列表',
   );
   return { buffer, filename: 'files.xlsx' };

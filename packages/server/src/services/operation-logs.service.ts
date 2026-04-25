@@ -2,7 +2,7 @@ import { count, desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 
@@ -91,7 +91,7 @@ export async function exportOperationLogs(): Promise<{ buffer: ArrayBuffer; file
       { header: 'IP', key: 'ip', width: 16 },
       { header: '时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '操作日志',
   );
   return { buffer, filename: 'operation-logs.xlsx' };

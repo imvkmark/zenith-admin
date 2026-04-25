@@ -3,7 +3,7 @@ import { db } from '../db';
 import { roles, roleMenus, userRoles } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { clearUserPermissionCache } from '../lib/permissions';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
@@ -151,7 +151,7 @@ export async function exportRoles(): Promise<{ buffer: ArrayBuffer; filename: st
       { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'active' ? '启用' : '禁用') },
       { header: '创建时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '角色列表',
   );
   return { buffer, filename: 'roles.xlsx' };

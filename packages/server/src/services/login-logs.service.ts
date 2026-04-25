@@ -2,7 +2,7 @@ import { desc, eq, like, and, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { loginLogs } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 
@@ -51,7 +51,7 @@ export async function exportLoginLogs(): Promise<{ buffer: ArrayBuffer; filename
       { header: '消息', key: 'message', width: 30 },
       { header: '登录时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, message: r.message ?? '', createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, message: r.message ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
     '登录日志',
   );
   return { buffer, filename: 'login-logs.xlsx' };

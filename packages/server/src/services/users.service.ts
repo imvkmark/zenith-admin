@@ -10,7 +10,7 @@ import { pageOffset } from '../lib/pagination';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { getPasswordPolicy, validatePassword } from '../lib/password-policy';
 import { unlockUser as unlockUserSession } from '../lib/session-manager';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { clearUserPermissionCache } from '../lib/permissions';
 import type { JwtPayload } from '../middleware/auth';
 import type { User } from '@zenith/shared';
@@ -318,7 +318,7 @@ export async function exportUsers(): Promise<{ buffer: ArrayBuffer; filename: st
   const list = rawList.map((u) => ({
     id: u.id, username: u.username, nickname: u.nickname, email: u.email,
     departmentName: u.department?.name ?? '', status: u.status,
-    createdAt: u.createdAt.toISOString(),
+    createdAt: formatDateTimeForExcel(u.createdAt),
   }));
   const buffer = await exportToExcel(
     [

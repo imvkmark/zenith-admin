@@ -1,4 +1,11 @@
 import ExcelJS from 'exceljs';
+import dayjs from 'dayjs';
+
+/** Format a date to 'YYYY-MM-DD HH:mm:ss'. Returns '' for null/undefined. */
+export function formatDateTimeForExcel(date: Date | string | null | undefined): string {
+  if (!date) return '';
+  return dayjs(date).format('YYYY-MM-DD HH:mm:ss');
+}
 
 export interface ExcelColumn {
   header: string;

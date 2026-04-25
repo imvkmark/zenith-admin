@@ -4,7 +4,7 @@ import { positions, userPositions } from '../db/schema';
 import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { pageOffset } from '../lib/pagination';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 
@@ -148,7 +148,7 @@ export async function exportPositions(): Promise<{ buffer: ArrayBuffer; filename
       { header: '备注', key: 'remark', width: 24 },
       { header: '创建时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, remark: r.remark ?? '', createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, remark: r.remark ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
     '岗位列表',
   );
   return { buffer, filename: 'positions.xlsx' };

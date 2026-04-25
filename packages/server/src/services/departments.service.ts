@@ -4,7 +4,7 @@ import { departments, users } from '../db/schema';
 import { AppError } from '../lib/errors';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import type { Department, createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared';
 import type { z } from 'zod';
@@ -156,7 +156,7 @@ export async function exportDepartments(): Promise<{ buffer: ArrayBuffer; filena
       { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'active' ? '启用' : '禁用') },
       { header: '创建时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, leader: r.leader ?? '', phone: r.phone ?? '', createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, leader: r.leader ?? '', phone: r.phone ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
     '部门列表',
   );
   return { buffer, filename: 'departments.xlsx' };

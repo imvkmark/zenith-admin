@@ -3,7 +3,7 @@ import { db } from '../db';
 import { dicts, dictItems } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { currentUser } from '../lib/context';
 import { AppError } from '../lib/errors';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
@@ -116,7 +116,7 @@ export async function exportDicts(): Promise<{ buffer: ArrayBuffer; filename: st
       { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'active' ? '启用' : '禁用') },
       { header: '创建时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
     '字典列表',
   );
   return { buffer, filename: 'dicts.xlsx' };

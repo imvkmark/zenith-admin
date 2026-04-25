@@ -2,7 +2,7 @@ import { eq, like, and, ne, desc } from 'drizzle-orm';
 import { db } from '../db';
 import { tenants } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { AppError } from '../lib/errors';
 
 export function mapTenant(row: typeof tenants.$inferSelect) {
@@ -97,7 +97,7 @@ export async function exportTenants(): Promise<{ buffer: ArrayBuffer; filename: 
       { header: '最大用户数', key: 'maxUsers', width: 12 },
       { header: '创建时间', key: 'createdAt', width: 22 },
     ],
-    rows.map((r) => ({ ...r, expireAt: r.expireAt?.toISOString() ?? '', createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })),
+    rows.map((r) => ({ ...r, expireAt: formatDateTimeForExcel(r.expireAt), createdAt: formatDateTimeForExcel(r.createdAt), updatedAt: formatDateTimeForExcel(r.updatedAt) })),
     '租户列表',
   );
   return { buffer, filename: 'tenants.xlsx' };

@@ -3,7 +3,7 @@ import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression } from '../lib/cron-scheduler';
-import { exportToExcel } from '../lib/excel-export';
+import { exportToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { AppError } from '../lib/errors';
 
 export function mapCronJob(row: typeof cronJobs.$inferSelect) {
@@ -93,7 +93,7 @@ export async function exportCronJobs(): Promise<{ buffer: ArrayBuffer; filename:
       { header: '执行结果', key: 'lastRunStatus', width: 12 },
       { header: '描述', key: 'description', width: 30 },
     ],
-    rows.map((r) => ({ ...r, lastRunAt: r.lastRunAt?.toISOString() ?? '', createdAt: r.createdAt.toISOString() })),
+    rows.map((r) => ({ ...r, lastRunAt: formatDateTimeForExcel(r.lastRunAt), createdAt: formatDateTimeForExcel(r.createdAt) })),
     '定时任务',
   );
   return { buffer, filename: 'cron-jobs.xlsx' };
