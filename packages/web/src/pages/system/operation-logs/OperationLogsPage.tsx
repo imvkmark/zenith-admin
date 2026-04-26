@@ -106,6 +106,7 @@ export default function OperationLogsPage() {
   const [pageSize, setPageSize] = useState(10);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
   const [detailLog, setDetailLog] = useState<OperationLog | null>(null);
+  const [detailActiveTab, setDetailActiveTab] = useState('basic');
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
     setLoading(true);
@@ -322,85 +323,99 @@ export default function OperationLogsPage() {
       <Modal
         title="操作日志详情"
         visible={detailLog !== null}
-        onCancel={() => setDetailLog(null)}
+        onCancel={() => { setDetailLog(null); setDetailActiveTab('basic'); }}
         footer={null}
-        width={680}
+        width={700}
         style={{ top: 40 }}
+        bodyStyle={{ padding: '0 0 4px' }}
       >
         {detailLog && (() => {
           const resCode = detailLog.responseCode;
           const resOk = resCode != null && resCode >= 200 && resCode < 400;
           const duration = detailLog.durationMs == null ? '-' : `${detailLog.durationMs} ms`;
+          const hasDataDiff = !!(detailLog.beforeData ?? detailLog.afterData);
           return (
-            <div style={{ padding: '4px 0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0 16px' }}>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>ID</div>
-                  <div style={detailValueStyle}>{detailLog.id}</div>
+            <Tabs type="line" style={{ padding: '0 4px' }} activeKey={detailActiveTab} onChange={setDetailActiveTab}>
+              <TabPane tab="基础信息" itemKey="basic">
+                <div style={{ padding: '4px 0 8px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0 16px' }}>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>ID</div>
+                    <div style={detailValueStyle}>{detailLog.id}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>操作人</div>
+                    <div style={detailValueStyle}>{detailLog.username ?? '-'}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>功能模块</div>
+                    <div style={detailValueStyle}>{detailLog.module ?? '-'}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>操作描述</div>
+                    <div style={detailValueStyle}>{detailLog.description}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>请求方法</div>
+                    <div style={detailValueStyle}><Tag color="blue" size="small">{detailLog.method}</Tag></div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>响应状态</div>
+                    <div style={detailValueStyle}><Tag color={resOk ? 'green' : 'red'} size="small">{resCode ?? '-'}</Tag></div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>耗时</div>
+                    <div style={detailValueStyle}>{duration}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>操作时间</div>
+                    <div style={detailValueStyle}>{formatDateTime(detailLog.createdAt)}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>IP 地址</div>
+                    <div style={detailValueStyle}>{detailLog.ip ?? '-'}</div>
+                  </div>
+                  <div style={detailItemStyle}>
+                    <div style={detailLabelStyle}>操作系统</div>
+                    <div style={detailValueStyle}>{detailLog.os ?? '-'}</div>
+                  </div>
+                  <div style={{ ...detailItemStyle, gridColumn: 'span 2' }}>
+                    <div style={detailLabelStyle}>浏览器</div>
+                    <div style={detailValueStyle}>{detailLog.browser ?? '-'}</div>
+                  </div>
                 </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>操作人</div>
-                  <div style={detailValueStyle}>{detailLog.username ?? '-'}</div>
+              </TabPane>
+              <TabPane tab="请求详情" itemKey="request">
+                <div style={{ padding: '4px 0 8px' }}>
+                  <DetailField label="请求路径">{detailLog.path}</DetailField>
+                  {detailLog.userAgent && (
+                    <DetailField label="User-Agent">{detailLog.userAgent}</DetailField>
+                  )}
+                  {detailLog.requestBody ? (
+                    <DetailField label="请求体">
+                      {detailActiveTab === 'request' && (
+                        <JsonViewer
+                          className="operation-log-json-viewer"
+                          key={detailLog.id}
+                          value={(() => { try { return JSON.stringify(JSON.parse(detailLog.requestBody), null, 2); } catch { return detailLog.requestBody; } })()}
+                          height={220}
+                          width="100%"
+                          options={{ readOnly: true, autoWrap: true, formatOptions: { tabSize: 2, insertSpaces: true } }}
+                        />
+                      )}
+                    </DetailField>
+                  ) : (
+                    <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--semi-color-text-2)', fontSize: 13 }}>无请求体</div>
+                  )}
                 </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>功能模块</div>
-                  <div style={detailValueStyle}>{detailLog.module ?? '-'}</div>
-                </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>操作描述</div>
-                  <div style={detailValueStyle}>{detailLog.description}</div>
-                </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>请求方法</div>
-                  <div style={detailValueStyle}><Tag color="blue" size="small">{detailLog.method}</Tag></div>
-                </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>响应状态</div>
-                  <div style={detailValueStyle}><Tag color={resOk ? 'green' : 'red'} size="small">{resCode ?? '-'}</Tag></div>
-                </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>耗时</div>
-                  <div style={detailValueStyle}>{duration}</div>
-                </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>操作时间</div>
-                  <div style={detailValueStyle}>{formatDateTime(detailLog.createdAt)}</div>
-                </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>IP 地址</div>
-                  <div style={detailValueStyle}>{detailLog.ip ?? '-'}</div>
-                </div>
-                <div style={detailItemStyle}>
-                  <div style={detailLabelStyle}>操作系统</div>
-                  <div style={detailValueStyle}>{detailLog.os ?? '-'}</div>
-                </div>
-                <div style={{ ...detailItemStyle, gridColumn: 'span 2' }}>
-                  <div style={detailLabelStyle}>浏览器</div>
-                  <div style={detailValueStyle}>{detailLog.browser ?? '-'}</div>
-                </div>
-              </div>
-              <DetailField label="请求路径">{detailLog.path}</DetailField>
-              {detailLog.userAgent && (
-                <DetailField label="User-Agent">{detailLog.userAgent}</DetailField>
+              </TabPane>
+              {hasDataDiff && (
+                <TabPane tab="数据变更" itemKey="diff">
+                  <div style={{ padding: '4px 0 8px' }}>
+                    <DataDiff beforeData={detailLog.beforeData} afterData={detailLog.afterData} />
+                  </div>
+                </TabPane>
               )}
-              {detailLog.requestBody && (
-                <DetailField label="请求体">
-                  <JsonViewer
-                    className="operation-log-json-viewer"
-                    key={detailLog.id}
-                    value={(() => { try { return JSON.stringify(JSON.parse(detailLog.requestBody), null, 2); } catch { return detailLog.requestBody; } })()}
-                    height={220}
-                    width="100%"
-                    options={{ readOnly: true, autoWrap: true, formatOptions: { tabSize: 2, insertSpaces: true } }}
-                  />
-                </DetailField>
-              )}
-              {(detailLog.beforeData ?? detailLog.afterData) && (
-                <DetailField label="数据变更">
-                  <DataDiff beforeData={detailLog.beforeData} afterData={detailLog.afterData} />
-                </DetailField>
-              )}
-            </div>
+            </Tabs>
           );
         })()}
       </Modal>
