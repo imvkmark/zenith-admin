@@ -241,7 +241,8 @@ export default function RegionsPage() {
     {
       title: '排序',
       dataIndex: 'sort',
-      width: 80,
+      width: 70,
+      align: 'center',
     },
     {
       title: '创建时间',
@@ -404,6 +405,7 @@ export default function RegionsPage() {
             label="排序"
             placeholder="排序值"
             min={0}
+            style={{ width: '100%' }}
           />
           <Form.Select
             field="status"
