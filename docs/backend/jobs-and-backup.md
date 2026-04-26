@@ -6,7 +6,7 @@
 
 ## 定时任务
 
-定时任务模块基于 Node.js 的 `node-cron` 库实现，支持在后台 UI 中创建、启停、手动执行任务，并可查看每次执行的历史日志。
+定时任务模块基于 Node.js 的 `node-cron` 库实现，支持在后台 UI 中创建、修改状态、手动执行任务，并可查看每次执行的历史日志。
 
 ### 概念说明
 
@@ -65,22 +65,22 @@ handlerRegistry.set('myNewTask', async (params) => {
 
 | 接口 | 说明 |
 |------|------|
-| `GET /api/cron-jobs` | 获取任务列表（支持按名称筛选）|
+| `GET /api/cron-jobs` | 获取任务列表（支持按名称筛选） |
 | `POST /api/cron-jobs` | 创建任务 |
-| `PUT /api/cron-jobs/:id` | 更新任务 |
-| `DELETE /api/cron-jobs/:id` | 删除任务 |
-| `POST /api/cron-jobs/:id/run` | 立即执行一次（不影响定时计划）|
-| `POST /api/cron-jobs/:id/toggle` | 启用 / 暂停任务 |
-| `GET /api/cron-jobs/:id/logs` | 查看执行日志（分页）|
+| `PUT /api/cron-jobs/{id}` | 更新任务 |
+| `DELETE /api/cron-jobs/{id}` | 删除任务 |
+| `POST /api/cron-jobs/{id}/run` | 立即执行一次（不影响定时计划） |
+| `PUT /api/cron-jobs/{id}/status` | 更新任务状态（`active` / `disabled`） |
+| `GET /api/cron-jobs/logs` | 查看全部执行日志（分页） |
+| `GET /api/cron-jobs/{id}/logs` | 查看单任务执行日志（分页） |
 | `GET /api/cron-jobs/handlers` | 获取已注册的 Handler 列表 |
 | `POST /api/cron-jobs/validate` | 校验 Cron 表达式格式 |
+| `GET /api/cron-jobs/export` | 导出任务列表 |
 
 ### 数据库表
 
-| 表 | 说明 |
-|----|------|
-| `cron_jobs` | 任务定义（名称、Handler、Cron 表达式、状态）|
-| `cron_job_logs` | 任务执行历史（开始时间、结束时间、状态、输出）|
+- `cron_jobs`：任务定义（名称、Handler、Cron 表达式、状态）
+- `cron_job_logs`：任务执行历史（开始时间、结束时间、状态、输出）
 
 ---
 
@@ -88,17 +88,14 @@ handlerRegistry.set('myNewTask', async (params) => {
 
 从 v0.1.4 起，系统内置数据库备份功能，基于 `pg_dump` 命令生成 PostgreSQL 完整备份文件。
 
-### 菜单入口
+### 数据库备份菜单入口
 
 **系统设置 → 数据库备份**（路由：`/system/db-backups`，权限：`system:db-backup:list`）
 
 ### 操作说明
 
-| 操作 | 说明 |
-|------|------|
-| **立即备份** | 手动触发 `pg_dump`，生成 `.sql` 备份文件并保存到服务器本地 |
-| **下载备份** | 下载指定备份文件到本地 |
-| **删除备份** | 删除服务器上的指定备份文件 |
+- **立即备份**：手动触发 `pg_dump`，生成 `.sql` 备份文件并保存到服务器本地
+- **删除备份**：删除服务器上的指定备份文件
 
 ### 前置条件
 
@@ -121,14 +118,11 @@ pg_dump --version
 BACKUP_DIR=./backups
 ```
 
-### 相关接口
+### 数据库备份相关接口
 
-| 接口 | 说明 |
-|------|------|
-| `GET /api/db-backups` | 获取备份文件列表 |
-| `POST /api/db-backups` | 触发立即备份 |
-| `GET /api/db-backups/:filename/download` | 下载备份文件 |
-| `DELETE /api/db-backups/:filename` | 删除指定备份文件 |
+- `GET /api/db-backups`：获取备份列表
+- `POST /api/db-backups`：触发立即备份
+- `DELETE /api/db-backups/{id}`：删除指定备份记录
 
 ### 定期自动备份建议
 

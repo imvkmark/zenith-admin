@@ -124,10 +124,11 @@ Zenith Admin 内置了多层安全防护能力，涵盖 IP 访问控制、账号
 |------|------|
 | `GET /api/auth/captcha` | 获取验证码（返回 Base64 图片 + captchaId）|
 | `POST /api/auth/register` | 开放注册（受 `allow_registration` 控制）|
-| `POST /api/users/:id/unlock` | 管理员解除账号锁定 |
+| `POST /api/users/{id}/unlock` | 管理员解除账号锁定 |
 | `PUT /api/auth/password` | 当前用户修改密码 |
-| `PUT /api/auth/password/reset-expired` | 通过临时 token 重置过期密码 |
-| `POST /api/users/:id/reset-password` | 管理员重置指定用户密码 |
+| `POST /api/auth/forgot-password` | 发送找回密码邮件 |
+| `POST /api/auth/reset-password` | 使用重置 token 设置新密码 |
+| `PUT /api/users/{id}/password` | 管理员修改指定用户密码 |
 
 ---
 
@@ -149,12 +150,10 @@ ALLOWED_ORIGINS=https://admin.example.com,https://app.example.com
 
 ### 放行规则
 
-| 情形 | 结果 |
-|------|------|
-| 请求无 `Origin` 头（服务端调用、Postman、curl） | ✅ 直接放行 |
-| `ALLOWED_ORIGINS` 为空（开发模式） | ✅ 直接放行 |
-| `Origin` 在白名单中 | ✅ 放行 |
-| `Origin` 不在白名单中 | ❌ 403 Forbidden |
+- 请求无 `Origin` 头（服务端调用、Postman、curl）→ ✅ 直接放行
+- `ALLOWED_ORIGINS` 为空（开发模式）→ ✅ 直接放行
+- `Origin` 在白名单中 → ✅ 放行
+- `Origin` 不在白名单中 → ❌ 403 Forbidden
 
 > **生产建议**：务必配置 `ALLOWED_ORIGINS`，否则任何来源的请求均可通过 CSRF 检查。
 
@@ -166,13 +165,11 @@ ALLOWED_ORIGINS=https://admin.example.com,https://app.example.com
 
 ### 当前限流策略
 
-| 接口 | 时间窗口 | 最大次数 | 用途 |
-|------|---------|---------|------|
-| `POST /api/auth/login` | 15 分钟 | 10 次 | 防暴力破解密码 |
-| `GET /api/auth/captcha` | 1 分钟 | 30 次 | 防验证码刷取 |
-| `POST /api/auth/register` | 1 小时 | 5 次 | 防滥用注册 |
-| `POST /api/auth/forgot-password` | 1 小时 | 5 次 | 防账号枚举 |
-| `POST /api/auth/reset-password` | 1 小时 | 5 次 | 防重置密码滥用 |
+- `POST /api/auth/login`：15 分钟内最多 10 次，用于防暴力破解密码
+- `GET /api/auth/captcha`：1 分钟内最多 30 次，用于防验证码刷取
+- `POST /api/auth/register`：1 小时内最多 5 次，用于防滥用注册
+- `POST /api/auth/forgot-password`：1 小时内最多 5 次，用于防账号枚举
+- `POST /api/auth/reset-password`：1 小时内最多 5 次，用于防重置密码滥用
 
 超过限制时返回：
 
