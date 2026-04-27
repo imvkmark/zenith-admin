@@ -472,3 +472,67 @@ const handleBatchDelete = () => {
 ```
 
 > `request.delete(url, body)` 支持传请求体（`packages/web/src/utils/request.ts` 已实现）。
+
+---
+
+## 虚拟化表格（大数据量）
+
+当列表数据量较大（通常 > 500 条，如地区省市县、日志等）时，为 `Table` 开启 `virtualized`。
+
+### 弹性全宽方案（推荐）
+
+让**一列不设 `width`**（通常是名称/标题主列），表格自动填满容器。`fixed: 'right'` 仅保留操作列，状态列等其他列去掉 `fixed`。
+
+```tsx
+const columns: ColumnProps<Region>[] = [
+  {
+    title: '地区名称',
+    dataIndex: 'name',
+    // 不设 width — 弹性列，填满剩余宽度
+  },
+  { title: '区划代码', dataIndex: 'code', width: 140 },
+  { title: '级别',     dataIndex: 'level', width: 90 },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    width: 90,
+    // 注意：不加 fixed: 'right'，否则必须设 scroll.x 导致宽度固定
+  },
+  {
+    title: '操作',
+    fixed: 'right',   // 仅操作列保留右固定
+    width: 160,
+    render: ...
+  },
+];
+
+<Table
+  bordered
+  virtualized
+  scroll={{ y: 'calc(100vh - 260px)' }}  // 只设 y，不设 x
+  columns={columns}
+  dataSource={data}
+  rowKey="id"
+  pagination={false}
+/>
+```
+
+### 固定宽度方案
+
+所有列都有显式 `width` 时（含 `fixed: 'right'` 的状态列），必须设 `scroll.x` = 各列宽度之和，否则表头与数据行错位：
+
+```tsx
+<Table
+  virtualized
+  scroll={{ x: 1050, y: 'calc(100vh - 260px)' }}
+  columns={columns}
+/>
+```
+
+> 缺点：`scroll.x` 固定后表格在宽屏不填满容器。
+
+### 注意事项
+
+- `scroll.y` 是虚拟化生效的**必要条件**，`calc(100vh - 260px)` 适配大多数管理页面布局（260px ≈ 顶栏 + 工具栏 + 内边距）
+- 菜单管理等数据量小（< 200 条）且有复杂自定义渲染器的树形表格，**不建议**开启 `virtualized`
+- 开启 `virtualized` 后，`expandedRowKeys` 受控展开仍正常工作，无需额外处理
