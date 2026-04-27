@@ -55,6 +55,7 @@ import workflowInstancesRoutes from './routes/workflow-instances';
 import healthRoutes from './routes/health';
 import logFilesRoutes from './routes/log-files';
 import { createWsRoute } from './routes/ws';
+import stripAnsi from 'strip-ansi';
 import { initCronScheduler } from './lib/cron-scheduler';
 import { initTelemetry } from './lib/telemetry';
 
@@ -99,9 +100,6 @@ app.use(
     },
   }),
 );
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-const stripAnsi = (str: string) => str.replaceAll(ANSI_RE, '');
 app.use('*', honoLogger((msg) => logger.info(stripAnsi(msg))));
 if (config.serverTimingEnabled) {
   app.use('*', timing());
