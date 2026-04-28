@@ -71,7 +71,7 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 // 推荐：service 的 ensureXxxExists 同时返回实体交给路由做快照
 import { ensureYourRecordExists } from '../services/your.service';
 
-const before = await ensureYourRecordExists(id);  // 不存在时抛 AppError(404)
+const before = await ensureYourRecordExists(id);  // 不存在时抛 HTTPException(404)
 // 如有敏感字段（如 password），先排除
 const { password: _pw, ...safeBefore } = before as Record<string, unknown>;
 setAuditBeforeData(c, safeBefore);

@@ -142,24 +142,26 @@ xxxRouter.openapiRoutes([createXxxRoute, /* 其他路由 */] as const);
 // 数据映射（纯函数，DB 行 → 公开 DTO 字段）
 export function mapXxx(row: XxxRow) { ... }
 
-// 前置校验（直接 throw AppError，由全局 onError 转为 JSON 错误响应）
+// 前置校验（直接 throw HTTPException，由全局 onError 转为 JSON 错误响应）
 export async function ensureXxxExists(id: number) {
   const [row] = await db.select()...;
-  if (!row) throw new AppError('XXX 不存在', 404);
+  if (!row) throw new HTTPException(404, { message: 'XXX 不存在' });
   return row;
 }
 ```
 
-### 错误处理：AppError
+### 错误处理：HTTPException
 
-`AppError` 定义在 `packages/server/src/lib/errors.ts`，由 `packages/server/src/index.ts` 的全局 `onError` 统一处理：
+使用 Hono 原生 `HTTPException`（`hono/http-exception`），由 `packages/server/src/index.ts` 的全局 `onError` 统一处理：
 
 ```typescript
-// service 中
-throw new AppError('用户名已存在', 400);
-throw new AppError('资源不存在', 404);
+import { HTTPException } from 'hono/http-exception';
 
-// service 中（DB 唯一约束错误统一映射为 AppError）
+// service 中
+throw new HTTPException(400, { message: '用户名已存在' });
+throw new HTTPException(404, { message: '资源不存在' });
+
+// service 中（DB 唯一约束错误统一映射为 HTTPException(400)）
 try {
   await db.insert(xxxs).values(data);
 } catch (err: unknown) {

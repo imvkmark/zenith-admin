@@ -103,7 +103,7 @@ export async function setUserPositions(executor: DbExecutor, userId: number, pos
   }
 }
 
-// ─── 参照完整性校验（失败时抛出 AppError）────────────────────────────────────
+// ─── 参照完整性校验（失败时抛出 HTTPException）───────────────────────────────
 
 export async function ensureDepartmentExists(departmentId?: number | null, user?: JwtPayload) {
   if (departmentId === undefined || departmentId === null) return;
