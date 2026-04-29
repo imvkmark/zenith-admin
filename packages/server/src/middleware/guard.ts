@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import type { JwtPayload } from './auth';
-import type { AppEnv } from '../lib/context';
+import { setAuditBefore, type AppEnv } from '../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { sanitizeBody } from '../lib/sanitize';
 import { db } from '../db';
@@ -17,8 +17,8 @@ export interface AuditLogOptions {
 }
 
 /** 在路由处理器中调用，记录操作前的实体快照，用于 diff 展示 */
-export function setAuditBeforeData(c: Context, data: unknown): void {
-  c.set('auditBeforeData', JSON.stringify(data));
+export function setAuditBeforeData(_c: Context, data: unknown): void {
+  setAuditBefore(data);
 }
 
 export interface GuardOptions {
@@ -71,6 +71,29 @@ async function writeOperationLog(
   }
 }
 
+async function resolveAuditRequestBody(c: Context, options: AuditLogOptions): Promise<unknown> {
+  if (options.recordBody === false) {
+    return undefined;
+  }
+
+  const contentType = c.req.header('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    return undefined;
+  }
+
+  // 优先读已通过校验的数据（校验成功时可用）
+  const request = c.req as typeof c.req & { valid: (target: 'json') => unknown };
+  const validated = request.valid('json');
+  if (validated !== undefined) return validated;
+
+  // fallback：校验失败（400）时仍能记录原始请求体，便于审计异常请求
+  try {
+    return await c.req.json();
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 统一路由守卫中间件。
  * 按顺序执行：权限校验 → 审计日志（可选）→ next()
@@ -95,14 +118,8 @@ export function guard(opts: GuardOptions) {
     // ── 审计日志 ──
     if (opts.audit) {
       const start = Date.now();
-      let body: unknown;
-      if (opts.audit.recordBody !== false) {
-        const contentType = c.req.header('content-type') ?? '';
-        if (contentType.includes('application/json')) {
-          try { body = await c.req.json(); } catch { body = undefined; }
-        }
-      }
       await next();
+      const body = await resolveAuditRequestBody(c, opts.audit);
       // 捕获操作前快照（由路由处理器通过 setAuditBeforeData 注入）
       const beforeData = c.get('auditBeforeData') as string | undefined;
       // 捕获响应体作为操作后快照
