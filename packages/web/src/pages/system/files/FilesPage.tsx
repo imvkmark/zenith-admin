@@ -10,6 +10,7 @@ import {
   Table,
   Tag,
   Toast,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import { Plus, Search, RotateCcw, Download } from 'lucide-react';
@@ -201,7 +202,9 @@ export default function FilesPage() {
       render: (name: string, record: ManagedFile) => (
         <Space spacing={6} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
           <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>{getFileTypeIcon(record.mimeType)}</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+          <Tooltip content={name}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+          </Tooltip>
         </Space>
       ),
     },
