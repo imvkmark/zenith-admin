@@ -258,6 +258,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
             <div className="login-logo">Z</div>
             <span className="login-brand-name">Zenith Admin</span>
           </div>
+          <div className="login-eyebrow">企业级后台管理</div>
           <h1 className="login-headline">
             高效管理，
             <br />

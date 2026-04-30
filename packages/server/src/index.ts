@@ -90,7 +90,7 @@ app.use('*', secureHeaders({
   xFrameOptions: false,                       // API 无 UI，不需要
 }));
 // 流式/二进制路由排除压缩：SSE 实时推送 + 文件下载不能被缓冲压缩
-const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/log-files'];
+const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/log-files', '/api/monitor/stream'];
 app.use('*', except(
   (c) => COMPRESS_EXCLUDE_PREFIXES.some((p) => c.req.path.startsWith(p)),
   compress(),
@@ -130,7 +130,7 @@ if (config.requestBodyLimit > 0) {
 if (config.requestTimeoutMs > 0) {
   const timeoutMs = config.requestTimeoutMs;
   // 天生长耗时的路径前缀：WebSocket、文件上传/下载、数据库备份
-  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/log-files'];
+  const TIMEOUT_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-backups', '/api/log-files', '/api/monitor/stream'];
 
   const timeoutMiddleware = timeout(
     timeoutMs,

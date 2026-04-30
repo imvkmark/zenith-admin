@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select } from '@douyinfe/semi-ui';
+import { Button, Card, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag } from '@douyinfe/semi-ui';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -169,12 +169,21 @@ function formatBitrate(bps: number): string {
   return `${(bps / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
 }
 
+const SSE_STATUS_META: Record<'idle' | 'connecting' | 'open' | 'error', { color: 'grey' | 'blue' | 'green' | 'red'; text: string }> = {
+  idle: { color: 'grey', text: '未连接' },
+  connecting: { color: 'blue', text: '连接中…' },
+  open: { color: 'green', text: '实时推送中' },
+  error: { color: 'red', text: '连接异常' },
+};
+
 export default function MonitorPage() {
   const [data, setData] = useState<MonitorData | null>(null);
   const [series, setSeries] = useState<TimeseriesPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<number>(30000);
+  /** SSE 连接状态，仅在 SSE 模式下展示 */
+  const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'open' | 'error'>('idle');
   const sseAbortRef = useRef<AbortController | null>(null);
 
   const intervalRef = useRef<number>(refreshInterval);
@@ -220,13 +229,38 @@ export default function MonitorPage() {
 
   /**
    * SSE 订阅模式：refreshInterval === -1 时生效
-   * 后端采样周期（默认 10s）推一次 metrics 事件，避免轮询重复建连
+   * 首帧 `metrics` 为完整 snapshot；后续 `metrics:diff` 为差量 patch（约定：null 表示删除该键）。
+   * 数组使用整段替换；对象使用递归合并。
    */
   useEffect(() => {
-    if (refreshInterval !== -1) return;
+    if (refreshInterval !== -1) {
+      setSseStatus('idle');
+      return;
+    }
+    setSseStatus('connecting');
     const ctrl = new AbortController();
     sseAbortRef.current = ctrl;
     let buffer = '';
+
+    /** 将 patch 深合并到 base，返回合并结果（不修改入参 base） */
+    const mergePatch = (base: unknown, patch: unknown): unknown => {
+      if (patch === null) return undefined; // 删除标记
+      if (patch === undefined) return base;
+      if (Array.isArray(patch)) return patch; // 数组整段替换
+      if (typeof patch !== 'object' || typeof base !== 'object' || base === null || Array.isArray(base)) {
+        return patch;
+      }
+      const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+      for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+        if (v === null) {
+          delete out[k];
+        } else {
+          out[k] = mergePatch(out[k], v);
+        }
+      }
+      return out;
+    };
+
     (async () => {
       try {
         const token = localStorage.getItem(TOKEN_KEY);
@@ -236,12 +270,12 @@ export default function MonitorPage() {
         });
         if (!res.ok || !res.body) {
           Toast.error('实时推送连接失败');
+          setSseStatus('error');
           return;
         }
+        setSseStatus('open');
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        // SSE 帧以 \n\n 分隔；event: <name> \n data: <json> \n\n
-        let currentEvent = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -249,25 +283,30 @@ export default function MonitorPage() {
           const frames = buffer.split('\n\n');
           buffer = frames.pop() ?? '';
           for (const frame of frames) {
-            currentEvent = '';
+            let currentEvent = '';
             let dataLine = '';
             for (const line of frame.split('\n')) {
               if (line.startsWith('event:')) currentEvent = line.slice(6).trim();
               else if (line.startsWith('data:')) dataLine += line.slice(5).trimStart();
             }
-            if (currentEvent === 'metrics' && dataLine) {
-              try {
-                const payload = JSON.parse(dataLine) as MonitorData;
-                setData(payload);
+            if (!dataLine) continue;
+            try {
+              const payload: unknown = JSON.parse(dataLine);
+              if (currentEvent === 'metrics') {
+                setData(payload as MonitorData);
                 setLastUpdated(new Date());
                 setLoading(false);
-              } catch { /* ignore parse error */ }
-            }
+              } else if (currentEvent === 'metrics:diff') {
+                setData((prev) => (prev ? (mergePatch(prev, payload) as MonitorData) : prev));
+                setLastUpdated(new Date());
+              }
+            } catch { /* ignore parse error */ }
           }
         }
       } catch (e: unknown) {
         if (e instanceof Error && e.name === 'AbortError') return;
         Toast.error('实时推送连接中断');
+        setSseStatus('error');
       }
     })();
     return () => { ctrl.abort(); };
@@ -798,6 +837,16 @@ export default function MonitorPage() {
     <div className="monitor-page">
       <div className="responsive-toolbar monitor-header">
         <div className="monitor-header__actions">
+          {refreshInterval === -1 && (
+            <Tag
+              size="small"
+              color={SSE_STATUS_META[sseStatus].color}
+              className="monitor-sse-tag"
+            >
+              <span className={`monitor-sse-dot monitor-sse-dot--${sseStatus}`} />
+              {SSE_STATUS_META[sseStatus].text}
+            </Tag>
+          )}
           {lastUpdated && (
             <Text type="tertiary" size="small">最后更新：{formatDateTime(lastUpdated)}</Text>
           )}

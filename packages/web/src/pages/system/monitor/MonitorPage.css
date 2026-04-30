@@ -278,3 +278,31 @@
   font-size: 12px;
   word-break: break-all;
 }
+
+/* ===== SSE 连接状态指示灯 ===== */
+.monitor-sse-tag {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.monitor-sse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.monitor-sse-dot--open {
+  animation: monitor-sse-pulse 1.6s ease-in-out infinite;
+}
+
+.monitor-sse-dot--connecting {
+  animation: monitor-sse-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes monitor-sse-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.7); }
+}

@@ -203,17 +203,32 @@ export const monitorHandlers = [
       message: 'success',
       data: { intervalSec: 10, capacity: 360, points: buildSeries() },
     })),
-  // SSE 推送：初次发送一次快照，随后每 10s 发送一次
+  // SSE 推送：首帧发送 metrics 全量；后续每 10s 发送 metrics:diff（仅高频抖动字段）
   http.get('/api/monitor/stream', () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
-        const send = () => {
-          controller.enqueue(encoder.encode(`event: metrics\ndata: ${JSON.stringify(baseStatus)}\n\n`));
-        };
-        send();
-        const timer = setInterval(send, 10_000);
-        // 没有 abort 信号时，demo 模式下依靠页面卸载关闭连接
+        // 首帧：完整 snapshot
+        controller.enqueue(encoder.encode(`event: metrics\ndata: ${JSON.stringify(baseStatus)}\n\n`));
+        // 后续：仅推送 cpu.usage / memory.usagePercent / http.currentQps / network[].rxBps,txBps 等少量抖动字段
+        const timer = setInterval(() => {
+          const wave = Math.sin(Date.now() / 12_000);
+          const patch = {
+            cpu: {
+              usage: Math.max(0, Math.round(15 + wave * 8 + Math.random() * 5)),
+              perCore: baseStatus.cpu.perCore.map((c) => ({
+                ...c,
+                usage: Math.max(0, Math.min(100, c.usage + Math.round((Math.random() - 0.5) * 10))),
+              })),
+            },
+            memory: { usagePercent: 38 + Math.round(wave * 2) },
+            http: {
+              currentQps: Math.max(0, Math.round(8 + wave * 4 + Math.random() * 3)),
+              qps: +(8 + wave * 2).toFixed(2),
+            },
+          };
+          controller.enqueue(encoder.encode(`event: metrics:diff\ndata: ${JSON.stringify(patch)}\n\n`));
+        }, 10_000);
         return () => clearInterval(timer);
       },
     });
