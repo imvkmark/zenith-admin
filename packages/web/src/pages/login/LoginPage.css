@@ -3,12 +3,13 @@
   display: flex;
   height: 100vh;
   min-height: 600px;
+  overflow: hidden;
 }
 
 /* ===== 左侧品牌区 ===== */
 .login-left {
-  width: 50%;
-  min-width: 460px;
+  width: 48%;
+  min-width: 480px;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -22,126 +23,184 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 0);
-  background-size: 28px 28px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 0);
+  background-size: 30px 30px;
   z-index: 0;
 }
 
-/* 隐藏圆圈装饰（极简扁平风格不使用） */
-.login-circle {
-  display: none;
+/* 装饰光晕 - 右下角 */
+.login-glow-bottom {
+  position: absolute;
+  width: 560px;
+  height: 560px;
+  bottom: -180px;
+  right: -120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 68%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* 装饰光晕 - 左上角 */
+.login-glow-top {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  top: -70px;
+  left: -50px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, transparent 65%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* 装饰同心环 - 右下角 */
+.login-ring {
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  bottom: -168px;
+  right: -136px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(100, 162, 255, 0.14);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.login-ring::before {
+  content: '';
+  position: absolute;
+  inset: 52px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(100, 162, 255, 0.1);
+}
+
+.login-ring::after {
+  content: '';
+  position: absolute;
+  inset: 108px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(100, 162, 255, 0.07);
 }
 
 /* 品牌内容 */
 .login-brand {
   position: relative;
   z-index: 1;
-  padding: 0 56px;
-  max-width: 500px;
+  padding: 0 64px;
+  max-width: 520px;
   width: 100%;
 }
 
 .login-logo-wrap {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 56px;
+  gap: 10px;
+  margin-bottom: 72px;
 }
 
+/* 基础 logo（移动端右侧品牌区使用） */
 .login-logo {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #1f5cff 0%, #173fc2 100%);
+  background: linear-gradient(135deg, #1a5cf8 0%, #1045c8 100%);
   color: #ffffff;
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 8px 20px rgba(39, 92, 226, 0.28);
+  box-shadow: 0 6px 16px rgba(26, 92, 248, 0.28);
 }
 
-/* 左侧品牌栏 logo 扁平白色 */
+/* 左侧品牌栏 logo - 磨砂半透明 */
 .login-brand .login-logo {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: none;
 }
 
-/* 右侧（移动端品牌栏）logo 沿用基础蓝色即可，无需 override */
-
-.login-brand-name {
-  font-size: 18px;
+/* 左侧品牌名 */
+.login-brand .login-brand-name {
+  font-size: 17px;
   font-weight: 600;
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.02em;
+}
+
+/* 移动端右侧品牌名 */
+.login-mobile-brand .login-brand-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
   letter-spacing: 0.02em;
 }
 
 .login-headline {
-  font-size: 40px;
+  font-size: 42px;
   font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
+  line-height: 1.22;
+  letter-spacing: -0.025em;
   color: #ffffff;
-  margin: 0 0 16px;
+  margin: 0 0 18px;
 }
 
 .login-headline-highlight {
-  color: rgba(255, 255, 255, 0.82);
+  display: inline-block;
+  background: linear-gradient(90deg, #76b8ff 0%, #b8d8ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .login-desc {
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.65);
+  font-size: 14.5px;
+  color: rgba(255, 255, 255, 0.5);
   line-height: 1.85;
-  margin: 0 0 40px;
+  margin: 0 0 36px;
+  max-width: 360px;
 }
 
-/* 功能特性列表 */
-.login-features {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* 分隔线 */
+.login-divider {
+  width: 32px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+  margin-bottom: 28px;
+}
+
+/* 特性标签组 */
+.login-feature-tags {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-.login-features li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.85);
-  font-weight: 400;
-}
-
-/* CSS 绘制的对勾圆形图标 */
-.login-feature-check {
+.login-feature-tag {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1.5px solid rgba(255, 255, 255, 0.36);
-  flex-shrink: 0;
-  position: relative;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 100px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 13px;
+  color: #ffffff;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  transition: background 0.2s, border-color 0.2s;
 }
 
-.login-feature-check::after {
+.login-feature-tag::before {
   content: '';
-  position: absolute;
-  left: 5px;
-  top: 2px;
   width: 5px;
-  height: 9px;
-  border-right: 2px solid rgba(255, 255, 255, 0.9);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.9);
-  transform: rotate(40deg);
+  height: 5px;
+  border-radius: 50%;
+  background: #6ab8ff;
+  flex-shrink: 0;
 }
 
 /* ===== 右侧表单区 ===== */
@@ -172,13 +231,12 @@ body[theme-mode='dark'] .login-right {
   margin-bottom: 8px;
 }
 
-body[theme-mode='dark'] .login-form-wrapper .login-brand-name,
 body[theme-mode='dark'] .login-form-wrapper .semi-typography {
   color: #f4f6fb;
 }
 
 body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
-  color: rgba(244, 246, 251, 0.65);
+  color: rgba(244, 246, 251, 0.55);
 }
 
 /* ===== 窄屏响应式 ===== */
@@ -188,7 +246,12 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
   }
 
   .login-page {
-    background: #ffffff;
+    background: #edf0f9;
+  }
+
+  body[theme-mode='dark'] .login-page,
+  body[theme-mode='dark'] .login-right {
+    background: #0e1220;
   }
 
   .login-right {
@@ -197,12 +260,6 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
     justify-content: flex-start;
     overflow-y: auto;
     align-items: stretch;
-    background: #ffffff;
-  }
-
-  body[theme-mode='dark'] .login-page,
-  body[theme-mode='dark'] .login-right {
-    background: #181c2a;
   }
 
   .login-form-wrapper {
@@ -216,19 +273,19 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
     justify-content: center;
   }
 }
 
 @media (max-width: 1200px) {
   .login-left {
-    width: 48%;
+    width: 46%;
     min-width: 420px;
   }
 
   .login-brand {
-    padding: 0 44px;
+    padding: 0 48px;
   }
 
   .login-headline {
@@ -239,6 +296,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
 @media (max-width: 480px) {
   .login-form-wrapper {
     padding: 28px 20px;
+    border-radius: 16px;
   }
 }
 
@@ -260,16 +318,16 @@ body[theme-mode='dark'] .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
 }
 
 .login-form-wrapper .semi-button.semi-button-primary {
-  border-radius: 10px;
+  border-radius: 12px;
   height: 46px;
   font-size: 15px;
   font-weight: 500;
-  box-shadow: 0 6px 20px rgba(21, 88, 214, 0.3);
+  box-shadow: 0 4px 16px rgba(21, 88, 214, 0.28);
   transition: box-shadow 0.2s, transform 0.15s;
 }
 
 .login-form-wrapper .semi-button.semi-button-primary:hover {
-  box-shadow: 0 10px 28px rgba(21, 88, 214, 0.38);
+  box-shadow: 0 8px 24px rgba(21, 88, 214, 0.38);
   transform: translateY(-1px);
 }
 

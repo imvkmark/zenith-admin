@@ -250,9 +250,9 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
   return (
     <div className="login-page">
       <div className="login-left">
-        <div className="login-circle login-circle-1" />
-        <div className="login-circle login-circle-2" />
-        <div className="login-circle login-circle-3" />
+        <div className="login-glow-top" />
+        <div className="login-glow-bottom" />
+        <div className="login-ring" />
         <div className="login-brand">
           <div className="login-logo-wrap">
             <div className="login-logo">Z</div>
@@ -264,14 +264,15 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
             <span className="login-headline-highlight">赋能业务增长</span>
           </h1>
           <p className="login-desc">
-            企业级后台管理系统，为团队提供
-            高效、稳定、安全的一站式管理解决方案。
+            企业级后台管理系统，为团队提供高效、稳定、安全的一站式管理解决方案。
           </p>
-          <ul className="login-features">
-            <li><span className="login-feature-check" />稳定可靠的系统运行保障</li>
-            <li><span className="login-feature-check" />精细化权限与角色管理</li>
-            <li><span className="login-feature-check" />完善的安全审计机制</li>
-          </ul>
+          <div className="login-divider" />
+          <div className="login-feature-tags">
+            <span className="login-feature-tag">精细化权限管理</span>
+            <span className="login-feature-tag">安全审计机制</span>
+            <span className="login-feature-tag">稳定可靠运行</span>
+            <span className="login-feature-tag">多租户支持</span>
+          </div>
         </div>
       </div>
       <div className="login-right">
