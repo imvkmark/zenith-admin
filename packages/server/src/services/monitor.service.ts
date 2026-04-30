@@ -1,4 +1,5 @@
 import os from 'node:os';
+import fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { db } from '../db';
@@ -12,15 +13,43 @@ const execFileAsync = promisify(execFile);
 // ─── 慢指标缓存（DB / Redis / 磁盘） ─────────────────────────────────
 const SLOW_TTL_MS = 10_000;
 type CacheEntry<T> = { at: number; value: T };
-const cache: { db?: CacheEntry<DbInfo | null>; redis?: CacheEntry<RedisInfo | null>; disk?: CacheEntry<DiskInfo | null> } = {};
+const cache: {
+  db?: CacheEntry<DbInfo | null>;
+  redis?: CacheEntry<RedisInfo | null>;
+  disks?: CacheEntry<DiskInfo[] | null>;
+  meminfo?: CacheEntry<LinuxMemInfo | null>;
+} = {};
 
 function fresh<T>(entry: CacheEntry<T> | undefined): T | undefined {
   if (entry && Date.now() - entry.at < SLOW_TTL_MS) return entry.value;
   return undefined;
 }
 
-// ─── 类型 ─────────────────────────────────────────────────────────────
-interface DiskInfo { total: number; used: number; free: number; mount: string }
+// ─── 类型 ──────────────────────────────────────────
+export interface DiskInfo {
+  filesystem: string;
+  total: number;
+  used: number;
+  free: number;
+  usagePercent: number;
+  mount: string;
+}
+
+/** Linux /proc/meminfo 中有意义的字段，单位：字节 */
+export interface LinuxMemInfo {
+  memTotal: number;
+  memFree: number;
+  memAvailable: number;
+  buffers: number;
+  cached: number;
+  shared: number;
+  swapTotal: number;
+  swapFree: number;
+  swapCached: number;
+  swapUsagePercent: number;
+  dirty: number;
+  writeback: number;
+}
 
 interface DbConnectionStateBreakdown {
   active: number;
@@ -69,44 +98,125 @@ export interface RedisInfo {
   slowLog: RedisSlowEntry[];
 }
 
-// ─── 磁盘信息（异步、非阻塞） ──────────────────────────────────────────
-export async function getDiskInfo(): Promise<DiskInfo | null> {
-  const cached = fresh(cache.disk);
+// ─── 磁盘信息（多挂载点，异步、非阻塞） ──────────────────────────────
+const DISK_FS_BLACKLIST = new Set([
+  'tmpfs', 'devtmpfs', 'devpts', 'sysfs', 'proc', 'cgroup', 'cgroup2',
+  'pstore', 'bpf', 'mqueue', 'debugfs', 'tracefs', 'configfs',
+  'fusectl', 'hugetlbfs', 'rpc_pipefs', 'autofs', 'binfmt_misc',
+  'overlay', 'squashfs', 'fuse.snapfuse', 'fuse.lxcfs',
+]);
+
+function shouldSkipMount(mount: string, fsType: string): boolean {
+  if (DISK_FS_BLACKLIST.has(fsType)) return true;
+  if (mount.startsWith('/snap/') || mount.startsWith('/var/lib/docker/')
+    || mount.startsWith('/run/') || mount.startsWith('/sys/')
+    || mount.startsWith('/proc/') || mount.startsWith('/dev/')
+    || mount.startsWith('/boot/efi')) return true;
+  return false;
+}
+
+export async function getDisks(): Promise<DiskInfo[] | null> {
+  const cached = fresh(cache.disks);
   if (cached !== undefined) return cached;
   try {
-    let info: DiskInfo | null = null;
+    const disks: DiskInfo[] = [];
     if (process.platform === 'win32') {
       const { stdout } = await execFileAsync(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command', 'Get-PSDrive C | Format-List Used,Free'],
+        [
+          '-NoProfile', '-NonInteractive', '-Command',
+          "Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | Select-Object Name,Used,Free | ConvertTo-Json -Compress",
+        ],
         { timeout: 5000 },
       );
-      const usedMatch = /Used\s*:\s*(\d+)/.exec(stdout);
-      const freeMatch = /Free\s*:\s*(\d+)/.exec(stdout);
-      if (usedMatch && freeMatch) {
-        const used = Number.parseInt(usedMatch[1], 10);
-        const free = Number.parseInt(freeMatch[1], 10);
-        info = { total: used + free, used, free, mount: 'C:' };
+      const parsed: unknown = JSON.parse(stdout || '[]');
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      for (const itRaw of arr) {
+        const it = itRaw as { Name?: string; Used?: number | string; Free?: number | string };
+        const used = Number(it.Used ?? 0);
+        const free = Number(it.Free ?? 0);
+        const total = used + free;
+        if (total <= 0) continue;
+        disks.push({
+          filesystem: `${it.Name ?? ''}:`,
+          total,
+          used,
+          free,
+          usagePercent: Math.round((used / total) * 100),
+          mount: `${it.Name ?? ''}:`,
+        });
       }
     } else {
-      const { stdout } = await execFileAsync('df', ['-B1', '/'], { timeout: 3000 });
-      const lines = stdout.trim().split('\n');
-      const last = lines.at(-1);
-      if (lines.length >= 2 && last) {
-        const parts = last.trim().split(/\s+/);
-        if (parts.length >= 6) {
-          const total = Number.parseInt(parts[1], 10);
-          const used = Number.parseInt(parts[2], 10);
-          const free = Number.parseInt(parts[3], 10);
-          info = { total, used, free, mount: parts[5] };
-        }
+      const { stdout } = await execFileAsync('df', ['-PB1', '-T'], { timeout: 5000 });
+      const lines = stdout.trim().split('\n').slice(1);
+      const seen = new Set<string>();
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 7) continue;
+        const filesystem = parts[0];
+        const fsType = parts[1];
+        const total = Number.parseInt(parts[2], 10);
+        const used = Number.parseInt(parts[3], 10);
+        const free = Number.parseInt(parts[4], 10);
+        const mount = parts.slice(6).join(' ');
+        if (!Number.isFinite(total) || total <= 0) continue;
+        if (shouldSkipMount(mount, fsType)) continue;
+        const key = `${filesystem}|${mount}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        disks.push({
+          filesystem,
+          total,
+          used,
+          free,
+          usagePercent: Math.round((used / total) * 100),
+          mount,
+        });
       }
+      disks.sort((a, b) => b.total - a.total);
     }
-    cache.disk = { at: Date.now(), value: info };
-    return info;
+    cache.disks = { at: Date.now(), value: disks };
+    return disks;
   } catch (err) {
-    logger.warn('[monitor] getDiskInfo failed', { err: String(err) });
-    cache.disk = { at: Date.now(), value: null };
+    logger.warn('[monitor] getDisks failed', { err: String(err) });
+    cache.disks = { at: Date.now(), value: null };
+    return null;
+  }
+}
+
+// ─── Linux meminfo（其他平台返回 null） ────────────────────────
+export async function getLinuxMemInfo(): Promise<LinuxMemInfo | null> {
+  if (process.platform !== 'linux') return null;
+  const cached = fresh(cache.meminfo);
+  if (cached !== undefined) return cached;
+  try {
+    const text = await fs.readFile('/proc/meminfo', 'utf8');
+    const map: Record<string, number> = {};
+    for (const line of text.split('\n')) {
+      const m = /^(\w+):\s+(\d+)\s*kB/.exec(line);
+      if (m) map[m[1]] = Number(m[2]) * 1024;
+    }
+    const swapTotal = map.SwapTotal ?? 0;
+    const swapFree = map.SwapFree ?? 0;
+    const value: LinuxMemInfo = {
+      memTotal: map.MemTotal ?? 0,
+      memFree: map.MemFree ?? 0,
+      memAvailable: map.MemAvailable ?? 0,
+      buffers: map.Buffers ?? 0,
+      cached: map.Cached ?? 0,
+      shared: map.Shmem ?? 0,
+      swapTotal,
+      swapFree,
+      swapCached: map.SwapCached ?? 0,
+      swapUsagePercent: swapTotal > 0 ? Math.round(((swapTotal - swapFree) / swapTotal) * 100) : 0,
+      dirty: map.Dirty ?? 0,
+      writeback: map.Writeback ?? 0,
+    };
+    cache.meminfo = { at: Date.now(), value };
+    return value;
+  } catch (err) {
+    logger.warn('[monitor] getLinuxMemInfo failed', { err: String(err) });
+    cache.meminfo = { at: Date.now(), value: null };
     return null;
   }
 }
@@ -290,7 +400,12 @@ async function getSlowQueries(): Promise<DbSlowQuery[] | null> {
 
 // ─── 主入口 ────────────────────────────────────────────────────────────
 export async function getMonitorStatus() {
-  const [dbInfo, redisInfo, disk] = await Promise.all([getDbInfo(), getRedisInfo(), getDiskInfo()]);
+  const [dbInfo, redisInfo, disks, memInfo] = await Promise.all([
+    getDbInfo(),
+    getRedisInfo(),
+    getDisks(),
+    getLinuxMemInfo(),
+  ]);
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const usedMem = totalMem - freeMem;
@@ -298,10 +413,15 @@ export async function getMonitorStatus() {
   const sample = metricsSampler.getLatest();
   const cpuUsage = sample?.cpu ?? 0;
   const procCpu = sample?.procCpu ?? 0;
+  const perCore = metricsSampler.getPerCore();
+  const network = metricsSampler.getNetwork();
 
   const httpWindow = metricsSampler.http.windowStats();
   const httpPercentiles = metricsSampler.http.percentiles();
   const httpTotals = metricsSampler.http.totals();
+
+  // 以"总容量最大"那个磁盘作为兜底"主磁盘"字段，保证总览进度条仍可用
+  const primaryDisk = disks && disks.length > 0 ? disks[0] : null;
 
   return {
     os: {
@@ -317,22 +437,26 @@ export async function getMonitorStatus() {
       speed: cpus[0]?.speed ?? 0,
       loadAvg: os.loadavg(),
       usage: cpuUsage,
+      perCore,
     },
     memory: {
       total: totalMem,
       used: usedMem,
       free: freeMem,
       usagePercent: Math.round((usedMem / totalMem) * 100),
+      detail: memInfo,
     },
-    disk: disk
+    disk: primaryDisk
       ? {
-          total: disk.total,
-          used: disk.used,
-          free: disk.free,
-          usagePercent: Math.round((disk.used / disk.total) * 100),
-          mount: disk.mount,
+          total: primaryDisk.total,
+          used: primaryDisk.used,
+          free: primaryDisk.free,
+          usagePercent: primaryDisk.usagePercent,
+          mount: primaryDisk.mount,
         }
       : null,
+    disks: disks ?? [],
+    network,
     node: {
       version: process.version,
       uptime: Math.floor(process.uptime()),

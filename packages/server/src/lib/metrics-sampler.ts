@@ -6,9 +6,11 @@
  *   监控页时会显著放大开销。
  * - 现改为后台周期采样（默认每 10s 一次），HTTP 接口直接读取最新快照，零阻塞。
  * - 同时维护时序环形缓冲（默认 360 点 / 1h），供前端绘制趋势折线图。
- * - Event Loop Lag、GC、HTTP QPS·P95 等深度指标统一在此采集。
+ * - Event Loop Lag、GC、HTTP QPS·P95、每核 CPU、网络吞吐 等深度指标统一在此采集。
  */
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import v8 from 'node:v8';
 import { performance, PerformanceObserver, monitorEventLoopDelay, constants as perfConstants } from 'node:perf_hooks';
 import type { IntervalHistogram } from 'node:perf_hooks';
@@ -34,6 +36,30 @@ export interface MetricsSample {
   qps: number;
   /** 错误率（0-100，最近窗口内 status>=400 占比） */
   errorRate: number;
+  /** 汇总网络读字节/秒 */
+  netRxBps: number;
+  /** 汇总网络写字节/秒 */
+  netTxBps: number;
+}
+
+export interface PerCoreCpu {
+  index: number;
+  usage: number;
+  user: number;
+  system: number;
+  idle: number;
+}
+
+export interface NetIfaceStats {
+  name: string;
+  rxBytes: number;
+  txBytes: number;
+  rxBps: number;
+  txBps: number;
+  rxPackets: number;
+  txPackets: number;
+  rxErrors: number;
+  txErrors: number;
 }
 
 export interface GcStats {
@@ -179,10 +205,16 @@ class HttpMetricsCollector {
 class MetricsSampler {
   private timer: NodeJS.Timeout | null = null;
   private lastCpuTimes: ReturnType<typeof readCpuTimes> | null = null;
+  private lastPerCpuTimes: PerCoreRaw[] | null = null;
   private lastProcCpuUsage: NodeJS.CpuUsage | null = null;
   private lastProcCpuTime: number = 0;
   private latest: MetricsSample | null = null;
+  private latestPerCore: PerCoreCpu[] = [];
+  private latestNetwork: NetIfaceStats[] = [];
+  private lastNet: { at: number; ifaces: Record<string, NetSnapshot> } | null = null;
   private readonly series = new RingBuffer<MetricsSample>(TIMESERIES_CAPACITY);
+  /** SSE 订阅者：每个连接一个回调 */
+  private readonly subscribers = new Set<(s: MetricsSample) => void>();
 
   private readonly elDelay: IntervalHistogram = monitorEventLoopDelay({ resolution: 20 });
   private gcObserver: PerformanceObserver | null = null;
@@ -214,8 +246,10 @@ class MetricsSampler {
 
     // 初始化 CPU 基线
     this.lastCpuTimes = readCpuTimes();
+    this.lastPerCpuTimes = readPerCpuTimes();
     this.lastProcCpuUsage = process.cpuUsage();
     this.lastProcCpuTime = performance.now();
+    this.lastNet = { at: Date.now(), ifaces: readNetSnapshot() };
 
     this.timer = setInterval(() => {
       try {
@@ -261,6 +295,42 @@ class MetricsSampler {
     this.lastProcCpuUsage = process.cpuUsage();
     this.lastProcCpuTime = performance.now();
 
+    // Per-core CPU
+    this.latestPerCore = computePerCore(this.lastPerCpuTimes, readPerCpuTimes());
+    this.lastPerCpuTimes = readPerCpuTimes();
+
+    // Network throughput
+    const netNow = readNetSnapshot();
+    const tNow = Date.now();
+    let totalRxBps = 0;
+    let totalTxBps = 0;
+    const ifaces: NetIfaceStats[] = [];
+    if (this.lastNet) {
+      const elapsedSec = (tNow - this.lastNet.at) / 1000;
+      for (const [name, cur] of Object.entries(netNow)) {
+        const prev = this.lastNet.ifaces[name];
+        if (!prev || elapsedSec <= 0) continue;
+        const rxBps = Math.max(0, Math.round((cur.rxBytes - prev.rxBytes) / elapsedSec));
+        const txBps = Math.max(0, Math.round((cur.txBytes - prev.txBytes) / elapsedSec));
+        totalRxBps += rxBps;
+        totalTxBps += txBps;
+        ifaces.push({
+          name,
+          rxBytes: cur.rxBytes,
+          txBytes: cur.txBytes,
+          rxBps,
+          txBps,
+          rxPackets: cur.rxPackets,
+          txPackets: cur.txPackets,
+          rxErrors: cur.rxErrors,
+          txErrors: cur.txErrors,
+        });
+      }
+    }
+    ifaces.sort((a, b) => (b.rxBps + b.txBps) - (a.rxBps + a.txBps));
+    this.latestNetwork = ifaces;
+    this.lastNet = { at: tNow, ifaces: netNow };
+
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const memPercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
@@ -283,9 +353,30 @@ class MetricsSampler {
       loopLagP99: elStats.p99Ms,
       qps: httpWindow.qps,
       errorRate: httpWindow.errorRate,
+      netRxBps: totalRxBps,
+      netTxBps: totalTxBps,
     };
     this.latest = sample;
     this.series.push(sample);
+    for (const fn of this.subscribers) {
+      try { fn(sample); } catch (err) { logger.warn('[metrics] subscriber error', { err: String(err) }); }
+    }
+  }
+
+  /** 订阅采样事件（SSE 推送），返回取消函数 */
+  subscribe(fn: (s: MetricsSample) => void): () => void {
+    this.subscribers.add(fn);
+    return () => { this.subscribers.delete(fn); };
+  }
+
+  /** 最新的每核 CPU 使用率 */
+  getPerCore(): PerCoreCpu[] {
+    return this.latestPerCore;
+  }
+
+  /** 最新网络接口吞吐 */
+  getNetwork(): NetIfaceStats[] {
+    return this.latestNetwork;
   }
 
   /** 立刻读最新一帧；如尚未采样则返回 null */
@@ -372,6 +463,65 @@ function readCpuTimes(): { total: number; idle: number } {
     idle += c.times.idle;
   }
   return { total, idle };
+}
+
+interface PerCoreRaw { user: number; system: number; idle: number; total: number }
+function readPerCpuTimes(): PerCoreRaw[] {
+  return os.cpus().map((c) => {
+    const total = c.times.user + c.times.nice + c.times.sys + c.times.idle + c.times.irq;
+    return { user: c.times.user, system: c.times.sys, idle: c.times.idle, total };
+  });
+}
+
+function computePerCore(prev: PerCoreRaw[] | null, cur: PerCoreRaw[]): PerCoreCpu[] {
+  if (prev?.length !== cur.length) return [];
+  return cur.map((c, i) => {
+    const p = prev[i];
+    const totalDiff = c.total - p.total;
+    const idleDiff = c.idle - p.idle;
+    const userDiff = c.user - p.user;
+    const sysDiff = c.system - p.system;
+    if (totalDiff <= 0) return { index: i, usage: 0, user: 0, system: 0, idle: 100 };
+    return {
+      index: i,
+      usage: Math.max(0, Math.min(100, Math.round(100 - (100 * idleDiff) / totalDiff))),
+      user: Math.max(0, Math.round((userDiff / totalDiff) * 100)),
+      system: Math.max(0, Math.round((sysDiff / totalDiff) * 100)),
+      idle: Math.max(0, Math.round((idleDiff / totalDiff) * 100)),
+    };
+  });
+}
+
+interface NetSnapshot { rxBytes: number; txBytes: number; rxPackets: number; txPackets: number; rxErrors: number; txErrors: number }
+/**
+ * 读取各网口计数。Linux 优先从 /proc/net/dev 读取；其他平台下返回空对象。
+ * /proc/net/dev 列顺序：face | rxBytes packets errs drop fifo frame compressed multicast | txBytes packets errs drop fifo colls carrier compressed
+ */
+function readNetSnapshot(): Record<string, NetSnapshot> {
+  if (process.platform !== 'linux') return {};
+  try {
+    const text = fs.readFileSync(path.join('/proc', 'net', 'dev'), 'utf8');
+    const result: Record<string, NetSnapshot> = {};
+    for (const line of text.split('\n')) {
+      const colon = line.indexOf(':');
+      if (colon === -1) continue;
+      const name = line.slice(0, colon).trim();
+      if (!name || name === 'lo') continue;
+      const cols = line.slice(colon + 1).trim().split(/\s+/).map(Number);
+      if (cols.length < 16) continue;
+      result[name] = {
+        rxBytes: cols[0] || 0,
+        rxPackets: cols[1] || 0,
+        rxErrors: cols[2] || 0,
+        txBytes: cols[8] || 0,
+        txPackets: cols[9] || 0,
+        txErrors: cols[10] || 0,
+      };
+    }
+    return result;
+  } catch {
+    return {};
+  }
 }
 
 // 单例

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Progress, Skeleton, Tag, Tabs, TabPane, Toast, Typography, Select } from '@douyinfe/semi-ui';
+import { Button, Card, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select } from '@douyinfe/semi-ui';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network } from 'lucide-react';
+import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
+import { config } from '@/config';
+import { TOKEN_KEY } from '@zenith/shared';
 import './MonitorPage.css';
 
 const { Text } = Typography;
@@ -54,11 +56,31 @@ interface RedisInfo {
   slowLog?: RedisSlowEntry[];
 }
 
+interface PerCoreCpu { index: number; usage: number; user: number; system: number; idle: number; }
+
+interface NetIfaceStats {
+  name: string; rxBytes: number; txBytes: number; rxBps: number; txBps: number;
+  rxPackets: number; txPackets: number; rxErrors: number; txErrors: number;
+}
+
+interface DiskItem {
+  filesystem: string; total: number; used: number; free: number; usagePercent: number; mount: string;
+}
+
+interface LinuxMemDetail {
+  memTotal: number; memFree: number; memAvailable: number;
+  buffers: number; cached: number; shared: number;
+  swapTotal: number; swapFree: number; swapCached: number; swapUsagePercent: number;
+  dirty: number; writeback: number;
+}
+
 interface MonitorData {
   os: { platform: string; release: string; arch: string; hostname: string; uptimeSeconds: number; };
-  cpu: { model: string; cores: number; speed: number; loadAvg: [number, number, number]; usage: number; };
-  memory: { total: number; used: number; free: number; usagePercent: number; };
+  cpu: { model: string; cores: number; speed: number; loadAvg: [number, number, number]; usage: number; perCore?: PerCoreCpu[] };
+  memory: { total: number; used: number; free: number; usagePercent: number; detail?: LinuxMemDetail | null };
   disk: { total: number; used: number; free: number; usagePercent: number; mount?: string } | null;
+  disks?: DiskItem[];
+  network?: NetIfaceStats[];
   node: {
     version: string; uptime: number; pid: number;
     memoryUsage: { rss: number; heapTotal: number; heapUsed: number; external: number; arrayBuffers?: number };
@@ -76,6 +98,7 @@ interface MonitorData {
 interface TimeseriesPoint {
   t: number; cpu: number; mem: number; procCpu: number; heap: number;
   loopLagMean: number; loopLagP99: number; qps: number; errorRate: number;
+  netRxBps?: number; netTxBps?: number;
 }
 interface TimeseriesData { intervalSec: number; capacity: number; points: TimeseriesPoint[]; }
 
@@ -130,6 +153,7 @@ function InfoRow({ label, value }: InfoRowProps) {
 const SKELETON_ROW_KEYS = ['r0','r1','r2','r3','r4','r5','r6','r7','r8','r9','r10','r11'] as const;
 
 const REFRESH_OPTIONS = [
+  { label: '实时推送 (SSE)', value: -1 },
   { label: '5 秒', value: 5000 },
   { label: '10 秒', value: 10000 },
   { label: '30 秒', value: 30000 },
@@ -137,12 +161,21 @@ const REFRESH_OPTIONS = [
   { label: '暂停', value: 0 },
 ];
 
+function formatBitrate(bps: number): string {
+  if (!Number.isFinite(bps) || bps < 0) return '0 B/s';
+  if (bps < 1024) return `${bps} B/s`;
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+  if (bps < 1024 * 1024 * 1024) return `${(bps / 1024 / 1024).toFixed(2)} MB/s`;
+  return `${(bps / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
+}
+
 export default function MonitorPage() {
   const [data, setData] = useState<MonitorData | null>(null);
   const [series, setSeries] = useState<TimeseriesPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<number>(30000);
+  const sseAbortRef = useRef<AbortController | null>(null);
 
   const intervalRef = useRef<number>(refreshInterval);
   intervalRef.current = refreshInterval;
@@ -170,15 +203,75 @@ export default function MonitorPage() {
     }
   }, []);
 
+  // 首次进入页面拉一次（总览 + 时序）
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  /**
+   * 轮询模式：refreshInterval > 0 时生效
+   * SSE 模式（值=-1）与“暂停”（值=0）跳过
+   */
   useEffect(() => {
     if (refreshInterval <= 0) return;
     const timer = globalThis.setInterval(fetchData, refreshInterval);
     return () => globalThis.clearInterval(timer);
   }, [fetchData, refreshInterval]);
+
+  /**
+   * SSE 订阅模式：refreshInterval === -1 时生效
+   * 后端采样周期（默认 10s）推一次 metrics 事件，避免轮询重复建连
+   */
+  useEffect(() => {
+    if (refreshInterval !== -1) return;
+    const ctrl = new AbortController();
+    sseAbortRef.current = ctrl;
+    let buffer = '';
+    (async () => {
+      try {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const res = await fetch(`${config.apiBaseUrl}/api/monitor/stream`, {
+          headers: { Authorization: `Bearer ${token ?? ''}` },
+          signal: ctrl.signal,
+        });
+        if (!res.ok || !res.body) {
+          Toast.error('实时推送连接失败');
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        // SSE 帧以 \n\n 分隔；event: <name> \n data: <json> \n\n
+        let currentEvent = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split('\n\n');
+          buffer = frames.pop() ?? '';
+          for (const frame of frames) {
+            currentEvent = '';
+            let dataLine = '';
+            for (const line of frame.split('\n')) {
+              if (line.startsWith('event:')) currentEvent = line.slice(6).trim();
+              else if (line.startsWith('data:')) dataLine += line.slice(5).trimStart();
+            }
+            if (currentEvent === 'metrics' && dataLine) {
+              try {
+                const payload = JSON.parse(dataLine) as MonitorData;
+                setData(payload);
+                setLastUpdated(new Date());
+                setLoading(false);
+              } catch { /* ignore parse error */ }
+            }
+          }
+        }
+      } catch (e: unknown) {
+        if (e instanceof Error && e.name === 'AbortError') return;
+        Toast.error('实时推送连接中断');
+      }
+    })();
+    return () => { ctrl.abort(); };
+  }, [refreshInterval]);
 
   const chartData = useMemo(
     () => series.map((p) => ({ ...p, time: formatTimestamp(p.t) })),
@@ -311,6 +404,48 @@ export default function MonitorPage() {
     );
   }
 
+  function renderDiskTab(d: MonitorData) {
+    if (d.disks && d.disks.length > 0) {
+      return (
+        <table className="monitor-slow-table monitor-disk-table">
+          <thead>
+            <tr>
+              <th>文件系统</th><th>挂载点</th><th>总容量</th><th>已用</th><th>可用</th><th>使用率</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.disks.map((it) => (
+              <tr key={`${it.filesystem}-${it.mount}`}>
+                <td className="monitor-disk-fs">{it.filesystem}</td>
+                <td>{it.mount}</td>
+                <td>{formatBytes(it.total)}</td>
+                <td>{formatBytes(it.used)}</td>
+                <td>{formatBytes(it.free)}</td>
+                <td style={{ minWidth: 140 }}>
+                  <div className={getProgressClass(it.usagePercent)}>
+                    <Progress percent={it.usagePercent} showInfo />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
+    if (d.disk) {
+      return (
+        <div className="monitor-detail-grid">
+          <InfoRow label="挂载点" value={d.disk.mount ?? '/'} />
+          <InfoRow label="总容量" value={formatBytes(d.disk.total)} />
+          <InfoRow label="已使用" value={formatBytes(d.disk.used)} />
+          <InfoRow label="可用空间" value={formatBytes(d.disk.free)} />
+          <InfoRow label="使用率" value={`${d.disk.usagePercent}%`} />
+        </div>
+      );
+    }
+    return <Text type="tertiary">磁盘信息不可用</Text>;
+  }
+
   function renderContent() {
     if (loading && !data) return renderSkeleton();
     if (!data) {
@@ -398,6 +533,33 @@ export default function MonitorPage() {
               <InfoRow label="进程 CPU 使用率" value={data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%（单核满载=100%）`} />
               <InfoRow label="系统负载 (1/5/15min)" value={data.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / ')} />
             </div>
+
+            {data.cpu.perCore && data.cpu.perCore.length > 0 && (<>
+              <div className="monitor-section-title">每核使用率</div>
+              <div className="monitor-percore-grid">
+                {data.cpu.perCore.map((core) => (
+                  <div key={core.index} className="monitor-percore-item">
+                    <div className="monitor-percore-item__head">
+                      <Text strong size="small">CPU{core.index}</Text>
+                      <Text type="tertiary" size="small">{core.usage}%</Text>
+                    </div>
+                    <div className={getProgressClass(core.usage)}>
+                      <Progress percent={core.usage} showInfo={false} stroke="#1677ff" />
+                    </div>
+                    <div className="monitor-percore-item__legend">
+                      <span><i style={{ background: '#1677ff' }} />user {core.user}%</span>
+                      <span><i style={{ background: '#fa8c16' }} />sys {core.system}%</span>
+                      <span><i style={{ background: '#d9d9d9' }} />idle {core.idle}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>)}
+
+            {chartData.length > 1 && renderTrendChart('CPU 使用率趋势', [
+              { dataKey: 'cpu', label: '系统 CPU(%)', color: '#1677ff' },
+              { dataKey: 'procCpu', label: '进程 CPU(%)', color: '#fa8c16' },
+            ], '%')}
           </TabPane>
 
           {/* ===== 内存 ===== */}
@@ -408,19 +570,70 @@ export default function MonitorPage() {
               <InfoRow label="可用内存" value={formatBytes(data.memory.free)} />
               <InfoRow label="使用率" value={`${data.memory.usagePercent}%`} />
             </div>
+
+            {data.memory.detail && (<>
+              <div className="monitor-section-title">Linux 内存明细</div>
+              <div className="monitor-detail-grid">
+                <InfoRow label="MemAvailable" value={formatBytes(data.memory.detail.memAvailable)} />
+                <InfoRow label="Buffers" value={formatBytes(data.memory.detail.buffers)} />
+                <InfoRow label="Cached" value={formatBytes(data.memory.detail.cached)} />
+                <InfoRow label="Shared" value={formatBytes(data.memory.detail.shared)} />
+                <InfoRow label="Dirty" value={formatBytes(data.memory.detail.dirty)} />
+                <InfoRow label="Writeback" value={formatBytes(data.memory.detail.writeback)} />
+              </div>
+              <div className="monitor-section-title">Swap</div>
+              {data.memory.detail.swapTotal > 0 ? (
+                <div className="monitor-detail-grid">
+                  <InfoRow label="总容量" value={formatBytes(data.memory.detail.swapTotal)} />
+                  <InfoRow label="已使用" value={formatBytes(data.memory.detail.swapTotal - data.memory.detail.swapFree)} />
+                  <InfoRow label="可用" value={formatBytes(data.memory.detail.swapFree)} />
+                  <InfoRow label="使用率" value={`${data.memory.detail.swapUsagePercent}%`} />
+                  <InfoRow label="SwapCached" value={formatBytes(data.memory.detail.swapCached)} />
+                </div>
+              ) : <Text type="tertiary" size="small">未启用 Swap</Text>}
+            </>)}
+
+            {chartData.length > 1 && renderTrendChart('内存使用率趋势', [
+              { dataKey: 'mem', label: '系统内存(%)', color: '#52c41a' },
+              { dataKey: 'heap', label: 'Node 堆(%)', color: '#722ed1' },
+            ], '%')}
           </TabPane>
 
           {/* ===== 磁盘 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><HardDrive size={14} />磁盘</span>} itemKey="disk">
-            {data.disk ? (
-              <div className="monitor-detail-grid">
-                <InfoRow label="挂载点" value={data.disk.mount ?? '/'} />
-                <InfoRow label="总容量" value={formatBytes(data.disk.total)} />
-                <InfoRow label="已使用" value={formatBytes(data.disk.used)} />
-                <InfoRow label="可用空间" value={formatBytes(data.disk.free)} />
-                <InfoRow label="使用率" value={`${data.disk.usagePercent}%`} />
-              </div>
-            ) : <Text type="tertiary">磁盘信息不可用</Text>}
+            {renderDiskTab(data)}
+          </TabPane>
+
+          {/* ===== 网络 ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><Wifi size={14} />网络</span>} itemKey="net">
+            {data.network && data.network.length > 0 ? (<>
+              <table className="monitor-slow-table">
+                <thead>
+                  <tr>
+                    <th>接口</th><th>下行</th><th>上行</th>
+                    <th>已接收</th><th>已发送</th>
+                    <th>包 (rx/tx)</th><th>错误 (rx/tx)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.network.map((n) => (
+                    <tr key={n.name}>
+                      <td><Text strong>{n.name}</Text></td>
+                      <td>{formatBitrate(n.rxBps)}</td>
+                      <td>{formatBitrate(n.txBps)}</td>
+                      <td>{formatBytes(n.rxBytes)}</td>
+                      <td>{formatBytes(n.txBytes)}</td>
+                      <td>{formatNumber(n.rxPackets)} / {formatNumber(n.txPackets)}</td>
+                      <td>{formatNumber(n.rxErrors)} / {formatNumber(n.txErrors)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {chartData.length > 1 && renderTrendChart('网络吞吐（汇总）', [
+                { dataKey: 'netRxBps', label: '下行 (B/s)', color: '#1677ff' },
+                { dataKey: 'netTxBps', label: '上行 (B/s)', color: '#fa8c16' },
+              ])}
+            </>) : <Text type="tertiary">仅 Linux 平台提供详细网络指标</Text>}
           </TabPane>
 
           {/* ===== Node.js ===== */}
@@ -435,7 +648,6 @@ export default function MonitorPage() {
               <InfoRow label="堆内存已用" value={formatBytes(data.node.memoryUsage.heapUsed)} />
               <InfoRow label="external" value={formatBytes(data.node.memoryUsage.external)} />
               <InfoRow label="进程 CPU%" value={data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%`} />
-              <InfoRow label="进程状态" value={<Tag color="green" size="small">运行中</Tag>} />
             </div>
 
             {data.node.eventLoop && (<>

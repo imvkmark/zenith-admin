@@ -227,3 +227,54 @@
   font-weight: 600;
   color: var(--semi-color-text-0);
 }
+
+/* ===== 每核 CPU 网格 ===== */
+.monitor-percore-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.monitor-percore-item {
+  padding: 10px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  background: var(--semi-color-bg-1);
+}
+
+.monitor-percore-item__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.monitor-percore-item__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+}
+
+.monitor-percore-item__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.monitor-percore-item__legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ===== 多挂载点磁盘表 ===== */
+.monitor-disk-table .monitor-disk-fs {
+  font-family: var(--semi-font-family-code, monospace);
+  font-size: 12px;
+  word-break: break-all;
+}

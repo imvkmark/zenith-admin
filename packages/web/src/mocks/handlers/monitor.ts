@@ -14,12 +14,36 @@ const baseStatus = {
     speed: 3800,
     loadAvg: [0.42, 0.51, 0.6] as const,
     usage: 12,
+    perCore: [
+      { index: 0, usage: 18, user: 12, system: 6, idle: 82 },
+      { index: 1, usage: 9, user: 5, system: 4, idle: 91 },
+      { index: 2, usage: 22, user: 16, system: 6, idle: 78 },
+      { index: 3, usage: 7, user: 4, system: 3, idle: 93 },
+      { index: 4, usage: 14, user: 10, system: 4, idle: 86 },
+      { index: 5, usage: 11, user: 7, system: 4, idle: 89 },
+      { index: 6, usage: 19, user: 13, system: 6, idle: 81 },
+      { index: 7, usage: 6, user: 3, system: 3, idle: 94 },
+    ],
   },
   memory: {
     total: 16 * 1024 * 1024 * 1024,
     used: 6 * 1024 * 1024 * 1024,
     free: 10 * 1024 * 1024 * 1024,
     usagePercent: 38,
+    detail: {
+      memTotal: 16 * 1024 * 1024 * 1024,
+      memFree: 10 * 1024 * 1024 * 1024,
+      memAvailable: 12 * 1024 * 1024 * 1024,
+      buffers: 256 * 1024 * 1024,
+      cached: 3 * 1024 * 1024 * 1024,
+      shared: 64 * 1024 * 1024,
+      swapTotal: 4 * 1024 * 1024 * 1024,
+      swapFree: 4 * 1024 * 1024 * 1024,
+      swapCached: 0,
+      swapUsagePercent: 0,
+      dirty: 12 * 1024 * 1024,
+      writeback: 0,
+    },
   },
   disk: {
     total: 512 * 1024 * 1024 * 1024,
@@ -28,6 +52,46 @@ const baseStatus = {
     usagePercent: 25,
     mount: '/',
   },
+  disks: [
+    {
+      filesystem: '/dev/nvme0n1p2',
+      mount: '/',
+      total: 512 * 1024 * 1024 * 1024,
+      used: 128 * 1024 * 1024 * 1024,
+      free: 384 * 1024 * 1024 * 1024,
+      usagePercent: 25,
+    },
+    {
+      filesystem: '/dev/nvme0n1p1',
+      mount: '/boot',
+      total: 1024 * 1024 * 1024,
+      used: 320 * 1024 * 1024,
+      free: 704 * 1024 * 1024,
+      usagePercent: 31,
+    },
+    {
+      filesystem: '/dev/sda1',
+      mount: '/data',
+      total: 2 * 1024 * 1024 * 1024 * 1024,
+      used: 1.6 * 1024 * 1024 * 1024 * 1024,
+      free: 0.4 * 1024 * 1024 * 1024 * 1024,
+      usagePercent: 80,
+    },
+  ],
+  network: [
+    {
+      name: 'eth0', rxBytes: 12_345_678_901, txBytes: 3_456_789_012,
+      rxBps: 1_240_000, txBps: 320_000,
+      rxPackets: 12_345_678, txPackets: 3_456_789,
+      rxErrors: 0, txErrors: 0,
+    },
+    {
+      name: 'docker0', rxBytes: 84_312_001, txBytes: 73_212_000,
+      rxBps: 32_000, txBps: 28_000,
+      rxPackets: 432_100, txPackets: 421_000,
+      rxErrors: 0, txErrors: 0,
+    },
+  ],
   node: {
     version: 'v20.0.0',
     pid: 12345,
@@ -107,6 +171,7 @@ const baseStatus = {
 function buildSeries(): Array<{
   t: number; cpu: number; mem: number; procCpu: number; heap: number;
   loopLagMean: number; loopLagP99: number; qps: number; errorRate: number;
+  netRxBps: number; netTxBps: number;
 }> {
   const now = Date.now();
   const points = [];
@@ -123,6 +188,8 @@ function buildSeries(): Array<{
       loopLagP99: 1 + Math.random() * 1.5,
       qps: Math.max(0, Math.round(8 + wave * 4 + Math.random() * 3)),
       errorRate: Math.max(0, +(Math.random() * 1.2).toFixed(2)),
+      netRxBps: Math.max(0, Math.round(1_200_000 + wave * 600_000 + Math.random() * 300_000)),
+      netTxBps: Math.max(0, Math.round(320_000 + wave * 160_000 + Math.random() * 80_000)),
     });
   }
   return points;
@@ -136,4 +203,26 @@ export const monitorHandlers = [
       message: 'success',
       data: { intervalSec: 10, capacity: 360, points: buildSeries() },
     })),
+  // SSE 推送：初次发送一次快照，随后每 10s 发送一次
+  http.get('/api/monitor/stream', () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const send = () => {
+          controller.enqueue(encoder.encode(`event: metrics\ndata: ${JSON.stringify(baseStatus)}\n\n`));
+        };
+        send();
+        const timer = setInterval(send, 10_000);
+        // 没有 abort 信号时，demo 模式下依靠页面卸载关闭连接
+        return () => clearInterval(timer);
+      },
+    });
+    return new HttpResponse(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
+  }),
 ];

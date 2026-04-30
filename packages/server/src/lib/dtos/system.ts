@@ -127,12 +127,38 @@ export const MonitorDTO = z
       speed: z.number(),
       loadAvg: z.array(z.number()),
       usage: z.number(),
+      perCore: z
+        .array(z.object({
+          index: z.number().int(),
+          usage: z.number(),
+          user: z.number(),
+          system: z.number(),
+          idle: z.number(),
+        }))
+        .optional(),
     }),
     memory: z.object({
       total: z.number(),
       used: z.number(),
       free: z.number(),
       usagePercent: z.number(),
+      detail: z
+        .object({
+          memTotal: z.number(),
+          memFree: z.number(),
+          memAvailable: z.number(),
+          buffers: z.number(),
+          cached: z.number(),
+          shared: z.number(),
+          swapTotal: z.number(),
+          swapFree: z.number(),
+          swapCached: z.number(),
+          swapUsagePercent: z.number(),
+          dirty: z.number(),
+          writeback: z.number(),
+        })
+        .nullable()
+        .optional(),
     }),
     disk: z
       .object({
@@ -143,6 +169,29 @@ export const MonitorDTO = z
         mount: z.string().optional(),
       })
       .nullable(),
+    disks: z
+      .array(z.object({
+        filesystem: z.string(),
+        total: z.number(),
+        used: z.number(),
+        free: z.number(),
+        usagePercent: z.number(),
+        mount: z.string(),
+      }))
+      .optional(),
+    network: z
+      .array(z.object({
+        name: z.string(),
+        rxBytes: z.number(),
+        txBytes: z.number(),
+        rxBps: z.number(),
+        txBps: z.number(),
+        rxPackets: z.number(),
+        txPackets: z.number(),
+        rxErrors: z.number(),
+        txErrors: z.number(),
+      }))
+      .optional(),
     node: z.object({
       version: z.string(),
       uptime: z.number().int(),
@@ -216,6 +265,8 @@ export const MonitorTimeseriesDTO = z
         loopLagP99: z.number(),
         qps: z.number(),
         errorRate: z.number(),
+        netRxBps: z.number().optional(),
+        netTxBps: z.number().optional(),
       }),
     ),
   })
