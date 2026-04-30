@@ -55,7 +55,7 @@ const uploadRoute = defineOpenAPIRoute({
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'system:file:upload', audit: { description: '上传文件', module: '文件管理', recordBody: false } })] as const,
     request: {
-      body: { content: { 'multipart/form-data': { schema: z.object({ file: z.string() }) } }, required: true },
+      body: { content: { 'multipart/form-data': { schema: z.object({ file: z.instanceof(File).openapi({ type: 'string', format: 'binary' }) }) } }, required: true },
     },
     responses: {
       ...commonErrorResponses,
