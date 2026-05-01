@@ -250,11 +250,16 @@ export default function FilesPage() {
       title: '类型',
       dataIndex: 'provider',
       width: 120,
-      render: (provider: ManagedFile['provider']) => (
-        <Tag color={provider === 'local' ? 'blue' : 'orange'} size="small">
-          {provider === 'local' ? '本地磁盘' : '阿里云 OSS'}
-        </Tag>
-      ),
+      render: (provider: ManagedFile['provider']) => {
+        const providerMap: Record<string, { color: string; label: string }> = {
+          local: { color: 'blue', label: '本地磁盘' },
+          oss: { color: 'orange', label: '阿里云 OSS' },
+          s3: { color: 'green', label: 'S3 存储' },
+          cos: { color: 'cyan', label: '腾讯云 COS' },
+        };
+        const info = providerMap[provider] ?? { color: 'grey', label: provider };
+        return <Tag color={info.color} size="small">{info.label}</Tag>;
+      },
     },
     {
       title: '大小',
@@ -306,8 +311,7 @@ export default function FilesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        className="files-toolbar"
+      <SearchToolbar className="files-toolbar">
           <Input
             prefix={<Search size={14} />}
             placeholder="搜索文件名 / 对象键 / 文件服务"
@@ -326,6 +330,8 @@ export default function FilesPage() {
               { value: '', label: '全部类型' },
               { value: 'local', label: '本地磁盘' },
               { value: 'oss', label: '阿里云 OSS' },
+              { value: 's3', label: 'S3 存储' },
+              { value: 'cos', label: '腾讯云 COS' },
             ]}
           />
           <DatePicker
