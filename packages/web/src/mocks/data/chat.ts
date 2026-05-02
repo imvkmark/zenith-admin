@@ -61,7 +61,26 @@ export const mockChatConversations: ChatConversation[] = [
     createdAt: '2024-01-01 09:00:00',
     updatedAt: '2024-01-01 09:02:00',
   },
+  {
+    id: 2,
+    type: 'group',
+    name: '项目组',
+    targetUser: null,
+    lastMessage: null,
+    unreadCount: 0,
+    createdAt: '2024-01-02 10:00:00',
+    updatedAt: '2024-01-02 10:00:00',
+  },
 ];
+
+// 群聊成员 Map: conversationId -> 成员列表
+export const mockGroupMembers: Record<number, { id: number; nickname: string; username: string; avatar: null }[]> = {
+  2: [
+    { id: 1, nickname: '管理员', username: 'admin', avatar: null },
+    { id: 2, nickname: '张三', username: 'zhangsan', avatar: null },
+    { id: 3, nickname: '李四', username: 'lisi', avatar: null },
+  ],
+};
 
 export function getMockConvMessages(conversationId: number): ChatMessage[] {
   return mockChatMessages.filter((m) => m.conversationId === conversationId);

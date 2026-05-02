@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Input, Button, Avatar, Badge, Typography, Empty, Spin, Toast, Tooltip,
+  Input, Button, Avatar, Badge, Typography, Empty, Spin, Toast, Tooltip, Tabs, TabPane,
 } from '@douyinfe/semi-ui';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw } from 'lucide-react';
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import type { ChatConversation, ChatMessage, WsMessage } from '@zenith/shared';
@@ -32,11 +34,11 @@ function UserAvatar({ name, avatar, size = 36 }: Readonly<{ name: string; avatar
   );
 }
 
-// ─── 新建聊天面板 ──────────────────────────────────────────────────────────────
+// ─── UserSearchList ────────────────────────────────────────────────────────────
 
-function NewChatPanel({ onSelect, onClose }: Readonly<{ onSelect: (user: ChatUser) => void; onClose: () => void }>) {
+function UserSearchList({ onSelect, excludeIds = [] }: Readonly<{ onSelect: (user: ChatUser) => void; excludeIds?: number[] }>) {
   const [keyword, setKeyword] = useState('');
-  const [users, setUsers] = useState<ChatUser[]>([]);
+  const [ulist, setUlist] = useState<ChatUser[]>([]);
   const [loading, setLoading] = useState(false);
 
   const search = useCallback(async (kw: string) => {
@@ -44,35 +46,24 @@ function NewChatPanel({ onSelect, onClose }: Readonly<{ onSelect: (user: ChatUse
     const qs = kw ? `?keyword=${encodeURIComponent(kw)}` : '';
     const res = await request.get<ChatUser[]>(`/api/chat/users${qs}`, { silent: true });
     setLoading(false);
-    if (res.code === 0 && res.data) setUsers(res.data);
-  }, []);
+    if (res.code === 0 && res.data) setUlist(res.data.filter((u) => !excludeIds.includes(u.id)));
+  }, [excludeIds]);
 
   useEffect(() => { void search(''); }, [search]);
-
   useEffect(() => {
     const t = setTimeout(() => { void search(keyword); }, 300);
     return () => clearTimeout(t);
   }, [keyword, search]);
 
   return (
-    <div style={{ padding: '12px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 8 }}>
-        <Title heading={6} style={{ margin: 0, flex: 1 }}>新建聊天</Title>
-        <Button size="small" type="tertiary" theme="borderless" onClick={onClose}>取消</Button>
-      </div>
-      <Input
-        prefix={<Search size={14} />}
-        placeholder="搜索用户名 / 昵称"
-        value={keyword}
-        onChange={setKeyword}
-        size="small"
-      />
+    <>
+      <Input prefix={<Search size={14} />} placeholder="搜索用户名 / 昵称" value={keyword} onChange={setKeyword} size="small" />
       <Spin spinning={loading}>
-        <div style={{ marginTop: 8, maxHeight: 300, overflowY: 'auto' }}>
-          {users.length === 0 && !loading && (
-            <Empty description="暂无用户" style={{ padding: '24px 0' }} imageStyle={{ width: 64 }} />
+        <div style={{ marginTop: 8, maxHeight: 240, overflowY: 'auto' }}>
+          {ulist.length === 0 && !loading && (
+            <Empty description="暂无用户" style={{ padding: '16px 0' }} imageStyle={{ width: 56 }} />
           )}
-          {users.map((u) => (
+          {ulist.map((u) => (
             <button
               key={u.id}
               type="button"
@@ -94,11 +85,179 @@ function NewChatPanel({ onSelect, onClose }: Readonly<{ onSelect: (user: ChatUse
           ))}
         </div>
       </Spin>
+    </>
+  );
+}
+
+// ─── NewChatPanel ─────────────────────────────────────────────────────────────
+
+function NewChatPanel({
+  onSelectUser, onGroupCreated, onClose,
+}: Readonly<{
+  onSelectUser: (user: ChatUser) => void;
+  onGroupCreated: (conv: ChatConversation) => void;
+  onClose: () => void;
+}>) {
+  const [groupName, setGroupName] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) { Toast.warning('请输入群聊名称'); return; }
+    setCreating(true);
+    const res = await request.post<ChatConversation>('/api/chat/conversations/group', { name: groupName.trim() });
+    setCreating(false);
+    if (res.code === 0 && res.data) {
+      onGroupCreated(res.data);
+    } else {
+      Toast.error(res.message ?? '创建失败');
+    }
+  };
+
+  return (
+    <div style={{ padding: '12px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+        <Title heading={6} style={{ margin: 0, flex: 1 }}>新建对话</Title>
+        <Button size="small" type="tertiary" theme="borderless" onClick={onClose}>取消</Button>
+      </div>
+      <Tabs size="small" defaultActiveKey="direct">
+        <TabPane tab="私聊" itemKey="direct">
+          <div style={{ paddingTop: 8 }}>
+            <UserSearchList onSelect={onSelectUser} />
+          </div>
+        </TabPane>
+        <TabPane tab="创建群聊" itemKey="group">
+          <div style={{ paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Input
+              placeholder="群聊名称（最多 64 字符）"
+              value={groupName}
+              onChange={setGroupName}
+              maxLength={64}
+              size="small"
+            />
+            <Button type="primary" size="small" loading={creating} onClick={() => { void handleCreateGroup(); }} block>
+              创建群聊
+            </Button>
+          </div>
+        </TabPane>
+      </Tabs>
     </div>
   );
 }
 
-// ─── 消息气泡 ──────────────────────────────────────────────────────────────────
+// ─── GroupMembersPanel ────────────────────────────────────────────────────────
+
+function GroupMembersPanel({ conversationId }: Readonly<{ conversationId: number }>) {
+  const [members, setMembers] = useState<ChatUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const fetchMembers = useCallback(async () => {
+    setLoading(true);
+    const res = await request.get<ChatUser[]>(`/api/chat/conversations/${conversationId}/members`, { silent: true });
+    setLoading(false);
+    if (res.code === 0 && res.data) setMembers(res.data);
+  }, [conversationId]);
+
+  useEffect(() => { void fetchMembers(); }, [fetchMembers]);
+
+  const handleAdd = async (user: ChatUser) => {
+    setAdding(true);
+    const res = await request.post(`/api/chat/conversations/${conversationId}/members`, { userId: user.id });
+    setAdding(false);
+    if (res.code === 0) {
+      Toast.success(`已添加 ${user.nickname}`);
+      setShowAdd(false);
+      void fetchMembers();
+    } else {
+      Toast.error(res.message ?? '添加失败');
+    }
+  };
+
+  const memberIds = members.map((m) => m.id);
+
+  return (
+    <div style={{ width: 220, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, padding: '12px', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 6 }}>
+        <Text strong style={{ flex: 1, fontSize: 13 }}>群成员（{members.length}）</Text>
+        <Tooltip content="添加成员">
+          <Button
+            size="small" theme="borderless" type="primary"
+            icon={<UserPlus size={14} />}
+            loading={adding}
+            onClick={() => setShowAdd((v) => !v)}
+          />
+        </Tooltip>
+      </div>
+      {showAdd && (
+        <div style={{ marginBottom: 10, padding: 8, background: 'var(--semi-color-fill-0)', borderRadius: 6 }}>
+          <Text style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>搜索添加成员</Text>
+          <UserSearchList onSelect={handleAdd} excludeIds={memberIds} />
+        </div>
+      )}
+      <Spin spinning={loading}>
+        {members.map((m) => (
+          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+            <UserAvatar name={m.nickname} avatar={m.avatar} size={28} />
+            <Text style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {m.nickname}
+            </Text>
+          </div>
+        ))}
+      </Spin>
+    </div>
+  );
+}
+
+// ─── MessageContent ───────────────────────────────────────────────────────────
+
+function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: boolean }>) {
+  const bubbleStyle: React.CSSProperties = {
+    background: isSelf ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
+    color: isSelf ? '#fff' : 'inherit',
+    padding: '8px 12px',
+    borderRadius: isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+    fontSize: 14, lineHeight: 1.5, wordBreak: 'break-word',
+  };
+
+  if (msg.type === 'image') {
+    return (
+      <div style={bubbleStyle}>
+        <a href={msg.content} target="_blank" rel="noreferrer">
+          <img
+            src={msg.content}
+            alt={(msg.extra as { name?: string } | null)?.name ?? '图片'}
+            style={{ maxWidth: 240, maxHeight: 200, borderRadius: 6, display: 'block', cursor: 'pointer' }}
+          />
+        </a>
+      </div>
+    );
+  }
+
+  if (msg.type === 'file') {
+    const extra = msg.extra as { name?: string; size?: number } | null;
+    return (
+      <div style={{ ...bubbleStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <a
+          href={msg.content}
+          download={extra?.name ?? '文件'}
+          style={{ color: isSelf ? '#fff' : 'var(--semi-color-primary)', textDecoration: 'underline', fontSize: 13 }}
+        >
+          {extra?.name ?? '文件'}
+        </a>
+        {extra?.size !== undefined && (
+          <Text style={{ fontSize: 11, color: isSelf ? 'rgba(255,255,255,0.7)' : 'var(--semi-color-text-2)' }}>
+            {Math.round(extra.size / 1024)}KB
+          </Text>
+        )}
+      </div>
+    );
+  }
+
+  return <div style={bubbleStyle}>{msg.content}</div>;
+}
+
+// ─── MessageBubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
   msg, isSelf, onReply, onRecall,
@@ -138,20 +297,7 @@ function MessageBubble({
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isSelf ? 'row-reverse' : 'row' }}>
-          <div
-            style={{
-              background: isSelf ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
-              color: isSelf ? '#fff' : 'inherit',
-              padding: '8px 12px',
-              borderRadius: isSelf ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-              fontSize: 14,
-              lineHeight: 1.5,
-              wordBreak: 'break-word',
-              cursor: 'default',
-            }}
-          >
-            {msg.content}
-          </div>
+          <MessageContent msg={msg} isSelf={isSelf} />
           <div style={{ display: 'flex', gap: 2, flexShrink: 0, paddingBottom: 2 }}>
             <Tooltip content="回复">
               <Button
@@ -179,7 +325,7 @@ function MessageBubble({
   );
 }
 
-// ─── 主页面 ────────────────────────────────────────────────────────────────────
+// ─── ChatPage ─────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -190,20 +336,23 @@ export default function ChatPage() {
   const [loadingConvs, setLoadingConvs] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [emojiVisible, setEmojiVisible] = useState(false);
   const [convSearch, setConvSearch] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 当前登录用户 ID（从 localStorage token 解码）
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   useEffect(() => {
     try {
       const token = localStorage.getItem('zenith_token');
       if (token) {
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const payload = JSON.parse(atob(token.split('.')[1])) as { userId?: number };
         setCurrentUserId(payload.userId ?? null);
       }
     } catch { /* ignore */ }
@@ -211,7 +360,6 @@ export default function ChatPage() {
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
 
-  // ─── 加载会话列表 ──────────────────────────────────────────────────────────
   const fetchConversations = useCallback(async () => {
     setLoadingConvs(true);
     const res = await request.get<ChatConversation[]>('/api/chat/conversations', { silent: true });
@@ -221,7 +369,6 @@ export default function ChatPage() {
 
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
 
-  // ─── 加载消息 ──────────────────────────────────────────────────────────────
   const fetchMessages = useCallback(async (convId: number, p = 1) => {
     setLoadingMsgs(true);
     const res = await request.get<{ list: ChatMessage[]; total: number; page: number; pageSize: number }>(
@@ -230,7 +377,7 @@ export default function ChatPage() {
     );
     setLoadingMsgs(false);
     if (res.code === 0 && res.data) {
-      const newMsgs = [...res.data.list].reverse(); // API 返回最新在前，展示时反转
+      const newMsgs = [...res.data.list].reverse();
       if (p === 1) {
         setMessages(newMsgs);
         setPage(1);
@@ -245,15 +392,14 @@ export default function ChatPage() {
   const handleSelectConv = useCallback(async (conv: ChatConversation) => {
     setActiveConvId(conv.id);
     setReplyTo(null);
+    setShowMembers(false);
     await fetchMessages(conv.id, 1);
-    // 标记已读
     await request.post(`/api/chat/conversations/${conv.id}/read`, {}, { silent: true });
     setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   }, [fetchMessages]);
 
-  // ─── 新建聊天 ──────────────────────────────────────────────────────────────
-  const handleNewChat = useCallback(async (user: ChatUser) => {
+  const handleNewDirectChat = useCallback(async (user: ChatUser) => {
     setShowNewChat(false);
     const res = await request.post<ChatConversation>('/api/chat/conversations/direct', { targetUserId: user.id });
     if (res.code === 0 && res.data) {
@@ -262,7 +408,12 @@ export default function ChatPage() {
     }
   }, [fetchConversations, handleSelectConv]);
 
-  // ─── 发送消息 ──────────────────────────────────────────────────────────────
+  const handleGroupCreated = useCallback(async (conv: ChatConversation) => {
+    setShowNewChat(false);
+    await fetchConversations();
+    await handleSelectConv(conv);
+  }, [fetchConversations, handleSelectConv]);
+
   const handleSend = useCallback(async () => {
     if (!activeConvId || !input.trim() || sending) return;
     const content = input.trim();
@@ -277,27 +428,44 @@ export default function ChatPage() {
       setInput(content);
       Toast.error('发送失败');
     }
-    // WS 会推送回来，不需要手动 append
   }, [activeConvId, input, sending, replyTo]);
 
-  // ─── 撤回消息 ──────────────────────────────────────────────────────────────
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!activeConvId) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    const uploadRes = await request.postForm<{ url: string; originalName: string; size: number }>(
+      '/api/files/upload-one', fd,
+    );
+    if (uploadRes.code !== 0 || !uploadRes.data) {
+      Toast.error('图片上传失败');
+      setUploading(false);
+      return;
+    }
+    const { url, originalName, size } = uploadRes.data;
+    const msgRes = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
+      content: url,
+      type: 'image',
+      extra: { name: originalName, size },
+    });
+    setUploading(false);
+    if (msgRes.code !== 0) Toast.error('发送图片失败');
+  }, [activeConvId]);
+
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     const res = await request.request<null>(`/api/chat/messages/${msg.id}/recall`, { method: 'PATCH' });
     if (res.code !== 0) Toast.error(res.message ?? '撤回失败');
   }, []);
 
-  // ─── WebSocket ─────────────────────────────────────────────────────────────
   const handleWsMessage = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type === 'chat:message') {
       const msg = wsMsg.payload;
-      // 追加到当前会话的消息列表
       if (msg.conversationId === activeConvId) {
         setMessages((prev) => [...prev, msg]);
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-        // 自动标记已读
         request.post(`/api/chat/conversations/${msg.conversationId}/read`, {}, { silent: true }).catch(() => {});
       }
-      // 更新会话列表的最新消息 + 未读数
       setConversations((prev) => {
         const isActive = msg.conversationId === activeConvId;
         const updated = prev.map((c) =>
@@ -305,7 +473,6 @@ export default function ChatPage() {
             ? { ...c, lastMessage: msg, unreadCount: isActive ? 0 : c.unreadCount + 1, updatedAt: msg.createdAt }
             : c,
         );
-        // 把最新消息的会话置顶
         const idx = updated.findIndex((c) => c.id === msg.conversationId);
         if (idx > 0) {
           const [item] = updated.splice(idx, 1);
@@ -318,20 +485,38 @@ export default function ChatPage() {
       setMessages((prev) =>
         prev.map((m) => m.id === messageId ? { ...m, isRecalled: true, content: '消息已撤回' } : m),
       );
-    } else if (wsMsg.type === 'chat:read') {
-      // 可在此处理已读回执 UI（暂留）
+    } else if (wsMsg.type === 'chat:member-join') {
+      if (wsMsg.payload.conversationId === activeConvId) {
+        void fetchConversations();
+      }
     }
-  }, [activeConvId]);
+  }, [activeConvId, fetchConversations]);
 
   useWebSocket(handleWsMessage);
 
-  // ─── 键盘发送 ──────────────────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
     }
   };
+
+  const handleEmojiSelect = useCallback((emoji: { native: string }) => {
+    const ta = inputRef.current;
+    if (!ta) {
+      setInput((prev) => prev + emoji.native);
+      return;
+    }
+    const start = ta.selectionStart ?? input.length;
+    const end = ta.selectionEnd ?? input.length;
+    setInput((prev) => prev.slice(0, start) + emoji.native + prev.slice(end));
+    setEmojiVisible(false);
+    requestAnimationFrame(() => {
+      const pos = start + emoji.native.length;
+      ta.setSelectionRange(pos, pos);
+      ta.focus();
+    });
+  }, [input]);
 
   const filteredConvs = conversations.filter((c) => {
     if (!convSearch) return true;
@@ -344,14 +529,13 @@ export default function ChatPage() {
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', minHeight: 500, border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--semi-color-bg-0)' }}>
 
-      {/* ── 左侧会话列表 ── */}
+      {/* Left: conversation list */}
       <div style={{ width: 280, borderRight: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-        {/* 头部 */}
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Badge count={totalUnread} overflowCount={99} style={{ flex: 1 }}>
             <Title heading={6} style={{ margin: 0 }}>消息</Title>
           </Badge>
-          <Tooltip content="新建聊天">
+          <Tooltip content="新建对话">
             <Button
               size="small" theme="borderless" type="primary"
               icon={<MessageSquarePlus size={16} />}
@@ -360,25 +544,20 @@ export default function ChatPage() {
           </Tooltip>
         </div>
 
-        {/* 新建聊天面板 */}
         {showNewChat && (
           <div style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
-            <NewChatPanel onSelect={handleNewChat} onClose={() => setShowNewChat(false)} />
+            <NewChatPanel
+              onSelectUser={handleNewDirectChat}
+              onGroupCreated={handleGroupCreated}
+              onClose={() => setShowNewChat(false)}
+            />
           </div>
         )}
 
-        {/* 搜索 */}
         <div style={{ padding: '8px 12px' }}>
-          <Input
-            prefix={<Search size={13} />}
-            placeholder="搜索会话"
-            size="small"
-            value={convSearch}
-            onChange={setConvSearch}
-          />
+          <Input prefix={<Search size={13} />} placeholder="搜索会话" size="small" value={convSearch} onChange={setConvSearch} />
         </div>
 
-        {/* 会话列表 */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <Spin spinning={loadingConvs}>
             {filteredConvs.length === 0 && !loadingConvs && (
@@ -392,7 +571,13 @@ export default function ChatPage() {
               const isActive = conv.id === activeConvId;
               let lastMsgText = '暂无消息';
               if (lastMsg) {
-                lastMsgText = lastMsg.isRecalled ? '消息已撤回' : lastMsg.content;
+                if (lastMsg.isRecalled) {
+                  lastMsgText = '消息已撤回';
+                } else if (lastMsg.type === 'image') {
+                  lastMsgText = '[图片]';
+                } else {
+                  lastMsgText = lastMsg.content;
+                }
               }
 
               return (
@@ -434,59 +619,127 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* ── 右侧聊天区域 ── */}
+      {/* Right: chat area */}
       {activeConv ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {/* 标题栏 */}
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Header */}
+          <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
             {activeConv.type === 'direct' && activeConv.targetUser && (
               <UserAvatar name={activeConv.targetUser.nickname} avatar={activeConv.targetUser.avatar} size={32} />
             )}
-            <Title heading={6} style={{ margin: 0 }}>
+            {activeConv.type === 'group' && (
+              <Avatar size="small" style={{ width: 32, height: 32, flexShrink: 0, backgroundColor: getAvatarColor(activeConv.name ?? '群聊') }}>
+                <Users size={16} />
+              </Avatar>
+            )}
+            <Title heading={6} style={{ margin: 0, flex: 1 }}>
               {activeConv.type === 'direct' ? (activeConv.targetUser?.nickname ?? '未知用户') : (activeConv.name ?? '群聊')}
             </Title>
-          </div>
-
-          {/* 消息区域 */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column' }}>
-            {hasMore && (
-              <div style={{ textAlign: 'center', marginBottom: 8 }}>
+            {activeConv.type === 'group' && (
+              <Tooltip content={showMembers ? '关闭成员面板' : '查看群成员'}>
                 <Button
-                  size="small" type="tertiary" theme="borderless" loading={loadingMsgs}
-                  onClick={() => { if (activeConvId) void fetchMessages(activeConvId, page + 1); }}
-                >
-                  加载更多
-                </Button>
-              </div>
-            )}
-            <Spin spinning={loadingMsgs && messages.length === 0}>
-              {messages.length === 0 && !loadingMsgs && (
-                <Empty description="发送第一条消息吧" style={{ margin: 'auto' }} imageStyle={{ width: 80 }} />
-              )}
-              {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  msg={msg}
-                  isSelf={msg.senderId === currentUserId}
-                  onReply={setReplyTo}
-                  onRecall={handleRecall}
+                  size="small" theme="borderless" type={showMembers ? 'primary' : 'tertiary'}
+                  icon={<Users size={15} />}
+                  onClick={() => setShowMembers((v) => !v)}
                 />
-              ))}
-              <div ref={messagesEndRef} />
-            </Spin>
+              </Tooltip>
+            )}
           </div>
 
-          {/* 输入框 */}
+          <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+            {/* Messages */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              {hasMore && (
+                <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                  <Button
+                    size="small" type="tertiary" theme="borderless" loading={loadingMsgs}
+                    onClick={() => { if (activeConvId) void fetchMessages(activeConvId, page + 1); }}
+                  >
+                    加载更多
+                  </Button>
+                </div>
+              )}
+              <Spin spinning={loadingMsgs && messages.length === 0}>
+                {messages.length === 0 && !loadingMsgs && (
+                  <Empty description="发送第一条消息吧" style={{ margin: 'auto' }} imageStyle={{ width: 80 }} />
+                )}
+                {messages.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    msg={msg}
+                    isSelf={msg.senderId === currentUserId}
+                    onReply={setReplyTo}
+                    onRecall={handleRecall}
+                  />
+                ))}
+                <div ref={messagesEndRef} />
+              </Spin>
+            </div>
+
+            {/* Group members sidebar */}
+            {activeConv.type === 'group' && showMembers && (
+              <GroupMembersPanel conversationId={activeConv.id} />
+            )}
+          </div>
+
+          {/* Input area */}
           <div style={{ padding: '8px 16px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
             {replyTo && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '4px 10px', background: 'var(--semi-color-fill-0)', borderRadius: 6, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
                 <CornerDownLeft size={12} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  回复 {replyTo.senderName}：{replyTo.content}
+                  回复 {replyTo.senderName}：{replyTo.type === 'image' ? '[图片]' : replyTo.content}
                 </span>
                 <Button size="small" theme="borderless" type="tertiary" onClick={() => setReplyTo(null)} style={{ padding: '0 4px', height: 'auto', minWidth: 'auto' }}>✕</Button>
               </div>
             )}
+
+            {/* Toolbar */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 6, alignItems: 'center' }}>
+              <div style={{ position: 'relative' }}>
+                <Button
+                  size="small" theme="borderless" type="tertiary"
+                  icon={<Smile size={16} />}
+                  title="表情"
+                  onClick={() => setEmojiVisible((v) => !v)}
+                />
+                {emojiVisible && (
+                  <div
+                    style={{ position: 'absolute', bottom: '100%', left: 0, zIndex: 1000 }}
+                  >
+                    <Picker
+                      data={data}
+                      onEmojiSelect={handleEmojiSelect}
+                      theme="auto"
+                      locale="zh"
+                      previewPosition="none"
+                      skinTonePosition="none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <Tooltip content="发送图片">
+                <Button
+                  size="small" theme="borderless" type="tertiary"
+                  icon={<ImagePlus size={16} />}
+                  loading={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                />
+              </Tooltip>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImageUpload(file);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <textarea
                 ref={inputRef}
@@ -517,7 +770,7 @@ export default function ChatPage() {
           </div>
         </div>
       ) : (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: 'var(--semi-color-text-2)' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Empty
             description={<span>选择一个会话开始聊天，<br />或点击右上角「+」新建</span>}
             imageStyle={{ width: 100 }}

@@ -8,6 +8,7 @@ import { ChatMessageDTO, ChatConversationDTO, ChatUserDTO } from '../lib/openapi
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
   sendMessage, recallMessage, markConversationRead, listChatUsers,
+  createGroupConversation, addGroupMember, listGroupMembers,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -134,6 +135,61 @@ chatRouter.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     await markConversationRead(id);
+    return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 创建群聊 ─────────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/conversations/group', tags: ['Chat'], summary: '创建群聊',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { body: { content: jsonContent(z.object({ name: z.string().min(1, '群名不能为空').max(64) })) } },
+    responses: { ...commonErrorResponses, ...ok(ChatConversationDTO, '群聊信息') },
+  }),
+  async (c) => {
+    const { name } = c.req.valid('json');
+    const conv = await createGroupConversation(name);
+    return c.json(okBody(conv), 200);
+  },
+);
+
+// ─── 群成员列表 ───────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/members', tags: ['Chat'], summary: '获取群成员列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatUserDTO), '成员列表') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const members = await listGroupMembers(id);
+    return c.json(okBody(members), 200);
+  },
+);
+
+// ─── 添加群成员 ───────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'post', path: '/conversations/{id}/members', tags: ['Chat'], summary: '添加群成员',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ userId: z.number().int().positive() })) },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('添加成功') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { userId } = c.req.valid('json');
+    await addGroupMember(id, userId);
     return c.json(okBody(null), 200);
   },
 );

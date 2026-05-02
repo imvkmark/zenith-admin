@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type { ChatMessage } from '@zenith/shared';
 import {
   mockChatConversations, mockChatUsers, getMockConvMessages,
-  addMockMessage, getNextMsgId, mockChatMessages,
+  addMockMessage, getNextMsgId, mockChatMessages, mockGroupMembers,
 } from '@/mocks/data/chat';
 import { mockDateTime } from '@/mocks/utils/date';
 
@@ -110,6 +110,49 @@ export const chatHandlers = [
     const convId = Number(params.id);
     const conv = mockChatConversations.find((c) => c.id === convId);
     if (conv) conv.unreadCount = 0;
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  // 创建群聊
+  http.post('/api/chat/conversations/group', async ({ request }) => {
+    const body = await request.json() as { name: string };
+    if (!body.name?.trim()) {
+      return HttpResponse.json({ code: 400, message: '群聊名称不能为空', data: null }, { status: 400 });
+    }
+    const newConv = {
+      id: mockChatConversations.length + 200,
+      type: 'group' as const,
+      name: body.name.trim(),
+      targetUser: null,
+      lastMessage: null,
+      unreadCount: 0,
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
+    };
+    mockChatConversations.unshift(newConv);
+    mockGroupMembers[newConv.id] = [
+      { id: 1, nickname: '管理员', username: 'admin', avatar: null },
+    ];
+    return HttpResponse.json({ code: 0, message: 'ok', data: newConv });
+  }),
+
+  // 群成员列表
+  http.get('/api/chat/conversations/:id/members', ({ params }) => {
+    const convId = Number(params.id);
+    const members = mockGroupMembers[convId] ?? [];
+    return HttpResponse.json({ code: 0, message: 'ok', data: members });
+  }),
+
+  // 添加群成员
+  http.post('/api/chat/conversations/:id/members', async ({ params, request }) => {
+    const convId = Number(params.id);
+    const body = await request.json() as { userId: number };
+    const user = mockChatUsers.find((u) => u.id === body.userId);
+    if (!user) return HttpResponse.json({ code: 404, message: '用户不存在', data: null }, { status: 404 });
+    if (!mockGroupMembers[convId]) mockGroupMembers[convId] = [];
+    const already = mockGroupMembers[convId].some((m) => m.id === body.userId);
+    if (already) return HttpResponse.json({ code: 400, message: '已是群成员', data: null }, { status: 400 });
+    mockGroupMembers[convId].push({ ...user });
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 ];

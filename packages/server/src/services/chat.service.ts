@@ -323,6 +323,109 @@ export async function markConversationRead(conversationId: number): Promise<void
   }
 }
 
+// ─── 创建群聊 ──────────────────────────────────────────────────────────────────
+
+export async function createGroupConversation(name: string): Promise<ChatConversation> {
+  const me = currentUser();
+
+  const [conv] = await db.insert(chatConversations).values({
+    type: 'group',
+    name,
+    createdById: me.userId,
+    tenantId: me.tenantId,
+  }).returning();
+
+  await db.insert(chatConversationMembers).values([
+    { conversationId: conv.id, userId: me.userId },
+  ]);
+
+  return {
+    id: conv.id,
+    type: 'group',
+    name: conv.name,
+    targetUser: null,
+    lastMessage: null,
+    unreadCount: 0,
+    createdAt: formatDateTime(conv.createdAt),
+    updatedAt: formatDateTime(conv.updatedAt),
+  };
+}
+
+// ─── 添加群成员 ──────────────────────────────────────────────────────────────
+
+export async function addGroupMember(conversationId: number, targetUserId: number): Promise<void> {
+  const me = currentUser();
+
+  const conv = await db.query.chatConversations.findFirst({
+    where: eq(chatConversations.id, conversationId),
+  });
+  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
+  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才能添加成员' });
+
+  // 鉴权：操作者需是成员
+  const isMember = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!isMember) throw new HTTPException(403, { message: '无权操作该群聊' });
+
+  // 成员上限
+  const memberCount = await db.$count(chatConversationMembers, eq(chatConversationMembers.conversationId, conversationId));
+  if (memberCount >= 20) throw new HTTPException(400, { message: '群成员已达上限（20人）' });
+
+  // 目标用户存在校验
+  const target = await db.query.users.findFirst({
+    where: eq(users.id, targetUserId),
+    columns: { id: true, nickname: true, avatar: true },
+  });
+  if (!target) throw new HTTPException(404, { message: '用户不存在' });
+
+  // 幂等插入
+  const alreadyIn = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, targetUserId),
+    ),
+  });
+  if (alreadyIn) throw new HTTPException(400, { message: '该用户已在群聊中' });
+
+  await db.insert(chatConversationMembers).values({ conversationId, userId: targetUserId });
+
+  // 推送 WS 通知（群内所有成员）
+  const members = await db
+    .select({ userId: chatConversationMembers.userId })
+    .from(chatConversationMembers)
+    .where(eq(chatConversationMembers.conversationId, conversationId));
+
+  for (const { userId } of members) {
+    sendToUser(userId, { type: 'chat:member-join', payload: { conversationId, user: target } });
+  }
+}
+
+// ─── 群成员列表 ──────────────────────────────────────────────────────────────
+
+export async function listGroupMembers(conversationId: number) {
+  const me = currentUser();
+
+  const isMember = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (!isMember) throw new HTTPException(403, { message: '无权访问该会话' });
+
+  const rows = await db
+    .select({ id: users.id, nickname: users.nickname, username: users.username, avatar: users.avatar })
+    .from(chatConversationMembers)
+    .innerJoin(users, eq(chatConversationMembers.userId, users.id))
+    .where(eq(chatConversationMembers.conversationId, conversationId));
+
+  return rows;
+}
+
 // ─── 获取可聊天的用户列表 ──────────────────────────────────────────────────────
 
 export async function listChatUsers(keyword?: string) {
