@@ -238,16 +238,47 @@
   justify-content: center;
   background: #ffffff;
   min-width: 0;
+  position: relative;
 }
 
 body[theme-mode='dark'] .login-right {
-  background: #181c2a;
+  background: linear-gradient(160deg, #0e1423 0%, #111827 60%, #0c1321 100%);
+}
+
+/* 暗色模式装饰光晕 - 右下角 */
+body[theme-mode='dark'] .login-right::before {
+  content: '';
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  bottom: -160px;
+  right: -100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(26, 93, 232, 0.12) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 暗色模式装饰光晕 - 左上角 */
+body[theme-mode='dark'] .login-right::after {
+  content: '';
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  top: -80px;
+  left: -60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.07) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .login-form-wrapper {
   width: 420px;
   max-width: 100%;
   padding: 0 32px;
+  position: relative;
+  z-index: 1;
 }
 
 .login-mobile-brand {
@@ -259,11 +290,11 @@ body[theme-mode='dark'] .login-right {
 }
 
 body[theme-mode='dark'] .login-form-wrapper .semi-typography {
-  color: #f4f6fb;
+  color: #e8edf8;
 }
 
 body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
-  color: rgba(244, 246, 251, 0.55);
+  color: rgba(180, 196, 228, 0.65);
 }
 
 /* ===== 窄屏响应式 ===== */
@@ -278,7 +309,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
 
   body[theme-mode='dark'] .login-page,
   body[theme-mode='dark'] .login-right {
-    background: #181c2a;
+    background: linear-gradient(160deg, #0e1423 0%, #111827 60%, #0c1321 100%);
   }
 
   .login-right {
@@ -341,7 +372,7 @@ body[theme-mode='dark'] .login-form-wrapper .semi-typography-tertiary {
 }
 
 body[theme-mode='dark'] .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
-  color: #f4f6fb;
+  color: #e8edf8;
 }
 
 .login-form-wrapper .semi-button.semi-button-primary {
@@ -356,6 +387,34 @@ body[theme-mode='dark'] .login-form-wrapper .semi-tabs-bar-line .semi-tabs-tab {
 .login-form-wrapper .semi-button.semi-button-primary:hover {
   box-shadow: 0 8px 24px rgba(21, 88, 214, 0.38);
   transform: translateY(-1px);
+}
+
+/* ===== 暗色模式输入框优化 ===== */
+body[theme-mode='dark'] .login-form-wrapper .semi-input-wrapper {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(100, 140, 220, 0.2);
+}
+
+body[theme-mode='dark'] .login-form-wrapper .semi-input-wrapper:hover {
+  border-color: rgba(100, 160, 255, 0.4);
+}
+
+body[theme-mode='dark'] .login-form-wrapper .semi-input-wrapper.semi-input-wrapper-focus {
+  border-color: rgba(99, 155, 255, 0.7);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+body[theme-mode='dark'] .login-form-wrapper .semi-input {
+  color: #e8edf8;
+}
+
+body[theme-mode='dark'] .login-form-wrapper .semi-input::placeholder {
+  color: rgba(180, 196, 228, 0.45);
+}
+
+body[theme-mode='dark'] .login-form-wrapper .semi-input-prefix svg,
+body[theme-mode='dark'] .login-form-wrapper .semi-input-prefix {
+  color: rgba(160, 185, 240, 0.6);
 }
 
 /* ===== OAuth 按钮 ===== */
