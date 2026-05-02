@@ -18,9 +18,9 @@ export function getFileFullUrl(url: string): string {
 }
 
 /** 根据 MIME 类型返回对应的 lucide-react 文件图标 */
-export function getFileTypeIcon(mimeType?: string | null) {
+export function getFileTypeIcon(mimeType?: string | null, iconSize = 15) {
   const color = 'var(--semi-color-text-2)';
-  const size = 15;
+  const size = iconSize;
   if (!mimeType) return <File size={size} color={color} />;
   // 图片（含 SVG）
   if (mimeType.startsWith('image/')) return <FileImage size={size} color="var(--semi-color-primary)" />;

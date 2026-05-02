@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
+  Checkbox,
   DatePicker,
   Descriptions,
   Dropdown,
   ImagePreview,
   Input,
   Modal,
+  Pagination,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Toast,
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, Search, RotateCcw, Download, Trash2, FolderDown, MoreHorizontal } from 'lucide-react';
+import { Plus, Search, RotateCcw, Download, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List } from 'lucide-react';
 import { zipSync } from 'fflate';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -42,6 +45,110 @@ function ProviderTag({ provider }: Readonly<{ provider: string }>) {
   return <Tag color={info.color} size="small">{info.label}</Tag>;
 }
 
+interface FileGridCardProps {
+  file: ManagedFile;
+  selected: boolean;
+  canSelect: boolean;
+  onSelect: (id: number, checked: boolean) => void;
+  onPreview: (file: ManagedFile) => void;
+  onDownload: (file: ManagedFile) => void;
+  onDelete: (file: ManagedFile) => void;
+  onDetail: (file: ManagedFile) => void;
+  onCopyUrl: (file: ManagedFile) => void;
+  canDelete: boolean;
+  previewLoading: boolean;
+  downloadLoading: boolean;
+}
+
+function FileGridCard({
+  file, selected, canSelect, onSelect,
+  onPreview, onDownload, onDelete, onDetail, onCopyUrl,
+  canDelete, previewLoading, downloadLoading,
+}: Readonly<FileGridCardProps>) {
+  const isImage = file.mimeType?.startsWith('image/');
+  return (
+    <div className={`files-grid-card${selected ? ' files-grid-card--selected' : ''}`}>
+      {canSelect && (
+        <div className="files-grid-card__checkbox">
+          <Checkbox
+            checked={selected}
+            onChange={(e) => onSelect(file.id, !!(e.target as EventTarget & { checked?: boolean }).checked)}
+          />
+        </div>
+      )}
+      <button
+        type="button"
+        className="files-grid-card__media"
+        onClick={() => onPreview(file)}
+      >
+        {isImage ? (
+          <img src={`${config.apiBaseUrl}${file.url}`} alt={file.originalName} loading="lazy" />
+        ) : (
+          <span className="files-grid-card__icon">
+            {getFileTypeIcon(file.mimeType, 36)}
+          </span>
+        )}
+        {previewLoading && (
+          <div className="files-grid-card__media-overlay">
+            <Spin />
+          </div>
+        )}
+      </button>
+      <div className="files-grid-card__info">
+        <Tooltip content={file.originalName} position="top">
+          <div className="files-grid-card__name">{file.originalName}</div>
+        </Tooltip>
+        <div className="files-grid-card__meta">
+          <ProviderTag provider={file.provider} />
+          <span>{formatFileSize(file.size)}</span>
+        </div>
+      </div>
+      <div className="files-grid-card__actions">
+        <Button theme="borderless" size="small" loading={previewLoading} onClick={() => onPreview(file)}>预览</Button>
+        <div style={{ flex: 1 }} />
+        <Dropdown
+          trigger="click"
+          position="bottomRight"
+          clickToHide
+          render={
+            <Dropdown.Menu>
+              <Dropdown.Item onClick={() => onDownload(file)}>下载</Dropdown.Item>
+              <Dropdown.Item onClick={() => onDetail(file)}>详情</Dropdown.Item>
+              <Dropdown.Item onClick={() => onCopyUrl(file)}>复制链接</Dropdown.Item>
+              {canDelete && (
+                <>
+                  <Dropdown.Divider />
+                  <Dropdown.Item
+                    type="danger"
+                    onClick={() => {
+                      Modal.confirm({
+                        title: '确认删除此文件？',
+                        content: '删除文件记录后，将同步尝试删除实际存储对象。',
+                        okButtonProps: { type: 'danger', theme: 'solid' },
+                        onOk: () => onDelete(file),
+                      });
+                    }}
+                  >删除</Dropdown.Item>
+                </>
+              )}
+            </Dropdown.Menu>
+          }
+        >
+          <span style={{ display: 'inline-block' }}>
+            <Button
+              theme="borderless"
+              size="small"
+              icon={<MoreHorizontal size={14} />}
+              loading={downloadLoading}
+              onClick={(e) => { e.nativeEvent.stopImmediatePropagation(); }}
+            />
+          </span>
+        </Dropdown>
+      </div>
+    </div>
+  );
+}
+
 export default function FilesPage() {
   const { hasPermission } = usePermission();
   interface SearchParams {
@@ -59,7 +166,9 @@ export default function FilesPage() {
   const [uploading, setUploading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(
+    () => localStorage.getItem('files_view_mode') === 'grid' ? 24 : 10,
+  );
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
@@ -74,6 +183,23 @@ export default function FilesPage() {
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(
+    () => (localStorage.getItem('files_view_mode') as 'list' | 'grid') || 'list',
+  );
+
+  const toggleViewMode = (mode: 'list' | 'grid') => {
+    setViewMode(mode);
+    localStorage.setItem('files_view_mode', mode);
+    const newPageSize = mode === 'grid' ? 24 : 10;
+    setPage(1);
+    void fetchFiles(1, newPageSize);
+  };
+
+  const handleGridSelect = (id: number, checked: boolean) => {
+    setSelectedRowKeys((prev) =>
+      checked ? [...prev, id] : prev.filter((k) => k !== id),
+    );
+  };
 
   const fetchDefaultConfig = useCallback(async () => {
     const res = await request.get<FileStorageConfig | null>('/api/file-storage-configs/default');
@@ -510,15 +636,35 @@ export default function FilesPage() {
       </SearchToolbar>
 
       <div className="files-default-tip" style={{ padding: '8px 0' }}>
-        <Text strong>默认文件服务：</Text>
-        {defaultConfig ? (
-          <>
-            <ProviderTag provider={defaultConfig.provider} />
-            <Text>{defaultConfig.name}</Text>
-          </>
-        ) : (
-          <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
-        )}
+        <Space>
+          <Text strong>默认文件服务：</Text>
+          {defaultConfig ? (
+            <>
+              <ProviderTag provider={defaultConfig.provider} />
+              <Text>{defaultConfig.name}</Text>
+            </>
+          ) : (
+            <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
+          )}
+        </Space>
+        <Space spacing={0}>
+          <Button
+            size="small"
+            theme={viewMode === 'list' ? 'solid' : 'light'}
+            type={viewMode === 'list' ? 'primary' : 'tertiary'}
+            icon={<List size={14} />}
+            style={{ borderRadius: '4px 0 0 4px' }}
+            onClick={() => toggleViewMode('list')}
+          />
+          <Button
+            size="small"
+            theme={viewMode === 'grid' ? 'solid' : 'light'}
+            type={viewMode === 'grid' ? 'primary' : 'tertiary'}
+            icon={<LayoutGrid size={14} />}
+            style={{ borderRadius: '0 4px 4px 0' }}
+            onClick={() => toggleViewMode('grid')}
+          />
+        </Space>
       </div>
 
       <ImagePreview
@@ -567,31 +713,72 @@ export default function FilesPage() {
         )}
       </Modal>
 
-      <Table
-        bordered
-        className="admin-table-nowrap"
-        columns={columns}
-        dataSource={data?.list || []}
-        rowKey="id"
-        rowSelection={hasPermission('system:file:delete') ? {
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys((keys as (string | number)[]).map(Number)),
-        } : undefined}
-        loading={loading}
-        size="small"
-        empty="暂无文件记录"
-        pagination={{
-          currentPage: page,
-          pageSize: pageSize,
-          total: data?.total || 0,
-          onPageChange: (currentPage) => { void fetchFiles(currentPage, pageSize); },
-          onPageSizeChange: (size) => {
-            void fetchFiles(1, size);
-          },
-          showTotal: true,
-          showSizeChanger: true,
-        }}
-      />
+      {viewMode === 'list' ? (
+        <Table
+          bordered
+          className="admin-table-nowrap"
+          columns={columns}
+          dataSource={data?.list || []}
+          rowKey="id"
+          rowSelection={hasPermission('system:file:delete') ? {
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys((keys as (string | number)[]).map(Number)),
+          } : undefined}
+          loading={loading}
+          size="small"
+          empty="暂无文件记录"
+          pagination={{
+            currentPage: page,
+            pageSize: pageSize,
+            total: data?.total || 0,
+            onPageChange: (currentPage) => { void fetchFiles(currentPage, pageSize); },
+            onPageSizeChange: (size) => {
+              void fetchFiles(1, size);
+            },
+            showTotal: true,
+            showSizeChanger: true,
+          }}
+        />
+      ) : (
+        <Spin spinning={loading}>
+          <div className="files-grid">
+            {(data?.list ?? []).length === 0 && !loading ? (
+              <div className="files-grid-empty">暂无文件记录</div>
+            ) : (
+              (data?.list ?? []).map((file) => (
+                <FileGridCard
+                  key={file.id}
+                  file={file}
+                  selected={selectedRowKeys.includes(file.id)}
+                  canSelect={hasPermission('system:file:delete')}
+                  onSelect={handleGridSelect}
+                  onPreview={handlePreview}
+                  onDownload={handleDownload}
+                  onDelete={handleDelete}
+                  onDetail={setDetailFile}
+                  onCopyUrl={handleCopyUrl}
+                  canDelete={hasPermission('system:file:delete')}
+                  previewLoading={previewLoadingId === file.id}
+                  downloadLoading={downloadLoadingId === file.id}
+                />
+              ))
+            )}
+          </div>
+          {(data?.total ?? 0) > 0 && (
+            <div className="files-grid-pagination">
+              <Pagination
+                currentPage={page}
+                pageSize={pageSize}
+                total={data?.total ?? 0}
+                onPageChange={(p) => { void fetchFiles(p, pageSize); }}
+                onPageSizeChange={(size) => { void fetchFiles(1, size); }}
+                showSizeChanger
+                showTotal
+              />
+            </div>
+          )}
+        </Spin>
+      )}
     </div>
   );
 }
