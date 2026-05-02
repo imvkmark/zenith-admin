@@ -39,15 +39,15 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
               ws.close(4001, 'Session revoked');
               return;
             }
-            registerConnection(currentPayload.userId, ws);
+            registerConnection(currentPayload.userId, currentPayload.jti ?? '', ws);
           }).catch(() => {
             // On Redis error, allow connection (fail-open for WebSocket)
-            registerConnection(currentPayload.userId, ws);
+            registerConnection(currentPayload.userId, currentPayload.jti ?? '', ws);
           });
         },
         onClose(_evt, ws) {
           if (payload) {
-            removeConnection(payload.userId, ws);
+            removeConnection(payload.userId, payload.jti ?? '');
           }
         },
         onError() {

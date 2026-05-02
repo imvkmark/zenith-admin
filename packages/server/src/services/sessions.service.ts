@@ -1,5 +1,5 @@
 import { getOnlineSessions, forceLogout } from '../lib/session-manager';
-import { sendToUser, closeUserConnections } from '../lib/ws-manager';
+import { sendToToken, closeTokenConnection } from '../lib/ws-manager';
 import { pageOffset } from '../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../lib/datetime';
@@ -37,8 +37,8 @@ export async function forceLogoutSession(tokenId: string) {
   const success = await forceLogout(tokenId);
   if (!success) throw new HTTPException(404, { message: '会话不存在' });
   if (session) {
-    sendToUser(session.userId, { type: 'session:force-logout', payload: { reason: '您已被管理员强制下线' } });
-    setTimeout(() => closeUserConnections(session.userId, '强制下线'), 500);
+    sendToToken(tokenId, { type: 'session:force-logout', payload: { reason: '您已被管理员强制下线' } });
+    setTimeout(() => closeTokenConnection(tokenId, '强制下线'), 500);
   }
 }
 
