@@ -73,22 +73,6 @@ export default function FilesPage() {
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
-  const [openMoreId, setOpenMoreId] = useState<number | null>(null);
-
-  // 当 Dropdown 打开时，在下一个事件循环注册 document 级关闭监听器
-  // 延迟注册是为了避免打开 Dropdown 的同一次点击立即触发关闭
-  useEffect(() => {
-    if (openMoreId === null) return;
-    let handler: (e: MouseEvent) => void;
-    const timer = globalThis.setTimeout(() => {
-      handler = () => setOpenMoreId(null);
-      document.addEventListener('click', handler);
-    }, 0);
-    return () => {
-      globalThis.clearTimeout(timer);
-      if (handler) document.removeEventListener('click', handler);
-    };
-  }, [openMoreId]);
 
   const fetchDefaultConfig = useCallback(async () => {
     const res = await request.get<FileStorageConfig | null>('/api/file-storage-configs/default');
@@ -411,8 +395,7 @@ export default function FilesPage() {
         <Space>
           <Button theme="borderless" size="small" loading={previewLoadingId === record.id} onClick={() => handlePreview(record)}>预览</Button>
           <Dropdown
-            trigger="custom"
-            visible={openMoreId === record.id}
+            trigger="click"
             position="bottomRight"
             render={
               <Dropdown.Menu>
@@ -441,7 +424,7 @@ export default function FilesPage() {
                 theme="borderless"
                 size="small"
                 icon={<MoreHorizontal size={14} />}
-                onClick={(e) => { e.stopPropagation(); setOpenMoreId(openMoreId === record.id ? null : record.id); }}
+                onClick={(e) => { e.nativeEvent.stopImmediatePropagation(); }}
               />
             </span>
           </Dropdown>
