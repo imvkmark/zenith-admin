@@ -64,6 +64,7 @@ export default function FilesPage() {
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
+  const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
   // previewBlobUrlsRef: index-aligned with image list, tracks created blob URLs for cleanup
   const previewBlobUrlsRef = useRef<string[]>([]);
   // previewSessionRef: increments each time a new preview session starts, used to cancel stale bg loads
@@ -221,6 +222,7 @@ export default function FilesPage() {
   };
 
   const handleDownload = async (file: ManagedFile) => {
+    setDownloadLoadingId(file.id);
     try {
       const blob = await fetchProtectedFile(file.url);
       const objectUrl = globalThis.URL.createObjectURL(blob);
@@ -231,6 +233,8 @@ export default function FilesPage() {
       globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(objectUrl), 60_000);
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '下载文件失败');
+    } finally {
+      setDownloadLoadingId(null);
     }
   };
 
@@ -425,6 +429,7 @@ export default function FilesPage() {
                 theme="borderless"
                 size="small"
                 icon={<MoreHorizontal size={14} />}
+                loading={downloadLoadingId === record.id}
                 onClick={(e) => { e.nativeEvent.stopImmediatePropagation(); }}
               />
             </span>
