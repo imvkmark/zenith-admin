@@ -1,4 +1,4 @@
-import { eq, and, inArray, like, or, gte, lte } from 'drizzle-orm';
+import { eq, and, ne, isNull, inArray, like, or, gte, lte } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { db } from '../db';
@@ -201,6 +201,15 @@ export async function createUser(data: CreateUserInput) {
     ensureRoleIdsExist(nextRoleIds, user),
     ensurePositionIdsExist(nextPositionIds, user),
   ]);
+  // PostgreSQL NULL != NULL 导致复合唯一约束对 tenantId=NULL 的用户失效，需在应用层显式检查
+  const newTenantId = getCreateTenantId(user);
+  const tenantFilter = newTenantId === null ? isNull(users.tenantId) : eq(users.tenantId, newTenantId);
+  const [dupUsername, dupEmail] = await Promise.all([
+    db.select({ id: users.id }).from(users).where(and(eq(users.username, data.username), tenantFilter)).limit(1),
+    db.select({ id: users.id }).from(users).where(and(eq(users.email, data.email), tenantFilter)).limit(1),
+  ]);
+  if (dupUsername.length > 0) throw new HTTPException(400, { message: '用户名已存在' });
+  if (dupEmail.length > 0) throw new HTTPException(400, { message: '邮箱已存在' });
   const hashedPassword = await bcrypt.hash(password, 10);
   try {
     const created = await db.transaction(async (tx) => {
@@ -277,11 +286,22 @@ export async function updateUser(id: number, data: UpdateUserInput) {
     ensureRoleIdsExist(nextRoleIds ?? [], user),
     ensurePositionIdsExist(nextPositionIds ?? [], user),
   ]);
+  // 更新时检查用户名/邮箱是否已被其他用户占用（排除自身）
+  const tc = tenantCondition(users, user);
+  if (data.username) {
+    const conds = tc ? [eq(users.username, data.username), ne(users.id, id), tc] : [eq(users.username, data.username), ne(users.id, id)];
+    const [dup] = await db.select({ id: users.id }).from(users).where(and(...conds)).limit(1);
+    if (dup) throw new HTTPException(400, { message: '用户名已存在' });
+  }
+  if (data.email) {
+    const conds = tc ? [eq(users.email, data.email), ne(users.id, id), tc] : [eq(users.email, data.email), ne(users.id, id)];
+    const [dup] = await db.select({ id: users.id }).from(users).where(and(...conds)).limit(1);
+    if (dup) throw new HTTPException(400, { message: '邮箱已存在' });
+  }
   const nextValues = {
     ...rest,
     ...(departmentId === undefined ? {} : { departmentId: departmentId ?? null }),
   };
-  const tc = tenantCondition(users, user);
   const updated = await db.transaction(async (tx) => {
     const [u] = await tx.update(users).set(nextValues)
       .where(tc ? and(eq(users.id, id), tc) : eq(users.id, id)).returning();
