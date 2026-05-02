@@ -100,6 +100,12 @@ function pickFavicon(html: string): string | null {
   return hit?.[1] ? decodeHtmlEntities(hit[1].trim()) : null;
 }
 
+function pickFirstImage(html: string): string | null {
+  const hit = html.match(/<img[^>]*src=["']([^"']+)["'][^>]*>/i)
+    ?? html.match(/<img[^>]*src=([^\s>]+)[^>]*>/i);
+  return hit?.[1] ? decodeHtmlEntities(hit[1].trim()) : null;
+}
+
 function toAbsUrl(raw: string | null, base: URL): string | null {
   if (!raw) return null;
   try {
@@ -164,10 +170,14 @@ export async function getLinkPreview(rawUrl: string): Promise<ChatLinkPreview> {
     const image = toAbsUrl(
       pickMeta(html, [
         { key: 'property', value: 'og:image' },
+        { key: 'property', value: 'og:image:url' },
+        { key: 'property', value: 'og:image:secure_url' },
         { key: 'name', value: 'twitter:image' },
+        { key: 'name', value: 'twitter:image:src' },
+        { key: 'name', value: 'image' },
       ]),
       parsed,
-    ) ?? directImage;
+    ) ?? toAbsUrl(pickFirstImage(html), parsed) ?? directImage;
 
     const favicon = toAbsUrl(pickFavicon(html), parsed);
 
