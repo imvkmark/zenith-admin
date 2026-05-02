@@ -126,7 +126,6 @@ export default function OnlineSessionsPage() {
               theme="borderless"
               type="danger"
               size="small"
-              disabled={record.tokenId === currentTokenId}
               onClick={() => handleForceLogout(record)}
             >
               强制下线
