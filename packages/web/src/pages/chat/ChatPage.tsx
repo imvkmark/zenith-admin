@@ -1062,7 +1062,7 @@ export default function ChatPage() {
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
               <textarea
                 ref={inputRef}
                 value={input}
@@ -1072,12 +1072,12 @@ export default function ChatPage() {
                 placeholder="输入消息，Enter 发送，Shift+Enter 换行（支持粘贴图片）"
                 rows={3}
                 style={{
-                  flex: 1, resize: 'none', borderRadius: 8, padding: '8px 12px',
+                  width: '100%', resize: 'none', borderRadius: 8, padding: '8px 48px 8px 12px',
                   border: '1px solid var(--semi-color-border)',
                   background: 'var(--semi-color-bg-0)',
                   color: 'var(--semi-color-text-0)',
                   fontSize: 14, fontFamily: 'inherit', outline: 'none',
-                  lineHeight: 1.5,
+                  lineHeight: 1.5, boxSizing: 'border-box',
                 }}
               />
               <Button
@@ -1086,7 +1086,10 @@ export default function ChatPage() {
                 loading={sending}
                 disabled={!input.trim() && pendingImages.length === 0}
                 onClick={() => { void handleSend(); }}
-                style={{ height: 74, paddingLeft: 12, paddingRight: 12 }}
+                style={{
+                  position: 'absolute', bottom: 8, right: 8,
+                  borderRadius: 6, width: 32, height: 32, padding: 0,
+                }}
               />
             </div>
             <Text type="tertiary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>Enter 发送 · Shift+Enter 换行</Text>
