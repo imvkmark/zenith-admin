@@ -238,12 +238,12 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
 
   if (msg.type === 'image') {
     return (
-      <div style={bubbleStyle}>
+      <div style={{ background: 'transparent', padding: 0, borderRadius: 0 }}>
         <a href={msg.content} target="_blank" rel="noreferrer">
           <img
             src={msg.content}
             alt={(msg.extra as { name?: string } | null)?.name ?? '图片'}
-            style={{ maxWidth: 240, maxHeight: 200, borderRadius: 6, display: 'block', cursor: 'pointer' }}
+            style={{ maxWidth: 240, maxHeight: 200, borderRadius: 8, display: 'block', cursor: 'pointer' }}
           />
         </a>
       </div>
