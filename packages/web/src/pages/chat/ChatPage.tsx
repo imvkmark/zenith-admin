@@ -4,7 +4,7 @@ import {
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -324,6 +324,32 @@ function MessageBubble({
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const showBottomTime = shouldShowTime || isHovered;
 
+  const handleCopyText = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      Toast.success('文本已复制');
+    } catch {
+      Toast.error('复制失败');
+    }
+  }, [msg.content]);
+
+  const handleCopyImage = useCallback(async () => {
+    try {
+      const res = await fetch(msg.content);
+      const blob = await res.blob();
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        await navigator.clipboard.writeText(msg.content);
+        Toast.success('当前环境不支持写入图片，已复制图片链接');
+        return;
+      }
+      const type = blob.type || 'image/png';
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      Toast.success('图片已复制');
+    } catch {
+      Toast.error('复制图片失败');
+    }
+  }, [msg.content]);
+
   if (msg.isRecalled) {
     return (
       <div style={{ textAlign: 'center', padding: '4px 0' }}>
@@ -424,6 +450,39 @@ function MessageBubble({
                 >
                   回复
                 </Dropdown.Item>
+                {isSelf && (
+                  <Dropdown.Item
+                    icon={<RotateCcw size={12} />}
+                    onClick={() => {
+                      onRecall(msg);
+                      setContextMenuPos(null);
+                    }}
+                  >
+                    撤回
+                  </Dropdown.Item>
+                )}
+                {msg.type === 'text' && (
+                  <Dropdown.Item
+                    icon={<Copy size={12} />}
+                    onClick={() => {
+                      void handleCopyText();
+                      setContextMenuPos(null);
+                    }}
+                  >
+                    复制
+                  </Dropdown.Item>
+                )}
+                {msg.type === 'image' && (
+                  <Dropdown.Item
+                    icon={<Copy size={12} />}
+                    onClick={() => {
+                      void handleCopyImage();
+                      setContextMenuPos(null);
+                    }}
+                  >
+                    复制
+                  </Dropdown.Item>
+                )}
               </Dropdown.Menu>
             )}
           >
