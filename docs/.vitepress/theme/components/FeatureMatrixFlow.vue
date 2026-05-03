@@ -54,6 +54,7 @@ const gridStyle = computed(() => ({
 const viewportRef = ref<HTMLElement | null>(null)
 const laneRefs = ref<HTMLElement[]>([])
 const lineRefs = ref<HTMLElement[][]>([])
+const activeItem = ref<string | null>(null)
 
 let ctx: gsap.Context | null = null
 let tweens: gsap.core.Tween[] = []
@@ -115,12 +116,27 @@ const resolveLaneCount = (width: number) => {
 
 const updateLaneCountByWidth = (width: number) => {
   const next = resolveLaneCount(width)
-  if (next !== laneCount.value) {
-    laneCount.value = next
-  } else {
+  if (next === laneCount.value) {
     updateAllLanesVisualState()
+    return
   }
+
+  laneCount.value = next
 }
+
+const pauseLane = (laneIndex: number) => {
+  tweens[laneIndex]?.pause()
+}
+
+const resumeLane = (laneIndex: number) => {
+  tweens[laneIndex]?.resume()
+}
+
+const toggleActiveItem = (item: string) => {
+  activeItem.value = activeItem.value === item ? null : item
+}
+
+const isActiveItem = (item: string) => activeItem.value === item
 
 const initAnimation = () => {
   const viewport = viewportRef.value
@@ -164,7 +180,7 @@ const initAnimation = () => {
         onUpdate: () => updateLaneVisualState(laneIndex),
       })
 
-      tweens.push(laneTween)
+      tweens[laneIndex] = laneTween
     }
   }, viewport)
 }
@@ -213,14 +229,21 @@ onBeforeUnmount(() => {
         :key="`lane-${laneIndex}`"
         class="zn-feature-flow__lane"
         :ref="(el) => setLaneRef(el, laneIndex)"
+        @mouseenter="pauseLane(laneIndex)"
+        @mouseleave="resumeLane(laneIndex)"
       >
         <div class="zn-feature-flow__mask" />
         <div
           v-for="(item, lineIndex) in lane"
           :key="`${item}-${laneIndex}-${lineIndex}`"
           class="zn-feature-flow__item"
+          :class="{ 'zn-feature-flow__item--active': isActiveItem(item) }"
           :ref="(el) => setLineRef(el, laneIndex, lineIndex)"
           :aria-hidden="lineIndex >= laneItems[laneIndex].length"
+          :tabindex="lineIndex >= laneItems[laneIndex].length ? -1 : 0"
+          @click="toggleActiveItem(item)"
+          @keydown.enter.prevent="toggleActiveItem(item)"
+          @keydown.space.prevent="toggleActiveItem(item)"
         >
           {{ item }}
         </div>
@@ -272,6 +295,19 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   padding-inline: 8px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.zn-feature-flow__item:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 75%, transparent);
+  outline-offset: 2px;
+}
+
+.zn-feature-flow__item--active {
+  color: var(--vp-c-brand-1);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--vp-c-brand-1) 36%, transparent);
+  font-weight: 600;
 }
 
 .zn-feature-flow__mask {
