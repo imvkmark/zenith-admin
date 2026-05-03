@@ -28,6 +28,9 @@
 }
 
 .users-dept-sidebar-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-weight: 600;
   font-size: 13px;
   padding: 10px 12px;
@@ -35,6 +38,20 @@
   border-bottom: 1px solid var(--semi-color-border);
   margin-bottom: 4px;
   flex-shrink: 0;
+}
+
+.users-dept-sidebar-title-text {
+  white-space: nowrap;
+}
+
+.users-dept-sidebar-actions {
+  display: flex;
+  align-items: center;
+}
+
+.users-dept-tree-action {
+  color: var(--semi-color-text-2);
+  font-size: 12px;
 }
 
 .users-content {
