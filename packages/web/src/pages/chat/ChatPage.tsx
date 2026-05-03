@@ -57,28 +57,10 @@ function shouldDisplayMessageTime(current: ChatMessage, next?: ChatMessage): boo
 }
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/ig;
-const IMAGE_URL_REGEX = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
 
 function extractFirstUrl(content: string): string | null {
   const hit = content.match(URL_REGEX);
   return hit?.[0] ?? null;
-}
-
-function buildFallbackPreview(url: string): ChatLinkPreview | null {
-  try {
-    const parsed = new URL(url);
-    const isImageUrl = IMAGE_URL_REGEX.test(parsed.pathname);
-    return {
-      url: parsed.toString(),
-      title: isImageUrl ? (parsed.pathname.split('/').pop() || parsed.hostname) : parsed.hostname,
-      description: null,
-      siteName: parsed.hostname,
-      image: isImageUrl ? parsed.toString() : null,
-      favicon: null,
-    };
-  } catch {
-    return null;
-  }
 }
 
 function getFileExtension(fileName: string): string | null {
@@ -329,7 +311,7 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
   const extra = getMessageExtra(msg);
   const asset = extra?.asset ?? null;
-  const linkPreview = extra?.linkPreview ?? buildFallbackPreview(extractFirstUrl(msg.content) ?? '');
+  const linkPreview = extra?.linkPreview ?? null;
   const bubbleStyle: React.CSSProperties = {
     background: isSelf ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
     color: isSelf ? '#fff' : 'inherit',
@@ -949,7 +931,7 @@ export default function ChatPage() {
       if (replyTo) body.replyToId = replyTo.id;
       const firstUrl = extractFirstUrl(content);
       if (firstUrl) {
-        const preview = await fetchLinkPreview(firstUrl) ?? buildFallbackPreview(firstUrl);
+        const preview = await fetchLinkPreview(firstUrl);
         if (preview) body.extra = { linkPreview: preview };
       }
       const res = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, body);

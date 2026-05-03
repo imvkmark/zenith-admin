@@ -21,6 +21,7 @@ export const ChatLinkPreviewDTO = z
     image: z.url().nullable(),
     favicon: z.url().nullable(),
   })
+  .strict()
   .openapi('ChatLinkPreview');
 
 export const ChatAssetMetaDTO = z
@@ -34,6 +35,7 @@ export const ChatAssetMetaDTO = z
     height: z.number().int().nullable().optional(),
     thumbnailUrl: z.url().nullable().optional(),
   })
+  .strict()
   .openapi('ChatAssetMeta');
 
 export const ChatMessageExtraDTO = z
@@ -41,6 +43,7 @@ export const ChatMessageExtraDTO = z
     asset: ChatAssetMetaDTO.nullable().optional(),
     linkPreview: ChatLinkPreviewDTO.nullable().optional(),
   })
+  .strict()
   .openapi('ChatMessageExtra');
 
 export const ChatMessageDTO = z

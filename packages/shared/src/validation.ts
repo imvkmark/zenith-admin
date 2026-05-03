@@ -476,7 +476,7 @@ export const chatLinkPreviewSchema = z.object({
   siteName: z.string().max(255).nullable(),
   image: z.url().nullable(),
   favicon: z.url().nullable(),
-});
+}).strict();
 
 export const chatAssetMetaSchema = z.object({
   kind: z.enum(['image', 'file']),
@@ -487,12 +487,12 @@ export const chatAssetMetaSchema = z.object({
   width: z.number().int().positive().nullable().optional(),
   height: z.number().int().positive().nullable().optional(),
   thumbnailUrl: z.url().nullable().optional(),
-});
+}).strict();
 
 export const chatMessageExtraSchema = z.object({
   asset: chatAssetMetaSchema.nullable().optional(),
   linkPreview: chatLinkPreviewSchema.nullable().optional(),
-});
+}).strict();
 
 export const sendChatMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
