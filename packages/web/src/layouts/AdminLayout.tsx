@@ -171,8 +171,22 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const prevTabsLengthRef = useRef(0);
   const [manualTopKey, setManualTopKey] = useState<string | null>(null);
   const [tabRefreshVersion, setTabRefreshVersion] = useState<Record<string, number>>({});
+  const tabContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const tabContextMenuCleanupRef = useRef<(() => void) | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const closeTabContextMenu = useCallback(() => {
+    tabContextMenuCleanupRef.current?.();
+    tabContextMenuCleanupRef.current = null;
+    tabContextMenuRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      closeTabContextMenu();
+    };
+  }, [closeTabContextMenu]);
 
   // ─── Tabs 拖拽排序 ──────────────────────────────────────────────────────────
   const handleDragStart = useCallback((key: string) => {
@@ -770,6 +784,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
                     onContextMenu={(e) => {
                       e.preventDefault();
+                      closeTabContextMenu();
+
                       const menu = document.createElement('div');
                       menu.className = 'admin-tab-ctx';
 
@@ -796,8 +812,40 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       menu.style.left = `${e.clientX}px`;
                       menu.style.top = `${e.clientY}px`;
                       document.body.appendChild(menu);
+                      tabContextMenuRef.current = menu;
+                      let clickHandler: ((ev: MouseEvent) => void) | null = null;
 
-                      const handler = (ev: MouseEvent) => {
+                      const closeMenu = () => {
+                        if (tabContextMenuRef.current === menu) {
+                          tabContextMenuRef.current = null;
+                        }
+                        menu.remove();
+                        if (clickHandler) {
+                          document.removeEventListener('click', clickHandler);
+                        }
+                        document.removeEventListener('mousedown', handleMouseDown);
+                        document.removeEventListener('keydown', handleKeyDown);
+                        tabContextMenuCleanupRef.current = null;
+                      };
+
+                      const handleMouseDown = (ev: MouseEvent) => {
+                        const target = ev.target as Node | null;
+                        if (!target || !menu.contains(target)) {
+                          closeMenu();
+                        }
+                      };
+
+                      const handleKeyDown = (ev: KeyboardEvent) => {
+                        if (ev.key === 'Escape') {
+                          closeMenu();
+                        }
+                      };
+
+                      tabContextMenuCleanupRef.current = closeMenu;
+                      document.addEventListener('mousedown', handleMouseDown);
+                      document.addEventListener('keydown', handleKeyDown);
+
+                      clickHandler = (ev: MouseEvent) => {
                         const target = ev.target as HTMLElement;
                         const item = target.closest('.admin-tab-ctx-item') as HTMLElement | null;
                         const action = item?.dataset.action;
@@ -822,10 +870,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                           closeAll();
                           navigate('/');
                         }
-                        menu.remove();
-                        document.removeEventListener('click', handler);
+                        closeMenu();
                       };
-                      document.addEventListener('click', handler);
+                      document.addEventListener('click', clickHandler);
                     }}
                   >
                     {preferences.showTabIcon && pathIconMap[tab.key] && (
