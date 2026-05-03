@@ -15,7 +15,8 @@ import {
   createGroupConversation, addGroupMember, listGroupMembers,
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
   pinConversation, starConversation, removeConversation,
-  getLinkPreview,
+  getLinkPreview, listPinnedMessages, listFavoriteMessages, listGlobalFavoriteMessages,
+  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -49,6 +50,21 @@ chatRouter.openapi(
   async (c) => {
     const list = await listConversations();
     return c.json(okBody(list), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/favorite-messages', tags: ['Chat'], summary: '我的收藏消息列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(ChatMessageDTO, '收藏消息列表') },
+  }),
+  async (c) => {
+    const { page, pageSize } = c.req.valid('query');
+    const result = await listGlobalFavoriteMessages(page, pageSize);
+    return c.json(okBody(result), 200);
   },
 );
 
@@ -197,6 +213,37 @@ chatRouter.openapi(
   },
 );
 
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/pinned-messages', tags: ['Chat'], summary: '获取会话置顶消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatMessageDTO), '置顶消息列表') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const list = await listPinnedMessages(id);
+    return c.json(okBody(list), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/favorite-messages', tags: ['Chat'], summary: '获取会话收藏消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam, query: PaginationQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(ChatMessageDTO, '收藏消息列表') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { page, pageSize } = c.req.valid('query');
+    const result = await listFavoriteMessages(id, page, pageSize);
+    return c.json(okBody(result), 200);
+  },
+);
+
 // ─── 撤回消息 ─────────────────────────────────────────────────────────────────
 
 chatRouter.openapi(
@@ -211,6 +258,44 @@ chatRouter.openapi(
     const { id } = c.req.valid('param');
     await recallMessage(id);
     return c.json(okBody(null), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'patch', path: '/messages/{id}/favorite', tags: ['Chat'], summary: '收藏或取消收藏消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ favorite: z.boolean() })) },
+    },
+    responses: { ...commonErrorResponses, ...ok(ChatMessageDTO, '消息') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { favorite } = c.req.valid('json');
+    const msg = await toggleMessageFavorite(id, favorite);
+    return c.json(okBody(msg), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'patch', path: '/messages/{id}/pin', tags: ['Chat'], summary: '置顶或取消置顶消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ pin: z.boolean() })) },
+    },
+    responses: { ...commonErrorResponses, ...ok(ChatMessageDTO, '消息') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { pin } = c.req.valid('json');
+    const msg = await toggleMessagePin(id, pin);
+    return c.json(okBody(msg), 200);
   },
 );
 
@@ -408,6 +493,21 @@ chatRouter.openapi(
     const { newOwnerId } = c.req.valid('json');
     await transferGroupOwnership(id, newOwnerId);
     return c.json(okBody(null), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/announcement-history', tags: ['Chat'], summary: '获取群公告历史',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatMessageDTO), '群公告历史') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const list = await listAnnouncementHistory(id);
+    return c.json(okBody(list), 200);
   },
 );
 

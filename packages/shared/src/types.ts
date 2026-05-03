@@ -655,9 +655,23 @@ export interface ChatAssetMeta {
   thumbnailUrl?: string | null;
 }
 
+export interface ChatMention {
+  userId: number;
+  nickname: string;
+}
+
+export interface ChatAnnouncementHistoryMeta {
+  announcement: string | null;
+  operatorName: string | null;
+}
+
 export interface ChatMessageExtra {
   asset?: ChatAssetMeta | null;
   linkPreview?: ChatLinkPreview | null;
+  mentions?: ChatMention[] | null;
+  isFavorited?: boolean;
+  isPinned?: boolean;
+  announcementHistory?: ChatAnnouncementHistoryMeta | null;
 }
 
 export interface ChatMessage {

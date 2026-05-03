@@ -231,13 +231,17 @@ function buildMessageSearchSnippet(message: ChatMessage): string {
   return message.content;
 }
 
-async function appendSystemMessage(conversationId: number, content: string): Promise<ChatMessage> {
+async function appendSystemMessage(
+  conversationId: number,
+  content: string,
+  extra: ChatMessageExtra | null = null,
+): Promise<ChatMessage> {
   const [row] = await db.insert(chatMessages).values({
     conversationId,
     senderId: null,
     type: 'system',
     content,
-    extra: null,
+    extra,
   }).returning();
 
   await db.update(chatConversations)
@@ -264,6 +268,17 @@ async function getUserNickname(userId: number): Promise<string | null> {
     columns: { nickname: true },
   });
   return user?.nickname ?? null;
+}
+
+async function ensureMessageAccessible(messageId: number) {
+  const msg = await db.query.chatMessages.findFirst({ where: eq(chatMessages.id, messageId) });
+  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  await ensureConversationMember(msg.conversationId);
+  return msg;
+}
+
+function normalizeMessageExtra(extra: unknown): ChatMessageExtra {
+  return (extra as ChatMessageExtra | null) ?? {};
 }
 
 // ─── 会话列表 ─────────────────────────────────────────────────────────────────
@@ -517,6 +532,140 @@ export async function listMessages(conversationId: number, page: number, pageSiz
   );
 
   return { list, total, page, pageSize };
+}
+
+export async function listPinnedMessages(conversationId: number): Promise<ChatMessage[]> {
+  await ensureConversationMember(conversationId);
+
+  const rows = await db
+    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+    .from(chatMessages)
+    .leftJoin(users, eq(chatMessages.senderId, users.id))
+    .where(and(
+      eq(chatMessages.conversationId, conversationId),
+      sql`COALESCE((${chatMessages.extra} ->> 'isPinned')::boolean, false) = true`,
+    ))
+    .orderBy(desc(chatMessages.updatedAt), desc(chatMessages.id))
+    .limit(5);
+
+  return rows.map((r) => mapChatMessage(
+    r.msg,
+    r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+  ));
+}
+
+export async function listFavoriteMessages(conversationId: number, page: number, pageSize: number) {
+  await ensureConversationMember(conversationId);
+
+  const where = and(
+    eq(chatMessages.conversationId, conversationId),
+    sql`COALESCE((${chatMessages.extra} ->> 'isFavorited')::boolean, false) = true`,
+  );
+
+  const [total, rows] = await Promise.all([
+    db.$count(chatMessages, where),
+    db
+      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+      .from(chatMessages)
+      .leftJoin(users, eq(chatMessages.senderId, users.id))
+      .where(where)
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+      .limit(pageSize)
+      .offset(pageOffset(page, pageSize)),
+  ]);
+
+  return {
+    list: rows.map((r) => mapChatMessage(
+      r.msg,
+      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    )),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export async function listGlobalFavoriteMessages(page: number, pageSize: number) {
+  const me = currentUser();
+
+  const where = and(
+    eq(chatConversationMembers.userId, me.userId),
+    sql`COALESCE((${chatMessages.extra} ->> 'isFavorited')::boolean, false) = true`,
+  );
+
+  const [countRows, rows] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(chatMessages)
+      .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
+      .where(where),
+    db
+      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+      .from(chatMessages)
+      .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
+      .leftJoin(users, eq(chatMessages.senderId, users.id))
+      .where(where)
+      .orderBy(desc(chatMessages.updatedAt), desc(chatMessages.id))
+      .limit(pageSize)
+      .offset(pageOffset(page, pageSize)),
+  ]);
+
+  return {
+    list: rows.map((r) => mapChatMessage(
+      r.msg,
+      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    )),
+    total: Number(countRows[0]?.count ?? 0),
+    page,
+    pageSize,
+  };
+}
+
+export async function toggleMessageFavorite(messageId: number, favorite: boolean): Promise<ChatMessage> {
+  const msg = await ensureMessageAccessible(messageId);
+  const nextExtra: ChatMessageExtra = { ...normalizeMessageExtra(msg.extra), isFavorited: favorite };
+  const [updated] = await db.update(chatMessages)
+    .set({ extra: nextExtra, updatedAt: new Date() })
+    .where(eq(chatMessages.id, messageId))
+    .returning();
+
+  const sender = updated.senderId
+    ? await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } })
+    : null;
+  return mapChatMessage(updated, sender ?? null);
+}
+
+export async function toggleMessagePin(messageId: number, pin: boolean): Promise<ChatMessage> {
+  const msg = await ensureMessageAccessible(messageId);
+  const nextExtra: ChatMessageExtra = { ...normalizeMessageExtra(msg.extra), isPinned: pin };
+  const [updated] = await db.update(chatMessages)
+    .set({ extra: nextExtra, updatedAt: new Date() })
+    .where(eq(chatMessages.id, messageId))
+    .returning();
+
+  const sender = updated.senderId
+    ? await db.query.users.findFirst({ where: eq(users.id, updated.senderId), columns: { id: true, nickname: true, avatar: true } })
+    : null;
+  return mapChatMessage(updated, sender ?? null);
+}
+
+export async function listAnnouncementHistory(conversationId: number): Promise<ChatMessage[]> {
+  await ensureConversationMember(conversationId);
+  const rows = await db
+    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+    .from(chatMessages)
+    .leftJoin(users, eq(chatMessages.senderId, users.id))
+    .where(and(
+      eq(chatMessages.conversationId, conversationId),
+      eq(chatMessages.type, 'system'),
+      sql`${chatMessages.extra} ? 'announcementHistory'`,
+    ))
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id));
+
+  return rows.map((r) => mapChatMessage(
+    r.msg,
+    r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+  ));
 }
 
 // ─── 会话消息搜索 ───────────────────────────────────────────────────────────
@@ -1056,7 +1205,12 @@ export async function updateGroupInfo(
     await appendSystemMessage(conversationId, `${myNickname ?? '群主'} 将群聊名称修改为「${normalizedName}」`);
   }
   if (announcementChanged) {
-    await appendSystemMessage(conversationId, `${myNickname ?? '群主'} 更新了群公告`);
+    await appendSystemMessage(conversationId, `${myNickname ?? '群主'} 更新了群公告`, {
+      announcementHistory: {
+        announcement: normalizedAnnouncement ?? null,
+        operatorName: myNickname,
+      },
+    });
   }
 }
 

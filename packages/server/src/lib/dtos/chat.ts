@@ -48,10 +48,30 @@ export const ChatAssetMetaDTO = z
   .strict()
   .openapi('ChatAssetMeta');
 
+export const ChatMentionDTO = z
+  .object({
+    userId: z.number().int(),
+    nickname: z.string(),
+  })
+  .strict()
+  .openapi('ChatMention');
+
+export const ChatAnnouncementHistoryDTO = z
+  .object({
+    announcement: z.string().nullable(),
+    operatorName: z.string().nullable(),
+  })
+  .strict()
+  .openapi('ChatAnnouncementHistory');
+
 export const ChatMessageExtraDTO = z
   .object({
     asset: ChatAssetMetaDTO.nullable().optional(),
     linkPreview: ChatLinkPreviewDTO.nullable().optional(),
+    mentions: z.array(ChatMentionDTO).nullable().optional(),
+    isFavorited: z.boolean().optional(),
+    isPinned: z.boolean().optional(),
+    announcementHistory: ChatAnnouncementHistoryDTO.nullable().optional(),
   })
   .strict()
   .openapi('ChatMessageExtra');

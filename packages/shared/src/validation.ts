@@ -489,9 +489,23 @@ export const chatAssetMetaSchema = z.object({
   thumbnailUrl: z.string().max(2048).nullable().optional(),
 }).strict();
 
+export const chatMentionSchema = z.object({
+  userId: z.number().int().positive(),
+  nickname: z.string().min(1).max(100),
+}).strict();
+
+export const chatAnnouncementHistorySchema = z.object({
+  announcement: z.string().max(500).nullable(),
+  operatorName: z.string().max(100).nullable(),
+}).strict();
+
 export const chatMessageExtraSchema = z.object({
   asset: chatAssetMetaSchema.nullable().optional(),
   linkPreview: chatLinkPreviewSchema.nullable().optional(),
+  mentions: z.array(chatMentionSchema).max(20).nullable().optional(),
+  isFavorited: z.boolean().optional(),
+  isPinned: z.boolean().optional(),
+  announcementHistory: chatAnnouncementHistorySchema.nullable().optional(),
 }).strict();
 
 export const sendChatMessageSchema = z.object({

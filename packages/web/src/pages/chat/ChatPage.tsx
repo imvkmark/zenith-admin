@@ -4,7 +4,7 @@ import {
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, User, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, Pencil, ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, User, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, Pencil, ChevronLeft, ChevronRight, ListFilter, AtSign, Bookmark, History } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
@@ -227,6 +227,54 @@ function renderTextWithLinks(content: string, isSelf: boolean) {
       );
     }
     return <span key={`${part}-${idx}`}>{part}</span>;
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function renderTextWithMentions(content: string, isSelf: boolean, mentions?: Array<{ nickname: string }> | null) {
+  const labels = Array.from(new Set((mentions ?? []).map((item) => `@${item.nickname}`))).sort((a, b) => b.length - a.length);
+  if (labels.length === 0) return renderTextWithLinks(content, isSelf);
+
+  const mentionRegex = new RegExp(`(${labels.map(escapeRegExp).join('|')})`, 'g');
+  const parts = content.split(URL_REGEX);
+
+  return parts.map((part, idx) => {
+    if (/^https?:\/\//i.test(part)) {
+      return (
+        <a
+          key={`${part}-${idx}`}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: isSelf ? 'rgba(255,255,255,0.92)' : 'var(--semi-color-link)', textDecoration: 'underline' }}
+        >
+          {part}
+        </a>
+      );
+    }
+
+    return part.split(mentionRegex).map((segment, segmentIdx) => {
+      if (labels.includes(segment)) {
+        return (
+          <span
+            key={`${segment}-${idx}-${segmentIdx}`}
+            style={{
+              color: isSelf ? '#fff' : 'var(--semi-color-primary)',
+              fontWeight: 600,
+              background: isSelf ? 'rgba(255,255,255,0.14)' : 'var(--semi-color-primary-light-default)',
+              borderRadius: 4,
+              padding: '0 2px',
+            }}
+          >
+            {segment}
+          </span>
+        );
+      }
+      return <span key={`${segment}-${idx}-${segmentIdx}`}>{segment}</span>;
+    });
   });
 }
 
@@ -674,7 +722,7 @@ function MessageContent({
 
   return (
     <div style={bubbleStyle}>
-      <div style={{ whiteSpace: 'pre-wrap' }}>{renderTextWithLinks(msg.content, isSelf)}</div>
+      <div style={{ whiteSpace: 'pre-wrap' }}>{renderTextWithMentions(msg.content, isSelf, msg.extra?.mentions)}</div>
       {linkPreview && (
         <a
           href={linkPreview.url}
@@ -943,7 +991,7 @@ function ImageGalleryLightbox({
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
-  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
+  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage, onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -953,6 +1001,10 @@ function MessageBubble({
   shouldShowTime: boolean;
   getReplyMessage: (id: number) => ChatMessage | undefined;
   onScrollToMessage: (id: number) => void;
+  onToggleFavorite: (msg: ChatMessage) => void;
+  onTogglePin: (msg: ChatMessage) => void;
+  onEditRecalled: (messageId: number) => void;
+  recalledDraft?: { content: string; mentions?: Array<{ userId: number; nickname: string }> };
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -1067,6 +1119,17 @@ function MessageBubble({
             {isSelf ? '你' : (msg.senderName ?? '对方')}撤回了一条消息
           </Text>
         </Tooltip>
+        {isSelf && recalledDraft && (
+          <Button
+            size="small"
+            theme="borderless"
+            type="primary"
+            style={{ marginLeft: 4, height: 'auto', padding: '0 2px' }}
+            onClick={() => onEditRecalled(msg.id)}
+          >
+            重新编辑
+          </Button>
+        )}
       </div>
     );
   }
@@ -1215,6 +1278,24 @@ function MessageBubble({
                     复制
                   </Dropdown.Item>
                 )}
+                <Dropdown.Item
+                  icon={<Bookmark size={12} />}
+                  onClick={() => {
+                    onToggleFavorite(msg);
+                    setContextMenuPos(null);
+                  }}
+                >
+                  {msg.extra?.isFavorited ? '取消收藏' : '收藏'}
+                </Dropdown.Item>
+                <Dropdown.Item
+                  icon={<Pin size={12} />}
+                  onClick={() => {
+                    onTogglePin(msg);
+                    setContextMenuPos(null);
+                  }}
+                >
+                  {msg.extra?.isPinned ? '取消置顶消息' : '置顶消息'}
+                </Dropdown.Item>
               </Dropdown.Menu>
             )}
           >
@@ -1266,6 +1347,14 @@ export default function ChatPage() {
   const [searchHasSearched, setSearchHasSearched] = useState(false);
   const [searchMembers, setSearchMembers] = useState<ChatGroupMember[]>([]);
   const [groupAvatarMap, setGroupAvatarMap] = useState<Record<number, Array<{ id: number; nickname: string; avatar?: string | null }>>>({});
+  const [activeGroupMembers, setActiveGroupMembers] = useState<ChatGroupMember[]>([]);
+  const [selectedMentions, setSelectedMentions] = useState<Array<{ userId: number; nickname: string }>>([]);
+  const [leftPaneMode, setLeftPaneMode] = useState<'conversations' | 'favorites'>('conversations');
+  const [favoriteMessages, setFavoriteMessages] = useState<ChatMessage[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<ChatMessage[]>([]);
+  const [announcementHistoryVisible, setAnnouncementHistoryVisible] = useState(false);
+  const [announcementHistory, setAnnouncementHistory] = useState<ChatMessage[]>([]);
+  const [recalledDrafts, setRecalledDrafts] = useState<Record<number, { content: string; mentions?: Array<{ userId: number; nickname: string }> }>>({});
   const [contextMode, setContextMode] = useState<{ anchorMessageId: number; keyword: string } | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1313,6 +1402,27 @@ export default function ChatPage() {
   }, []);
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
+  const mentionState = useMemo(() => {
+    if (!activeConv || activeConv.type !== 'group') return null;
+    const cursor = inputRef.current?.selectionStart ?? input.length;
+    const prefix = input.slice(0, cursor);
+    const atIndex = prefix.lastIndexOf('@');
+    if (atIndex < 0) return null;
+    if (atIndex > 0 && !/[\s\n]/.test(prefix[atIndex - 1] ?? '')) return null;
+    const query = prefix.slice(atIndex + 1);
+    if (query.includes(' ') || query.includes('\n')) return null;
+    return { start: atIndex, end: cursor, query };
+  }, [activeConv, input]);
+
+  const mentionCandidates = useMemo(() => {
+    if (!mentionState) return [];
+    const kw = mentionState.query.trim().toLowerCase();
+    return activeGroupMembers.filter((member) => {
+      if (member.id === currentUserId) return false;
+      if (!kw) return true;
+      return member.nickname.toLowerCase().includes(kw) || member.username.toLowerCase().includes(kw);
+    }).slice(0, 8);
+  }, [activeGroupMembers, currentUserId, mentionState]);
 
   const isNearBottom = useCallback(() => {
     const el = messagesContainerRef.current;
@@ -1328,6 +1438,68 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
+
+  const fetchPinnedMessages = useCallback(async (convId: number) => {
+    const res = await request.get<ChatMessage[]>(`/api/chat/conversations/${convId}/pinned-messages`, { silent: true });
+    if (res.code === 0 && res.data) setPinnedMessages(res.data);
+  }, []);
+
+  const fetchFavoriteMessages = useCallback(async () => {
+    const res = await request.get<{ list: ChatMessage[] }>(`/api/chat/favorite-messages?page=1&pageSize=100`, { silent: true });
+    if (res.code === 0 && res.data) setFavoriteMessages(res.data.list);
+  }, []);
+
+  const fetchAnnouncementHistory = useCallback(async (convId: number) => {
+    const res = await request.get<ChatMessage[]>(`/api/chat/conversations/${convId}/announcement-history`, { silent: true });
+    if (res.code === 0 && res.data) setAnnouncementHistory(res.data);
+  }, []);
+
+  const openFavoriteMessage = useCallback(async (message: ChatMessage) => {
+    const res = await request.get<ChatMessageContext>(
+      `/api/chat/conversations/${message.conversationId}/messages/${message.id}/context?before=15&after=15`,
+      { silent: true },
+    );
+    if (res.code !== 0 || !res.data) {
+      Toast.error(res.message ?? '定位收藏消息失败');
+      return;
+    }
+    setLeftPaneMode('conversations');
+    setActiveConvId(message.conversationId);
+    setMessages(res.data.list);
+    setHasMore(res.data.hasBefore);
+    setPage(1);
+    setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: '收藏消息' });
+    setTimeout(() => {
+      const el = document.getElementById(`msg-${res.data!.anchorMessageId}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'background 0.3s ease';
+      el.style.background = 'var(--semi-color-primary-light-hover)';
+      setTimeout(() => { el.style.background = ''; }, 1200);
+    }, 80);
+  }, []);
+
+  useEffect(() => {
+    if (!activeConvId) {
+      setActiveGroupMembers([]);
+      setPinnedMessages([]);
+      return;
+    }
+    void fetchPinnedMessages(activeConvId);
+    if (activeConv?.type === 'group') {
+      void request.get<ChatGroupMember[]>(`/api/chat/conversations/${activeConvId}/members`, { silent: true }).then((res) => {
+        if (res.code === 0 && res.data) setActiveGroupMembers(res.data);
+      });
+    } else {
+      setActiveGroupMembers([]);
+    }
+  }, [activeConv?.type, activeConvId, fetchPinnedMessages]);
+
+  useEffect(() => {
+    if (leftPaneMode === 'favorites') {
+      void fetchFavoriteMessages();
+    }
+  }, [fetchFavoriteMessages, leftPaneMode]);
 
   const fetchMessages = useCallback(async (convId: number, p = 1) => {
     const el = messagesContainerRef.current;
@@ -1363,6 +1535,9 @@ export default function ChatPage() {
   const handleSelectConv = useCallback(async (conv: ChatConversation) => {
     setActiveConvId(conv.id);
     setReplyTo(null);
+    setSelectedMentions([]);
+    setLeftPaneMode('conversations');
+    setAnnouncementHistoryVisible(false);
     setShowMembers(false);
     setShowSearchPanel(false);
     setMsgSearch('');
@@ -1487,11 +1662,14 @@ export default function ChatPage() {
     if (content) {
       const body: Record<string, unknown> = { content, type: 'text' };
       if (replyTo) body.replyToId = replyTo.id;
+      const mentions = selectedMentions.filter((item) => content.includes(`@${item.nickname}`));
+      const extra: Record<string, unknown> = mentions.length > 0 ? { mentions } : {};
       const firstUrl = extractFirstUrl(content);
       if (firstUrl) {
         const preview = await fetchLinkPreview(firstUrl);
-        if (preview) body.extra = { linkPreview: preview };
+        if (preview) extra.linkPreview = preview;
       }
+      if (Object.keys(extra).length > 0) body.extra = extra;
       const res = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, body);
       if (res.code !== 0) {
         setInput(content);
@@ -1508,13 +1686,14 @@ export default function ChatPage() {
     }
 
     setReplyTo(null);
+  setSelectedMentions([]);
     setUploading(false);
     setSending(false);
 
     if (failedImageCount > 0) {
       Toast.error(`有 ${failedImageCount} 张图片发送失败`);
     }
-  }, [activeConvId, fetchLinkPreview, input, pendingImages, replyTo, sendImageFile, sending]);
+  }, [activeConvId, fetchLinkPreview, input, pendingImages, replyTo, selectedMentions, sendImageFile, sending]);
 
   const handleSelectImages = useCallback((files: File[]) => {
     const validFiles = files.filter((file) => file.type.startsWith('image/'));
@@ -1587,7 +1766,73 @@ export default function ChatPage() {
 
   const getReplyMessage = useCallback((id: number) => messages.find((m) => m.id === id), [messages]);
 
+  const insertMention = useCallback((member: ChatGroupMember) => {
+    if (!mentionState) return;
+    const mentionText = `@${member.nickname} `;
+    setInput((prev) => prev.slice(0, mentionState.start) + mentionText + prev.slice(mentionState.end));
+    setSelectedMentions((prev) => prev.some((item) => item.userId === member.id)
+      ? prev
+      : [...prev, { userId: member.id, nickname: member.nickname }]);
+    requestAnimationFrame(() => {
+      const nextPos = mentionState.start + mentionText.length;
+      inputRef.current?.setSelectionRange(nextPos, nextPos);
+      inputRef.current?.focus();
+    });
+  }, [mentionState]);
+
+  const applyMessageUpdate = useCallback((updated: ChatMessage) => {
+    setMessages((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+    setPinnedMessages((prev) => {
+      const next = prev.filter((item) => item.id !== updated.id);
+      if (updated.extra?.isPinned) next.unshift(updated);
+      return next.slice(0, 5);
+    });
+    setFavoriteMessages((prev) => {
+      const next = prev.filter((item) => item.id !== updated.id);
+      if (updated.extra?.isFavorited) next.unshift(updated);
+      return next;
+    });
+    setConversations((prev) => prev.map((conv) => conv.lastMessage?.id === updated.id ? { ...conv, lastMessage: updated } : conv));
+  }, []);
+
+  const handleToggleFavorite = useCallback(async (msg: ChatMessage) => {
+    const res = await request.patch<ChatMessage>(`/api/chat/messages/${msg.id}/favorite`, { favorite: !msg.extra?.isFavorited });
+    if (res.code === 0 && res.data) {
+      applyMessageUpdate(res.data);
+      Toast.success(res.data.extra?.isFavorited ? '已收藏' : '已取消收藏');
+      return;
+    }
+    Toast.error(res.message ?? '操作失败');
+  }, [applyMessageUpdate]);
+
+  const handleTogglePinMessage = useCallback(async (msg: ChatMessage) => {
+    const res = await request.patch<ChatMessage>(`/api/chat/messages/${msg.id}/pin`, { pin: !msg.extra?.isPinned });
+    if (res.code === 0 && res.data) {
+      applyMessageUpdate(res.data);
+      Toast.success(res.data.extra?.isPinned ? '已置顶消息' : '已取消置顶');
+      return;
+    }
+    Toast.error(res.message ?? '操作失败');
+  }, [applyMessageUpdate]);
+
+  const handleEditRecalled = useCallback((messageId: number) => {
+    const draft = recalledDrafts[messageId];
+    if (!draft) return;
+    setInput(draft.content);
+    setSelectedMentions(draft.mentions ?? []);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [recalledDrafts]);
+
   const handleRecall = useCallback(async (msg: ChatMessage) => {
+    if (msg.type === 'text') {
+      setRecalledDrafts((prev) => ({
+        ...prev,
+        [msg.id]: { content: msg.content, mentions: msg.extra?.mentions ?? undefined },
+      }));
+      setInput(msg.content);
+      setSelectedMentions(msg.extra?.mentions ?? []);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
     const res = await request.request<null>(`/api/chat/messages/${msg.id}/recall`, { method: 'PATCH' });
     if (res.code !== 0) Toast.error(res.message ?? '撤回失败');
   }, []);
@@ -1738,6 +1983,7 @@ export default function ChatPage() {
     if (wsMsg.type === 'chat:message') {
       const msg = wsMsg.payload;
       const isOwnMsg = msg.senderId === currentUserId;
+      const mentionedMe = !isOwnMsg && (msg.extra?.mentions ?? []).some((item) => item.userId === currentUserId);
       const shouldAutoRead = msg.conversationId === activeConvId && (isOwnMsg || isNearBottom());
       if (msg.conversationId === activeConvId) {
         setMessages((prev) => [...prev, msg]);
@@ -1768,6 +2014,7 @@ export default function ChatPage() {
         }
         return updated;
       });
+      if (mentionedMe) Toast.info(`${msg.senderName ?? '有人'} @了你`);
     } else if (wsMsg.type === 'chat:recall') {
       const { messageId } = wsMsg.payload;
       setMessages((prev) =>
@@ -1940,12 +2187,35 @@ export default function ChatPage() {
           <Input prefix={<Search size={13} />} placeholder="搜索会话" size="small" value={convSearch} onChange={setConvSearch} />
         </div>
 
+        <div style={{ padding: '0 12px 8px', display: 'flex', gap: 8 }}>
+          <Button
+            size="small"
+            theme={leftPaneMode === 'conversations' ? 'solid' : 'borderless'}
+            type={leftPaneMode === 'conversations' ? 'primary' : 'tertiary'}
+            onClick={() => setLeftPaneMode('conversations')}
+          >
+            消息
+          </Button>
+          <Button
+            size="small"
+            theme={leftPaneMode === 'favorites' ? 'solid' : 'borderless'}
+            type={leftPaneMode === 'favorites' ? 'warning' : 'tertiary'}
+            icon={<Bookmark size={13} />}
+            onClick={() => setLeftPaneMode('favorites')}
+          >
+            收藏
+          </Button>
+        </div>
+
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <Spin spinning={loadingConvs}>
-            {filteredConvs.length === 0 && !loadingConvs && (
+            {leftPaneMode === 'conversations' && filteredConvs.length === 0 && !loadingConvs && (
               <Empty description="暂无会话" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />
             )}
-            {filteredConvs.map((conv) => {
+            {leftPaneMode === 'favorites' && favoriteMessages.length === 0 && !loadingConvs && (
+              <Empty description="暂无收藏消息" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />
+            )}
+            {leftPaneMode === 'conversations' && filteredConvs.map((conv) => {
               const name = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '未知用户') : (conv.name ?? '群聊');
               const avatarName = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '?') : (conv.name ?? '?');
               const avatar = conv.type === 'direct' ? conv.targetUser?.avatar : null;
@@ -2084,6 +2354,26 @@ export default function ChatPage() {
                 </Dropdown>
               );
             })}
+            {leftPaneMode === 'favorites' && favoriteMessages.map((msg) => {
+              const conv = conversations.find((item) => item.id === msg.conversationId);
+              const convName = conv?.type === 'direct' ? (conv.targetUser?.nickname ?? '私聊') : (conv?.name ?? '群聊');
+              return (
+                <button
+                  key={msg.id}
+                  type="button"
+                  onClick={() => { void openFavoriteMessage(msg); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '10px 12px', cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                    <Text strong style={{ fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{convName}</Text>
+                    <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(msg.createdAt)}</Text>
+                  </div>
+                  <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {getMessageSummary(msg)}
+                  </Text>
+                </button>
+              );
+            })}
           </Spin>
         </div>
       </div>
@@ -2122,6 +2412,21 @@ export default function ChatPage() {
                 onClick={() => { void executeSearch(1); }}
               />
             </Tooltip>
+            {activeConv.type === 'group' && (
+              <Tooltip content="群公告历史">
+                <Button
+                  size="small"
+                  theme="borderless"
+                  type={announcementHistoryVisible ? 'primary' : 'tertiary'}
+                  icon={<History size={15} />}
+                  onClick={() => {
+                    if (!activeConvId) return;
+                    void fetchAnnouncementHistory(activeConvId);
+                    setAnnouncementHistoryVisible(true);
+                  }}
+                />
+              </Tooltip>
+            )}
             <Tooltip content={showSearchPanel ? '关闭搜索面板' : '高级筛选'}>
               <Button
                 size="small"
@@ -2161,6 +2466,23 @@ export default function ChatPage() {
               onScroll={handleMessagesScroll}
               style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
             >
+              {pinnedMessages.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
+                  <Text strong style={{ fontSize: 12 }}><Pin size={12} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />置顶消息</Text>
+                  {pinnedMessages.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => scrollToMessage(item.id)}
+                      style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+                    >
+                      <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {getMessageSummary(item)}
+                      </Text>
+                    </button>
+                  ))}
+                </div>
+              )}
               {contextMode && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
                   <Text style={{ flex: 1, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
@@ -2196,6 +2518,10 @@ export default function ChatPage() {
                     shouldShowTime={shouldDisplayMessageTime(msg, displayMessages[index + 1])}
                     getReplyMessage={getReplyMessage}
                     onScrollToMessage={scrollToMessage}
+                    onToggleFavorite={handleToggleFavorite}
+                    onTogglePin={handleTogglePinMessage}
+                    onEditRecalled={handleEditRecalled}
+                    recalledDraft={recalledDrafts[msg.id]}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -2381,6 +2707,32 @@ export default function ChatPage() {
             }}
           />
 
+          <Modal
+            title="群公告历史"
+            visible={announcementHistoryVisible}
+            onCancel={() => setAnnouncementHistoryVisible(false)}
+            footer={null}
+            width={560}
+          >
+            {announcementHistory.length === 0 ? (
+              <Empty description="暂无公告历史" imageStyle={{ width: 72 }} style={{ padding: '20px 0' }} />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 420, overflowY: 'auto' }}>
+                {announcementHistory.map((item) => (
+                  <div key={item.id} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                      <Text strong style={{ fontSize: 12 }}>{item.extra?.announcementHistory?.operatorName ?? item.senderName ?? '系统'}</Text>
+                      <Text type="tertiary" style={{ fontSize: 11 }}>{formatDateTime(item.createdAt)}</Text>
+                    </div>
+                    <Text style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {item.extra?.announcementHistory?.announcement || '已清空群公告'}
+                    </Text>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Modal>
+
           {/* Input area */}
           <div style={{ padding: '8px 16px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
             {replyTo && (
@@ -2500,6 +2852,39 @@ export default function ChatPage() {
             </div>
 
             <div style={{ position: 'relative', flex: 1 }}>
+              {mentionState && mentionCandidates.length > 0 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 48,
+                    bottom: 'calc(100% + 8px)',
+                    zIndex: 30,
+                    background: 'var(--semi-color-bg-0)',
+                    border: '1px solid var(--semi-color-border)',
+                    borderRadius: 8,
+                    boxShadow: 'var(--semi-shadow-elevated)',
+                    padding: 6,
+                    maxHeight: 220,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {mentionCandidates.map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => insertMention(member)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', padding: '6px 8px', textAlign: 'left', cursor: 'pointer', borderRadius: 6 }}
+                    >
+                      <UserAvatar name={member.nickname} avatar={member.avatar} size={26} />
+                      <div style={{ minWidth: 0 }}>
+                        <Text strong style={{ fontSize: 12 }}>{member.nickname}</Text>
+                        <Text type="tertiary" style={{ fontSize: 11, display: 'block' }}>@{member.username}</Text>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
               {Object.values(typingUsers).length > 0 && (
                 <div style={{ fontSize: 11, color: 'var(--semi-color-text-3)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span

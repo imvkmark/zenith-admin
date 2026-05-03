@@ -83,6 +83,16 @@ export const chatHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
+  http.get('/api/chat/favorite-messages', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '100');
+    const all = mockChatMessages.filter((m) => m.extra?.isFavorited).slice().reverse();
+    const start = (page - 1) * pageSize;
+    const list = all.slice(start, start + pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: all.length, page, pageSize } });
+  }),
+
   // 创建/获取单聊
   http.post('/api/chat/conversations/direct', async ({ request }) => {
     const body = await request.json() as { targetUserId: number };
@@ -165,6 +175,47 @@ export const chatHandlers = [
     msg.isRecalled = true;
     msg.content = '消息已撤回';
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  http.patch('/api/chat/messages/:id/favorite', async ({ params, request }) => {
+    const msgId = Number(params.id);
+    const body = await request.json() as { favorite: boolean };
+    const msg = mockChatMessages.find((m) => m.id === msgId);
+    if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    msg.extra = { ...(msg.extra ?? {}), isFavorited: body.favorite };
+    msg.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: 'ok', data: msg });
+  }),
+
+  http.patch('/api/chat/messages/:id/pin', async ({ params, request }) => {
+    const msgId = Number(params.id);
+    const body = await request.json() as { pin: boolean };
+    const msg = mockChatMessages.find((m) => m.id === msgId);
+    if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    msg.extra = { ...(msg.extra ?? {}), isPinned: body.pin };
+    msg.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: 'ok', data: msg });
+  }),
+
+  http.get('/api/chat/conversations/:id/pinned-messages', ({ params }) => {
+    const convId = Number(params.id);
+    const data = getMockConvMessages(convId)
+      .filter((m) => m.extra?.isPinned)
+      .slice()
+      .reverse()
+      .slice(0, 5);
+    return HttpResponse.json({ code: 0, message: 'ok', data });
+  }),
+
+  http.get('/api/chat/conversations/:id/favorite-messages', ({ params, request }) => {
+    const convId = Number(params.id);
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '100');
+    const all = getMockConvMessages(convId).filter((m) => m.extra?.isFavorited).slice().reverse();
+    const start = (page - 1) * pageSize;
+    const list = all.slice(start, start + pageSize);
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: all.length, page, pageSize } });
   }),
 
   // 标记已读
@@ -289,10 +340,38 @@ export const chatHandlers = [
     if ('announcement' in body) {
       const nextAnnouncement = (conv as unknown as { announcement?: string | null }).announcement ?? null;
       if (nextAnnouncement !== oldAnnouncement) {
-        addSystemMessage(convId, `${CURRENT_USER_NICKNAME} 更新了群公告`);
+        const newMsg: ChatMessage = {
+          id: getNextMsgId(),
+          conversationId: convId,
+          senderId: null,
+          senderName: null,
+          senderAvatar: null,
+          type: 'system',
+          content: `${CURRENT_USER_NICKNAME} 更新了群公告`,
+          replyToId: null,
+          isRecalled: false,
+          extra: {
+            announcementHistory: {
+              announcement: nextAnnouncement,
+              operatorName: CURRENT_USER_NICKNAME,
+            },
+          },
+          createdAt: mockDateTime(),
+          updatedAt: mockDateTime(),
+        };
+        addMockMessage(newMsg);
       }
     }
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
+  http.get('/api/chat/conversations/:id/announcement-history', ({ params }) => {
+    const convId = Number(params.id);
+    const data = getMockConvMessages(convId)
+      .filter((m) => m.type === 'system' && m.extra?.announcementHistory)
+      .slice()
+      .reverse();
+    return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
   // 转让群主
