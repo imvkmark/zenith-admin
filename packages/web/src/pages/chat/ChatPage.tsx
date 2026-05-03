@@ -4,7 +4,7 @@ import {
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, RefreshCcw } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, RefreshCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime } from '@/utils/date';
@@ -467,8 +467,13 @@ function GroupMembersPanel({
 
 // ─── MessageContent ───────────────────────────────────────────────────────────
 
-function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: boolean }>) {
-  const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
+function MessageContent({
+  msg, isSelf, onOpenImage,
+}: Readonly<{
+  msg: ChatMessage;
+  isSelf: boolean;
+  onOpenImage?: (msg: ChatMessage) => void;
+}>) {
   const extra = getMessageExtra(msg);
   const asset = extra?.asset ?? null;
   const linkPreview = extra?.linkPreview ?? null;
@@ -482,95 +487,17 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
 
   if (msg.type === 'image') {
     return (
-      <>
-        <button
-          type="button"
-          onClick={() => setImagePreviewVisible(true)}
-          style={{ background: 'transparent', padding: 0, border: 'none', borderRadius: 0, cursor: 'zoom-in' }}
-        >
-          <img
-            src={asset?.thumbnailUrl ?? msg.content}
-            alt={asset?.name ?? '图片'}
-            style={{ maxWidth: 240, maxHeight: 200, borderRadius: 0, display: 'block', cursor: 'zoom-in', border: 'none', boxShadow: 'none' }}
-          />
-        </button>
-        {imagePreviewVisible && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => setImagePreviewVisible(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setImagePreviewVisible(false);
-              }
-            }}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 2000,
-              background: 'rgba(0, 0, 0, 0.88)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {/* 顶部工具栏 */}
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: 'absolute',
-                top: 0, left: 0, right: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 16px',
-                background: 'rgba(0,0,0,0.45)',
-              }}
-            >
-              <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 88px)' }}>
-                {asset?.name ?? '图片预览'}
-                {asset?.width && asset.height ? ` (${asset.width}×${asset.height})` : ''}
-              </span>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <a
-                  href={msg.content}
-                  download={asset?.name ?? '图片'}
-                  onClick={(e) => e.stopPropagation()}
-                  title="下载"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 32, height: 32, borderRadius: 6,
-                    background: 'rgba(255,255,255,0.15)', color: '#fff', textDecoration: 'none',
-                  }}
-                >
-                  <Download size={15} />
-                </a>
-                <button
-                  type="button"
-                  title="关闭 (Esc)"
-                  onClick={() => setImagePreviewVisible(false)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 32, height: 32, borderRadius: 6,
-                    background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', cursor: 'pointer',
-                  }}
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            </div>
-            {/* 图片主体 */}
-            <img
-              src={msg.content}
-              alt={asset?.name ?? '预览图片'}
-              onClick={(e) => e.stopPropagation()}
-              style={{ maxWidth: '92vw', maxHeight: 'calc(88vh - 52px)', display: 'block', border: 'none', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', borderRadius: 4 }}
-            />
-          </div>
-        )}
-      </>
+      <button
+        type="button"
+        onClick={() => onOpenImage?.(msg)}
+        style={{ background: 'transparent', padding: 0, border: 'none', borderRadius: 0, cursor: 'zoom-in' }}
+      >
+        <img
+          src={asset?.thumbnailUrl ?? msg.content}
+          alt={asset?.name ?? '图片'}
+          style={{ maxWidth: 240, maxHeight: 200, borderRadius: 0, display: 'block', cursor: 'zoom-in', border: 'none', boxShadow: 'none' }}
+        />
+      </button>
     );
   }
 
@@ -714,15 +641,202 @@ function MessageContent({ msg, isSelf }: Readonly<{ msg: ChatMessage; isSelf: bo
   );
 }
 
+function ImageGalleryLightbox({
+  images, activeImageId, onClose, onPrev, onNext,
+}: Readonly<{
+  images: ChatMessage[];
+  activeImageId: number | null;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}>) {
+  const activeIndex = images.findIndex((item) => item.id === activeImageId);
+  const current = activeIndex >= 0 ? images[activeIndex] : null;
+
+  useEffect(() => {
+    if (!current) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === 'ArrowLeft' && activeIndex > 0) {
+        e.preventDefault();
+        onPrev();
+      } else if (e.key === 'ArrowRight' && activeIndex < images.length - 1) {
+        e.preventDefault();
+        onNext();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeIndex, current, images.length, onClose, onNext, onPrev]);
+
+  if (!current) return null;
+
+  const asset = getAssetMeta(current);
+  const hasPrev = activeIndex > 0;
+  const hasNext = activeIndex < images.length - 1;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+        }
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 2200,
+        background: 'rgba(0, 0, 0, 0.9)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          background: 'rgba(0,0,0,0.45)',
+          gap: 12,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ color: 'rgba(255,255,255,0.96)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {asset?.name ?? '图片预览'}
+            {asset?.width && asset.height ? ` (${asset.width}×${asset.height})` : ''}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 2 }}>
+            {activeIndex + 1} / {images.length}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <a
+            href={current.content}
+            download={asset?.name ?? '图片'}
+            onClick={(e) => e.stopPropagation()}
+            title="下载"
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 6,
+              background: 'rgba(255,255,255,0.15)', color: '#fff', textDecoration: 'none',
+            }}
+          >
+            <Download size={15} />
+          </a>
+          <button
+            type="button"
+            title="关闭 (Esc)"
+            onClick={onClose}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 6,
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', cursor: 'pointer',
+            }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      </div>
+
+      {hasPrev && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrev();
+          }}
+          title="上一张 (←)"
+          style={{
+            position: 'absolute',
+            left: 20,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
+            border: 'none',
+            background: 'rgba(255,255,255,0.16)',
+            color: '#fff',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ChevronLeft size={22} />
+        </button>
+      )}
+
+      {hasNext && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNext();
+          }}
+          title="下一张 (→)"
+          style={{
+            position: 'absolute',
+            right: 20,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
+            border: 'none',
+            background: 'rgba(255,255,255,0.16)',
+            color: '#fff',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ChevronRight size={22} />
+        </button>
+      )}
+
+      <img
+        src={current.content}
+        alt={asset?.name ?? '预览图片'}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '92vw',
+          maxHeight: 'calc(88vh - 52px)',
+          display: 'block',
+          border: 'none',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          borderRadius: 4,
+        }}
+      />
+    </div>
+  );
+}
+
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
-  msg, isSelf, onReply, onRecall, shouldShowTime, getReplyMessage, onScrollToMessage,
+  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
   onReply: (msg: ChatMessage) => void;
   onRecall: (msg: ChatMessage) => void;
+  onOpenImage: (msg: ChatMessage) => void;
   shouldShowTime: boolean;
   getReplyMessage: (id: number) => ChatMessage | undefined;
   onScrollToMessage: (id: number) => void;
@@ -852,7 +966,7 @@ function MessageBubble({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isSelf ? 'row-reverse' : 'row' }}>
             <div style={{ display: 'flex', cursor: 'default' }}>
-              <MessageContent msg={msg} isSelf={isSelf} />
+              <MessageContent msg={msg} isSelf={isSelf} onOpenImage={onOpenImage} />
             </div>
             <div style={{ display: 'flex', gap: 2, flexShrink: 0, paddingBottom: 2 }}>
               {isSelf && canRecall && !msg.isRecalled && (
@@ -987,6 +1101,7 @@ export default function ChatPage() {
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [previewImageId, setPreviewImageId] = useState<number | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1418,12 +1533,21 @@ export default function ChatPage() {
   });
 
   const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
+  const galleryImages = messages.filter((m) => m.type === 'image' && !m.isRecalled);
+  const activeGalleryIndex = galleryImages.findIndex((m) => m.id === previewImageId);
   const displayMessages = msgSearch.trim()
     ? messages.filter((m) => {
       const keyword = msgSearch.toLowerCase();
       return (m.content ?? '').toLowerCase().includes(keyword) || (m.senderName ?? '').toLowerCase().includes(keyword);
     })
     : messages;
+
+  useEffect(() => {
+    if (previewImageId === null) return;
+    if (!galleryImages.some((m) => m.id === previewImageId)) {
+      setPreviewImageId(null);
+    }
+  }, [galleryImages, previewImageId]);
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', minHeight: 500, border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--semi-color-bg-0)' }}>
@@ -1664,6 +1788,7 @@ export default function ChatPage() {
                     isSelf={msg.senderId === currentUserId}
                     onReply={setReplyTo}
                     onRecall={handleRecall}
+                    onOpenImage={(imageMsg) => setPreviewImageId(imageMsg.id)}
                     shouldShowTime={shouldDisplayMessageTime(msg, displayMessages[index + 1])}
                     getReplyMessage={getReplyMessage}
                     onScrollToMessage={scrollToMessage}
@@ -1707,6 +1832,20 @@ export default function ChatPage() {
               />
             )}
           </div>
+
+          <ImageGalleryLightbox
+            images={galleryImages}
+            activeImageId={previewImageId}
+            onClose={() => setPreviewImageId(null)}
+            onPrev={() => {
+              if (activeGalleryIndex > 0) setPreviewImageId(galleryImages[activeGalleryIndex - 1]?.id ?? null);
+            }}
+            onNext={() => {
+              if (activeGalleryIndex >= 0 && activeGalleryIndex < galleryImages.length - 1) {
+                setPreviewImageId(galleryImages[activeGalleryIndex + 1]?.id ?? null);
+              }
+            }}
+          />
 
           {/* Input area */}
           <div style={{ padding: '8px 16px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
