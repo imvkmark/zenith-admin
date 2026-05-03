@@ -1020,7 +1020,7 @@ function MessageBubble({
     return (
       <div
         id={`msg-${msg.id}`}
-        style={{ textAlign: 'center', padding: '2px 0 10px' }}
+        style={{ textAlign: 'center', padding: '0 0 4px' }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
@@ -1044,7 +1044,7 @@ function MessageBubble({
           style={{
             display: 'block',
             textAlign: 'center',
-            marginTop: 2,
+            marginTop: 1,
             fontSize: 10,
             lineHeight: 1,
             opacity: showBottomTime ? 1 : 0,
