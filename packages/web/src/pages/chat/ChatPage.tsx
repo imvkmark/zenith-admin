@@ -4,7 +4,7 @@ import {
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
-import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, Pencil, ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
+import { Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users, User, UserPlus, Copy, Paperclip, Pin, Star, X, Download, Crown, UserMinus, Pencil, ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
@@ -51,6 +51,73 @@ function UserAvatar({ name, avatar, size = 36 }: Readonly<{ name: string; avatar
     <Avatar size="small" style={{ width: size, height: size, flexShrink: 0, backgroundColor: getAvatarColor(name) }}>
       {name.slice(0, 1).toUpperCase()}
     </Avatar>
+  );
+}
+
+function GroupGridAvatar({
+  name,
+  size = 36,
+  members,
+}: Readonly<{
+  name: string;
+  size?: number;
+  members?: Array<{ id: number; nickname: string; avatar?: string | null }>;
+}>) {
+  const fallbackChars = Array.from(name.replace(/\s+/g, ''));
+  const cells = Array.from({ length: 9 }, (_, idx) => {
+    const member = members?.[idx];
+    if (member) return { key: `m-${member.id}-${idx}`, avatar: member.avatar, char: member.nickname.slice(0, 1) };
+    const char = fallbackChars[idx] ?? '';
+    return { key: `f-${name}-${idx}`, avatar: null, char };
+  });
+  const cellSize = Math.max(8, Math.floor((size - 6) / 3));
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        flexShrink: 0,
+        borderRadius: 8,
+        padding: 2,
+        boxSizing: 'border-box',
+        background: 'var(--semi-color-fill-0)',
+        border: '1px solid var(--semi-color-border)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 1,
+      }}
+    >
+      {cells.map((cell, idx) => (
+        <div
+          key={cell.key}
+          style={{
+            width: cellSize,
+            height: cellSize,
+            borderRadius: 3,
+            background: cell.char ? getAvatarColor(`${name}-${idx}`) : 'var(--semi-color-fill-1)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: Math.max(8, Math.floor(cellSize * 0.52)),
+            lineHeight: 1,
+            fontWeight: 600,
+            overflow: 'hidden',
+          }}
+        >
+          {cell.avatar ? (
+            <img
+              src={cell.avatar}
+              alt={cell.char || '成员'}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          ) : (
+            cell.char ? cell.char.slice(0, 1).toUpperCase() : ''
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1153,6 +1220,7 @@ export default function ChatPage() {
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasSearched, setSearchHasSearched] = useState(false);
   const [searchMembers, setSearchMembers] = useState<ChatGroupMember[]>([]);
+  const [groupAvatarMap, setGroupAvatarMap] = useState<Record<number, Array<{ id: number; nickname: string; avatar?: string | null }>>>({});
   const [contextMode, setContextMode] = useState<{ anchorMessageId: number; keyword: string } | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1752,6 +1820,33 @@ export default function ChatPage() {
     }
   }, [galleryImages, previewImageId]);
 
+  useEffect(() => {
+    const groupIds = conversations.filter((c) => c.type === 'group').map((c) => c.id);
+    const missingIds = groupIds.filter((id) => !groupAvatarMap[id]);
+    if (missingIds.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      missingIds.map(async (id) => {
+        const res = await request.get<ChatGroupMember[]>(`/api/chat/conversations/${id}/members`, { silent: true });
+        return [id, (res.code === 0 && res.data ? res.data : []).slice(0, 9)] as const;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setGroupAvatarMap((prev) => {
+        const next = { ...prev };
+        for (const [id, members] of entries) {
+          next[id] = members.map((m) => ({ id: m.id, nickname: m.nickname, avatar: m.avatar }));
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversations, groupAvatarMap]);
+
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', minHeight: 500, border: '1px solid var(--semi-color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--semi-color-bg-0)' }}>
 
@@ -1797,13 +1892,22 @@ export default function ChatPage() {
               const name = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '未知用户') : (conv.name ?? '群聊');
               const avatarName = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '?') : (conv.name ?? '?');
               const avatar = conv.type === 'direct' ? conv.targetUser?.avatar : null;
+              const groupMembers = conv.type === 'group' ? groupAvatarMap[conv.id] : undefined;
+              const avatarNode = conv.type === 'group'
+                ? <GroupGridAvatar name={avatarName} size={38} members={groupMembers} />
+                : <UserAvatar name={avatarName} avatar={avatar} size={38} />;
               const lastMsg = conv.lastMessage;
               const isActive = conv.id === activeConvId;
               const isPinned = conv.isPinned ?? false;
               const isStarred = conv.isStarred ?? false;
               let lastMsgText = '暂无消息';
               if (lastMsg) {
-                lastMsgText = getMessageSummary(lastMsg);
+                const summary = getMessageSummary(lastMsg);
+                if (conv.type === 'group' && lastMsg.senderName && lastMsg.type !== 'system' && !lastMsg.isRecalled) {
+                  lastMsgText = `${lastMsg.senderName}：${summary}`;
+                } else {
+                  lastMsgText = summary;
+                }
               }
 
               return (
@@ -1895,10 +1999,10 @@ export default function ChatPage() {
                   >
                     {conv.unreadCount > 0 ? (
                       <Badge count={conv.unreadCount} overflowCount={99} dot={false}>
-                        <UserAvatar name={avatarName} avatar={avatar} size={38} />
+                        {avatarNode}
                       </Badge>
                     ) : (
-                      <UserAvatar name={avatarName} avatar={avatar} size={38} />
+                      avatarNode
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
@@ -1936,9 +2040,7 @@ export default function ChatPage() {
               <UserAvatar name={activeConv.targetUser.nickname} avatar={activeConv.targetUser.avatar} size={32} />
             )}
             {activeConv.type === 'group' && (
-              <Avatar size="small" style={{ width: 32, height: 32, flexShrink: 0, backgroundColor: getAvatarColor(activeConv.name ?? '群聊') }}>
-                <Users size={16} />
-              </Avatar>
+              <GroupGridAvatar name={activeConv.name ?? '群聊'} size={32} members={groupAvatarMap[activeConv.id]} />
             )}
             <Title heading={6} style={{ margin: 0, flex: 1 }}>
               {activeConv.type === 'direct' ? (activeConv.targetUser?.nickname ?? '未知用户') : (activeConv.name ?? '群聊')}
