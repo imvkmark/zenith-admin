@@ -64,6 +64,16 @@ export const ChatAnnouncementHistoryDTO = z
   .strict()
   .openapi('ChatAnnouncementHistory');
 
+export const ChatForwardedItemDTO = z
+  .object({
+    senderName: z.string().nullable(),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward']),
+    content: z.string(),
+    createdAt: z.string(),
+    asset: ChatAssetMetaDTO.nullable().optional(),
+  })
+  .openapi('ChatForwardedItem');
+
 export const ChatMessageExtraDTO = z
   .object({
     asset: ChatAssetMetaDTO.nullable().optional(),
@@ -72,6 +82,8 @@ export const ChatMessageExtraDTO = z
     isFavorited: z.boolean().optional(),
     isPinned: z.boolean().optional(),
     announcementHistory: ChatAnnouncementHistoryDTO.nullable().optional(),
+    forwardedMessages: z.array(ChatForwardedItemDTO).nullable().optional(),
+    forwardSourceConvName: z.string().nullable().optional(),
   })
   .strict()
   .openapi('ChatMessageExtra');
@@ -83,7 +95,7 @@ export const ChatMessageDTO = z
     senderId: z.number().int().nullable(),
     senderName: z.string().nullable(),
     senderAvatar: z.string().nullable().optional(),
-    type: z.enum(['text', 'image', 'file', 'system']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward']),
     content: z.string(),
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),

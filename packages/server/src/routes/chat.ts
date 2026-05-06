@@ -175,7 +175,7 @@ chatRouter.openapi(
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
-  type: z.enum(['text', 'image', 'file']).default('text'),
+  type: z.enum(['text', 'image', 'file', 'forward']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
   extra: ChatMessageExtraDTO.nullable().optional(),
 });
