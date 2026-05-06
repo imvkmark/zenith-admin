@@ -1520,7 +1520,7 @@ export default function ChatPage() {
             )}
 
             {showSearchPanel && (
-              <div style={{ width: 380, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, background: 'var(--semi-color-bg-0)' }}>
+              <div style={{ width: 380, borderLeft: '1px solid var(--semi-color-border)', display: 'flex', flexDirection: 'column', flexShrink: 0, background: 'var(--semi-color-bg-1)' }}>
                 <div style={{ padding: '12px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Text strong style={{ flex: 1, fontSize: 13 }}>消息搜索</Text>
                   <Text type="tertiary" style={{ fontSize: 12 }}>{searchHasSearched ? `共 ${searchTotal} 条` : '未搜索'}</Text>
