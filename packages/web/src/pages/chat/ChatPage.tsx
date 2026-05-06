@@ -629,16 +629,16 @@ function GroupMembersPanel({
 // ─── ForwardModal ─────────────────────────────────────────────────────────────
 
 function ForwardModal({
-  visible, conversations, currentConvId, onConfirm, onCancel,
+  visible, conversations, currentConvId, onConfirm, onCancel, mode,
 }: Readonly<{
   visible: boolean;
   conversations: ChatConversation[];
   currentConvId: number | null;
-  onConfirm: (targetIds: number[], mode: 'merge' | 'individual') => void;
+  onConfirm: (targetIds: number[]) => void;
   onCancel: () => void;
+  mode: 'merge' | 'individual';
 }>) {
   const [selected, setSelected] = useState<number[]>([]);
-  const [mode, setMode] = useState<'merge' | 'individual'>('individual');
   const [keyword, setKeyword] = useState('');
 
   const filtered = conversations.filter((c) => {
@@ -653,14 +653,14 @@ function ForwardModal({
 
   const handleConfirm = () => {
     if (selected.length === 0) { Toast.warning('请选择转发目标'); return; }
-    onConfirm(selected, mode);
+    onConfirm(selected);
     setSelected([]);
     setKeyword('');
   };
 
   return (
     <Modal
-      title="选择转发目标"
+      title={mode === 'merge' ? '合并转发 — 选择目标会话' : '逐条转发 — 选择目标会话'}
       visible={visible}
       onCancel={() => { setSelected([]); setKeyword(''); onCancel(); }}
       onOk={handleConfirm}
@@ -671,27 +671,9 @@ function ForwardModal({
       <div style={{ marginBottom: 12 }}>
         <Input prefix={<Search size={13} />} placeholder="搜索会话" value={keyword} onChange={setKeyword} size="small" />
       </div>
-      <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
-        <Button
-          size="small"
-          theme={mode === 'individual' ? 'solid' : 'borderless'}
-          type={mode === 'individual' ? 'primary' : 'tertiary'}
-          onClick={() => setMode('individual')}
-        >
-          逐条转发
-        </Button>
-        <Button
-          size="small"
-          theme={mode === 'merge' ? 'solid' : 'borderless'}
-          type={mode === 'merge' ? 'primary' : 'tertiary'}
-          onClick={() => setMode('merge')}
-        >
-          合并转发
-        </Button>
-        <Text type="tertiary" style={{ fontSize: 12, alignSelf: 'center' }}>
-          {mode === 'merge' ? '合并为一条聊天记录发送' : '每条消息独立发送'}
-        </Text>
-      </div>
+      <Text type="tertiary" style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
+        {mode === 'merge' ? '将所选消息合并为一条聊天记录转发' : '将所选消息逐条独立转发'}
+      </Text>
       <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--semi-color-border)', borderRadius: 8 }}>
         {filtered.length === 0 && (
           <div style={{ padding: '20px 0', textAlign: 'center' }}>
@@ -731,14 +713,88 @@ function ForwardModal({
   );
 }
 
+// ─── ForwardedMessagesModal ──────────────────────────────────────────────────
+
+function ForwardedMessagesModal({
+  visible, items, title, onCancel,
+}: Readonly<{
+  visible: boolean;
+  items: NonNullable<ChatMessageExtra['forwardedMessages']>;
+  title: string;
+  onCancel: () => void;
+}>) {
+  return (
+    <Modal
+      title={title}
+      visible={visible}
+      onCancel={onCancel}
+      footer={null}
+      width={560}
+    >
+      <div style={{ maxHeight: 520, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {items.length === 0 && <Text type="tertiary" style={{ textAlign: 'center', display: 'block', padding: '20px 0' }}>暂无消息</Text>}
+        {items.map((item, idx) => (
+          <div
+            key={idx}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              padding: '8px 10px',
+              background: 'var(--semi-color-fill-0)',
+              borderRadius: 8,
+              border: '1px solid var(--semi-color-border)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <Text strong style={{ fontSize: 12 }}>{item.senderName ?? '未知'}</Text>
+              {item.createdAt && (
+                <Text type="tertiary" style={{ fontSize: 11 }}>{item.createdAt}</Text>
+              )}
+            </div>
+            {item.type === 'image' ? (
+              <a
+                href={item.content}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'inline-block' }}
+              >
+                <img
+                  src={item.asset?.thumbnailUrl ?? item.content}
+                  alt={item.asset?.name ?? '图片'}
+                  style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 6, display: 'block', cursor: 'zoom-in' }}
+                />
+              </a>
+            ) : item.type === 'file' ? (
+              <a
+                href={item.content}
+                download={item.asset?.name ?? '文件'}
+                style={{ color: 'var(--semi-color-primary)', fontSize: 13, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                {getFileTypeIcon(item.asset?.mimeType, 16)}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 380 }}>
+                  {item.asset?.name ?? '文件'}
+                </span>
+              </a>
+            ) : (
+              <Text style={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{item.content}</Text>
+            )}
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 // ─── MessageContent ───────────────────────────────────────────────────────────
 
 function MessageContent({
-  msg, isSelf, onOpenImage,
+  msg, isSelf, onOpenImage, onOpenForwardView,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
   onOpenImage?: (msg: ChatMessage) => void;
+  onOpenForwardView?: (items: NonNullable<ChatMessageExtra['forwardedMessages']>, title: string) => void;
 }>) {
   const extra = getMessageExtra(msg);
   const asset = extra?.asset ?? null;
@@ -754,8 +810,11 @@ function MessageContent({
   if (msg.type === 'forward') {
     const items = extra?.forwardedMessages ?? [];
     const sourceConvName = extra?.forwardSourceConvName;
+    const title = `聊天记录${sourceConvName ? ` · ${sourceConvName}` : ''}`;
     return (
-      <div
+      <button
+        type="button"
+        onClick={() => onOpenForwardView?.(items, title)}
         style={{
           ...bubbleStyle,
           padding: 0,
@@ -763,12 +822,17 @@ function MessageContent({
           minWidth: 220,
           maxWidth: 340,
           border: isSelf ? '1px solid rgba(255,255,255,0.25)' : '1px solid var(--semi-color-border)',
+          cursor: 'pointer',
+          textAlign: 'left',
+          display: 'block',
+          width: '100%',
         }}
       >
-        <div style={{ padding: '8px 12px', borderBottom: isSelf ? '1px solid rgba(255,255,255,0.18)' : '1px solid var(--semi-color-border)' }}>
+        <div style={{ padding: '8px 12px', borderBottom: isSelf ? '1px solid rgba(255,255,255,0.18)' : '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text strong style={{ fontSize: 12, color: isSelf ? '#fff' : 'var(--semi-color-text-0)' }}>
-            聊天记录{sourceConvName ? ` · ${sourceConvName}` : ''}
+            {title}
           </Text>
+          <Text style={{ fontSize: 11, color: isSelf ? 'rgba(255,255,255,0.65)' : 'var(--semi-color-text-3)' }}>点击查看</Text>
         </div>
         <div style={{ padding: '6px 12px 8px' }}>
           {items.slice(0, 4).map((item, idx) => (
@@ -777,7 +841,7 @@ function MessageContent({
                 {item.senderName ?? '未知'}：
               </Text>
               <Text style={{ fontSize: 12, color: isSelf ? 'rgba(255,255,255,0.9)' : 'var(--semi-color-text-1)', lineHeight: 1.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                {item.type === 'image' ? '[图片]' : item.type === 'file' ? `[文件] ${item.asset?.name ?? ''}` : item.content}
+                {item.type === 'image' ? '🖼 [图片，点击查看]' : item.type === 'file' ? `📎 [文件] ${item.asset?.name ?? ''}` : item.content}
               </Text>
             </div>
           ))}
@@ -785,7 +849,7 @@ function MessageContent({
             <Text type="tertiary" style={{ fontSize: 11 }}>…共 {items.length} 条消息</Text>
           )}
         </div>
-      </div>
+      </button>
     );
   }
 
@@ -1134,7 +1198,7 @@ function ImageGalleryLightbox({
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({
-  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage, onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected, onToggleSelect, onForwardSingle,
+  msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage, onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected, onToggleSelect, onForwardSingle, onOpenForwardView,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -1152,6 +1216,7 @@ function MessageBubble({
   isSelected?: boolean;
   onToggleSelect?: (msg: ChatMessage) => void;
   onForwardSingle?: (msg: ChatMessage) => void;
+  onOpenForwardView?: (items: NonNullable<ChatMessageExtra['forwardedMessages']>, title: string) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -1345,7 +1410,7 @@ function MessageBubble({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: isSelf ? 'flex-end' : 'flex-start', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isSelf ? 'row-reverse' : 'row' }}>
             <div style={{ display: 'flex', cursor: 'default' }}>
-              <MessageContent msg={msg} isSelf={isSelf} onOpenImage={onOpenImage} />
+              <MessageContent msg={msg} isSelf={isSelf} onOpenImage={onOpenImage} onOpenForwardView={onOpenForwardView} />
             </div>
             <div style={{ display: 'flex', gap: 2, flexShrink: 0, paddingBottom: 2 }}>
               {isSelf && canRecall && !msg.isRecalled && (
@@ -1546,6 +1611,10 @@ export default function ChatPage() {
   const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
   const [forwardModalVisible, setForwardModalVisible] = useState(false);
   const [forwardingMessageIds, setForwardingMessageIds] = useState<number[]>([]);
+  const [forwardingMode, setForwardingMode] = useState<'merge' | 'individual'>('individual');
+  const [forwardViewVisible, setForwardViewVisible] = useState(false);
+  const [forwardViewItems, setForwardViewItems] = useState<NonNullable<ChatMessageExtra['forwardedMessages']>>([]);
+  const [forwardViewTitle, setForwardViewTitle] = useState('');
   const [contextMode, setContextMode] = useState<{ anchorMessageId: number; keyword: string } | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const typingThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2028,22 +2097,24 @@ export default function ChatPage() {
   }, []);
 
   const handleForwardSingle = useCallback((msg: ChatMessage) => {
+    setForwardingMode('individual');
     setForwardingMessageIds([msg.id]);
     setForwardModalVisible(true);
   }, []);
 
-  const handleForwardSelected = useCallback(() => {
+  const handleForwardSelected = useCallback((mode: 'merge' | 'individual') => {
     if (selectedMessageIds.length === 0) return;
+    setForwardingMode(mode);
     setForwardingMessageIds([...selectedMessageIds]);
     setForwardModalVisible(true);
   }, [selectedMessageIds]);
 
-  const handleForwardConfirm = useCallback(async (targetIds: number[], mode: 'merge' | 'individual') => {
+  const handleForwardConfirm = useCallback(async (targetIds: number[]) => {
     setForwardModalVisible(false);
     const res = await request.post('/api/chat/messages/forward', {
       messageIds: forwardingMessageIds,
       targetConversationIds: targetIds,
-      mode,
+      mode: forwardingMode,
     });
     if ((res as { code: number }).code === 0) {
       Toast.success('转发成功');
@@ -2052,7 +2123,30 @@ export default function ChatPage() {
       Toast.error((res as { message?: string }).message ?? '转发失败');
     }
     setForwardingMessageIds([]);
-  }, [forwardingMessageIds, handleExitMultiSelect]);
+  }, [forwardingMessageIds, forwardingMode, handleExitMultiSelect]);
+
+  const handleFavoriteSelected = useCallback(async () => {
+    if (selectedMessageIds.length === 0) return;
+    const msgs = messages.filter((m) => selectedMessageIds.includes(m.id) && !m.extra?.isFavorited && !m.isRecalled && m.type !== 'system');
+    if (msgs.length === 0) { Toast.info('所选消息已全部收藏'); return; }
+    let successCount = 0;
+    for (const msg of msgs) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await request.patch<ChatMessage>(`/api/chat/messages/${msg.id}/favorite`, { favorite: true });
+      if (res.code === 0 && res.data) {
+        applyMessageUpdate(res.data);
+        successCount += 1;
+      }
+    }
+    Toast.success(`已收藏 ${successCount} 条消息`);
+    handleExitMultiSelect();
+  }, [selectedMessageIds, messages, applyMessageUpdate, handleExitMultiSelect]);
+
+  const handleOpenForwardView = useCallback((items: NonNullable<ChatMessageExtra['forwardedMessages']>, title: string) => {
+    setForwardViewItems(items);
+    setForwardViewTitle(title);
+    setForwardViewVisible(true);
+  }, []);
 
   const handleRecall = useCallback(async (msg: ChatMessage) => {
     if (msg.type === 'text') {
@@ -2820,6 +2914,7 @@ export default function ChatPage() {
                     isSelected={selectedMessageIds.includes(msg.id)}
                     onToggleSelect={handleToggleSelectMessage}
                     onForwardSingle={handleForwardSingle}
+                    onOpenForwardView={handleOpenForwardView}
                   />
                 ))}
                 <div ref={messagesEndRef} />
@@ -3034,16 +3129,30 @@ export default function ChatPage() {
           {/* Input area */}
           <div style={{ padding: '8px 16px 12px', borderTop: '1px solid var(--semi-color-border)' }}>
             {multiSelectMode ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
-                <Text style={{ flex: 1, fontSize: 13 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', flexWrap: 'wrap' }}>
+                <Text style={{ flex: 1, fontSize: 13, minWidth: 80 }}>
                   已选 <Text strong>{selectedMessageIds.length}</Text> 条消息
                 </Text>
                 <Button
+                  size="small" type="warning" theme="light" icon={<Bookmark size={14} />}
+                  disabled={selectedMessageIds.length === 0}
+                  onClick={() => { void handleFavoriteSelected(); }}
+                >
+                  收藏
+                </Button>
+                <Button
+                  size="small" type="primary" theme="light" icon={<Forward size={14} />}
+                  disabled={selectedMessageIds.length === 0}
+                  onClick={() => handleForwardSelected('individual')}
+                >
+                  逐条转发
+                </Button>
+                <Button
                   size="small" type="primary" icon={<Forward size={14} />}
                   disabled={selectedMessageIds.length === 0}
-                  onClick={handleForwardSelected}
+                  onClick={() => handleForwardSelected('merge')}
                 >
-                  转发
+                  合并转发
                 </Button>
                 <Button size="small" type="tertiary" onClick={handleExitMultiSelect}>取消多选</Button>
               </div>
@@ -3267,8 +3376,15 @@ export default function ChatPage() {
         visible={forwardModalVisible}
         conversations={conversations}
         currentConvId={activeConvId}
-        onConfirm={(targetIds, mode) => { void handleForwardConfirm(targetIds, mode); }}
+        onConfirm={(targetIds) => { void handleForwardConfirm(targetIds); }}
         onCancel={() => { setForwardModalVisible(false); setForwardingMessageIds([]); }}
+        mode={forwardingMode}
+      />
+      <ForwardedMessagesModal
+        visible={forwardViewVisible}
+        items={forwardViewItems}
+        title={forwardViewTitle}
+        onCancel={() => setForwardViewVisible(false)}
       />
     </div>
   );
