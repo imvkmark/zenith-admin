@@ -291,13 +291,13 @@ export default function DepartmentsPage() {
           <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           <Button
-            type="tertiary"
+            type="primary"
             icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
             onClick={toggleExpandAll}
           >
             {isAllExpanded ? '全部折叠' : '全部展开'}
           </Button>
-          <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/departments/export', '部门列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/departments/export', '部门列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:department:create') && <Button
             type="primary"
             icon={<Plus size={14} />}
