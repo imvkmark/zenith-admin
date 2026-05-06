@@ -288,7 +288,7 @@ export default function CronJobsPage() {
           <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsDrawerVisible(true); void fetchAllLogs(1); }}>执行日志</Button>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
           {hasPermission('system:cronjob:create') && (
-            <Button type="secondary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
+            <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
           )}
       </SearchToolbar>
 

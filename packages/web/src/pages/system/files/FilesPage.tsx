@@ -634,7 +634,7 @@ export default function FilesPage() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
-          {hasPermission('system:file:upload') && <Button type="secondary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
+          {hasPermission('system:file:upload') && <Button type="primary" icon={<Plus size={14} />} loading={uploading} disabled={!defaultConfig} onClick={handlePickFile}>
             上传文件
           </Button>}
           <input

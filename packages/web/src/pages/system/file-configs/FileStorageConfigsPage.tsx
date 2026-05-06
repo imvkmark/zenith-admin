@@ -376,7 +376,7 @@ export default function FileStorageConfigsPage() {
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/file-storage-configs/export', '文件配置列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-          {hasPermission('system:file:config:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
+          {hasPermission('system:file:config:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
       </SearchToolbar>
       <div className="storage-configs-tip" style={{ marginBottom: 0, marginTop: -4 }}>
         <Text type="secondary">当前支持多文件服务配置，但上传时会优先走"默认文件服务"。切换默认服务不会影响历史文件记录。</Text>

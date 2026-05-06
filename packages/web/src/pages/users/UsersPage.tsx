@@ -578,13 +578,13 @@ export default function UsersPage() {
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:user:import') && (
             <Button
-              type="secondary"
+              type="primary"
               icon={<FileUp size={14} />}
               onClick={() => { setImportModalVisible(true); setImportResult(null); importFileRef.current = null; }}
             >导入</Button>
           )}
           {hasPermission('system:user:create') && <Button
-            type="secondary"
+            type="primary"
             icon={<Plus size={14} />}
             onClick={() => {
               setEditingUser(null);

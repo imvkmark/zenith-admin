@@ -316,7 +316,7 @@ export default function DictsPage() {
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:dict:create') && <Button
-            type="secondary"
+            type="primary"
             icon={<Plus size={14} />}
             onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
           >
@@ -364,7 +364,7 @@ export default function DictsPage() {
           hasPermission('system:dict:item') ? (
             <div style={{ textAlign: 'right' }}>
               <Button
-                type="secondary"
+                type="primary"
                 icon={<Plus size={14} />}
                 onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
               >

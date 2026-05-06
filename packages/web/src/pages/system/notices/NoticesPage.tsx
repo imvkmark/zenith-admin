@@ -572,7 +572,7 @@ export default function NoticesPage() {
               批量删除 ({selectedRowKeys.length})
             </Button>
           )}
-          {hasPermission('system:notice:create') && <Button icon={<Plus size={14} />} type="secondary" onClick={openCreateModal}>新增</Button>}
+          {hasPermission('system:notice:create') && <Button icon={<Plus size={14} />} type="primary" onClick={openCreateModal}>新增</Button>}
       </SearchToolbar>
 
       <Table

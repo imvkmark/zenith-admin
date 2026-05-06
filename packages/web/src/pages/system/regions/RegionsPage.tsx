@@ -328,7 +328,7 @@ export default function RegionsPage() {
             {isAllExpanded ? '全部折叠' : '全部展开'}
           </Button>
           {hasPermission('system:region:create') && (
-            <Button type="secondary" icon={<Plus size={14} />} onClick={openCreate}>
+            <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
               新增
             </Button>
           )}

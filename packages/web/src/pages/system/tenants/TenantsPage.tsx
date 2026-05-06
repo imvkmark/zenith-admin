@@ -210,7 +210,7 @@ export default function TenantsPage() {
           </Button>
           {hasPermission('system:tenant:create') && (
             <Button
-              type="secondary"
+              type="primary"
               icon={<Plus size={14} />}
               onClick={() => { setEditingTenant(null); setModalVisible(true); }}
             >

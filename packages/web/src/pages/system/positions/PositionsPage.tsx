@@ -235,7 +235,7 @@ export default function PositionsPage() {
             </Button>
           )}
           {hasPermission('system:position:create') && <Button
-            type="secondary"
+            type="primary"
             icon={<Plus size={14} />}
             onClick={() => {
               setEditingPosition(null);

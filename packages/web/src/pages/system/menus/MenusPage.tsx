@@ -317,7 +317,7 @@ export default function MenusPage() {
           >
             {isAllExpanded ? '全部折叠' : '全部展开'}
           </Button>
-          {hasPermission('system:menu:create') && <Button type="secondary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
+          {hasPermission('system:menu:create') && <Button type="primary" icon={<Plus size={14} />} onClick={() => openCreate()}>新增</Button>}
       </SearchToolbar>
 
       <Table
