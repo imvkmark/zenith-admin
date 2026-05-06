@@ -96,6 +96,7 @@ body {
 }
 .semi-card {
   border-radius: var(--radius);
+  background: var(--semi-color-bg-1);
 }
 .semi-modal-content {
   background: var(--color-layout-bg);
