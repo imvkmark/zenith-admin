@@ -38,6 +38,7 @@ export default function ChatPage() {
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [mentionClosed, setMentionClosed] = useState(false);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [loadingConvs, setLoadingConvs] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
@@ -557,6 +558,7 @@ export default function ChatPage() {
     if (!mentionState) return;
     const mentionText = `@${member.nickname} `;
     setInput((prev) => prev.slice(0, mentionState.start) + mentionText + prev.slice(mentionState.end));
+    setMentionClosed(true);
     // 全体成员虚拟条目：记录所有真实成员为 mention
     if (member.id === -1) {
       setSelectedMentions(activeGroupMembers
@@ -1956,7 +1958,7 @@ export default function ChatPage() {
             </div>
 
             <div style={{ position: 'relative', flex: 1 }}>
-              {mentionState && mentionCandidates.length > 0 && (
+              {mentionState && !mentionClosed && mentionCandidates.length > 0 && (
                 <div
                   style={{
                     position: 'absolute',
@@ -2014,7 +2016,7 @@ export default function ChatPage() {
               <textarea
                 ref={inputRef}
                 value={input}
-                onChange={(e) => { setInput(e.target.value); handleTyping(); }}
+                onChange={(e) => { setInput(e.target.value); setMentionClosed(false); handleTyping(); }}
                 onKeyDown={handleKeyDown}
                 onPaste={handleInputPaste}
                 placeholder="输入消息…"
