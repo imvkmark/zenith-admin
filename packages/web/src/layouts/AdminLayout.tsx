@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X } from 'lucide-react';
@@ -1126,7 +1127,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             </div>
             <div
               style={{ lineHeight: 1.7 }}
-              dangerouslySetInnerHTML={{ __html: selectedNotice.content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedNotice.content) }}
             />
           </div>
         )}

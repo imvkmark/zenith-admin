@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Calendar, Typography, Tag, Space, Skeleton, Empty, List, Modal } from '@douyinfe/semi-ui';
 import {
@@ -479,7 +480,7 @@ export default function DashboardPage() {
             </div>
             <div
               className="notice-modal-content"
-              dangerouslySetInnerHTML={{ __html: selectedNotice.content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedNotice.content) }}
             />
           </div>
         )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import {
   Table, Button, Tag, Space, Tabs, TabPane, Modal, Typography, Toast, Empty, Badge,
 } from '@douyinfe/semi-ui';
@@ -231,7 +232,7 @@ export default function NotificationsPage() {
             </Space>
             <div
               style={{ lineHeight: 1.8, color: 'var(--semi-color-text-0)' }}
-              dangerouslySetInnerHTML={{ __html: selected.content }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selected.content) }}
             />
           </div>
         )}
