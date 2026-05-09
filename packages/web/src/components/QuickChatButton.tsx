@@ -75,6 +75,7 @@ export default function QuickChatButton() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<Record<number, { nickname: string; timer: ReturnType<typeof setTimeout> }>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -145,6 +146,10 @@ export default function QuickChatButton() {
   const activeConvIdRef = useRef(activeConvId);
   useEffect(() => { activeConvIdRef.current = activeConvId; }, [activeConvId]);
 
+  const removeTypingUser = useCallback((userId: number) => {
+    setTypingUsers((p) => { const next = { ...p }; delete next[userId]; return next; });
+  }, []);
+
   const handleWsMessage = useCallback((wsMsg: WsMessage) => {
     if (wsMsg.type === 'chat:message') {
       const msg = wsMsg.payload;
@@ -188,6 +193,15 @@ export default function QuickChatButton() {
       if (edited.conversationId === activeConvIdRef.current) {
         setMessages((prev) => prev.map((m) => (m.id === edited.id ? edited : m)));
       }
+    } else if (wsMsg.type === 'chat:typing') {
+      const { conversationId, userId, nickname } = wsMsg.payload;
+      if (conversationId !== activeConvIdRef.current || userId === currentUserId) return;
+      setTypingUsers((prev) => {
+        const existing = prev[userId];
+        if (existing) clearTimeout(existing.timer);
+        const timer = setTimeout(() => removeTypingUser(userId), 4000);
+        return { ...prev, [userId]: { nickname, timer } };
+      });
     }
   }, [currentUserId, markRead]);
 
@@ -256,6 +270,21 @@ export default function QuickChatButton() {
     }
   }, [activeConvId]);
 
+  const handlePasteImage = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = Array.from(e.clipboardData.items ?? []);
+    const imageFiles = items
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      void sendImageMessage(imageFiles[0]);
+    }
+  }, [sendImageMessage]);
+
+  // 切换会话时清空正在输入状态
+  useEffect(() => { setTypingUsers({}); }, [activeConvId]);
+
   // 在聊天页隐藏
   if (location.pathname.startsWith('/chat')) return null;
 
@@ -267,8 +296,17 @@ export default function QuickChatButton() {
       : (activeConv.name ?? '群聊');
   }
 
+  const typingNicknames = Object.values(typingUsers).map((u) => u.nickname);
+
   return (
     <>
+      {/* 入场动画关键帧 */}
+      <style>{`
+        @keyframes qc-slide-in {
+          from { opacity: 0; transform: translateY(10px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0)    scale(1);    }
+        }
+      `}</style>
       <div ref={floatBtnRef} style={{ position: 'fixed', insetInlineEnd: 24, bottom: 24, zIndex: 999 }}>
         <FloatButton
           icon={<MessageCircle size={20} />}
@@ -282,6 +320,7 @@ export default function QuickChatButton() {
         <div
           ref={panelRef}
           style={{
+            animation: 'qc-slide-in 0.18s ease-out',
             position: 'fixed',
             bottom: 88,
             right: 24,
@@ -413,6 +452,15 @@ export default function QuickChatButton() {
                 </Spin>
               </div>
 
+              {/* ─── 正在输入提示 ─── */}
+              {typingNicknames.length > 0 && (
+                <div style={{ padding: '2px 16px 0', flexShrink: 0 }}>
+                  <Text type="tertiary" style={{ fontSize: 11 }}>
+                    {typingNicknames.slice(0, 2).join('、')}正在输入...
+                  </Text>
+                </div>
+              )}
+
               {/* ─── 输入框 ─── */}
               <div
                 style={{
@@ -475,6 +523,7 @@ export default function QuickChatButton() {
                       void handleSend();
                     }
                   }}
+                  onPaste={handlePasteImage}
                   style={{ flex: 1 }}
                   size="small"
                 />
