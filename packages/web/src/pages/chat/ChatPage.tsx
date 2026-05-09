@@ -2341,7 +2341,7 @@ export default function ChatPage() {
                 }}
               />
             </div>
-            <Text type="tertiary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>Enter 发送 · Shift+Enter 换行 · 支持粘贴图片</Text>
+            <Text type="tertiary" style={{ fontSize: 10, marginTop: 2, display: 'block', opacity: 0.7 }}>Enter 发送 · Shift+Enter 换行 · 支持粘贴图片</Text>
               </>
             )}
           </div>
