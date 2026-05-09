@@ -1,16 +1,64 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FloatButton, Typography, Spin, Empty, Input, Button, Badge, Toast } from '@douyinfe/semi-ui';
-import { MessageCircle, ArrowLeft, ExternalLink, Send, X, ImagePlus, Paperclip } from 'lucide-react';
+import { MessageCircle, ArrowLeft, ExternalLink, Send, X, ImagePlus, Paperclip, FileImage } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
 import { request } from '@/utils/request';
+import { fetchProtectedFile } from '@/utils/file-utils';
 import { formatConvTime } from '@/utils/date';
 import { getMessageSummary, getFileExtension, getImageDimensions } from '@/pages/chat/utils';
 import type { ChatConversation, ChatMessage, WsMessage, ChatAssetMeta } from '@zenith/shared';
 import { UserAvatar, GroupGridAvatar } from '@/pages/chat/components/UserAvatar';
 
 const { Text } = Typography;
+
+/** 内联图片缩略图组件，自动加载受保护的图片 URL */
+function QuickImageBubble({ url, name, isSelf }: Readonly<{ url: string; name: string | null; isSelf: boolean }>) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    setLoading(true);
+    setError(false);
+    setBlobUrl(null);
+    fetchProtectedFile(url)
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  if (loading) {
+    return (
+      <div style={{ width: 120, height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelf ? 'rgba(255,255,255,0.15)' : 'var(--semi-color-fill-2)', borderRadius: 8 }}>
+        <Spin size="small" />
+      </div>
+    );
+  }
+  if (error || !blobUrl) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: isSelf ? 'rgba(255,255,255,0.9)' : 'var(--semi-color-text-1)', fontSize: 13 }}>
+        <FileImage size={14} />
+        <span>[图片]{name ? ` ${name}` : ''}</span>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={blobUrl}
+      alt={name ?? '图片'}
+      style={{ maxWidth: 160, maxHeight: 120, borderRadius: 6, display: 'block', cursor: 'pointer', objectFit: 'cover' }}
+    />
+  );
+}
 
 export default function QuickChatButton() {
   const navigate = useNavigate();
@@ -31,6 +79,21 @@ export default function QuickChatButton() {
   const inputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const floatBtnRef = useRef<HTMLDivElement>(null);
+
+  // 点击面板外部关闭
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (panelRef.current?.contains(target) || floatBtnRef.current?.contains(target)) return;
+      setOpen(false);
+      setActiveConvId(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
 
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unreadCount ?? 0), 0);
 
@@ -206,16 +269,18 @@ export default function QuickChatButton() {
 
   return (
     <>
-      <FloatButton
-        icon={<MessageCircle size={20} />}
-        badge={totalUnread > 0 ? { count: totalUnread, overflowCount: 99 } : undefined}
-        onClick={() => setOpen((prev) => !prev)}
-        style={{ insetInlineEnd: 24, bottom: 24, position: 'fixed', zIndex: 999 }}
-        shape="circle"
-      />
+      <div ref={floatBtnRef} style={{ position: 'fixed', insetInlineEnd: 24, bottom: 24, zIndex: 999 }}>
+        <FloatButton
+          icon={<MessageCircle size={20} />}
+          badge={totalUnread > 0 ? { count: totalUnread, overflowCount: 99 } : undefined}
+          onClick={() => setOpen((prev) => !prev)}
+          shape="circle"
+        />
+      </div>
 
       {open && (
         <div
+          ref={panelRef}
           style={{
             position: 'fixed',
             bottom: 88,
@@ -307,6 +372,10 @@ export default function QuickChatButton() {
                       );
                     }
 
+                    const bubbleContent = msg.type === 'image'
+                      ? <QuickImageBubble url={msg.content} name={msg.extra?.asset?.name ?? null} isSelf={isSelf} />
+                      : <span>{content}</span>;
+
                     return (
                       <div
                         key={msg.id}
@@ -320,16 +389,17 @@ export default function QuickChatButton() {
                         <div
                           style={{
                             maxWidth: '72%',
-                            padding: '7px 11px',
+                            padding: msg.type === 'image' ? '4px' : '7px 11px',
                             borderRadius: isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
                             background: isSelf ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
                             color: isSelf ? '#fff' : 'var(--semi-color-text-0)',
                             fontSize: 13,
                             lineHeight: 1.5,
                             wordBreak: 'break-word',
+                            overflow: 'hidden',
                           }}
                         >
-                          {content}
+                          {bubbleContent}
                         </div>
                         {isSelf && (
                           <div style={{ flexShrink: 0 }}>
