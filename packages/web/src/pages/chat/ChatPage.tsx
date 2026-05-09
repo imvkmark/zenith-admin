@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown,
+  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview,
 } from '@douyinfe/semi-ui';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -11,7 +11,7 @@ import {
 import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
-import { formatFileSize, getFileTypeIcon } from '@/utils/file-utils';
+import { formatFileSize, getFileTypeIcon, fetchProtectedFile } from '@/utils/file-utils';
 import type {
   ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
   ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext,
@@ -28,7 +28,7 @@ import { GroupMembersPanel } from './components/GroupMembersPanel';
 import { ForwardModal } from './components/ForwardModal';
 import { ForwardedMessagesModal } from './components/ForwardedMessagesModal';
 import { MessageBubble } from './components/MessageBubble';
-import { ImageGalleryLightbox } from './components/ImageGalleryLightbox';
+
 import { MessageContent } from './components/MessageContent';
 
 const { Text, Title } = Typography;
@@ -101,7 +101,11 @@ export default function ChatPage() {
   const [mediaPage, setMediaPage] = useState(1);
   const [mediaHasMore, setMediaHasMore] = useState(false);
   const [mediaLoading, setMediaLoading] = useState(false);
-  const [previewImageId, setPreviewImageId] = useState<number | null>(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
+  const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
+  const previewSessionRef = useRef(0);
+  const previewBlobUrlsRef = useRef<string[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -190,6 +194,39 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
+
+  const cleanupPreviewBlobs = useCallback(() => {
+    previewBlobUrlsRef.current.forEach((u) => { if (u) URL.revokeObjectURL(u); });
+    previewBlobUrlsRef.current = [];
+  }, []);
+
+  const openImagePreview = useCallback(async (clickedMsg: ChatMessage, allImgs: ChatMessage[]) => {
+    const session = ++previewSessionRef.current;
+    const clickedIndex = allImgs.findIndex((m) => m.id === clickedMsg.id);
+    if (clickedIndex < 0) return;
+    cleanupPreviewBlobs();
+    try {
+      const clickedBlob = await fetchProtectedFile(clickedMsg.content);
+      if (previewSessionRef.current !== session) return;
+      const clickedUrl = URL.createObjectURL(clickedBlob);
+      previewBlobUrlsRef.current[clickedIndex] = clickedUrl;
+      const initialUrls = allImgs.map((_, i) => (i === clickedIndex ? clickedUrl : ''));
+      setPreviewSrcList([...initialUrls]);
+      setPreviewCurrentIndex(clickedIndex);
+      setPreviewVisible(true);
+      // 后台加载其余图片
+      for (const [i, imgMsg] of allImgs.entries()) {
+        if (i === clickedIndex) continue;
+        try {
+          const blob = await fetchProtectedFile(imgMsg.content);
+          if (previewSessionRef.current !== session) break;
+          const url = URL.createObjectURL(blob);
+          previewBlobUrlsRef.current[i] = url;
+          setPreviewSrcList((prev) => { const copy = [...prev]; copy[i] = url; return copy; });
+        } catch { /* skip failed */ }
+      }
+    } catch { Toast.error('图片加载失败'); }
+  }, [cleanupPreviewBlobs]);
 
   const fetchPinnedMessages = useCallback(async (convId: number) => {
     const res = await request.get<ChatMessage[]>(`/api/chat/conversations/${convId}/pinned-messages`, { silent: true });
@@ -1167,7 +1204,6 @@ export default function ChatPage() {
 
   const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
   const galleryImages = messages.filter((m) => m.type === 'image' && !m.isRecalled);
-  const activeGalleryIndex = galleryImages.findIndex((m) => m.id === previewImageId);
   const useLocalSearchFallback = Boolean(msgSearch.trim()) && !(showSearchPanel && searchHasSearched);
   const visibleMessages = messages.filter((m) => !currentUserId || !(m.extra?.hiddenFor ?? []).includes(currentUserId));
   const displayMessages = useLocalSearchFallback
@@ -1176,13 +1212,6 @@ export default function ChatPage() {
       return (m.content ?? '').toLowerCase().includes(keyword) || (m.senderName ?? '').toLowerCase().includes(keyword);
     })
     : visibleMessages;
-
-  useEffect(() => {
-    if (previewImageId === null) return;
-    if (!galleryImages.some((m) => m.id === previewImageId)) {
-      setPreviewImageId(null);
-    }
-  }, [galleryImages, previewImageId]);
 
   useEffect(() => {
     const groupIds = conversations.filter((c) => c.type === 'group').map((c) => c.id);
@@ -1674,7 +1703,7 @@ export default function ChatPage() {
                     isSelf={msg.senderId === currentUserId}
                     onReply={setReplyTo}
                     onRecall={handleRecall}
-                    onOpenImage={(imageMsg) => setPreviewImageId(imageMsg.id)}
+                    onOpenImage={(imageMsg) => { void openImagePreview(imageMsg, galleryImages); }}
                     shouldShowTime={shouldDisplayMessageTime(msg, displayMessages[index + 1])}
                     getReplyMessage={getReplyMessage}
                     onScrollToMessage={scrollToMessage}
@@ -1939,7 +1968,7 @@ export default function ChatPage() {
                           <button
                             key={item.id}
                             type="button"
-                            onClick={() => setPreviewImageId(item.id)}
+                            onClick={() => { void openImagePreview(item, mediaItems.filter((m) => m.type === 'image')); }}
                             style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', aspectRatio: '1', overflow: 'hidden', borderRadius: 4 }}
                           >
                             <img
@@ -2001,18 +2030,20 @@ export default function ChatPage() {
             )}
           </div>
 
-          <ImageGalleryLightbox
-            images={galleryImages}
-            activeImageId={previewImageId}
-            onClose={() => setPreviewImageId(null)}
-            onPrev={() => {
-              if (activeGalleryIndex > 0) setPreviewImageId(galleryImages[activeGalleryIndex - 1]?.id ?? null);
-            }}
-            onNext={() => {
-              if (activeGalleryIndex >= 0 && activeGalleryIndex < galleryImages.length - 1) {
-                setPreviewImageId(galleryImages[activeGalleryIndex + 1]?.id ?? null);
+          <ImagePreview
+            src={previewSrcList}
+            visible={previewVisible}
+            currentIndex={previewCurrentIndex}
+            onChange={setPreviewCurrentIndex}
+            onVisibleChange={(v) => {
+              if (!v) {
+                previewSessionRef.current += 1;
+                setPreviewVisible(false);
+                cleanupPreviewBlobs();
+                setPreviewSrcList([]);
               }
             }}
+            infinite
           />
 
           <Modal
