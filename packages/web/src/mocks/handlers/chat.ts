@@ -95,6 +95,41 @@ export const chatHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: all.length, page, pageSize } });
   }),
 
+  // 全局消息搜索
+  http.get('/api/chat/messages/global-search', ({ request }) => {
+    const url = new URL(request.url);
+    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
+    const page = Number(url.searchParams.get('page') ?? '1');
+    const pageSize = Number(url.searchParams.get('pageSize') ?? '20');
+    if (!keyword) {
+      return HttpResponse.json({ code: 0, message: 'ok', data: { list: [], total: 0, page, pageSize, conversationNames: {} } });
+    }
+    const all = mockChatMessages.filter((m) => {
+      if (m.isRecalled) return false;
+      return (m.content ?? '').toLowerCase().includes(keyword)
+        || (m.extra?.asset?.name ?? '').toLowerCase().includes(keyword);
+    });
+    const total = all.length;
+    const start = (page - 1) * pageSize;
+    const sliced = all.slice(start, start + pageSize);
+    const conversationNames: Record<string, string> = {};
+    for (const msg of sliced) {
+      const conv = mockChatConversations.find((c) => c.id === msg.conversationId);
+      if (conv) {
+        conversationNames[String(msg.conversationId)] = conv.type === 'direct'
+          ? (conv.targetUser?.nickname ?? '私聊')
+          : (conv.name ?? '群聊');
+      }
+    }
+    const list = sliced.map((msg) => {
+      let snippet = msg.content;
+      if (msg.type === 'image') snippet = `[图片] ${msg.extra?.asset?.name ?? ''}`.trim();
+      else if (msg.type === 'file') snippet = `[文件] ${msg.extra?.asset?.name ?? ''}`.trim();
+      return { message: msg, snippet };
+    });
+    return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize, conversationNames } });
+  }),
+
   // 创建/获取单聊
   http.post('/api/chat/conversations/direct', async ({ request }) => {
     const body = await request.json() as { targetUserId: number };

@@ -10,7 +10,7 @@ import {
 } from '../lib/openapi-dtos';
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
-  searchConversationMessages, getMessageContext,
+  searchConversationMessages, searchGlobalMessages, getMessageContext,
   sendMessage, recallMessage, editMessage, markConversationRead, listChatUsers,
   createGroupConversation, addGroupMember, listGroupMembers,
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
@@ -596,6 +596,44 @@ chatRouter.openapi(
     const { messageIds } = c.req.valid('json');
     await deleteMessagesForUser(messageIds);
     return c.json(okBody(null, '删除成功'), 200);
+  },
+);
+
+// ─── 全局消息搜索 ─────────────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/messages/global-search', tags: ['Chat'], summary: '跨会话全局消息搜索',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      query: z.object({
+        keyword: z.string().min(1).max(200),
+        types: z.string().optional(),
+        page: z.coerce.number().int().positive().default(1),
+        pageSize: z.coerce.number().int().positive().max(50).default(20),
+      }),
+    },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.object({
+        list: z.array(ChatMessageSearchItemDTO),
+        total: z.number().int(),
+        page: z.number().int(),
+        pageSize: z.number().int(),
+        conversationNames: z.record(z.string(), z.string()),
+      }), '全局搜索结果'),
+    },
+  }),
+  async (c) => {
+    const query = c.req.valid('query');
+    const result = await searchGlobalMessages({
+      keyword: query.keyword,
+      types: query.types ? (query.types.split(',').filter(Boolean) as Array<'text' | 'image' | 'file' | 'system'>) : undefined,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+    return c.json(okBody(result), 200);
   },
 );
 

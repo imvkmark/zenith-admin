@@ -103,7 +103,14 @@ export default function ChatPage({
   const [groupAvatarMap, setGroupAvatarMap] = useState<Record<number, Array<{ id: number; nickname: string; avatar?: string | null }>>>({});
   const [activeGroupMembers, setActiveGroupMembers] = useState<ChatGroupMember[]>([]);
   const [selectedMentions, setSelectedMentions] = useState<Array<{ userId: number; nickname: string }>>([]);
-  const [leftPaneMode, setLeftPaneMode] = useState<'conversations' | 'favorites'>('conversations');
+  const [leftPaneMode, setLeftPaneMode] = useState<'conversations' | 'favorites' | 'globalSearch'>('conversations');
+  const [globalSearchKeyword, setGlobalSearchKeyword] = useState('');
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+  const [globalSearchResults, setGlobalSearchResults] = useState<import('@zenith/shared').ChatMessageSearchItem[]>([]);
+  const [globalSearchTotal, setGlobalSearchTotal] = useState(0);
+  const [globalSearchPage, setGlobalSearchPage] = useState(1);
+  const [globalSearchHasSearched, setGlobalSearchHasSearched] = useState(false);
+  const [globalSearchConvNames, setGlobalSearchConvNames] = useState<Record<string, string>>({});
   const [favoriteMessages, setFavoriteMessages] = useState<ChatMessage[]>([]);
   const [leftPaneContextMenu, setLeftPaneContextMenu] = useState<
     | { x: number; y: number; type: 'conversation'; conv: ChatConversation }
@@ -1441,6 +1448,15 @@ export default function ChatPage({
           >
             收藏
           </Button>
+          <Button
+            size="small"
+            theme={leftPaneMode === 'globalSearch' ? 'solid' : 'borderless'}
+            type={leftPaneMode === 'globalSearch' ? 'primary' : 'tertiary'}
+            icon={<Search size={13} />}
+            onClick={() => setLeftPaneMode('globalSearch')}
+          >
+            搜索
+          </Button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -1566,6 +1582,136 @@ export default function ChatPage({
                 </button>
               );
             })}
+            {leftPaneMode === 'globalSearch' && (
+              <div style={{ padding: '8px 12px 0' }}>
+                <Input
+                  prefix={<Search size={13} />}
+                  placeholder="搜索全部消息内容"
+                  size="small"
+                  value={globalSearchKeyword}
+                  onChange={(v) => {
+                    setGlobalSearchKeyword(v);
+                    if (!v.trim()) {
+                      setGlobalSearchResults([]);
+                      setGlobalSearchTotal(0);
+                      setGlobalSearchHasSearched(false);
+                    }
+                  }}
+                  onEnterPress={async () => {
+                    const kw = globalSearchKeyword.trim();
+                    if (!kw) return;
+                    setGlobalSearchLoading(true);
+                    const res = await request.get<{
+                      list: import('@zenith/shared').ChatMessageSearchItem[];
+                      total: number;
+                      page: number;
+                      pageSize: number;
+                      conversationNames: Record<string, string>;
+                    }>(`/api/chat/messages/global-search?keyword=${encodeURIComponent(kw)}&page=1&pageSize=20`, { silent: true });
+                    setGlobalSearchLoading(false);
+                    if (res.code === 0 && res.data) {
+                      setGlobalSearchResults(res.data.list);
+                      setGlobalSearchTotal(res.data.total);
+                      setGlobalSearchPage(1);
+                      setGlobalSearchConvNames(res.data.conversationNames);
+                      setGlobalSearchHasSearched(true);
+                    }
+                  }}
+                  showClear
+                />
+                {globalSearchHasSearched && (
+                  <Text type="tertiary" style={{ display: 'block', fontSize: 11, padding: '6px 0 2px' }}>
+                    共 {globalSearchTotal} 条结果
+                  </Text>
+                )}
+              </div>
+            )}
+            {leftPaneMode === 'globalSearch' && globalSearchLoading && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+                <Spin />
+              </div>
+            )}
+            {leftPaneMode === 'globalSearch' && globalSearchHasSearched && !globalSearchLoading && globalSearchResults.length === 0 && (
+              <Empty description="未找到相关消息" style={{ padding: '30px 0' }} imageStyle={{ width: 60 }} />
+            )}
+            {leftPaneMode === 'globalSearch' && !globalSearchLoading && globalSearchResults.map((item) => {
+              const convName = globalSearchConvNames[String(item.message.conversationId)] ?? '会话';
+              return (
+                <button
+                  key={item.message.id}
+                  type="button"
+                  onClick={async () => {
+                    const res = await request.get<import('@zenith/shared').ChatMessageContext>(
+                      `/api/chat/conversations/${item.message.conversationId}/messages/${item.message.id}/context?before=15&after=15`,
+                      { silent: true },
+                    );
+                    if (res.code !== 0 || !res.data) {
+                      import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error('定位消息失败'));
+                      return;
+                    }
+                    const targetConv = conversations.find((c) => c.id === item.message.conversationId);
+                    if (!targetConv) {
+                      // 会话不在列表中，刷新列表再定位
+                      await fetchConversations();
+                    }
+                    setActiveConvId(item.message.conversationId);
+                    onConvChange?.(item.message.conversationId);
+                    setLeftPaneMode('conversations');
+                    setMessages(res.data.list);
+                    setHasMore(res.data.hasBefore);
+                    setPage(1);
+                    setContextMode({ anchorMessageId: res.data.anchorMessageId, keyword: globalSearchKeyword.trim() });
+                    setTimeout(() => scrollToMessage(res.data.anchorMessageId), 80);
+                  }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--semi-color-border)' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--semi-color-fill-0)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
+                    <Text strong style={{ fontSize: 12, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{convName}</Text>
+                    <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(item.message.createdAt)}</Text>
+                  </div>
+                  {item.message.senderName && (
+                    <Text type="secondary" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>{item.message.senderName}</Text>
+                  )}
+                  <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.snippet}
+                  </Text>
+                </button>
+              );
+            })}
+            {leftPaneMode === 'globalSearch' && globalSearchHasSearched && !globalSearchLoading
+              && globalSearchResults.length < globalSearchTotal && (
+              <div style={{ padding: '8px 12px', textAlign: 'center' }}>
+                <Button
+                  size="small"
+                  theme="borderless"
+                  type="tertiary"
+                  loading={globalSearchLoading}
+                  onClick={async () => {
+                    const kw = globalSearchKeyword.trim();
+                    if (!kw) return;
+                    const nextPage = globalSearchPage + 1;
+                    setGlobalSearchLoading(true);
+                    const res = await request.get<{
+                      list: import('@zenith/shared').ChatMessageSearchItem[];
+                      total: number;
+                      page: number;
+                      pageSize: number;
+                      conversationNames: Record<string, string>;
+                    }>(`/api/chat/messages/global-search?keyword=${encodeURIComponent(kw)}&page=${nextPage}&pageSize=20`, { silent: true });
+                    setGlobalSearchLoading(false);
+                    if (res.code === 0 && res.data) {
+                      setGlobalSearchResults((prev) => [...prev, ...res.data.list]);
+                      setGlobalSearchPage(nextPage);
+                      setGlobalSearchConvNames((prev) => ({ ...prev, ...res.data.conversationNames }));
+                    }
+                  }}
+                >
+                  加载更多
+                </Button>
+              </div>
+            )}
             {leftPaneContextMenu && (
               <Dropdown
                 trigger="click"

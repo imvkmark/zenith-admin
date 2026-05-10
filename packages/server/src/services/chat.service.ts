@@ -1622,3 +1622,98 @@ export async function toggleReaction(messageId: number, emoji: string): Promise<
 
   return reactions;
 }
+
+// ─── 全局消息搜索 ────────────────────────────────────────────────────────────
+
+export async function searchGlobalMessages(
+  params: {
+    keyword: string;
+    types?: ChatMessage['type'][];
+    page: number;
+    pageSize: number;
+  },
+): Promise<ChatMessageSearchResult & { conversationNames: Record<number, string> }> {
+  const me = currentUser();
+
+  const keyword = params.keyword.trim();
+  if (!keyword) return { list: [], total: 0, page: params.page, pageSize: params.pageSize, conversationNames: {} };
+
+  const types = params.types?.filter(Boolean) ?? [];
+  const p = `%${keyword}%`;
+
+  const where = and(
+    // 只搜当前用户参与的会话
+    eq(chatConversationMembers.userId, me.userId),
+    types.length > 0 ? inArray(chatMessages.type, types) : undefined,
+    or(
+      sql`${chatMessages.content} ILIKE ${p}`,
+      sql`COALESCE(${chatMessages.extra} -> 'asset' ->> 'name', '') ILIKE ${p}`,
+    ),
+  );
+
+  const [countRows, rows] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(distinct ${chatMessages.id})` })
+      .from(chatMessages)
+      .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
+      .where(where),
+    db
+      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+      .from(chatMessages)
+      .innerJoin(chatConversationMembers, eq(chatConversationMembers.conversationId, chatMessages.conversationId))
+      .leftJoin(users, eq(chatMessages.senderId, users.id))
+      .where(where)
+      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+      .limit(params.pageSize)
+      .offset(pageOffset(params.page, params.pageSize)),
+  ]);
+
+  // 批量拉取会话名称（direct 会话取对方昵称，group 取 name）
+  const convIds = [...new Set(rows.map((r) => r.msg.conversationId))];
+  const conversationNames: Record<number, string> = {};
+
+  if (convIds.length > 0) {
+    const convRows = await db
+      .select({ id: chatConversations.id, type: chatConversations.type, name: chatConversations.name })
+      .from(chatConversations)
+      .where(inArray(chatConversations.id, convIds));
+
+    const directConvIds = convRows.filter((c) => c.type === 'direct').map((c) => c.id);
+    const directTargetRows = directConvIds.length > 0
+      ? await db
+        .select({ conversationId: chatConversationMembers.conversationId, nickname: users.nickname })
+        .from(chatConversationMembers)
+        .innerJoin(users, eq(chatConversationMembers.userId, users.id))
+        .where(and(
+          inArray(chatConversationMembers.conversationId, directConvIds),
+          ne(chatConversationMembers.userId, me.userId),
+        ))
+      : [];
+    const directTargetMap = new Map(directTargetRows.map((r) => [r.conversationId, r.nickname]));
+
+    for (const conv of convRows) {
+      conversationNames[conv.id] = conv.type === 'group'
+        ? (conv.name ?? '群聊')
+        : (directTargetMap.get(conv.id) ?? '私聊');
+    }
+  }
+
+  const list = rows.map((r) => {
+    const message = mapChatMessage(
+      r.msg,
+      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+    );
+    return {
+      message,
+      snippet: buildMessageSearchSnippet(message),
+    };
+  });
+
+  return {
+    list,
+    total: Number(countRows[0]?.count ?? 0),
+    page: params.page,
+    pageSize: params.pageSize,
+    conversationNames,
+  };
+}
