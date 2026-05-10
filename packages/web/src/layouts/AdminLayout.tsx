@@ -1039,6 +1039,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 <Switch checked={preferences.showFullscreen ?? true} onChange={(v) => setPreferences({ showFullscreen: v })} />
               </div>
 
+              {/* ── 快捷聊天 ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>显示快捷聊天按钮</span>
+                <Switch checked={preferences.showQuickChat ?? true} onChange={(v) => setPreferences({ showQuickChat: v })} />
+              </div>
+
               <div className="prefs-section-divider" />
 
               {/* ── 多标签页 ── */}
@@ -1113,7 +1119,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       </div>
 
       {/* ===== 快捷聊天浮动按钮 ===== */}
-      <QuickChatButton />
+      {(preferences.showQuickChat ?? true) && <QuickChatButton />}
 
       {/* ===== 通知详情 Modal ===== */}
       <Modal

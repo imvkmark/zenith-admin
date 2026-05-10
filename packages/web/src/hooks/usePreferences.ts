@@ -13,6 +13,7 @@ export interface UserPreferences {
   tabAnimation: TabAnimation;
   showMenuSearch: boolean;
   showFullscreen: boolean;
+  showQuickChat: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -24,6 +25,7 @@ export const defaultPreferences: UserPreferences = {
   tabAnimation: 'fade',
   showMenuSearch: true,
   showFullscreen: true,
+  showQuickChat: true,
 };
 
 function loadPreferences(): UserPreferences {
