@@ -1,22 +1,53 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { WsMessage } from '@zenith/shared';
 import { config } from '@/config';
 
 type MessageHandler = (message: WsMessage) => void;
+type StatusListener = (connected: boolean) => void;
 
 const MAX_RECONNECT_DELAY = 30_000;
 const BASE_RECONNECT_DELAY = 1_000;
+/** 心跳间隔（毫秒）：每 25s 发一次 ping */
+const HEARTBEAT_INTERVAL = 25_000;
+/** 等待 pong 超时（毫秒）：超时则认为连接已断，主动关闭并重连 */
+const PONG_TIMEOUT = 5_000;
+
 const listeners = new Set<MessageHandler>();
+const statusListeners = new Set<StatusListener>();
 
 let sharedSocket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+let pongTimeoutTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectRetries = 0;
 let manuallyClosed = false;
+let isConnectedState = false;
 
 function clearReconnectTimer() {
   clearTimeout(reconnectTimer);
   reconnectTimer = undefined;
+}
+
+function clearHeartbeat() {
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = undefined;
+  clearTimeout(pongTimeoutTimer);
+  pongTimeoutTimer = undefined;
+}
+
+function notifyStatus(connected: boolean) {
+  isConnectedState = connected;
+  for (const listener of statusListeners) {
+    listener(connected);
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || manuallyClosed || listeners.size === 0) return;
+  const delay = Math.min(BASE_RECONNECT_DELAY * 2 ** reconnectRetries, MAX_RECONNECT_DELAY);
+  reconnectRetries += 1;
+  reconnectTimer = setTimeout(() => connectSharedSocket(), delay);
 }
 
 function buildWebSocketUrl() {
@@ -39,7 +70,7 @@ function notifyListeners(message: WsMessage) {
 }
 
 function connectSharedSocket() {
-  if (sharedSocket && (sharedSocket.readyState === WebSocket.OPEN || sharedSocket.readyState === WebSocket.CONNECTING)) {
+  if (sharedSocket?.readyState === WebSocket.OPEN || sharedSocket?.readyState === WebSocket.CONNECTING) {
     return;
   }
 
@@ -55,11 +86,36 @@ function connectSharedSocket() {
   ws.onopen = () => {
     if (sharedSocket !== ws) return;
     reconnectRetries = 0;
+    notifyStatus(true);
+    // 启动心跳：定时发 ping，等待服务端 pong
+    heartbeatTimer = setInterval(() => {
+      if (sharedSocket?.readyState !== WebSocket.OPEN) return;
+      try {
+        sharedSocket.send(JSON.stringify({ type: 'ping' }));
+      } catch { return; }
+      // 如果 5s 内未收到 pong，认为连接已死，主动断开触发重连
+      pongTimeoutTimer = setTimeout(() => {
+        if (sharedSocket === ws) {
+          sharedSocket = null;
+          notifyStatus(false);
+        }
+        clearHeartbeat();
+        try { ws.close(); } catch { /* ignore */ }
+        scheduleReconnect();
+      }, PONG_TIMEOUT);
+    }, HEARTBEAT_INTERVAL);
   };
 
   ws.onmessage = (event) => {
     try {
-      const msg: WsMessage = JSON.parse(event.data);
+      const raw = JSON.parse(event.data) as { type: string };
+      // 心跳 pong：清除超时计时器，不广播给业务监听器
+      if (raw?.type === 'pong') {
+        clearTimeout(pongTimeoutTimer);
+        pongTimeoutTimer = undefined;
+        return;
+      }
+      const msg = raw as WsMessage;
       notifyListeners(msg);
     } catch {
       /* ignore malformed messages */
@@ -69,31 +125,33 @@ function connectSharedSocket() {
   ws.onclose = (event) => {
     if (sharedSocket === ws) {
       sharedSocket = null;
+      notifyStatus(false);
     }
+    clearHeartbeat();
 
     if (manuallyClosed || event.code === 1000 || listeners.size === 0) {
       return;
     }
 
-    const delay = Math.min(BASE_RECONNECT_DELAY * 2 ** reconnectRetries, MAX_RECONNECT_DELAY);
-    reconnectRetries += 1;
-    reconnectTimer = setTimeout(() => connectSharedSocket(), delay);
+    scheduleReconnect();
   };
 }
 
 function disconnectSharedSocket() {
   manuallyClosed = true;
   clearReconnectTimer();
+  clearHeartbeat();
 
   if (sharedSocket) {
     const ws = sharedSocket;
     sharedSocket = null;
+    notifyStatus(false);
     ws.close(1000, 'logout');
   }
 }
 
 export function sendWsMessage(msg: WsMessage) {
-  if (sharedSocket && sharedSocket.readyState === WebSocket.OPEN) {
+  if (sharedSocket?.readyState === WebSocket.OPEN) {
     sharedSocket.send(JSON.stringify(msg));
   }
 }
@@ -130,4 +188,23 @@ export function useWebSocket(onMessage: MessageHandler) {
   }, [listener]);
 
   return { disconnect };
+}
+
+/**
+ * 返回 WebSocket 当前连接状态。
+ * 断线（包括心跳超时、网络切换）时为 false，方便 UI 显示重连提示。
+ */
+export function useWsConnected(): boolean {
+  const [connected, setConnected] = useState(isConnectedState);
+
+  useEffect(() => {
+    // 同步最新状态（组件挂载时 WS 可能已连接）
+    setConnected(isConnectedState);
+    statusListeners.add(setConnected);
+    return () => {
+      statusListeners.delete(setConnected);
+    };
+  }, []);
+
+  return connected;
 }

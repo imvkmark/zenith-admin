@@ -49,11 +49,16 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
             registerConnection(currentPayload.userId, currentPayload.jti ?? '', ws);
           });
         },
-        async onMessage(evt) {
+        async onMessage(evt, ws) {
           if (!payload) return;
           try {
             const data: unknown = typeof evt.data === 'string' ? JSON.parse(evt.data) : null;
-            const msg = data as WsMessage;
+            const msg = data as WsMessage | { type: 'ping' };
+            // 心跳：收到 ping 立即回 pong，维持 WebSocket 连接活性
+            if (msg?.type === 'ping') {
+              ws.send(JSON.stringify({ type: 'pong' }));
+              return;
+            }
             if (msg?.type === 'chat:typing') {
               const { conversationId } = msg.payload;
               // 转发给会话内其他成员

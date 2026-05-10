@@ -10,7 +10,7 @@ import {
   Pin, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
   ArrowLeft, ExternalLink,
 } from 'lucide-react';
-import { useWebSocket, sendWsMessage } from '@/hooks/useWebSocket';
+import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
 import { request } from '@/utils/request';
 import { formatDateTime, formatConvTime, formatDateTimeForApi } from '@/utils/date';
@@ -1166,6 +1166,7 @@ export default function ChatPage({
   }, [activeConvId, isNearBottom, pendingNewMsgCount]);
 
   useWebSocket(handleWsMessage);
+  const wsConnected = useWsConnected();
 
   // 草稿自动保存（input 变化时持久化）
   useEffect(() => {
@@ -1804,6 +1805,26 @@ export default function ChatPage({
               onScroll={handleMessagesScroll}
               style={{ flex: 1, overflowY: 'auto', padding: isQuick ? '8px 12px' : '12px 20px', display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
             >
+              {!wsConnected && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 10,
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    background: 'var(--semi-color-warning-light-default)',
+                    border: '1px solid var(--semi-color-warning-light-active)',
+                    color: 'var(--semi-color-warning)',
+                  }}
+                >
+                  <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                  <Text style={{ flex: 1, fontSize: 12, color: 'inherit' }}>
+                    实时连接已断开，正在自动重连。重连期间仍可发送消息，但新消息可能会延迟同步。
+                  </Text>
+                </div>
+              )}
               {pinnedMessages.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, padding: '8px 10px', borderRadius: 8, background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
                   <Text strong style={{ fontSize: 12 }}><Pin size={12} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />置顶消息</Text>
