@@ -21,6 +21,7 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
   const [everOpened, setEverOpened] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const openRef = useRef(false);
+  const lastActiveConvIdRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const floatBtnRef = useRef<HTMLDivElement>(null);
 
@@ -67,8 +68,19 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
       openRef.current = false;
       setOpen(false);
       setClosing(false);
+    } else if (open && lastActiveConvIdRef.current) {
+      // 用户通过菜单导航到 /chat，不在此分支处理（已在下方 useEffect 处理）
     }
-  }, [location.pathname]);
+  }, [location.pathname, open]);
+
+  // 通过菜单导航到 /chat 时，自动附带当前活跃会话
+  useEffect(() => {
+    if (!location.pathname.startsWith('/chat')) return;
+    if (!lastActiveConvIdRef.current) return;
+    if (location.search.includes('conv=')) return; // 已有 conv 参数（由 handleOpenFullPage 传入）
+    navigate(`/chat?conv=${lastActiveConvIdRef.current}`, { replace: true });
+    lastActiveConvIdRef.current = null;
+  }, [location.pathname, location.search, navigate]);
 
   const handleWsMessage = useCallback((wsMsg: WsMessage) => {
     if (location.pathname.startsWith('/chat')) return;
@@ -88,6 +100,7 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
 
   const handleOpenFullPage = useCallback((convId?: number | null) => {
     openRef.current = false;
+    lastActiveConvIdRef.current = null; // handleOpenFullPage 自带 convId，无需再读 ref
     setOpen(false);
     setClosing(false);
     navigate(convId ? `/chat?conv=${convId}` : '/chat');
@@ -135,6 +148,7 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
               onClose={closePanel}
               onOpenFullPage={handleOpenFullPage}
               onUnreadChange={setUnreadCount}
+              onConvChange={(id) => { lastActiveConvIdRef.current = id; }}
             />
           </Suspense>
         </div>

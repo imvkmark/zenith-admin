@@ -41,6 +41,7 @@ export interface ChatPageProps {
   onClose?: () => void;
   onOpenFullPage?: (convId?: number | null) => void;
   onUnreadChange?: (count: number) => void;
+  onConvChange?: (convId: number | null) => void;
 }
 
 export default function ChatPage({
@@ -48,6 +49,7 @@ export default function ChatPage({
   onClose,
   onOpenFullPage,
   onUnreadChange,
+  onConvChange,
 }: Readonly<ChatPageProps> = {}) {
   const isQuick = variant === 'quick';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -394,6 +396,7 @@ export default function ChatPage({
     // 保存当前会话草稿
     if (activeConvId) saveDraft(activeConvId, input);
     setActiveConvId(conv.id);
+    onConvChange?.(conv.id);
     setReplyTo(null);
     setSelectedMentions([]);
     setPendingImages([]);
@@ -422,7 +425,7 @@ export default function ChatPage({
     await request.post(`/api/chat/conversations/${conv.id}/read`, {}, { silent: true });
     setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, unreadCount: 0 } : c));
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-  }, [activeConvId, fetchMessages, input, loadDraft, saveDraft]);
+  }, [activeConvId, fetchMessages, input, loadDraft, onConvChange, saveDraft]);
 
   const handleNewDirectChat = useCallback(async (user: ChatUser) => {
     setShowNewChat(false);
