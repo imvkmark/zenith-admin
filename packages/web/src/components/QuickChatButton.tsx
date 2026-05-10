@@ -97,11 +97,11 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
 
   useWebSocket(handleWsMessage);
 
-  const handleOpenFullPage = useCallback(() => {
+  const handleOpenFullPage = useCallback((convId?: number | null) => {
     openRef.current = false;
     setOpen(false);
     setClosing(false);
-    navigate('/chat');
+    navigate(convId ? `/chat?conv=${convId}` : '/chat');
   }, [navigate]);
 
   if (location.pathname.startsWith('/chat')) return null;

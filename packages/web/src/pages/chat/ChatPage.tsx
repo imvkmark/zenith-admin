@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview,
 } from '@douyinfe/semi-ui';
@@ -38,7 +39,7 @@ const { Text, Title } = Typography;
 export interface ChatPageProps {
   variant?: 'page' | 'quick';
   onClose?: () => void;
-  onOpenFullPage?: () => void;
+  onOpenFullPage?: (convId?: number | null) => void;
   onUnreadChange?: (count: number) => void;
 }
 
@@ -49,6 +50,7 @@ export default function ChatPage({
   onUnreadChange,
 }: Readonly<ChatPageProps> = {}) {
   const isQuick = variant === 'quick';
+  const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -220,6 +222,19 @@ export default function ChatPage({
   }, []);
 
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
+
+  // 读取 URL ?conv= 参数，在会话列表加载后自动激活对应会话
+  useEffect(() => {
+    if (isQuick) return;
+    const convParam = searchParams.get('conv');
+    if (!convParam) return;
+    const convId = Number(convParam);
+    if (!Number.isFinite(convId) || convId <= 0) return;
+    if (conversations.length === 0) return; // 等列表加载完再处理
+    setActiveConvId(convId);
+    setSearchParams((prev) => { prev.delete('conv'); return prev; }, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, isQuick]);
 
   const cleanupPreviewBlobs = useCallback(() => {
     previewBlobUrlsRef.current.forEach((u) => { if (u) URL.revokeObjectURL(u); });
@@ -1325,7 +1340,7 @@ export default function ChatPage({
                 theme="borderless"
                 type="tertiary"
                 icon={<ExternalLink size={15} />}
-                onClick={onOpenFullPage}
+                onClick={() => onOpenFullPage(activeConvId)}
               />
             </Tooltip>
           )}
@@ -1761,7 +1776,7 @@ export default function ChatPage({
                   theme="borderless"
                   type="tertiary"
                   icon={<ExternalLink size={15} />}
-                  onClick={onOpenFullPage}
+                  onClick={() => onOpenFullPage(activeConvId)}
                 />
               </Tooltip>
             )}
