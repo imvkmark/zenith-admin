@@ -285,7 +285,7 @@ export function MessageBubble({
             replySender = replied.senderName ?? '';
             if (replied.isRecalled) replyText = '消息已撤回';
             else if (replied.type === 'image') replyText = '[图片]';
-            else if (replied.type === 'file') replyText = `[文件] ${getAssetMeta(replied)?.name ?? ''}`;
+            else if (replied.type === 'file') replyText = `[文件] ${replied.extra?.asset?.name ?? ''}`;
             else replyText = replied.content.length > 40 ? `${replied.content.slice(0, 40)}…` : replied.content;
           }
           return (
