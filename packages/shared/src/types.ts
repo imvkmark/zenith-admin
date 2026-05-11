@@ -716,6 +716,16 @@ export interface ChatMessageExtra {
   voteData?: ChatVoteData | null;
 }
 
+export interface ChatReplySnapshot {
+  id: number;
+  senderId: number | null;
+  senderName: string | null;
+  type: ChatMessageType;
+  content: string;
+  isRecalled: boolean;
+  extra: ChatMessageExtra | null;
+}
+
 export interface ChatMessage {
   id: number;
   conversationId: number;
@@ -725,6 +735,7 @@ export interface ChatMessage {
   type: ChatMessageType;
   content: string;
   replyToId: number | null;
+  replyToMessage: ChatReplySnapshot | null;
   isRecalled: boolean;
   isEdited: boolean;
   extra: ChatMessageExtra | null;

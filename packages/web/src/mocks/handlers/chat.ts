@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
+import type { ChatMessage, ChatMessageExtra, ChatReplySnapshot } from '@zenith/shared';
 import {
   mockChatConversations, mockChatUsers, getMockConvMessages,
   addMockMessage, getNextMsgId, mockChatMessages, mockGroupMembers,
@@ -20,6 +20,7 @@ function addSystemMessage(conversationId: number, content: string) {
     type: 'system',
     content,
     replyToId: null,
+    replyToMessage: null,
     isRecalled: false,
     isEdited: false,
     extra: null,
@@ -193,6 +194,13 @@ export const chatHandlers = [
       type: (body.type ?? 'text') as ChatMessage['type'],
       content: body.content,
       replyToId: body.replyToId ?? null,
+      replyToMessage: body.replyToId
+        ? ((): ChatReplySnapshot | null => {
+            const orig = mockChatMessages.find((m) => m.id === body.replyToId);
+            if (!orig) return null;
+            return { id: orig.id, senderId: orig.senderId, senderName: orig.senderName, type: orig.type, content: orig.content, isRecalled: orig.isRecalled, extra: orig.extra };
+          })()
+        : null,
       isRecalled: false,
     isEdited: false,
       extra: body.extra ?? null,
@@ -433,6 +441,7 @@ export const chatHandlers = [
           type: 'system',
           content: `${CURRENT_USER_NICKNAME} 更新了群公告`,
           replyToId: null,
+          replyToMessage: null,
           isRecalled: false,
     isEdited: false,
           extra: {

@@ -235,6 +235,7 @@ export function mapChatMessage(
   row: typeof chatMessages.$inferSelect,
   sender?: { id: number; nickname: string; avatar: string | null } | null,
   reactions: ChatReactionGroup[] = [],
+  replyToMessage: ChatMessage['replyToMessage'] = null,
 ): ChatMessage {
   return {
     id: row.id,
@@ -245,6 +246,7 @@ export function mapChatMessage(
     type: row.type as ChatMessage['type'],
     content: row.content,
     replyToId: row.replyToId,
+    replyToMessage,
     isRecalled: row.isRecalled,
     isEdited: row.isEdited,
     extra: (row.extra as ChatMessageExtra | null) ?? null,
@@ -252,6 +254,33 @@ export function mapChatMessage(
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
+}
+
+async function fetchReplySnapshotMap(
+  rows: Array<{ replyToId: number | null }>,
+): Promise<Map<number, ChatMessage['replyToMessage']>> {
+  const replyIds = [...new Set(rows.map((r) => r.replyToId).filter((id): id is number => id !== null))];
+  if (replyIds.length === 0) return new Map();
+
+  const replyRows = await db
+    .select({ msg: chatMessages, nickname: users.nickname })
+    .from(chatMessages)
+    .leftJoin(users, eq(chatMessages.senderId, users.id))
+    .where(inArray(chatMessages.id, replyIds));
+
+  const map = new Map<number, ChatMessage['replyToMessage']>();
+  for (const r of replyRows) {
+    map.set(r.msg.id, {
+      id: r.msg.id,
+      senderId: r.msg.senderId,
+      senderName: r.msg.senderId ? (r.nickname ?? null) : null,
+      type: r.msg.type as ChatMessage['type'],
+      content: r.msg.content,
+      isRecalled: r.msg.isRecalled,
+      extra: (r.msg.extra as ChatMessageExtra | null) ?? null,
+    });
+  }
+  return map;
 }
 
 async function ensureConversationMember(conversationId: number) {
@@ -652,10 +681,18 @@ export async function listMessages(conversationId: number, beforeId: number | nu
   const limited = rows.slice(0, limit);
 
   const msgIds = limited.map((r) => r.msg.id);
-  const reactionMap = await aggregateReactions(msgIds);
+  const [reactionMap, replySnapshotMap] = await Promise.all([
+    aggregateReactions(msgIds),
+    fetchReplySnapshotMap(limited.map((r) => ({ replyToId: r.msg.replyToId }))),
+  ]);
 
   const list = limited.map((r) =>
-    mapChatMessage(r.msg, r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null, reactionMap.get(r.msg.id) ?? []),
+    mapChatMessage(
+      r.msg,
+      r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
+      reactionMap.get(r.msg.id) ?? [],
+      r.msg.replyToId ? (replySnapshotMap.get(r.msg.replyToId) ?? null) : null,
+    ),
   );
 
   return { list, hasMore };
@@ -920,12 +957,16 @@ export async function getMessageContext(
     ...afterRows,
   ];
   const msgIds = allRows.map((r) => r.msg.id);
-  const reactionMap = await aggregateReactions(msgIds);
+  const [reactionMap, replySnapshotMap] = await Promise.all([
+    aggregateReactions(msgIds),
+    fetchReplySnapshotMap(allRows.map((r) => ({ replyToId: r.msg.replyToId }))),
+  ]);
 
   const list = allRows.map((r) => mapChatMessage(
     r.msg,
     r.msg.senderId ? { id: r.msg.senderId, nickname: r.nickname ?? '', avatar: r.avatar ?? null } : null,
     reactionMap.get(r.msg.id) ?? [],
+    r.msg.replyToId ? (replySnapshotMap.get(r.msg.replyToId) ?? null) : null,
   ));
 
   const [beforeCount, afterCount] = await Promise.all([
@@ -974,7 +1015,12 @@ export async function sendMessage(conversationId: number, input: SendChatMessage
     .set({ updatedAt: new Date() })
     .where(eq(chatConversations.id, conversationId));
 
-  const msg = mapChatMessage(row, sender ?? null);
+  let replySnapshot: ChatMessage['replyToMessage'] = null;
+  if (row.replyToId) {
+    const replyMap = await fetchReplySnapshotMap([{ replyToId: row.replyToId }]);
+    replySnapshot = replyMap.get(row.replyToId) ?? null;
+  }
+  const msg = mapChatMessage(row, sender ?? null, [], replySnapshot);
 
   // 推送给会话内所有成员（含发送者——方便多端同步）
   const members = await db

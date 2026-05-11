@@ -278,7 +278,7 @@ export function MessageBubble({
           </Text>
         )}
         {msg.replyToId && (() => {
-          const replied = getReplyMessage(msg.replyToId);
+          const replied = msg.replyToMessage ?? (getReplyMessage(msg.replyToId) ?? null);
           let replyText = '原消息已不在';
           let replySender = '';
           if (replied) {
