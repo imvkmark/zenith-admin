@@ -1513,6 +1513,7 @@ export default function ChatPage({
               const isStarred = conv.isStarred ?? false;
               const isMuted = conv.isMuted ?? false;
               const hasMentionUnread = conv.hasMentionUnread ?? false;
+              const hasFailedMsg = failedMessages.some((m) => m.convId === conv.id);
               let lastMsgText = '暂无消息';
               if (lastMsg) {
                 const summary = getMessageSummary(lastMsg);
@@ -1547,24 +1548,25 @@ export default function ChatPage({
                     ) : (
                       avatarNode
                     )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
-                          {isPinned && <Pin size={10} style={{ color: 'var(--semi-color-primary)', flexShrink: 0 }} />}
-                          {isStarred && <Star size={10} style={{ color: '#facc15', flexShrink: 0 }} />}
-                          {isMuted && <BellOff size={10} style={{ color: 'var(--semi-color-text-3)', flexShrink: 0 }} />}
-                          <Text strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {name}
-                          </Text>
-                        </div>
-                        {lastMsg && (
-                          <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>
-                            {formatConvTime(lastMsg.createdAt)}
-                          </Text>
-                        )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* 第一行：图标 + 名称 + 免打扰 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
+                        {isPinned && <Pin size={10} style={{ color: 'var(--semi-color-primary)', flexShrink: 0 }} />}
+                        {isStarred && <Star size={10} style={{ color: '#facc15', flexShrink: 0 }} />}
+                        <Text strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {name}
+                        </Text>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                        {hasMentionUnread && (
+                      {isMuted && <BellOff size={11} style={{ color: 'var(--semi-color-text-3)', flexShrink: 0 }} />}
+                    </div>
+                    {/* 第二行：消息预览 + 时间 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, marginTop: 2 }}>
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+                        {hasFailedMsg && (
+                          <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--semi-color-danger)', fontWeight: 500 }}>[发送失败]</span>
+                        )}
+                        {!hasFailedMsg && hasMentionUnread && (
                           <span
                             style={{
                               flexShrink: 0,
@@ -1579,11 +1581,20 @@ export default function ChatPage({
                             @我
                           </span>
                         )}
-                        <Text type="tertiary" style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                        <Text
+                          type={hasFailedMsg ? 'danger' : 'tertiary'}
+                          style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+                        >
                           {lastMsgText}
                         </Text>
                       </div>
+                      {lastMsg && (
+                        <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>
+                          {formatConvTime(lastMsg.createdAt)}
+                        </Text>
+                      )}
                     </div>
+                  </div>
                 </button>
               );
             })}
