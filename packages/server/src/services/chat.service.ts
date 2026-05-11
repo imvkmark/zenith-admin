@@ -13,7 +13,13 @@ import type {
   SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup, ChatVoteData,
 } from '@zenith/shared';
 
-const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
+const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
+
+/** 生成排除当前用户已删除消息的 SQL 条件 */
+function notHiddenFor(userId: number) {
+  // to_jsonb 是多态函数，prepared statement 参数需要显式 CAST 才能正确推断类型
+  return sql`NOT COALESCE(${chatMessages.extra}->'hiddenFor', '[]'::jsonb) @> to_jsonb(CAST(${userId} AS integer))`;
+}
 
 function isPrivateIpv4(ipv4: string): boolean {
   const parts = ipv4.split('.').map(Number);
@@ -384,14 +390,17 @@ export async function listConversations(): Promise<ChatConversation[]> {
     .from(chatConversations)
     .where(inArray(chatConversations.id, convIds));
 
-  // 批量拉取每个会话的最后一条消息（子查询先找最大 id 再 join）
+  // 批量拉取每个会话的最后一条消息（子查询先找最大 id 再 join，排除当前用户已删除的消息）
   const latestMsgIdSub = db
     .select({
       conversationId: chatMessages.conversationId,
       latestId: max(chatMessages.id).as('latest_id'),
     })
     .from(chatMessages)
-    .where(inArray(chatMessages.conversationId, convIds))
+    .where(and(
+      inArray(chatMessages.conversationId, convIds),
+      notHiddenFor(me.userId),
+    ))
     .groupBy(chatMessages.conversationId)
     .as('latest_msg_id');
 
@@ -846,6 +855,7 @@ export async function searchConversationMessages(
     pageSize: number;
   },
 ): Promise<ChatMessageSearchResult> {
+  const me = currentUser();
   await ensureConversationMember(conversationId);
 
   const keyword = params.keyword?.trim();
@@ -855,6 +865,7 @@ export async function searchConversationMessages(
 
   const where = and(
     eq(chatMessages.conversationId, conversationId),
+    notHiddenFor(me.userId),
     params.senderId ? eq(chatMessages.senderId, params.senderId) : undefined,
     types.length > 0 ? inArray(chatMessages.type, types) : undefined,
     startAt ? gte(chatMessages.createdAt, startAt) : undefined,
@@ -1807,6 +1818,7 @@ export async function searchGlobalMessages(
   const where = and(
     // 只搜当前用户参与的会话
     eq(chatConversationMembers.userId, me.userId),
+    notHiddenFor(me.userId),
     types.length > 0 ? inArray(chatMessages.type, types) : undefined,
     or(
       sql`${chatMessages.content} ILIKE ${p}`,
