@@ -442,10 +442,10 @@ export default function UsersPage() {
             theme="borderless"
             size="small"
             onClick={() => {
-              setPasswordUser(record);
-              setPasswordModalVisible(true);
+              setEditingUser(record);
+              setModalVisible(true);
             }}
-          >修改密码</Button>}
+          >编辑</Button>}
           {hasPermission('system:user:update') && <Button
             theme="borderless"
             size="small"
@@ -455,10 +455,10 @@ export default function UsersPage() {
             theme="borderless"
             size="small"
             onClick={() => {
-              setEditingUser(record);
-              setModalVisible(true);
+              setPasswordUser(record);
+              setPasswordModalVisible(true);
             }}
-          >编辑</Button>}
+          >修改密码</Button>}
           {hasPermission('system:user:delete') && (() => {
             const isAdmin = isAdminUser(record);
             const deleteBtn = (
