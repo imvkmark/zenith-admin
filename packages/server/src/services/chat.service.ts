@@ -322,16 +322,17 @@ async function appendSystemMessage(
     extra,
   }).returning();
 
-  await db.update(chatConversations)
-    .set({ updatedAt: new Date() })
-    .where(eq(chatConversations.id, conversationId));
+  const [, members] = await Promise.all([
+    db.update(chatConversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(chatConversations.id, conversationId)),
+    db
+      .select({ userId: chatConversationMembers.userId })
+      .from(chatConversationMembers)
+      .where(eq(chatConversationMembers.conversationId, conversationId)),
+  ]);
 
   const msg = mapChatMessage(row, null);
-
-  const members = await db
-    .select({ userId: chatConversationMembers.userId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.conversationId, conversationId));
 
   scheduleSendToUsers(members, { type: 'chat:message', payload: msg });
 
@@ -382,13 +383,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
   const starredMap = new Map(memberRows.map((r) => [r.conversationId, r.isStarred]));
   const mutedMap = new Map(memberRows.map((r) => [r.conversationId, r.isMuted]));
 
-  // 批量拉取会话基本信息
-  const convRows = await db
-    .select()
-    .from(chatConversations)
-    .where(inArray(chatConversations.id, convIds));
-
-  // 批量拉取每个会话的最后一条消息（子查询先找最大 id 再 join，排除当前用户已删除的消息）
+  // 批量拉取会话基本信息 & 最后消息 & 消息时间（三者都只依赖 convIds，并行执行）
   const latestMsgIdSub = db
     .select({
       conversationId: chatMessages.conversationId,
@@ -402,14 +397,29 @@ export async function listConversations(): Promise<ChatConversation[]> {
     .groupBy(chatMessages.conversationId)
     .as('latest_msg_id');
 
-  const latestMsgRows = await db
-    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
-    .from(latestMsgIdSub)
-    .innerJoin(
-      chatMessages,
-      eq(chatMessages.id, latestMsgIdSub.latestId),
-    )
-    .leftJoin(users, eq(chatMessages.senderId, users.id));
+  const [convRows, latestMsgRows, msgTimeRows] = await Promise.all([
+    db
+      .select()
+      .from(chatConversations)
+      .where(inArray(chatConversations.id, convIds)),
+    db
+      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+      .from(latestMsgIdSub)
+      .innerJoin(
+        chatMessages,
+        eq(chatMessages.id, latestMsgIdSub.latestId),
+      )
+      .leftJoin(users, eq(chatMessages.senderId, users.id)),
+    db
+      .select({
+        conversationId: chatMessages.conversationId,
+        senderId: chatMessages.senderId,
+        createdAt: chatMessages.createdAt,
+        extra: chatMessages.extra,
+      })
+      .from(chatMessages)
+      .where(inArray(chatMessages.conversationId, convIds)),
+  ]);
 
   const latestMsgMap = new Map(
     latestMsgRows.map((r) => [
@@ -439,22 +449,22 @@ export async function listConversations(): Promise<ChatConversation[]> {
       ))
     : [];
 
-  // 批量查部门名称
+  // 批量查部门名称 & 岗位名称（并行执行）
   const deptIds = [...new Set(directTargetRows.map((r) => r.departmentId).filter((id): id is number => id != null))];
-  const deptRows = deptIds.length > 0
-    ? await db.select({ id: departments.id, name: departments.name }).from(departments).where(inArray(departments.id, deptIds))
-    : [];
-  const deptNameMap = new Map(deptRows.map((d) => [d.id, d.name]));
-
-  // 批量查岗位名称
   const targetUserIds = directTargetRows.map((r) => r.id);
-  const positionRows = targetUserIds.length > 0
-    ? await db
-      .select({ userId: userPositions.userId, name: positions.name })
-      .from(userPositions)
-      .innerJoin(positions, eq(userPositions.positionId, positions.id))
-      .where(inArray(userPositions.userId, targetUserIds))
-    : [];
+  const [deptRows, positionRows] = await Promise.all([
+    deptIds.length > 0
+      ? db.select({ id: departments.id, name: departments.name }).from(departments).where(inArray(departments.id, deptIds))
+      : Promise.resolve([]),
+    targetUserIds.length > 0
+      ? db
+        .select({ userId: userPositions.userId, name: positions.name })
+        .from(userPositions)
+        .innerJoin(positions, eq(userPositions.positionId, positions.id))
+        .where(inArray(userPositions.userId, targetUserIds))
+      : Promise.resolve([]),
+  ]);
+  const deptNameMap = new Map(deptRows.map((d) => [d.id, d.name]));
   const positionNamesMap = new Map<number, string[]>();
   for (const r of positionRows) {
     const arr = positionNamesMap.get(r.userId) ?? [];
@@ -473,17 +483,6 @@ export async function listConversations(): Promise<ChatConversation[]> {
       positionNames: positionNamesMap.get(r.id) ?? [],
     }]),
   );
-
-  // 批量拉取消息时间（用于本地计算未读，避免逐会话 count 查询）
-  const msgTimeRows = await db
-    .select({
-      conversationId: chatMessages.conversationId,
-      senderId: chatMessages.senderId,
-      createdAt: chatMessages.createdAt,
-      extra: chatMessages.extra,
-    })
-    .from(chatMessages)
-    .where(inArray(chatMessages.conversationId, convIds));
 
   const unreadMap = new Map<number, number>();
   const mentionUnreadMap = new Map<number, boolean>();
@@ -614,57 +613,42 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
 
 export async function pinConversation(conversationId: number, pin: boolean): Promise<void> {
   const me = currentUser();
-  const member = await db.query.chatConversationMembers.findFirst({
-    where: and(
-      eq(chatConversationMembers.conversationId, conversationId),
-      eq(chatConversationMembers.userId, me.userId),
-    ),
-  });
-  if (!member) throw new HTTPException(403, { message: '无权操作该会话' });
-  await db.update(chatConversationMembers)
+  const [updated] = await db.update(chatConversationMembers)
     .set({ isPinned: pin })
     .where(and(
       eq(chatConversationMembers.conversationId, conversationId),
       eq(chatConversationMembers.userId, me.userId),
-    ));
+    ))
+    .returning({ id: chatConversationMembers.conversationId });
+  if (!updated) throw new HTTPException(403, { message: '无权操作该会话' });
 }
 
 // ─── 标记星标 / 取消星标 ──────────────────────────────────────────────────
 
 export async function starConversation(conversationId: number, star: boolean): Promise<void> {
   const me = currentUser();
-  const member = await db.query.chatConversationMembers.findFirst({
-    where: and(
-      eq(chatConversationMembers.conversationId, conversationId),
-      eq(chatConversationMembers.userId, me.userId),
-    ),
-  });
-  if (!member) throw new HTTPException(403, { message: '无权操作该会话' });
-  await db.update(chatConversationMembers)
+  const [updated] = await db.update(chatConversationMembers)
     .set({ isStarred: star })
     .where(and(
       eq(chatConversationMembers.conversationId, conversationId),
       eq(chatConversationMembers.userId, me.userId),
-    ));
+    ))
+    .returning({ id: chatConversationMembers.conversationId });
+  if (!updated) throw new HTTPException(403, { message: '无权操作该会话' });
 }
 
 // ─── 免打扰 / 取消免打扰 ──────────────────────────────────────────────────
 
 export async function muteConversation(conversationId: number, mute: boolean): Promise<void> {
   const me = currentUser();
-  const member = await db.query.chatConversationMembers.findFirst({
-    where: and(
-      eq(chatConversationMembers.conversationId, conversationId),
-      eq(chatConversationMembers.userId, me.userId),
-    ),
-  });
-  if (!member) throw new HTTPException(403, { message: '无权操作该会话' });
-  await db.update(chatConversationMembers)
+  const [updated] = await db.update(chatConversationMembers)
     .set({ isMuted: mute })
     .where(and(
       eq(chatConversationMembers.conversationId, conversationId),
       eq(chatConversationMembers.userId, me.userId),
-    ));
+    ))
+    .returning({ id: chatConversationMembers.conversationId });
+  if (!updated) throw new HTTPException(403, { message: '无权操作该会话' });
 }
 
 // ─── 消息列表（分页） ─────────────────────────────────────────────────────────
@@ -940,27 +924,28 @@ export async function getMessageContext(
 
   if (target.length === 0) throw new HTTPException(404, { message: '消息不存在' });
 
-  const beforeRows = await db
-    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
-    .from(chatMessages)
-    .leftJoin(users, eq(chatMessages.senderId, users.id))
-    .where(and(
-      eq(chatMessages.conversationId, conversationId),
-      lt(chatMessages.id, messageId),
-    ))
-    .orderBy(desc(chatMessages.id))
-    .limit(before);
-
-  const afterRows = await db
-    .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
-    .from(chatMessages)
-    .leftJoin(users, eq(chatMessages.senderId, users.id))
-    .where(and(
-      eq(chatMessages.conversationId, conversationId),
-      gt(chatMessages.id, messageId),
-    ))
-    .orderBy(asc(chatMessages.id))
-    .limit(after);
+  const [beforeRows, afterRows] = await Promise.all([
+    db
+      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+      .from(chatMessages)
+      .leftJoin(users, eq(chatMessages.senderId, users.id))
+      .where(and(
+        eq(chatMessages.conversationId, conversationId),
+        lt(chatMessages.id, messageId),
+      ))
+      .orderBy(desc(chatMessages.id))
+      .limit(before),
+    db
+      .select({ msg: chatMessages, nickname: users.nickname, avatar: users.avatar })
+      .from(chatMessages)
+      .leftJoin(users, eq(chatMessages.senderId, users.id))
+      .where(and(
+        eq(chatMessages.conversationId, conversationId),
+        gt(chatMessages.id, messageId),
+      ))
+      .orderBy(asc(chatMessages.id))
+      .limit(after),
+  ]);
 
   const reversedBefore = [...beforeRows].reverse();
   const allRows = [
@@ -999,19 +984,20 @@ export async function getMessageContext(
 export async function sendMessage(conversationId: number, input: SendChatMessageInput): Promise<ChatMessage> {
   const me = currentUser();
 
-  // 鉴权：确认当前用户是会话成员
-  const member = await db.query.chatConversationMembers.findFirst({
-    where: and(
-      eq(chatConversationMembers.conversationId, conversationId),
-      eq(chatConversationMembers.userId, me.userId),
-    ),
-  });
+  // 鉴权 & 发送者信息并行查询
+  const [member, sender] = await Promise.all([
+    db.query.chatConversationMembers.findFirst({
+      where: and(
+        eq(chatConversationMembers.conversationId, conversationId),
+        eq(chatConversationMembers.userId, me.userId),
+      ),
+    }),
+    db.query.users.findFirst({
+      where: eq(users.id, me.userId),
+      columns: { id: true, nickname: true, avatar: true },
+    }),
+  ]);
   if (!member) throw new HTTPException(403, { message: '无权向该会话发送消息' });
-
-  const sender = await db.query.users.findFirst({
-    where: eq(users.id, me.userId),
-    columns: { id: true, nickname: true, avatar: true },
-  });
 
   const [row] = await db.insert(chatMessages).values({
     conversationId,
@@ -1050,16 +1036,17 @@ export async function sendMessage(conversationId: number, input: SendChatMessage
 export async function forwardMessages(input: ForwardMessagesInput): Promise<void> {
   const me = currentUser();
 
-  // 鉴权：确认当前用户是所有目标会话的成员
-  for (const targetConvId of input.targetConversationIds) {
-    const member = await db.query.chatConversationMembers.findFirst({
-      where: and(
-        eq(chatConversationMembers.conversationId, targetConvId),
-        eq(chatConversationMembers.userId, me.userId),
-      ),
-    });
-    if (!member) throw new HTTPException(403, { message: `无权向会话 ${targetConvId} 发送消息` });
-  }
+  // 鉴权：确认当前用户是所有目标会话的成员（批量查询替代逐个查询）
+  const myMemberships = await db
+    .select({ conversationId: chatConversationMembers.conversationId })
+    .from(chatConversationMembers)
+    .where(and(
+      inArray(chatConversationMembers.conversationId, input.targetConversationIds),
+      eq(chatConversationMembers.userId, me.userId),
+    ));
+  const accessibleIds = new Set(myMemberships.map((r) => r.conversationId));
+  const forbidden = input.targetConversationIds.find((id) => !accessibleIds.has(id));
+  if (forbidden) throw new HTTPException(403, { message: `无权向会话 ${forbidden} 发送消息` });
 
   // 获取原始消息列表（按时间升序）
   const sourceMsgs = await db.query.chatMessages.findMany({
