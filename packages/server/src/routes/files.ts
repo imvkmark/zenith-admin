@@ -9,6 +9,24 @@ import {
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
 
+/**
+ * 可安全内联渲染的 MIME 类型白名单。
+ * SVG、HTML、XML、JS 等类型可能内嵌脚本，必须以 attachment 下载，防止 Stored XSS。
+ */
+const SAFE_INLINE_MIME_TYPES = new Set([
+  'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+  'image/bmp', 'image/ico', 'image/x-icon',
+  'video/mp4', 'video/webm', 'video/ogg',
+  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm',
+  'application/pdf',
+]);
+
+function resolveContentDisposition(mimeType: string, fileName: string): string {
+  const normalizedMime = mimeType.split(';')[0].trim().toLowerCase();
+  const disposition = SAFE_INLINE_MIME_TYPES.has(normalizedMime) ? 'inline' : 'attachment';
+  return `${disposition}; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
 const contentRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/{id}/content', tags: ['Files'], summary: '公开访问文件内容',
@@ -25,7 +43,8 @@ const contentRoute = defineOpenAPIRoute({
     return new Response(new Uint8Array(storedFile.buffer), {
       headers: {
         'Content-Type': storedFile.contentType,
-        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(storedFile.fileName)}`,
+        'Content-Disposition': resolveContentDisposition(storedFile.contentType, storedFile.fileName),
+        'X-Content-Type-Options': 'nosniff',
       },
     }) as never;
   },
