@@ -18,6 +18,7 @@ import { createNodeWebSocket } from '@hono/node-ws';
 import { swaggerUI } from '@hono/swagger-ui';
 import { config } from './config';
 import { closeDb } from './db';
+import { closeRedis } from './lib/redis';
 import logger from './lib/logger';
 import { errBody } from './lib/openapi-schemas';
 import { ipAccessMiddleware } from './middleware/ip-access';
@@ -55,7 +56,7 @@ import logFilesRoutes from './routes/log-files';
 import chatRoutes from './routes/chat';
 import { createWsRoute } from './routes/ws';
 import stripAnsi from 'strip-ansi';
-import { initCronScheduler } from './lib/cron-scheduler';
+import { initCronScheduler, stopAllJobs } from './lib/cron-scheduler';
 import { initTelemetry } from './lib/telemetry';
 import { metricsSampler } from './lib/metrics-sampler';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
@@ -244,7 +245,9 @@ async function shutdown(signal: NodeJS.Signals) {
   logger.info(`Received ${signal}, shutting down gracefully...`);
   await new Promise<void>((resolve) => server.close(() => resolve()));
   metricsSampler.stop();
+  stopAllJobs();
   await closeDb();
+  await closeRedis();
   logger.info('Server shutdown complete');
 }
 

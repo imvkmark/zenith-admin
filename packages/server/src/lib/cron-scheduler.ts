@@ -83,6 +83,14 @@ export function stopJob(jobId: number): void {
   }
 }
 
+/** Stop all scheduled jobs (called on server shutdown) */
+export function stopAllJobs(): void {
+  for (const [jobId, task] of activeTasks) {
+    task.stop();
+    activeTasks.delete(jobId);
+  }
+}
+
 /** Execute a job immediately (manual trigger) */
 export async function runJobOnce(jobId: number): Promise<{ success: boolean; message: string }> {
   const [job] = await db.select().from(cronJobs).where(eq(cronJobs.id, jobId)).limit(1);

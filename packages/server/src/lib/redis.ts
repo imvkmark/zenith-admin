@@ -35,4 +35,8 @@ function createRedisClient(): Redis {
 
 const redis = createRedisClient();
 
+export async function closeRedis(): Promise<void> {
+  await redis.quit();
+}
+
 export default redis;
