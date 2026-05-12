@@ -833,61 +833,156 @@ body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
   line-height: 1;
 }
 
+/* ===== 标签页动画选择器（自定义按钮组） ===== */
+.tab-anim-picker {
+  display: inline-flex;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium, 6px);
+  overflow: hidden;
+}
+
+.tab-anim-picker__btn {
+  padding: 5px 12px;
+  font-size: 13px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--semi-color-border);
+  cursor: pointer;
+  color: var(--semi-color-text-0);
+  transition: background 0.12s, color 0.12s;
+  line-height: 1.5;
+}
+
+.tab-anim-picker__btn:last-child {
+  border-right: none;
+}
+
+.tab-anim-picker__btn:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.tab-anim-picker__btn--active {
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+  font-weight: 500;
+}
+
+/* ===== 标签页动画预览弹出层（Popover 内容） ===== */
+.tab-anim-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.tab-anim-preview__pill {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  padding: 2px 8px;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-anim-preview__pill--active {
+  color: var(--semi-color-primary);
+  font-weight: 500;
+  border-bottom-color: var(--semi-color-primary);
+}
+
+.tab-anim-preview__demo {
+  color: var(--color-text-secondary);
+}
+
+@keyframes preview-loop-fade {
+  0%   { opacity: 0; transform: translateY(-4px); }
+  15%  { opacity: 1; transform: translateY(0); }
+  65%  { opacity: 1; transform: translateY(0); }
+  80%  { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+@keyframes preview-loop-slide {
+  0%   { opacity: 0; transform: translateX(-24px); }
+  15%  { opacity: 1; transform: translateX(0); }
+  65%  { opacity: 1; transform: translateX(0); }
+  80%  { opacity: 0; transform: translateX(-24px); }
+  100% { opacity: 0; transform: translateX(-24px); }
+}
+
+@keyframes preview-loop-scale {
+  0%   { opacity: 0; transform: scaleX(0.3) scaleY(0.8); transform-origin: left center; }
+  20%  { opacity: 1; transform: scaleX(1)   scaleY(1);   transform-origin: left center; }
+  65%  { opacity: 1; transform: scaleX(1)   scaleY(1);   transform-origin: left center; }
+  80%  { opacity: 0; transform: scaleX(0.3) scaleY(0.8); transform-origin: left center; }
+  100% { opacity: 0; transform: scaleX(0.3) scaleY(0.8); transform-origin: left center; }
+}
+
+.tab-anim-preview[data-anim="fade"] .tab-anim-preview__demo {
+  animation: preview-loop-fade 2.5s ease infinite;
+}
+.tab-anim-preview[data-anim="slide"] .tab-anim-preview__demo {
+  animation: preview-loop-slide 2.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.tab-anim-preview[data-anim="scale"] .tab-anim-preview__demo {
+  animation: preview-loop-scale 2.5s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  transform-origin: left center;
+}
+
 /* ===== 标签页动画 keyframes ===== */
 @keyframes tab-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes tab-fade-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-4px); }
 }
 
 @keyframes tab-slide-in {
-  from { transform: translateX(-14px); opacity: 0; }
+  from { transform: translateX(-24px); opacity: 0; }
   to   { transform: translateX(0);     opacity: 1; }
 }
 
 @keyframes tab-slide-out {
   from { transform: translateX(0);     opacity: 1; }
-  to   { transform: translateX(-14px); opacity: 0; }
+  to   { transform: translateX(-24px); opacity: 0; }
 }
 
 @keyframes tab-scale-in {
-  from { transform: scaleX(0.5); opacity: 0; transform-origin: left center; }
-  to   { transform: scaleX(1);   opacity: 1; transform-origin: left center; }
+  from { transform: scaleX(0.3) scaleY(0.8); opacity: 0; transform-origin: left center; }
+  to   { transform: scaleX(1)   scaleY(1);   opacity: 1; transform-origin: left center; }
 }
 
 @keyframes tab-scale-out {
-  from { transform: scaleX(1);   opacity: 1; transform-origin: left center; }
-  to   { transform: scaleX(0.5); opacity: 0; transform-origin: left center; }
+  from { transform: scaleX(1)   scaleY(1);   opacity: 1; transform-origin: left center; }
+  to   { transform: scaleX(0.3) scaleY(0.8); opacity: 0; transform-origin: left center; }
 }
 
 /* ── 淡入淡出 ── */
 .admin-tabs-bar[data-tab-animation="fade"] .admin-tab-item--entering {
-  animation: tab-fade-in 0.22s ease both;
+  animation: tab-fade-in 0.35s ease both;
 }
 .admin-tabs-bar[data-tab-animation="fade"] .admin-tab-item--exiting {
-  animation: tab-fade-out 0.2s ease forwards;
+  animation: tab-fade-out 0.25s ease forwards;
   pointer-events: none;
 }
 
 /* ── 滑入滑出 ── */
 .admin-tabs-bar[data-tab-animation="slide"] .admin-tab-item--entering {
-  animation: tab-slide-in 0.22s ease both;
+  animation: tab-slide-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .admin-tabs-bar[data-tab-animation="slide"] .admin-tab-item--exiting {
-  animation: tab-slide-out 0.2s ease forwards;
+  animation: tab-slide-out 0.25s ease forwards;
   pointer-events: none;
 }
 
 /* ── 缩放弹出 ── */
 .admin-tabs-bar[data-tab-animation="scale"] .admin-tab-item--entering {
-  animation: tab-scale-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: tab-scale-in 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .admin-tabs-bar[data-tab-animation="scale"] .admin-tab-item--exiting {
-  animation: tab-scale-out 0.2s ease forwards;
+  animation: tab-scale-out 0.25s ease forwards;
   pointer-events: none;
   overflow: hidden;
 }

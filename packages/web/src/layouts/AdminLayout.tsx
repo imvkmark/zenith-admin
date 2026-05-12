@@ -6,7 +6,7 @@ import { Bell, Building2, Check, Maximize2, Minimize2, Sun, Moon, Monitor, User 
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, Notice, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
-import { usePreferences, type NavLayout, type TabAnimation } from '@/hooks/usePreferences';
+import { usePreferences, type NavLayout } from '@/hooks/usePreferences';
 import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
 import { useThemeController } from '@/providers/ThemeProvider';
 import { useTabsStore } from '@/hooks/useTabsStore';
@@ -479,7 +479,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         setEnteringTabKeys((s) => new Set([...s, newTab.key]));
         setTimeout(() => {
           setEnteringTabKeys((s) => { const n = new Set(s); n.delete(newTab.key); return n; });
-        }, 300);
+        }, 420);
       }
     }
     prevTabsLengthRef.current = tabs.length;
@@ -515,7 +515,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     setTimeout(() => {
       setExitingTabKeys((s) => { const n = new Set(s); n.delete(key); return n; });
       doRemoveTab(key);
-    }, 220);
+    }, 280);
   };
 
   const handleTabRefresh = (key: string) => {
@@ -1085,16 +1085,39 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   {/* ── 标签页动画 ── */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>标签页动画</span>
-                    <RadioGroup
-                      type="button"
-                      value={preferences.tabAnimation}
-                      onChange={(e) => setPreferences({ tabAnimation: e.target.value as TabAnimation })}
-                    >
-                      <Radio value="none">无</Radio>
-                      <Radio value="fade">淡入</Radio>
-                      <Radio value="slide">滑入</Radio>
-                      <Radio value="zoom">缩放</Radio>
-                    </RadioGroup>
+                    <div className="tab-anim-picker">
+                      {(['none', 'fade', 'slide', 'scale'] as const).map((anim) => {
+                        const labels: Record<string, string> = { none: '无', fade: '淡入', slide: '滑入', scale: '缩放' };
+                        const btn = (
+                          <button
+                            type="button"
+                            className={`tab-anim-picker__btn${preferences.tabAnimation === anim ? ' tab-anim-picker__btn--active' : ''}`}
+                            onClick={() => setPreferences({ tabAnimation: anim })}
+                          >
+                            {labels[anim]}
+                          </button>
+                        );
+                        if (anim === 'none') return <span key={anim}>{btn}</span>;
+                        return (
+                          <Popover
+                            key={anim}
+                            trigger="hover"
+                            position="bottom"
+                            mouseEnterDelay={100}
+                            mouseLeaveDelay={100}
+                            content={
+                              <div className="tab-anim-preview" data-anim={anim}>
+                                <span className="tab-anim-preview__pill">首页</span>
+                                <span className="tab-anim-preview__pill tab-anim-preview__pill--active">用户管理</span>
+                                <span className="tab-anim-preview__pill tab-anim-preview__demo">角色管理</span>
+                              </div>
+                            }
+                          >
+                            {btn}
+                          </Popover>
+                        );
+                      })}
+                    </div>
                   </div>
                 </>
               )}
