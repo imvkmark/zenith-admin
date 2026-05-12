@@ -243,12 +243,21 @@ async function shutdown(signal: NodeJS.Signals) {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info(`Received ${signal}, shutting down gracefully...`);
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  metricsSampler.stop();
-  stopAllJobs();
-  await closeDb();
-  await closeRedis();
-  logger.info('Server shutdown complete');
+  // 30s 超时保护：防止 keep-alive 连接导致 server.close() 永久阻塞
+  const closeServer = new Promise<void>((resolve) => server.close(() => resolve()));
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 30_000));
+  await Promise.race([closeServer, timeout]);
+  try {
+    metricsSampler.stop();
+    stopAllJobs();
+    await closeDb();
+    await closeRedis();
+    logger.info('Server shutdown complete');
+  } catch (err) {
+    logger.error('Error during shutdown', err);
+  } finally {
+    process.exit(0);
+  }
 }
 
 process.once('SIGINT', () => { void shutdown('SIGINT'); });
