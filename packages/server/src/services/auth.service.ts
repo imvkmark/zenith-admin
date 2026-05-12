@@ -2,7 +2,7 @@ import { and, desc, eq, gt, gte, isNull, like, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { users, loginLogs, tenants, operationLogs, passwordResetTokens } from '../db/schema';
 import { signToken, verifyToken } from '../lib/jwt';
-import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout } from '../lib/session-manager';
+import { generateTokenId, registerSession, removeSession, checkLoginLock, recordLoginFailure, clearLoginAttempts, getOnlineSessions, forceLogout, getSession } from '../lib/session-manager';
 import type { JwtPayload } from '../middleware/auth';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 import { parseUserAgent } from '../lib/request-helpers';
@@ -247,7 +247,7 @@ export async function register(input: RegisterInput) {
   };
 }
 
-export async function refreshAccessToken(token: string) {
+export async function refreshAccessToken(token: string, clientInfo?: { ip: string; ua: string }) {
   let payload;
   try {
     payload = await verifyToken<{ userId: number; username: string; type?: string; jti?: string; tenantId?: number | null }>(token);
@@ -255,7 +255,7 @@ export async function refreshAccessToken(token: string) {
     throw new HTTPException(401, { message: 'refresh token 已过期' });
   }
   if (payload.type !== 'refresh') throw new HTTPException(401, { message: '无效的 refresh token' });
-  const [u] = await db.select({ status: users.status }).from(users).where(eq(users.id, payload.userId)).limit(1);
+  const [u] = await db.select({ status: users.status, nickname: users.nickname }).from(users).where(eq(users.id, payload.userId)).limit(1);
   if (!u) throw new HTTPException(401, { message: '用户不存在' });
   if (u.status === 'disabled') throw new HTTPException(403, { message: '账号已被禁用' });
   const tokenId = payload.jti ?? generateTokenId();
@@ -264,6 +264,22 @@ export async function refreshAccessToken(token: string) {
     { userId: payload.userId, username: payload.username, roles: userRoleList.map((r) => r.code), tenantId: payload.tenantId ?? null, jti: tokenId },
     '2h',
   );
+  // 若 Redis 中无此 session（Redis 重启或 TTL 过期），重新注册以保持在线用户列表准确
+  const existing = await getSession(tokenId);
+  if (!existing && clientInfo) {
+    const { browser, os } = parseUserAgent(clientInfo.ua);
+    await registerSession({
+      tokenId,
+      userId: payload.userId,
+      username: payload.username,
+      nickname: u.nickname,
+      tenantId: payload.tenantId ?? null,
+      ip: clientInfo.ip,
+      browser,
+      os,
+      loginAt: new Date(),
+    });
+  }
   return { accessToken };
 }
 

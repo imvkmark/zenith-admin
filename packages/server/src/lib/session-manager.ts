@@ -41,14 +41,15 @@ export async function registerSession(info: Omit<SessionInfo, 'lastActiveAt'>): 
   );
 }
 
-/** Refresh session activity timestamp and reset TTL */
-export async function touchSession(tokenId: string): Promise<void> {
+/** Refresh session activity timestamp and reset TTL. Returns true if session existed, false if not found. */
+export async function touchSession(tokenId: string): Promise<boolean> {
   const key = `${SESSION_PREFIX}${tokenId}`;
   const raw = await redis.get(key);
-  if (!raw) return;
+  if (!raw) return false;
   const session: SessionInfo = JSON.parse(raw);
   session.lastActiveAt = new Date();
   await redis.set(key, JSON.stringify(session), 'EX', SESSION_TTL);
+  return true;
 }
 
 /** Check if a token is blacklisted */
@@ -88,6 +89,16 @@ export async function forceLogoutAllByUser(userId: number): Promise<string[]> {
 /** Remove session (normal logout or token expired) */
 export async function removeSession(tokenId: string): Promise<void> {
   await redis.del(`${SESSION_PREFIX}${tokenId}`);
+}
+
+/** Get a single session by tokenId */
+export async function getSession(tokenId: string): Promise<SessionInfo | null> {
+  const raw = await redis.get(`${SESSION_PREFIX}${tokenId}`);
+  if (!raw) return null;
+  const s = JSON.parse(raw) as SessionInfo;
+  s.loginAt = new Date(s.loginAt);
+  s.lastActiveAt = new Date(s.lastActiveAt);
+  return s;
 }
 
 /** Get all online sessions */

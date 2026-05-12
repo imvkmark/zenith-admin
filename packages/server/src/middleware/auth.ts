@@ -1,6 +1,10 @@
 import { createMiddleware } from 'hono/factory';
 import { jwt, type JwtVariables } from 'hono/jwt';
-import { isTokenBlacklisted, touchSession } from '../lib/session-manager';
+import { isTokenBlacklisted, touchSession, registerSession } from '../lib/session-manager';
+import { getClientIp, parseUserAgent } from '../lib/request-helpers';
+import { db } from '../db';
+import { users } from '../db/schema';
+import { eq } from 'drizzle-orm';
 import { config } from '../config';
 import { errBody } from '../lib/openapi-schemas';
 
@@ -48,7 +52,27 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
 
     // Refresh session activity
     if (payload.jti) {
-      await touchSession(payload.jti);
+      const existed = await touchSession(payload.jti);
+      // Session missing (e.g. Redis restarted) — lazily re-register to keep online-users list accurate
+      if (!existed) {
+        const ip = getClientIp(c);
+        const ua = c.req.header('user-agent') ?? '';
+        const { browser, os } = parseUserAgent(ua);
+        const [u] = await db.select({ nickname: users.nickname }).from(users).where(eq(users.id, payload.userId)).limit(1);
+        if (u) {
+          registerSession({
+            tokenId: payload.jti,
+            userId: payload.userId,
+            username: payload.username,
+            nickname: u.nickname,
+            tenantId: payload.tenantId ?? null,
+            ip,
+            browser,
+            os,
+            loginAt: new Date(),
+          }).catch(() => { /* best-effort, ignore errors */ });
+        }
+      }
     }
 
     c.set('user', payload);

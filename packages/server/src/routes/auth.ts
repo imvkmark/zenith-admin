@@ -106,7 +106,8 @@ const refreshRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { refreshToken } = c.req.valid('json');
-    return c.json(okBody(await refreshAccessToken(refreshToken)), 200);
+    const { ip, ua } = getClientInfo(c.req.raw.headers);
+    return c.json(okBody(await refreshAccessToken(refreshToken, { ip, ua })), 200);
   },
 });
 
