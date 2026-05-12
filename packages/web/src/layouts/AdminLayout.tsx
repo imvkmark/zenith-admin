@@ -1039,19 +1039,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     onChange={(v) => setThemeColor(v.hex)}
                     popoverProps={{ position: 'top', zIndex: 10010 }}
                   >
-                    <Tooltip content="自定义颜色" position="top">
-                      <button
-                        type="button"
-                        className={`theme-color-swatch theme-color-swatch--custom${themeColor.startsWith('#') ? ' theme-color-swatch--active' : ''}`}
-                        style={themeColor.startsWith('#') ? { backgroundColor: themeColor, color: themeColor } : {}}
-                        title="自定义颜色"
-                      >
-                        {themeColor.startsWith('#')
-                          ? <span className="theme-color-swatch__check"><Check size={14} strokeWidth={2.5} /></span>
-                          : <span className="theme-color-swatch__icon"><Palette size={14} /></span>
-                        }
-                      </button>
-                    </Tooltip>
+                    <button
+                      type="button"
+                      className={`theme-color-swatch theme-color-swatch--custom${themeColor.startsWith('#') ? ' theme-color-swatch--active' : ''}`}
+                      style={themeColor.startsWith('#') ? { backgroundColor: themeColor, color: themeColor } : {}}
+                      title="自定义颜色"
+                    >
+                      {themeColor.startsWith('#')
+                        ? <span className="theme-color-swatch__check"><Check size={14} strokeWidth={2.5} /></span>
+                        : <span className="theme-color-swatch__icon"><Palette size={14} /></span>
+                      }
+                    </button>
                   </ColorPicker>
                 </div>
               </div>
