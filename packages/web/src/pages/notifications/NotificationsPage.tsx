@@ -4,7 +4,7 @@ import {
   Table, Button, Tag, Space, Tabs, TabPane, Modal, Typography, Toast, Empty, Badge, Divider,
 } from '@douyinfe/semi-ui';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
-import { CheckCheck, Bell, Clock, BookOpen } from 'lucide-react';
+import { CheckCheck, Bell, Clock, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Notice } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -41,6 +41,7 @@ export default function NotificationsPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<NoticeWithRead | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
   const fetchList = useCallback(async (p = 1, tab = activeTab) => {
     setLoading(true);
@@ -65,14 +66,23 @@ export default function NotificationsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  const markAsRead = async (item: NoticeWithRead) => {
+  const openNotice = async (item: NoticeWithRead, index: number) => {
     if (!item.isRead) {
       await request.post(`/api/notices/${item.id}/read`, undefined, { silent: true });
     }
-    setSelected(item);
+    setSelected({ ...item, isRead: true });
+    setSelectedIndex(index);
     setModalVisible(true);
     // optimistic update
     setList((prev) => prev.map((n) => n.id === item.id ? { ...n, isRead: true } : n));
+  };
+
+  const handlePrev = () => {
+    if (selectedIndex > 0) void openNotice(list[selectedIndex - 1], selectedIndex - 1);
+  };
+
+  const handleNext = () => {
+    if (selectedIndex < list.length - 1) void openNotice(list[selectedIndex + 1], selectedIndex + 1);
   };
 
   const handleMarkAllRead = async () => {
@@ -96,12 +106,12 @@ export default function NotificationsPage() {
     {
       title: '标题',
       dataIndex: 'title',
-      render: (v: string, record: NoticeWithRead) => (
+      render: (v: string, record: NoticeWithRead, index: number) => (
         <Button
           theme="borderless"
           size="small"
           style={{ fontWeight: record.isRead ? 400 : 600, padding: 0 }}
-          onClick={() => void markAsRead(record)}
+          onClick={() => void openNotice(record, index)}
         >
           {!record.isRead && (
             <Badge dot style={{ marginRight: 6, verticalAlign: 'middle' }} />
@@ -146,11 +156,11 @@ export default function NotificationsPage() {
       title: '操作',
       width: 80,
       fixed: 'right' as const,
-      render: (_: unknown, record: NoticeWithRead) => (
+      render: (_: unknown, record: NoticeWithRead, index: number) => (
         <Button
           theme="borderless"
           size="small"
-          onClick={() => void markAsRead(record)}
+          onClick={() => void openNotice(record, index)}
         >
           查看
         </Button>
@@ -230,8 +240,24 @@ export default function NotificationsPage() {
           </Space>
         }
         footer={
-          <div style={{ textAlign: 'right' }}>
-            <Button onClick={() => setModalVisible(false)}>关闭</Button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Space>
+              <Button
+                icon={<ChevronLeft size={14} />}
+                disabled={selectedIndex <= 0}
+                onClick={handlePrev}
+              >上一条</Button>
+              <Button
+                icon={<ChevronRight size={14} />}
+                iconPosition="right"
+                disabled={selectedIndex >= list.length - 1}
+                onClick={handleNext}
+              >下一条</Button>
+            </Space>
+            <Space>
+              <Text type="tertiary" size="small">{selectedIndex + 1} / {list.length}</Text>
+              <Button onClick={() => setModalVisible(false)}>关闭</Button>
+            </Space>
           </div>
         }
         closeOnEsc
