@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import DOMPurify from 'dompurify';
 import {
-  Table, Button, Tag, Space, Tabs, TabPane, Modal, Typography, Toast, Empty, Badge,
+  Table, Button, Tag, Space, Tabs, TabPane, Modal, Typography, Toast, Empty, Badge, Divider,
 } from '@douyinfe/semi-ui';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
-import { CheckCheck, Bell } from 'lucide-react';
+import { CheckCheck, Bell, Clock, BookOpen } from 'lucide-react';
 import type { Notice } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
@@ -222,24 +222,58 @@ export default function NotificationsPage() {
       <Modal
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
-        width={560}
-        title={selected?.title ?? ''}
-        footer={null}
+        width={600}
+        title={
+          <Space spacing={8}>
+            <BookOpen size={16} strokeWidth={1.5} style={{ color: 'var(--semi-color-primary)', flexShrink: 0 }} />
+            <span>{selected?.title ?? ''}</span>
+          </Space>
+        }
+        footer={
+          <div style={{ textAlign: 'right' }}>
+            <Button onClick={() => setModalVisible(false)}>关闭</Button>
+          </div>
+        }
         closeOnEsc
       >
         {selected && (
           <div>
-            <Space wrap style={{ marginBottom: 16 }}>
-              <Tag size="small">{TYPE_LABEL[selected.type] ?? selected.type}</Tag>
+            {/* 元信息区 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+              marginBottom: 16,
+              paddingBottom: 12,
+              borderBottom: '1px solid var(--semi-color-border)',
+            }}>
+              <Tag size="small" color="blue">{TYPE_LABEL[selected.type] ?? selected.type}</Tag>
               <Tag color={PRIORITY_COLOR[selected.priority] ?? 'blue'} size="small">
                 {PRIORITY_LABEL[selected.priority] ?? selected.priority}
               </Tag>
-              <Text type="tertiary" size="small">
-                {formatDateTime(selected.publishTime ?? selected.createdAt)}
-              </Text>
-            </Space>
+              <Divider layout="vertical" style={{ height: 12, margin: '0 2px' }} />
+              <Space spacing={4}>
+                <Clock size={12} strokeWidth={1.5} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
+                <Text type="tertiary" size="small">
+                  {formatDateTime(selected.publishTime ?? selected.createdAt)}
+                </Text>
+              </Space>
+              <div style={{ marginLeft: 'auto' }}>
+                <Tag color={selected.isRead ? 'grey' : 'blue'} size="small">
+                  {selected.isRead ? '已读' : '未读'}
+                </Tag>
+              </div>
+            </div>
+            {/* 正文区 */}
             <div
-              style={{ lineHeight: 1.8, color: 'var(--semi-color-text-0)' }}
+              style={{
+                lineHeight: 1.9,
+                color: 'var(--semi-color-text-0)',
+                minHeight: 80,
+                fontSize: 14,
+                padding: '0 2px',
+              }}
               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selected.content) }}
             />
           </div>
