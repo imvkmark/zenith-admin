@@ -1,73 +1,36 @@
-.profile-layout {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-}
-
-.profile-avatar-card {
-  width: 240px;
-  flex-shrink: 0;
-}
-
-.profile-avatar-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
-  text-align: center;
-}
-
-.profile-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 16px;
-  width: 100%;
-  text-align: left;
-}
-
-.profile-form-card {
-  flex: 1;
-  min-width: 0;
-}
-
-/* 右侧内容卡片 */
 .profile-content-card {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
 }
 
-/* Semi Tabs 垂直导航覆盖 */
+/* Semi Tabs 顶部导航覆盖 */
 .profile-tabs {
   min-height: 480px;
 }
 
-.profile-tabs .semi-tabs-bar-left {
-  width: 150px;
-  flex-shrink: 0;
-  padding: 8px 0;
-  border-right: 1px solid var(--semi-color-border);
-  background: transparent;
+.profile-tabs > .semi-tabs-bar {
+  padding: 0 20px;
+  border-bottom: 1px solid var(--semi-color-border);
 }
 
-.profile-tabs .semi-tabs-tab {
+.profile-tabs > .semi-tabs-bar .semi-tabs-tab {
   padding: 0;
-  margin: 0;
+  margin: 0 8px 0 0;
   height: auto;
 }
 
-.profile-tabs .semi-tabs-content-wrapper {
+.profile-tabs > .semi-tabs-content-wrapper {
   flex: 1;
   min-width: 0;
 }
 
-.profile-tabs .semi-tabs-content {
+.profile-tabs > .semi-tabs-content-wrapper > .semi-tabs-content {
   flex: 1 1 0%;
   min-width: 0;
 }
 
-.profile-tabs .semi-tabs-pane {
+.profile-tabs > .semi-tabs-content-wrapper > .semi-tabs-content > .semi-tabs-pane {
   padding: 0;
 }
 
@@ -76,15 +39,64 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 20px;
+  padding: 12px 8px;
   font-size: 13px;
-  width: 150px;
+  width: auto;
   box-sizing: border-box;
 }
 
 /* 内容区 */
 .profile-section {
   padding: 24px 28px;
+}
+
+.profile-basic-overview {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 12px;
+  background: var(--semi-color-fill-0);
+}
+
+.profile-basic-summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profile-basic-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profile-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 16px;
+  width: 100%;
+  text-align: left;
+}
+
+.profile-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.profile-meta-item > .semi-typography:first-child {
+  flex-shrink: 0;
+}
+
+.profile-basic-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .section-title {
@@ -192,11 +204,33 @@
 }
 
 @media (max-width: 768px) {
-  .profile-layout {
-    flex-direction: column;
+  .profile-tabs > .semi-tabs-bar {
+    padding: 0 12px;
+    overflow-x: auto;
   }
 
-  .profile-avatar-card {
-    width: 100%;
+  .profile-section {
+    padding: 20px 16px;
+  }
+
+  .profile-basic-overview {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .profile-basic-summary,
+  .profile-basic-heading,
+  .profile-basic-actions {
+    align-items: center;
+  }
+
+  .profile-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-meta-item {
+    justify-content: center;
+    flex-wrap: wrap;
   }
 }

@@ -69,6 +69,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   // ─── 头像裁剪 ────────────────────────────────────────────────────────────────
   const cropperRef = useRef<Cropper>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [cropperVisible, setCropperVisible] = useState(false);
   const [cropperSrc, setCropperSrc] = useState('');
   const [avatarLoading, setAvatarLoading] = useState(false);
@@ -271,6 +272,10 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     });
   }
 
+  function openAvatarPicker() {
+    avatarInputRef.current?.click();
+  }
+
   // ─── 静态配置 ────────────────────────────────────────────────────────────────
 
   const PROVIDER_INFO: Record<OAuthProviderType, { label: string; icon: React.ReactNode }> = {
@@ -281,63 +286,12 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
 
   return (
     <div className="page-container">
-      <div className="profile-layout">
-
-        {/* ── 左侧头像卡片 ────────────────────────────────────────────────── */}
-        <Card className="profile-avatar-card">
-          <div className="profile-avatar-section">
-            <button
-              type="button"
-              className="avatar-upload-trigger"
-              onClick={() => document.getElementById('avatar-file-input')?.click()}
-            >
-              {avatarLoading ? (
-                <div className="avatar-loading-wrapper" style={{ width: 80, height: 80 }}><Spin /></div>
-              ) : (
-                <>
-                  <Avatar
-                    size="extra-large"
-                    color="blue"
-                    style={{ fontSize: 28, width: 80, height: 80 }}
-                    src={user.avatar || undefined}
-                  >
-                    {!user.avatar && (user.nickname?.charAt(0)?.toUpperCase() || 'U')}
-                  </Avatar>
-                  <div className="avatar-upload-mask">更换头像</div>
-                </>
-              )}
-            </button>
-            <input
-              id="avatar-file-input"
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={handleAvatarFileSelect}
-            />
-            <Title heading={5} style={{ margin: '12px 0 4px' }}>{user.nickname}</Title>
-            <Text type="tertiary" size="small">@{user.username}</Text>
-            <div className="profile-meta">
-              <Text type="tertiary" size="small">邮箱：{user.email}</Text>
-              <Text type="tertiary" size="small">
-                角色：{user.roles?.length ? (
-                  <Space spacing={4} style={{ display: 'inline-flex' }}>
-                    {user.roles.map((r) => <Tag key={r.id} size="small" color="blue">{r.name}</Tag>)}
-                  </Space>
-                ) : '无角色'}
-              </Text>
-              <Text type="tertiary" size="small">注册时间：{formatDateTime(user.createdAt)}</Text>
-            </div>
-          </div>
-        </Card>
-
-        {/* ── 右侧：Semi Tabs 垂直导航 ──────────────────────────────── */}
-        <Card className="profile-content-card" bodyStyle={{ padding: 0 }}>
-          <Tabs
-            tabPosition="left"
-            activeKey={activeSection}
-            onChange={(v) => setActiveSection(v as SectionKey)}
-            className="profile-tabs"
-          >
+      <Card className="profile-content-card" bodyStyle={{ padding: 0 }}>
+        <Tabs
+          activeKey={activeSection}
+          onChange={(v) => setActiveSection(v as SectionKey)}
+          className="profile-tabs"
+        >
             {/* ── 基本信息 ──────────────────────────────────────── */}
             <Tabs.TabPane
               itemKey="profile"
@@ -345,6 +299,69 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
             >
               <div className="profile-section">
                   <div className="section-title">基本信息</div>
+                    <div className="profile-basic-overview">
+                      <button
+                        type="button"
+                        className="avatar-upload-trigger"
+                        onClick={openAvatarPicker}
+                        aria-label="更换头像"
+                      >
+                        {avatarLoading ? (
+                          <div className="avatar-loading-wrapper" style={{ width: 80, height: 80 }}><Spin /></div>
+                        ) : (
+                          <>
+                            <Avatar
+                              size="extra-large"
+                              color="blue"
+                              style={{ fontSize: 28, width: 80, height: 80 }}
+                              src={user.avatar || undefined}
+                            >
+                              {!user.avatar && (user.nickname?.charAt(0)?.toUpperCase() || 'U')}
+                            </Avatar>
+                            <div className="avatar-upload-mask">更换头像</div>
+                          </>
+                        )}
+                      </button>
+                      <input
+                        ref={avatarInputRef}
+                        id="avatar-file-input"
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={handleAvatarFileSelect}
+                      />
+                      <div className="profile-basic-summary">
+                        <div className="profile-basic-heading">
+                          <Title heading={5} style={{ margin: 0 }}>{user.nickname}</Title>
+                          <Text type="tertiary" size="small">@{user.username}</Text>
+                        </div>
+                        <div className="profile-meta">
+                          <div className="profile-meta-item">
+                            <Text type="tertiary" size="small">邮箱</Text>
+                            <Text size="small">{user.email}</Text>
+                          </div>
+                          <div className="profile-meta-item">
+                            <Text type="tertiary" size="small">角色</Text>
+                            {user.roles?.length ? (
+                              <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
+                                {user.roles.map((r) => <Tag key={r.id} size="small" color="blue">{r.name}</Tag>)}
+                              </Space>
+                            ) : <Text size="small">无角色</Text>}
+                          </div>
+                          <div className="profile-meta-item">
+                            <Text type="tertiary" size="small">注册时间</Text>
+                            <Text size="small">{formatDateTime(user.createdAt)}</Text>
+                          </div>
+                        </div>
+                        <div className="profile-basic-actions">
+                          <Button size="small" theme="light" loading={avatarLoading} onClick={openAvatarPicker}>更换头像</Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="section-divider" />
+
+                    <div className="section-title">资料编辑</div>
                   <Form
                     initValues={{ nickname: user.nickname, email: user.email }}
                     onSubmit={handleUpdateProfile}
@@ -593,8 +610,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
             </Tabs.TabPane>
 
           </Tabs>
-        </Card>
-      </div>
+          </Card>
 
       {/* ── 头像裁剪 Modal ──────────────────────────────────────────────────── */}
       <Modal
