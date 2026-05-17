@@ -1,0 +1,23 @@
+/**
+ * 部门相关 DTO
+ */
+import { z } from '@hono/zod-openapi';
+
+export const DepartmentDTO: z.ZodType = z
+  .object({
+    id: z.number().int(),
+    parentId: z.number().int().openapi({ example: 0 }),
+    name: z.string().openapi({ example: '技术部' }),
+    code: z.string(),
+    leader: z.string().optional(),
+    phone: z.string().optional(),
+    email: z.string().optional(),
+    sort: z.number().int(),
+    status: z.enum(['enabled', 'disabled']),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    get children() {
+      return z.array(DepartmentDTO).optional();
+    },
+  })
+  .openapi('Department');
