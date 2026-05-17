@@ -478,14 +478,16 @@ export default function FileStorageConfigsPage() {
                   <Form.Input field="ossRegion" label="Region" placeholder="请输入 OSS Region" rules={[{ required: true, message: '请输入 OSS Region' }]} />
                 </Col>
                 <Col span={12}>
+                  <Form.Input field="ossBucket" label="Bucket" placeholder="请输入 OSS Bucket" rules={[{ required: true, message: '请输入 OSS Bucket' }]} />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={24}>
                   <Form.Input field="ossEndpoint" label="Endpoint" placeholder="请输入 OSS Endpoint" rules={[{ required: true, message: '请输入 OSS Endpoint' }]} />
                 </Col>
               </Row>
               <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Input field="ossBucket" label="Bucket" placeholder="请输入 OSS Bucket" rules={[{ required: true, message: '请输入 OSS Bucket' }]} />
-                </Col>
-                <Col span={12}>
+                <Col span={24}>
                   <Form.Input field="ossAccessKeyId" label="AccessKey ID" placeholder="请输入 AccessKey ID" rules={[{ required: true, message: '请输入 AccessKey ID' }]} />
                 </Col>
               </Row>
@@ -510,14 +512,16 @@ export default function FileStorageConfigsPage() {
                   <Form.Input field="s3Region" label="Region" placeholder="请输入 S3 Region" rules={[{ required: true, message: '请输入 S3 Region' }]} />
                 </Col>
                 <Col span={12}>
+                  <Form.Input field="s3Bucket" label="Bucket" placeholder="请输入 S3 Bucket" rules={[{ required: true, message: '请输入 S3 Bucket' }]} />
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={24}>
                   <Form.Input field="s3Endpoint" label="Endpoint" placeholder="可选，兼容 S3 自定义存储" />
                 </Col>
               </Row>
               <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Input field="s3Bucket" label="Bucket" placeholder="请输入 S3 Bucket" rules={[{ required: true, message: '请输入 S3 Bucket' }]} />
-                </Col>
-                <Col span={12}>
+                <Col span={24}>
                   <Form.Input field="s3AccessKeyId" label="Access Key ID" placeholder="请输入 Access Key ID" rules={[{ required: true, message: '请输入 Access Key ID' }]} />
                 </Col>
               </Row>
@@ -547,10 +551,12 @@ export default function FileStorageConfigsPage() {
                 </Col>
               </Row>
               <Row gutter={16}>
-                <Col span={12}>
+                <Col span={24}>
                   <Form.Input field="cosSecretId" label="SecretId" placeholder="请输入 SecretId" rules={[{ required: true, message: '请输入 SecretId' }]} />
                 </Col>
-                <Col span={12}>
+              </Row>
+              <Row gutter={16}>
+                <Col span={24}>
                   <Form.Input
                     field="cosSecretKey"
                     label="SecretKey"
