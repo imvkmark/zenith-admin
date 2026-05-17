@@ -75,6 +75,20 @@ export default function CacheManagePage() {
   const [keyword, setKeyword] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [viewingItem, setViewingItem] = useState<CacheItem | null>(null);
+  const [fullValue, setFullValue] = useState<string | null>(null);
+  const [fullValueLoading, setFullValueLoading] = useState(false);
+
+  const openValueModal = async (item: CacheItem) => {
+    setViewingItem(item);
+    setFullValue(null);
+    setFullValueLoading(true);
+    try {
+      const res = await request.get<string | null>(`/api/cache/value?key=${encodeURIComponent(item.key)}`);
+      if (res.code === 0) setFullValue(res.data);
+    } finally {
+      setFullValueLoading(false);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -269,7 +283,7 @@ export default function CacheManagePage() {
             <Button
               theme="borderless"
               size="small"
-              onClick={() => setViewingItem(record)}
+              onClick={() => void openValueModal(record)}
             >
               查看
             </Button>
@@ -413,7 +427,7 @@ export default function CacheManagePage() {
           </span>
         }
         visible={viewingItem != null}
-        onCancel={() => setViewingItem(null)}
+        onCancel={() => { setViewingItem(null); setFullValue(null); }}
         footer={null}
         width={680}
       >
@@ -421,14 +435,20 @@ export default function CacheManagePage() {
           <JsonViewer
             key={viewingItem.key}
             value={(() => {
-              if (!viewingItem.value) return '';
-              try { return JSON.stringify(JSON.parse(viewingItem.value), null, 2); }
-              catch { return viewingItem.value; }
+              const raw = fullValue ?? viewingItem.value;
+              if (!raw) return '';
+              try { return JSON.stringify(JSON.parse(raw), null, 2); }
+              catch { return raw; }
             })()}
             height={360}
             width="100%"
             options={{ readOnly: true, autoWrap: true, formatOptions: { tabSize: 2, insertSpaces: true } }}
           />
+        )}
+        {fullValueLoading && (
+          <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+            加载完整内容中…
+          </div>
         )}
       </Modal>
     </div>

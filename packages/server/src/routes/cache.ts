@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validationHook, okBody } from '../lib/openapi-schemas';
 import { CacheItemDTO } from '../lib/openapi-dtos';
-import { listCache, deleteCacheKey, deleteCacheByCategory, deleteAllCache, getCacheBeforeAudit, getCachesByCategoryBeforeAudit, getAllCachesBeforeAudit } from '../services/cache.service';
+import { getCacheList, deleteCacheKey, deleteCacheByCategory, deleteAllCache, getCacheBeforeAudit, getCachesByCategoryBeforeAudit, getAllCachesBeforeAudit, getCacheFullValue } from '../services/cache.service';
 
 const cacheRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -19,7 +19,7 @@ const listRoute = defineOpenAPIRoute({
     request: { query: z.object({ keyword: z.string().optional().openapi({ example: 'session' }) }) },
     responses: { 200: { content: { 'application/json': { schema: CacheListResponse } }, description: '缓存列表' } },
   }),
-  handler: async (c) => c.json(okBody(await listCache(c.req.valid('query').keyword), 'success'), 200),
+  handler: async (c) => c.json(okBody(await getCacheList(c.req.valid('query').keyword), 'success'), 200),
 });
 
 const deleteOneRoute = defineOpenAPIRoute({
@@ -64,6 +64,21 @@ const deleteByCategoryRoute = defineOpenAPIRoute({
   },
 });
 
+const getValueRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/value', tags: ['Cache'], summary: '获取指定 key 的完整值',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:cache:list' })] as const,
+    request: { query: z.object({ key: z.string().openapi({ example: 'zenith:session:abc' }) }) },
+    responses: { 200: { content: { 'application/json': { schema: GenericResponse } }, description: 'key 完整值' } },
+  }),
+  handler: async (c) => {
+    const { key } = c.req.valid('query');
+    const value = await getCacheFullValue(key);
+    return c.json(okBody(value, 'success'), 200);
+  },
+});
+
 const deleteAllRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'delete', path: '/all', tags: ['Cache'], summary: '清空当前命名空间所有缓存',
@@ -79,6 +94,6 @@ const deleteAllRoute = defineOpenAPIRoute({
   },
 });
 
-cacheRouter.openapiRoutes([listRoute, deleteOneRoute, deleteByCategoryRoute, deleteAllRoute] as const);
+cacheRouter.openapiRoutes([listRoute, getValueRoute, deleteOneRoute, deleteByCategoryRoute, deleteAllRoute] as const);
 
 export default cacheRouter;

@@ -71,12 +71,18 @@ export async function getKeyMeta(key: string) {
   };
 }
 
-export async function listCache(keyword?: string) {
+export async function getCacheList(keyword?: string) {
   let keys = await scanKeys(`${keyPrefix}*`);
   if (keyword) keys = keys.filter((k) => k.includes(keyword));
   keys.sort((a, b) => a.localeCompare(b));
   const items = await Promise.all(keys.map(getKeyMeta));
   return { list: items, total: items.length };
+}
+
+export async function getCacheFullValue(key: string): Promise<string | null> {
+  const type = await redis.type(key);
+  if (type !== 'string') return null;
+  return redis.get(key);
 }
 
 function toAuditItem(meta: Awaited<ReturnType<typeof getKeyMeta>>) {
