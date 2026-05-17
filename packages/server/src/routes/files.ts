@@ -40,7 +40,7 @@ const contentRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const storedFile = await readFileContent(id);
-    return new Response(new Uint8Array(storedFile.buffer), {
+    return new Response(storedFile.stream, {
       headers: {
         'Content-Type': storedFile.contentType,
         'Content-Disposition': resolveContentDisposition(storedFile.contentType, storedFile.fileName),

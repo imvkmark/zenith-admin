@@ -2,7 +2,7 @@ import OSS from 'ali-oss';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import COS from 'cos-nodejs-sdk-v5';
 import { randomUUID } from 'node:crypto';
-import { promises as fs, createWriteStream } from 'node:fs';
+import { promises as fs, createWriteStream, createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
@@ -67,21 +67,6 @@ function createCosClient(config: FileStorageConfigRow) {
   });
 }
 
-async function normalizeOssContent(content: unknown): Promise<Buffer> {
-  if (Buffer.isBuffer(content)) return content;
-  if (content instanceof Uint8Array) return Buffer.from(content);
-  if (content instanceof ArrayBuffer) return Buffer.from(content);
-  if (typeof content === 'string') return Buffer.from(content);
-  if (content && typeof (content as AsyncIterable<unknown>)[Symbol.asyncIterator] === 'function') {
-    const chunks: Buffer[] = [];
-    for await (const chunk of content as AsyncIterable<unknown>) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
-    }
-    return Buffer.concat(chunks);
-  }
-  throw new Error('无法读取 OSS 文件内容');
-}
-
 export function buildManagedFileUrl(fileId: number) {
   return `/api/files/${fileId}/content`;
 }
@@ -140,17 +125,21 @@ export async function uploadFileByConfig(config: FileStorageConfigRow, file: Fil
 }
 
 export async function readStoredFile(file: ManagedFileRow, config: FileStorageConfigRow) {
+  const contentType = file.mimeType ?? 'application/octet-stream';
+  const fileName = file.originalName;
+
   if (config.provider === 'local') {
     const filePath = path.join(resolveLocalRoot(config), ...file.objectKey.split('/'));
-    const buffer = await fs.readFile(filePath);
-    return { buffer, contentType: file.mimeType ?? 'application/octet-stream', fileName: file.originalName };
+    const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
+    return { stream, contentType, fileName };
   }
 
   if (config.provider === 'oss') {
     const client = createOssClient(config);
-    const result = await client.get(file.objectKey);
-    const buffer = await normalizeOssContent(result.content);
-    return { buffer, contentType: file.mimeType ?? 'application/octet-stream', fileName: file.originalName };
+    // ali-oss getStream 返回 Node.js Readable，直接转为 Web ReadableStream
+    const { stream: nodeStream } = await client.getStream(file.objectKey);
+    const stream = Readable.toWeb(nodeStream as import('node:stream').Readable) as ReadableStream<Uint8Array>;
+    return { stream, contentType, fileName };
   }
 
   if (config.provider === 's3') {
@@ -159,15 +148,13 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
       Bucket: config.s3Bucket!,
       Key: file.objectKey,
     }));
-    const bytes = await response.Body!.transformToByteArray();
-    return {
-      buffer: Buffer.from(bytes),
-      contentType: file.mimeType ?? 'application/octet-stream',
-      fileName: file.originalName,
-    };
+    // AWS SDK v3 Body.transformToWebStream() 直接返回 Web ReadableStream
+    const stream = response.Body!.transformToWebStream() as ReadableStream<Uint8Array>;
+    return { stream, contentType, fileName };
   }
 
   if (config.provider === 'cos') {
+    // COS SDK 不提供原生流式 API，将 buffer 包装为 ReadableStream 以统一接口
     const cos = createCosClient(config);
     const buffer = await new Promise<Buffer>((resolve, reject) => {
       cos.getObject({
@@ -179,7 +166,13 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
         else resolve(Buffer.isBuffer(data.Body) ? data.Body : Buffer.from(data.Body));
       });
     });
-    return { buffer, contentType: file.mimeType ?? 'application/octet-stream', fileName: file.originalName };
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(buffer));
+        controller.close();
+      },
+    });
+    return { stream, contentType, fileName };
   }
 
   throw new Error(`不支持的存储类型: ${config.provider}`);
