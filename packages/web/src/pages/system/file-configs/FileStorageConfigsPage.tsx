@@ -410,7 +410,7 @@ export default function FileStorageConfigsPage() {
           setEditingConfig(null);
         }}
         onOk={handleModalOk}
-        width={660}
+        width={720}
         bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
