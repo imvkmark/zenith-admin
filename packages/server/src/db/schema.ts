@@ -71,6 +71,7 @@ export const users = pgTable('users', {
   departmentId: integer('department_id').references(() => departments.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   status: statusEnum('status').notNull().default('enabled'),
+  preferences: jsonb('preferences'),
   passwordUpdatedAt: timestamp('password_updated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),

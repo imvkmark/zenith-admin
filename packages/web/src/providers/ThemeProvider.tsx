@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { PREFERENCES_KEY } from '@zenith/shared';
 import { useTheme, type ThemeMode } from '@/hooks/useTheme';
 import { applyThemeColor } from '@/lib/theme-color';
-import { defaultPreferences } from '@/hooks/usePreferences';
+import { defaultPreferences, useOptionalPreferences } from '@/hooks/usePreferences';
 
 type ThemePrefs = {
   colorMode: ThemeMode;
@@ -10,8 +10,8 @@ type ThemePrefs = {
 };
 
 const THEME_DEFAULTS: ThemePrefs = {
-  colorMode: 'light',
-  themeColor: 'blue',
+  colorMode: defaultPreferences.colorMode,
+  themeColor: defaultPreferences.themeColor,
 };
 
 interface ThemeControllerValue {
@@ -56,9 +56,13 @@ function persistThemePrefs(partial: Partial<ThemePrefs>) {
 }
 
 export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
+  const preferencesContext = useOptionalPreferences();
+  const serverSyncedPreferences = preferencesContext?.preferences;
+  const syncPreferences = preferencesContext?.setPreferences;
   const initial = useMemo(() => loadThemePrefs(), []);
-  const [themeColor, setThemeColor] = useState<string>(initial.themeColor);
-  const { mode, setThemeMode: setThemeModeInternal } = useTheme(initial.colorMode);
+  const [localThemeColor, setLocalThemeColor] = useState<string>(initial.themeColor);
+  const themeColor = serverSyncedPreferences?.themeColor ?? localThemeColor;
+  const { mode, setThemeMode: setThemeModeInternal } = useTheme(serverSyncedPreferences?.colorMode ?? initial.colorMode);
 
   const isDark = mode === 'dark' || (mode === 'system' && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches);
 
@@ -68,13 +72,21 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const setThemeMode = useCallback((nextMode: ThemeMode) => {
     setThemeModeInternal(nextMode);
+    if (syncPreferences) {
+      syncPreferences({ colorMode: nextMode });
+      return;
+    }
     persistThemePrefs({ colorMode: nextMode });
-  }, [setThemeModeInternal]);
+  }, [setThemeModeInternal, syncPreferences]);
 
   const updateThemeColor = useCallback((nextColor: string) => {
-    setThemeColor(nextColor);
+    setLocalThemeColor(nextColor);
+    if (syncPreferences) {
+      syncPreferences({ themeColor: nextColor });
+      return;
+    }
     persistThemePrefs({ themeColor: nextColor });
-  }, []);
+  }, [syncPreferences]);
 
   const cycleTheme = useCallback(() => {
     const order: ThemeMode[] = ['light', 'dark', 'system'];
@@ -86,9 +98,13 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
     const defaultMode = THEME_DEFAULTS.colorMode;
     const defaultColor = THEME_DEFAULTS.themeColor;
     setThemeModeInternal(defaultMode);
-    setThemeColor(defaultColor);
+    setLocalThemeColor(defaultColor);
+    if (syncPreferences) {
+      syncPreferences({ colorMode: defaultMode, themeColor: defaultColor });
+      return;
+    }
     persistThemePrefs({ colorMode: defaultMode, themeColor: defaultColor });
-  }, [setThemeModeInternal]);
+  }, [setThemeModeInternal, syncPreferences]);
 
   const value = useMemo<ThemeControllerValue>(() => ({
     mode,

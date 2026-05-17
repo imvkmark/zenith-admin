@@ -79,7 +79,6 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
   }
 
   return (
-    <PreferencesProvider>
     <PermissionContext.Provider value={permissions}>
       <Routes>
         <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
@@ -124,7 +123,6 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
       <Route path="*" element={<Suspense fallback={routeFallback}><NotFoundPage /></Suspense>} />
     </Routes>
     </PermissionContext.Provider>
-    </PreferencesProvider>
   );
 }
 
@@ -140,19 +138,23 @@ export default function App() {
   }
 
   return (
-    <ThemeProvider>
-      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
-        {user ? (
-          <AdminRouteLoader user={user} permissions={permissions} logout={logout} updateUser={updateUser} />
-        ) : (
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+      {user ? (
+        <PreferencesProvider>
+          <ThemeProvider>
+            <AdminRouteLoader user={user} permissions={permissions} logout={logout} updateUser={updateUser} />
+          </ThemeProvider>
+        </PreferencesProvider>
+      ) : (
+        <ThemeProvider>
           <Routes>
             <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onRegister={register} /></Suspense>} />
             <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
             <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
             <Route path="*" element={<RedirectToLogin />} />
           </Routes>
-        )}
-      </BrowserRouter>
-    </ThemeProvider>
+        </ThemeProvider>
+      )}
+    </BrowserRouter>
   );
 }

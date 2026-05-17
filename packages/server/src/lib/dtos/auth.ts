@@ -65,6 +65,10 @@ export const OAuthAuthUrlDTO = z
   .object({ authUrl: z.string(), state: z.string() })
   .openapi('OAuthAuthUrl');
 
+export const UserPreferencesDTO = z
+  .record(z.string(), z.unknown())
+  .openapi('UserPreferences');
+
 export const OAuthConfigItemDTO = z
   .object({
     id: z.number().int(),

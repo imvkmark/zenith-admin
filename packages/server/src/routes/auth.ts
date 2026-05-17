@@ -3,13 +3,14 @@ import { authMiddleware } from '../middleware/auth';
 import { generateCaptcha } from '../lib/captcha';
 import { getConfigBoolean } from '../lib/system-config';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, okBody } from '../lib/openapi-schemas';
-import { LoginResultDTO, UserProfileDTO, CaptchaDTO, RefreshTokenResultDTO as RefreshDTO, SessionDTO, TenantItemDTO, SwitchTenantResultDTO as SwitchTenantDTO, LogRowDTO } from '../lib/openapi-dtos';
+import { LoginResultDTO, UserProfileDTO, CaptchaDTO, RefreshTokenResultDTO as RefreshDTO, SessionDTO, TenantItemDTO, SwitchTenantResultDTO as SwitchTenantDTO, LogRowDTO, UserPreferencesDTO } from '../lib/openapi-dtos';
 import {
   getClientInfo,
   login, register, refreshAccessToken, logoutSession,
   getMyProfile, updateMyProfile, changeMyPassword,
   listMyLoginLogs, listMyOperationLogs, listMySessions, deleteMyOtherSessions, deleteMySession,
   switchTenantView, listSwitchableTenants, forgotPassword, resetPassword,
+  getMyPreferences, saveMyPreferences,
 } from '../services/auth.service';
 
 const auth = new OpenAPIHono({ defaultHook: validationHook });
@@ -310,6 +311,35 @@ const resetPasswordRoute = defineOpenAPIRoute({
   },
 });
 
-auth.openapiRoutes([captchaRoute, loginRoute, registerRoute, refreshRoute, logoutRoute, meRoute, profileRoute, passwordRoute, myLoginLogsRoute, myOperationLogsRoute, mySessionsRoute, deleteOtherSessionsRoute, deleteSessionRoute, switchTenantRoute, authTenantsRoute, forgotPasswordRoute, resetPasswordRoute] as const);
+const preferencesInputSchema = z.record(z.string(), z.unknown());
+
+const getPreferencesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/preferences', tags: ['Auth'], summary: '获取偏好设置',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: {
+      ...commonErrorResponses,
+      ...ok(UserPreferencesDTO.nullable(), 'ok'),
+    },
+  }),
+  handler: async (c) => c.json(okBody(await getMyPreferences()), 200),
+});
+
+const savePreferencesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/preferences', tags: ['Auth'], summary: '保存偏好设置',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { body: { content: jsonContent(preferencesInputSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(UserPreferencesDTO.nullable(), '已保存'),
+    },
+  }),
+  handler: async (c) => c.json(okBody(await saveMyPreferences(c.req.valid('json') as Record<string, unknown>)), 200),
+});
+
+auth.openapiRoutes([captchaRoute, loginRoute, registerRoute, refreshRoute, logoutRoute, meRoute, profileRoute, passwordRoute, myLoginLogsRoute, myOperationLogsRoute, mySessionsRoute, deleteOtherSessionsRoute, deleteSessionRoute, switchTenantRoute, authTenantsRoute, forgotPasswordRoute, resetPasswordRoute, getPreferencesRoute, savePreferencesRoute] as const);
 
 export default auth;

@@ -288,6 +288,18 @@ export async function logoutSession() {
   if (tokenId) await removeSession(tokenId);
 }
 
+export async function getMyPreferences() {
+  const userId = currentUser().userId;
+  const [row] = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
+  return (row?.preferences as Record<string, unknown> | null) ?? null;
+}
+
+export async function saveMyPreferences(prefs: Record<string, unknown>) {
+  const userId = currentUser().userId;
+  await db.update(users).set({ preferences: prefs }).where(eq(users.id, userId));
+  return prefs;
+}
+
 export async function getMyProfile() {
   const userId = currentUser().userId;
   const user = await db.query.users.findFirst({
@@ -311,7 +323,7 @@ export async function getMyProfile() {
   ]);
   const permissions = isSuperAdmin(userRoleList.map((r) => r.code)) ? ['*'] : await getUserPermissions(user.id);
   const tenantName = tenantRows[0]?.name ?? null;
-  const { password: _pw, department, userPositions: _up, userRoles: _ur, ...userInfo } = user;
+  const { password: _pw, preferences: _prefs, department, userPositions: _up, userRoles: _ur, ...userInfo } = user;
   return {
     ...userInfo,
     departmentId: user.departmentId,
