@@ -41,7 +41,7 @@ function ColorDot({ color }: { color: string | null }) {
   );
 }
 
-function ColorInput({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
+function ColorInput({ value, onChange }: { readonly value?: string; readonly onChange?: (v: string) => void }) {
   const [text, setText] = useState(value ?? '');
   const nativeRef = useRef<HTMLInputElement>(null);
 
@@ -66,7 +66,8 @@ function ColorInput({ value, onChange }: { value?: string; onChange?: (v: string
       onChange={handleTextChange}
       placeholder="#2563eb（留空则无颜色）"
       prefix={
-        <span
+        <button
+          type="button"
           title="点击选色"
           style={{
             display: 'inline-flex',
@@ -78,6 +79,8 @@ function ColorInput({ value, onChange }: { value?: string; onChange?: (v: string
             cursor: 'pointer',
             overflow: 'hidden',
             position: 'relative',
+            padding: 0,
+            flexShrink: 0,
           }}
           onClick={() => nativeRef.current?.click()}
         >
@@ -98,7 +101,7 @@ function ColorInput({ value, onChange }: { value?: string; onChange?: (v: string
               padding: 0,
             }}
           />
-        </span>
+        </button>
       }
     />
   );
@@ -131,7 +134,9 @@ export default function TagsPage() {
     try {
       const res = await request.get<string[]>('/api/tags/groups');
       setGroups(res.data ?? []);
-    } catch {}
+    } catch {
+      // 分组列表加载失败不影响主功能
+    }
   }, []);
 
   const fetchList = useCallback(
