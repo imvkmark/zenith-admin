@@ -7,6 +7,7 @@ import {
   Dropdown,
   ImagePreview,
   Input,
+  List,
   Modal,
   Pagination,
   Progress,
@@ -17,7 +18,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, Search, RotateCcw, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List, CheckCircle2, XCircle, Eye, Download } from 'lucide-react';
+import { Plus, Search, RotateCcw, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, Eye, Download } from 'lucide-react';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -714,7 +715,7 @@ export default function FilesPage() {
             size="small"
             theme={viewMode === 'list' ? 'solid' : 'light'}
             type={viewMode === 'list' ? 'primary' : 'tertiary'}
-            icon={<List size={14} />}
+            icon={<ListIcon size={14} />}
             style={{ borderRadius: '4px 0 0 4px' }}
             onClick={() => toggleViewMode('list')}
           />
@@ -853,7 +854,7 @@ export default function FilesPage() {
           }}
         />
       ) : (
-        <Spin spinning={loading}>
+        <>
           {hasPermission('system:file:delete') && (data?.list ?? []).length > 0 && (() => {
             const currentPageIds = (data?.list ?? []).map((f) => f.id);
             const selectedOnPage = currentPageIds.filter((id) => selectedRowKeys.includes(id));
@@ -876,13 +877,23 @@ export default function FilesPage() {
               </div>
             );
           })()}
-          <div className="files-grid">
-            {(data?.list ?? []).length === 0 && !loading ? (
-              <div className="files-grid-empty">暂无文件记录</div>
-            ) : (
-              (data?.list ?? []).map((file) => (
+          <List
+            grid={{
+              gutter: 10,
+              xs: 12,
+              sm: 8,
+              md: 6,
+              lg: 4,
+              xl: 4,
+              xxl: 3,
+            }}
+            dataSource={data?.list ?? []}
+            loading={loading}
+            split={false}
+            emptyContent={<div className="files-grid-empty">暂无文件记录</div>}
+            renderItem={(file) => (
+              <List.Item key={file.id} style={{ padding: 0, height: '100%' }}>
                 <FileGridCard
-                  key={file.id}
                   file={file}
                   selected={selectedRowKeys.includes(file.id)}
                   canSelect={hasPermission('system:file:delete')}
@@ -896,9 +907,9 @@ export default function FilesPage() {
                   previewLoading={previewLoadingId === file.id}
                   downloadLoading={downloadLoadingId === file.id}
                 />
-              ))
+              </List.Item>
             )}
-          </div>
+          />
           {(data?.total ?? 0) > 0 && (
             <div className="files-grid-pagination">
               <Pagination
@@ -912,7 +923,7 @@ export default function FilesPage() {
               />
             </div>
           )}
-        </Spin>
+        </>
       )}
     </div>
   );
