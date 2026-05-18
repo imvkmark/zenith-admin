@@ -348,7 +348,6 @@ export default function DepartmentsPage() {
             treeData={parentTreeData}
             placeholder="请选择上级部门"
             filterTreeNode
-            expandAll
           />
           <Row gutter={16}>
             <Col span={12}>

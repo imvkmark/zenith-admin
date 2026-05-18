@@ -713,7 +713,6 @@ export default function UsersPage() {
                 treeData={departmentTreeData}
                 placeholder="请选择所属部门"
                 filterTreeNode
-                expandAll
                 showClear
               />
             </Col>
