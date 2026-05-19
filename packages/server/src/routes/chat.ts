@@ -16,7 +16,7 @@ import {
   removeGroupMember, updateGroupInfo, transferGroupOwnership,
   pinConversation, starConversation, muteConversation, removeConversation,
   getLinkPreview, listPinnedMessages, listFavoriteMessages, listGlobalFavoriteMessages,
-  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, forwardMessages, deleteMessagesForUser, toggleReaction, submitVote,
+  toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, deleteAnnouncementHistory, forwardMessages, deleteMessagesForUser, toggleReaction, submitVote,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -557,6 +557,26 @@ chatRouter.openapi(
     const { id } = c.req.valid('param');
     const list = await listAnnouncementHistory(id);
     return c.json(okBody(list), 200);
+  },
+);
+
+chatRouter.openapi(
+  createRoute({
+    method: 'delete', path: '/conversations/{id}/announcement-history/{messageId}', tags: ['Chat'], summary: '删除群公告历史（群主专属）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: z.object({
+        id: z.coerce.number().int().positive(),
+        messageId: z.coerce.number().int().positive(),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  async (c) => {
+    const { id, messageId } = c.req.valid('param');
+    await deleteAnnouncementHistory(id, messageId);
+    return c.json(okBody(null), 200);
   },
 );
 

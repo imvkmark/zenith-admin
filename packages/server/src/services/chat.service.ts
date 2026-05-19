@@ -833,6 +833,36 @@ export async function listAnnouncementHistory(conversationId: number): Promise<C
   ));
 }
 
+export async function deleteAnnouncementHistory(conversationId: number, messageId: number): Promise<void> {
+  const me = currentUser();
+  const conv = await db.query.chatConversations.findFirst({
+    where: eq(chatConversations.id, conversationId),
+  });
+  if (!conv) throw new HTTPException(404, { message: '会话不存在' });
+  if (conv.type !== 'group') throw new HTTPException(400, { message: '只有群聊才有公告历史' });
+
+  const member = await db.query.chatConversationMembers.findFirst({
+    where: and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      eq(chatConversationMembers.userId, me.userId),
+    ),
+  });
+  if (member?.role !== 'owner') {
+    throw new HTTPException(403, { message: '只有群主才能删除公告历史' });
+  }
+
+  const msg = await db.query.chatMessages.findFirst({ where: eq(chatMessages.id, messageId) });
+  if (msg?.conversationId !== conversationId) {
+    throw new HTTPException(404, { message: '公告历史不存在' });
+  }
+  const extra = normalizeMessageExtra(msg.extra);
+  if (!('announcementHistory' in extra)) {
+    throw new HTTPException(400, { message: '该消息不是公告历史' });
+  }
+
+  await db.delete(chatMessages).where(eq(chatMessages.id, messageId));
+}
+
 // ─── 会话消息搜索 ───────────────────────────────────────────────────────────
 
 export async function searchConversationMessages(

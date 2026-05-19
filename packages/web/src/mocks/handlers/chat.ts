@@ -469,6 +469,15 @@ export const chatHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
+  http.delete('/api/chat/conversations/:id/announcement-history/:messageId', ({ params }) => {
+    const convId = Number(params.id);
+    const messageId = Number(params.messageId);
+    const idx = mockChatMessages.findIndex((m) => m.id === messageId && m.conversationId === convId && m.type === 'system' && m.extra?.announcementHistory);
+    if (idx < 0) return HttpResponse.json({ code: 404, message: '公告历史不存在', data: null }, { status: 404 });
+    mockChatMessages.splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: 'ok', data: null });
+  }),
+
   // 转让群主
   http.post('/api/chat/conversations/:id/transfer', async ({ params, request }) => {
     const convId = Number(params.id);

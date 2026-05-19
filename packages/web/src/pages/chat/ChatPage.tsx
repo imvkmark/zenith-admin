@@ -11,7 +11,7 @@ const VIRTUOSO_FIRST_INDEX_BUFFER = 10000;
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import {
-  Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, Users,
+  Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, MoreHorizontal,
   Pin, PinOff, Star, X, Paperclip, Bookmark, History, Forward, Trash2, ListFilter, BellOff, Images, AlertCircle,
   ArrowLeft, ExternalLink, BarChart3,
 } from 'lucide-react';
@@ -336,6 +336,29 @@ export default function ChatPage({
     const res = await request.get<ChatMessage[]>(`/api/chat/conversations/${convId}/announcement-history`, { silent: true });
     if (res.code === 0 && res.data) setAnnouncementHistory(res.data);
   }, []);
+
+  const isOwnerOfActiveGroup = useMemo(() => {
+    if (!currentUserId || activeConv?.type !== 'group') return false;
+    return activeGroupMembers.some((m) => m.id === currentUserId && m.role === 'owner');
+  }, [activeConv?.type, activeGroupMembers, currentUserId]);
+
+  const handleDeleteAnnouncementHistory = useCallback((messageId: number) => {
+    if (!activeConvId) return;
+    Modal.confirm({
+      title: '删除公告历史',
+      content: '确定要删除该条公告历史记录吗？此操作不可恢复。',
+      okType: 'danger',
+      onOk: async () => {
+        const res = await request.delete(`/api/chat/conversations/${activeConvId}/announcement-history/${messageId}`);
+        if ((res as { code: number }).code === 0) {
+          Toast.success('已删除');
+          setAnnouncementHistory((prev) => prev.filter((it) => it.id !== messageId));
+        } else {
+          Toast.error((res as { message?: string }).message ?? '删除失败');
+        }
+      },
+    });
+  }, [activeConvId]);
 
   const openFavoriteMessage = useCallback(async (message: ChatMessage) => {
     const res = await request.get<ChatMessageContext>(
@@ -2160,10 +2183,10 @@ export default function ChatPage({
                   />
                 </Tooltip>
                 {activeConv.type === 'group' && (
-                  <Tooltip content={showMembers ? '关闭成员面板' : '查看群成员'}>
+                  <Tooltip content={showMembers ? '关闭群信息' : '群信息'}>
                     <Button
                       size="small" theme="borderless" type={showMembers ? 'primary' : 'tertiary'}
-                      icon={<Users size={15} />}
+                      icon={<MoreHorizontal size={15} />}
                       onClick={() => {
                         setShowMembers((v) => {
                           const next = !v;
@@ -2734,6 +2757,16 @@ export default function ChatPage({
                       </Text>
                     </>
                   )}
+                  extra={isOwnerOfActiveGroup ? (
+                    <Button
+                      theme="borderless"
+                      type="danger"
+                      size="small"
+                      onClick={() => handleDeleteAnnouncementHistory(item.id)}
+                    >
+                      删除
+                    </Button>
+                  ) : null}
                 />
               )}
             />

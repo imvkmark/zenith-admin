@@ -157,6 +157,7 @@ export function GroupMembersPanel({
               onChange={(v) => setEditAnnouncement(v)}
               autosize
             />
+            <Text type="tertiary" size="small" style={{ fontSize: 11 }}>保存后，原公告将归入「群公告历史」记录</Text>
             <Button size="small" theme="solid" loading={savingInfo} onClick={() => { void handleSaveInfo(); }}>保存</Button>
           </div>
         ) : (
