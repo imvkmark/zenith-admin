@@ -86,6 +86,7 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: 'API 规范', link: '/backend/api-conventions' },
+          { text: '请求上下文与当前用户', link: '/backend/request-context' },
           { text: '数据库与迁移', link: '/backend/database' },
           { text: '数据库事务', link: '/backend/database-transactions' },
           { text: '数据库操作规范', link: '/backend/database-operations' },
