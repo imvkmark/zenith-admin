@@ -44,6 +44,8 @@ export function mapInstance(
     initiatorAvatar: extras.initiatorAvatar ?? null,
     tenantId: row.tenantId,
     tasks: extras.tasks ?? null,
+    createdBy: row.createdBy ?? null,
+    updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };

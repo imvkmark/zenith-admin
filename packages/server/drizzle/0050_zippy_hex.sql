@@ -1,4 +1,4 @@
-ALTER TABLE "chat_conversations" DROP CONSTRAINT "chat_conversations_created_by_id_users_id_fk";
+ALTER TABLE "chat_conversations" DROP CONSTRAINT IF EXISTS "chat_conversations_created_by_id_users_id_fk";
 --> statement-breakpoint
 ALTER TABLE "chat_conversations" ADD COLUMN "created_by" integer;--> statement-breakpoint
 ALTER TABLE "chat_conversations" ADD COLUMN "updated_by" integer;--> statement-breakpoint
