@@ -9,7 +9,26 @@
  * 新代码可选择使用此处零参风格。
  */
 import { getContext, tryGetContext } from 'hono/context-storage';
+import { eq } from 'drizzle-orm';
 import type { AuthEnv, JwtPayload } from '../middleware/auth';
+import { db } from '../db';
+import { users, departments } from '../db/schema';
+
+/** 从 DB 加载的完整用户详情（部门 + 岗位 + 角色），仅在需要时懒查询。 */
+export interface CurrentUserDetail {
+  /** 用户 ID */
+  id: number;
+  /** 用户名 */
+  username: string;
+  /** 昵称 */
+  nickname: string;
+  /** 所属部门（未分配时为 null） */
+  department: { id: number; name: string; code: string; parentId: number } | null;
+  /** 所属岗位列表 */
+  positions: { id: number; name: string; code: string }[];
+  /** 角色列表（含完整角色信息） */
+  roles: { id: number; name: string; code: string; dataScope: string }[];
+}
 
 /**
  * 当前请求的 Hono Context 环境类型别名。
@@ -45,4 +64,143 @@ export function setAuditBefore(data: unknown): void {
   const ctx = tryGetContext<AppEnv>();
   if (!ctx) return;
   ctx.set('auditBeforeData', JSON.stringify(data));
+}
+
+// ─── 快捷工具：无需 DB，直接从 JWT Payload 取 ─────────────────────────────────
+
+/** 快捷获取当前登录用户 ID。 */
+export function currentUserId(): number {
+  return currentUser().userId;
+}
+
+/** 快捷获取当前登录用户的角色 code 数组（来自 JWT Payload）。 */
+export function currentUserRoles(): string[] {
+  return currentUser().roles;
+}
+
+/**
+ * 判断当前登录用户是否拥有指定角色（任意一个匹配即返回 true）。
+ * 基于 JWT Payload 中的 roles 字段，无需查询数据库。
+ *
+ * @example
+ * if (hasRole('admin', 'editor')) { ... }
+ */
+export function hasRole(...codes: string[]): boolean {
+  const userRoleCodes = currentUser().roles;
+  return codes.some((code) => userRoleCodes.includes(code));
+}
+
+/**
+ * 判断当前登录用户是否为超级管理员（拥有 `super_admin` 角色）。
+ * 基于 JWT Payload，无需查询数据库。
+ */
+export function isSuperAdmin(): boolean {
+  return hasRole('super_admin');
+}
+
+// ─── DB 懒查询：获取部门/岗位等 JWT 中未携带的信息 ────────────────────────────
+
+/**
+ * 获取当前登录用户的完整详情（部门、岗位、角色完整信息），通过 DB 懒查询。
+ *
+ * 每次调用均执行一次 DB 查询（RQB 单次请求）。
+ * 若需在同一请求内多次访问，请在 Service 层自行缓存返回值：
+ * ```ts
+ * const detail = await currentUserDetail();
+ * ```
+ *
+ * @throws 若用户不存在于数据库中（已被删除等异常情况）会返回 null。
+ */
+export async function currentUserDetail(): Promise<CurrentUserDetail | null> {
+  const { userId } = currentUser();
+
+  const row = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { id: true, username: true, nickname: true, departmentId: true },
+    with: {
+      userPositions: {
+        columns: {},
+        with: { position: { columns: { id: true, name: true, code: true } } },
+      },
+      userRoles: {
+        columns: {},
+        with: { role: { columns: { id: true, name: true, code: true, dataScope: true } } },
+      },
+    },
+  });
+
+  if (!row) return null;
+
+  let department: CurrentUserDetail['department'] = null;
+  if (row.departmentId) {
+    const dept = await db.query.departments.findFirst({
+      where: eq(departments.id, row.departmentId),
+      columns: { id: true, name: true, code: true, parentId: true },
+    });
+    department = dept ?? null;
+  }
+
+  return {
+    id: row.id,
+    username: row.username,
+    nickname: row.nickname,
+    department,
+    positions: row.userPositions.map((up) => up.position),
+    roles: row.userRoles.map((ur) => ur.role),
+  };
+}
+
+/**
+ * 判断当前登录用户是否属于指定部门（或其任意后代部门）。
+ * 需要一次 DB 查询获取用户部门信息。
+ *
+ * @param departmentId 目标部门 ID
+ * @param includeDescendants 是否包含子部门，默认 false（仅精确匹配本部门）
+ */
+export async function isInDepartment(departmentId: number, includeDescendants = false): Promise<boolean> {
+  const detail = await currentUserDetail();
+  if (!detail?.department) return false;
+  if (detail.department.id === departmentId) return true;
+  if (!includeDescendants) return false;
+
+  // 递归向上检查父级链
+  const { userId } = currentUser();
+  const [userRow] = await db
+    .select({ departmentId: users.departmentId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!userRow?.departmentId) return false;
+
+  // 获取所有部门，检查用户所在部门是否是目标部门的后代
+  const allDepts = await db.query.departments.findMany({
+    columns: { id: true, parentId: true },
+  });
+
+  const descendants = new Set<number>();
+  const queue = [departmentId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    descendants.add(current);
+    for (const d of allDepts) {
+      if (d.parentId === current && !descendants.has(d.id)) {
+        queue.push(d.id);
+      }
+    }
+  }
+
+  return descendants.has(userRow.departmentId);
+}
+
+/**
+ * 判断当前登录用户是否拥有指定岗位（任意一个匹配即返回 true）。
+ * 需要一次 DB 查询获取用户岗位信息。
+ *
+ * @param codes 岗位 code 列表
+ */
+export async function hasPosition(...codes: string[]): Promise<boolean> {
+  const detail = await currentUserDetail();
+  if (!detail) return false;
+  return detail.positions.some((p) => codes.includes(p.code));
 }
