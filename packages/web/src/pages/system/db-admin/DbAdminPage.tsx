@@ -441,7 +441,7 @@ export default function DbAdminPage() {
             </div>
 
             {/* 右侧详情 */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid var(--semi-color-border)', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid var(--semi-color-border)', borderRadius: 6, overflow: 'hidden', minWidth: 0 }}>
               {!selected ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Empty image={<Database size={48} />} title="请选择一张表" />
@@ -456,10 +456,10 @@ export default function DbAdminPage() {
                       </Text>
                     </Title>
                   </div>
-                  <Tabs activeKey={innerTab} onChange={setInnerTab} type="line" style={{ flex: 1, display: 'flex', flexDirection: 'column' }} contentStyle={{ flex: 1, overflow: 'auto', padding: 12 }}>
+                  <Tabs activeKey={innerTab} onChange={setInnerTab} type="line" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }} contentStyle={{ flex: 1, overflow: 'auto', padding: 12, minHeight: 0, minWidth: 0 }}>
                     <TabPane tab="结构" itemKey="structure">
                       {structureLoading ? <Spin /> : structure && (
-                        <Space vertical align="start" style={{ width: '100%' }}>
+                        <div style={{ width: '100%' }}>
                           <Title heading={6}>列（{structure.columns.length}）</Title>
                           <ConfigurableTable<ColumnInfo>
                             bordered
@@ -468,6 +468,7 @@ export default function DbAdminPage() {
                             rowKey="name"
                             pagination={false}
                             size="small"
+                            scroll={{ x: 'max-content' }}
                           />
                           <Title heading={6} style={{ marginTop: 16 }}>索引（{structure.indexes.length}）</Title>
                           {structure.indexes.length === 0 ? <Empty title="无索引" /> : (
@@ -478,6 +479,7 @@ export default function DbAdminPage() {
                               rowKey="name"
                               pagination={false}
                               size="small"
+                              scroll={{ x: 'max-content' }}
                             />
                           )}
                           <Title heading={6} style={{ marginTop: 16 }}>外键（{structure.foreignKeys.length}）</Title>
@@ -489,14 +491,15 @@ export default function DbAdminPage() {
                               rowKey="name"
                               pagination={false}
                               size="small"
+                              scroll={{ x: 'max-content' }}
                             />
                           )}
-                        </Space>
+                        </div>
                       )}
                     </TabPane>
                     <TabPane tab="数据" itemKey="data">
                       {rowsLoading ? <Spin /> : rows && (
-                        <Space vertical align="start" style={{ width: '100%' }}>
+                        <div style={{ width: '100%' }}>
                           <ConfigurableTable
                             bordered
                             columns={buildDataColumns(rows.list[0] ? Object.keys(rows.list[0]).map((n) => ({ name: n })) : [])}
@@ -506,16 +509,18 @@ export default function DbAdminPage() {
                             size="small"
                             scroll={{ x: 'max-content' }}
                           />
-                          <Pagination
-                            currentPage={rowsPage}
-                            pageSize={rowsPageSize}
-                            total={rows.total}
-                            showSizeChanger
-                            showQuickJumper
-                            pageSizeOpts={[20, 50, 100, 200]}
-                            onChange={handleRowsPageChange}
-                          />
-                        </Space>
+                          <div style={{ marginTop: 12, textAlign: 'right' }}>
+                            <Pagination
+                              currentPage={rowsPage}
+                              pageSize={rowsPageSize}
+                              total={rows.total}
+                              showSizeChanger
+                              showQuickJumper
+                              pageSizeOpts={[20, 50, 100, 200]}
+                              onChange={handleRowsPageChange}
+                            />
+                          </div>
+                        </div>
                       )}
                     </TabPane>
                   </Tabs>
