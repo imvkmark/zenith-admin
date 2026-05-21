@@ -711,6 +711,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             >
               我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
             </Dropdown.Item>
+            <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={() => navigate('/announcements')}>公告中心</Dropdown.Item>
             <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
             <Dropdown.Divider />
             <Dropdown.Item
