@@ -23,6 +23,9 @@ import {
   listTables,
   getTableStructure,
   getTableRows,
+  insertTableRow,
+  updateTableRow,
+  deleteTableRow,
   executeReadonlyQuery,
   explainQuery,
   exportQueryCsv,
@@ -108,6 +111,76 @@ const tableRowsRoute = defineOpenAPIRoute({
     }
     const data = await getTableRows({ schema, name, page, pageSize, orderBy, orderDir, filters });
     return c.json(okBody(data), 200);
+  },
+});
+
+const insertRowRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/tables/{schema}/{name}/rows', tags: ['DbAdmin'], summary: '插入行',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:write',
+      audit: { description: '插入表数据行', module: '数据库管理' },
+    })] as const,
+    request: {
+      params: TableNameParam,
+      body: { content: jsonContent(z.object({ values: z.record(z.string(), z.unknown()) })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.record(z.string(), z.unknown()), '新行') },
+  }),
+  handler: async (c) => {
+    const { schema, name } = c.req.valid('param');
+    const { values } = c.req.valid('json');
+    return c.json(okBody(await insertTableRow(schema, name, values)), 200);
+  },
+});
+
+const updateRowRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'patch', path: '/tables/{schema}/{name}/rows', tags: ['DbAdmin'], summary: '更新行',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:write',
+      audit: { description: '更新表数据行', module: '数据库管理' },
+    })] as const,
+    request: {
+      params: TableNameParam,
+      body: {
+        content: jsonContent(z.object({
+          pk: z.record(z.string(), z.unknown()),
+          changes: z.record(z.string(), z.unknown()),
+        })),
+        required: true,
+      },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.record(z.string(), z.unknown()), '更新后的行') },
+  }),
+  handler: async (c) => {
+    const { schema, name } = c.req.valid('param');
+    const { pk, changes } = c.req.valid('json');
+    return c.json(okBody(await updateTableRow(schema, name, pk, changes)), 200);
+  },
+});
+
+const deleteRowRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/tables/{schema}/{name}/rows', tags: ['DbAdmin'], summary: '删除行',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({
+      permission: 'system:db-admin:write',
+      audit: { description: '删除表数据行', module: '数据库管理' },
+    })] as const,
+    request: {
+      params: TableNameParam,
+      body: { content: jsonContent(z.object({ pk: z.record(z.string(), z.unknown()) })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('已删除') },
+  }),
+  handler: async (c) => {
+    const { schema, name } = c.req.valid('param');
+    const { pk } = c.req.valid('json');
+    await deleteTableRow(schema, name, pk);
+    return c.json(okBody(null, '已删除'), 200);
   },
 });
 
@@ -197,6 +270,9 @@ router.openapiRoutes([
   listTablesRoute,
   tableStructureRoute,
   tableRowsRoute,
+  insertRowRoute,
+  updateRowRoute,
+  deleteRowRoute,
   executeQueryRoute,
   explainRoute,
   historyRoute,

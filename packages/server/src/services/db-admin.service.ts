@@ -329,6 +329,160 @@ export async function getTableRows(params: RowsParams): Promise<{
   });
 }
 
+// ─── 3.5. 表数据写入（INSERT / UPDATE / DELETE） ────────────────────────────────
+/** 禁止写入的 schema（系统 / 元数据） */
+const SCHEMA_FORBIDDEN_WRITE = new Set<string>([
+  'pg_catalog', 'information_schema', 'pg_toast', 'drizzle',
+]);
+/** 禁止写入的表（{schema}.{name}） */
+const TABLE_FORBIDDEN_WRITE = new Set<string>([
+  'public.db_admin_query_history',
+  'public.audit_logs',
+  'public.__drizzle_migrations',
+]);
+
+function assertWritable(schema: string, name: string): void {
+  if (SCHEMA_FORBIDDEN_WRITE.has(schema)) {
+    throw new HTTPException(403, { message: `禁止写入系统 schema：${schema}` });
+  }
+  if (TABLE_FORBIDDEN_WRITE.has(`${schema}.${name}`)) {
+    throw new HTTPException(403, { message: `禁止写入系统表：${schema}.${name}` });
+  }
+}
+
+/** 把前端传来的 JSON 值转为带 cast 的 SQL 片段；null/undefined → NULL */
+function toBoundSql(value: unknown, dataType: string): ReturnType<typeof sql> {
+  if (value === null || value === undefined) return sql.raw('NULL');
+  let bound: unknown = value;
+  if (typeof value === 'object') {
+    // jsonb / array / 其他对象：以 JSON 字符串传入，由 PG ::dataType cast
+    bound = JSON.stringify(value);
+  }
+  // dataType 来自 format_type()，对 PG 是安全的合法类型字面量
+  return sql`${bound}::${sql.raw(dataType)}`;
+}
+
+export async function insertTableRow(
+  schema: string, name: string, values: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  assertIdent(schema, 'schema');
+  assertIdent(name, 'table');
+  assertWritable(schema, name);
+
+  const struct = await getTableStructure(schema, name);
+  const colMap = new Map(struct.columns.map((c) => [c.name, c]));
+  const entries = Object.entries(values).filter(([col]) => colMap.has(col));
+  if (entries.length === 0) {
+    throw new HTTPException(400, { message: '至少需要一个有效字段' });
+  }
+  for (const [col] of entries) assertIdent(col, '列名');
+
+  const cols = entries.map(([c]) => sql.raw(quoteIdent(c)));
+  const vals = entries.map(([c, v]) => toBoundSql(v, colMap.get(c)!.dataType));
+  const full = sql.raw(`${quoteIdent(schema)}.${quoteIdent(name)}`);
+
+  try {
+    const inserted = await db.execute(sql`
+      INSERT INTO ${full} (${sql.join(cols, sql.raw(', '))})
+      VALUES (${sql.join(vals, sql.raw(', '))})
+      RETURNING *
+    `);
+    const row = (inserted as unknown as Array<Record<string, unknown>>)[0];
+    return serializeRow(row ?? {});
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `插入失败：${msg}` });
+  }
+}
+
+export async function updateTableRow(
+  schema: string, name: string,
+  pkValues: Record<string, unknown>,
+  changes: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  assertIdent(schema, 'schema');
+  assertIdent(name, 'table');
+  assertWritable(schema, name);
+
+  const struct = await getTableStructure(schema, name);
+  if (struct.primaryKey.length === 0) {
+    throw new HTTPException(400, { message: '该表没有主键，无法编辑' });
+  }
+  const colMap = new Map(struct.columns.map((c) => [c.name, c]));
+  const pkCols = struct.primaryKey;
+  for (const pk of pkCols) {
+    if (!(pk in pkValues)) throw new HTTPException(400, { message: `缺少主键值：${pk}` });
+    assertIdent(pk, '主键列');
+  }
+  const changeEntries = Object.entries(changes).filter(
+    ([col]) => colMap.has(col) && !pkCols.includes(col),
+  );
+  if (changeEntries.length === 0) {
+    throw new HTTPException(400, { message: '没有可更新的字段' });
+  }
+  for (const [col] of changeEntries) assertIdent(col, '列名');
+
+  const sets = changeEntries.map(
+    ([c, v]) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(v, colMap.get(c)!.dataType)}`,
+  );
+  const wheres = pkCols.map(
+    (c) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(pkValues[c], colMap.get(c)!.dataType)}`,
+  );
+  const full = sql.raw(`${quoteIdent(schema)}.${quoteIdent(name)}`);
+
+  try {
+    const updated = await db.execute(sql`
+      UPDATE ${full} SET ${sql.join(sets, sql.raw(', '))}
+      WHERE ${sql.join(wheres, sql.raw(' AND '))}
+      RETURNING *
+    `);
+    const row = (updated as unknown as Array<Record<string, unknown>>)[0];
+    if (!row) throw new HTTPException(404, { message: '记录不存在或未更新' });
+    return serializeRow(row);
+  } catch (err) {
+    if (err instanceof HTTPException) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `更新失败：${msg}` });
+  }
+}
+
+export async function deleteTableRow(
+  schema: string, name: string, pkValues: Record<string, unknown>,
+): Promise<void> {
+  assertIdent(schema, 'schema');
+  assertIdent(name, 'table');
+  assertWritable(schema, name);
+
+  const struct = await getTableStructure(schema, name);
+  if (struct.primaryKey.length === 0) {
+    throw new HTTPException(400, { message: '该表没有主键，无法删除' });
+  }
+  const colMap = new Map(struct.columns.map((c) => [c.name, c]));
+  const pkCols = struct.primaryKey;
+  for (const pk of pkCols) {
+    if (!(pk in pkValues)) throw new HTTPException(400, { message: `缺少主键值：${pk}` });
+    assertIdent(pk, '主键列');
+  }
+  const wheres = pkCols.map(
+    (c) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(pkValues[c], colMap.get(c)!.dataType)}`,
+  );
+  const full = sql.raw(`${quoteIdent(schema)}.${quoteIdent(name)}`);
+
+  try {
+    const deleted = await db.execute(sql`
+      DELETE FROM ${full} WHERE ${sql.join(wheres, sql.raw(' AND '))}
+      RETURNING 1
+    `);
+    if ((deleted as unknown as Array<unknown>).length === 0) {
+      throw new HTTPException(404, { message: '记录不存在' });
+    }
+  } catch (err) {
+    if (err instanceof HTTPException) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `删除失败：${msg}` });
+  }
+}
+
 // ─── 4. 执行只读 SQL ────────────────────────────────────────────────────────────
 export async function executeReadonlyQuery(sqlText: string): Promise<QueryResult> {
   const trimmed = sqlText.trim().replace(/;\s*$/, '');

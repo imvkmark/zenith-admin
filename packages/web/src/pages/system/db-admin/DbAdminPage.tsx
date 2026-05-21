@@ -32,6 +32,7 @@ import {
   Search,
   Copy,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 import type { editor as MonacoEditor, KeyMod as KeyModT, KeyCode as KeyCodeT, Position } from 'monaco-editor';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -43,6 +44,7 @@ import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime } from '@/utils/date';
+import { RowEditModal } from './RowEditModal';
 
 const { Title, Text } = Typography;
 
@@ -153,10 +155,18 @@ interface PaginatedResponse<T> {
 
 const DEFAULT_SQL = '-- 只读模式：仅允许 SELECT / EXPLAIN 等查询语句\nSELECT * FROM users LIMIT 50;';
 
+const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema', 'pg_toast', 'drizzle']);
+const SYSTEM_TABLES = new Set([
+  'public.db_admin_query_history',
+  'public.audit_logs',
+  'public.__drizzle_migrations',
+]);
+
 export default function DbAdminPage() {
   const { hasPermission } = usePermission();
   const canQuery = hasPermission('system:db-admin:query');
   const canExport = hasPermission('system:db-admin:export');
+  const canWrite = hasPermission('system:db-admin:write');
   const { isDark } = useThemeController();
   const monacoTheme = isDark ? 'vs-dark' : 'light';
 
@@ -193,6 +203,12 @@ export default function DbAdminPage() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyPageSize, setHistoryPageSize] = useState(20);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // 行编辑 Modal
+  const [rowModalOpen, setRowModalOpen] = useState(false);
+  const [rowModalMode, setRowModalMode] = useState<'create' | 'edit'>('create');
+  const [rowModalInitial, setRowModalInitial] = useState<Record<string, unknown> | undefined>(undefined);
+  const [rowModalFocusField, setRowModalFocusField] = useState<string | undefined>(undefined);
 
   const filteredTables = useMemo(() => {
     const kw = tableFilter.trim().toLowerCase();
@@ -286,7 +302,7 @@ export default function DbAdminPage() {
 
   useEffect(() => {
     if (!selected) return;
-    if (innerTab === 'structure') void loadStructure(selected);
+    void loadStructure(selected);
     if (innerTab === 'data') {
       setRowsPage(1);
       void loadRows(selected, 1, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters);
@@ -477,6 +493,48 @@ export default function DbAdminPage() {
     { title: 'ON UPDATE', dataIndex: 'onUpdate', width: 120 },
   ];
 
+  // ─── 表数据写入（INSERT / UPDATE / DELETE）─────────────────────────────────
+  const isWritableTable = useMemo(() => {
+    if (!selected) return false;
+    if (SYSTEM_SCHEMAS.has(selected.schema)) return false;
+    if (SYSTEM_TABLES.has(`${selected.schema}.${selected.name}`)) return false;
+    return true;
+  }, [selected]);
+  const hasPrimaryKey = (structure?.primaryKey.length ?? 0) > 0;
+
+  const refreshRows = useCallback(() => {
+    if (!selected) return;
+    void loadRows(selected, rowsPage, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters);
+  }, [selected, rowsPage, rowsPageSize, rowsOrderBy, rowsOrderDir, rowsFilters, loadRows]);
+
+  const openCreateRow = () => {
+    setRowModalMode('create');
+    setRowModalInitial(undefined);
+    setRowModalFocusField(undefined);
+    setRowModalOpen(true);
+  };
+
+  const openEditRow = (row: Record<string, unknown>, focusField?: string) => {
+    setRowModalMode('edit');
+    setRowModalInitial(row);
+    setRowModalFocusField(focusField);
+    setRowModalOpen(true);
+  };
+
+  const handleDeleteRow = async (row: Record<string, unknown>) => {
+    if (!selected || !structure || structure.primaryKey.length === 0) return;
+    const pk: Record<string, unknown> = {};
+    for (const k of structure.primaryKey) pk[k] = row[k];
+    const res = await request.delete<{ deleted: number }>(
+      `/api/db-admin/tables/${encodeURIComponent(selected.schema)}/${encodeURIComponent(selected.name)}/rows`,
+      { pk },
+    );
+    if (res.code === 0) {
+      Toast.success('已删除');
+      refreshRows();
+    }
+  };
+
   const renderCell = (v: unknown): React.ReactNode => {
     if (v == null) return <Text type="quaternary">NULL</Text>;
     if (typeof v === 'object') return <Text code>{JSON.stringify(v)}</Text>;
@@ -488,13 +546,35 @@ export default function DbAdminPage() {
     return str;
   };
 
+  const resolveDataCols = (
+    str: TableStructure | null,
+    list: Array<Record<string, unknown>>,
+    filterKeys: string[],
+  ): Array<{ name: string; dataType?: string }> => {
+    if (str?.columns && str.columns.length > 0) {
+      return str.columns.map((c) => ({ name: c.name, dataType: c.dataType }));
+    }
+    if (list[0]) return Object.keys(list[0]).map((n) => ({ name: n }));
+    return filterKeys.map((n) => ({ name: n }));
+  };
+
+  const makeOnCellDblClick = (colName: string) => (record?: Record<string, unknown>) => ({
+    onDoubleClick: () => { if (record) openEditRow(record, colName); },
+    style: { cursor: 'pointer' as const },
+  });
+
   const buildDataColumns = (
     cols: Array<{ name: string; dataType?: string }>,
-    options?: { sortable?: boolean; filterable?: boolean },
+    options?: {
+      sortable?: boolean;
+      filterable?: boolean;
+      editable?: { primaryKey: string[]; canWriteRow: boolean };
+    },
   ): ColumnProps<Record<string, unknown>>[] => {
     const sortable = options?.sortable ?? false;
     const filterable = options?.filterable ?? false;
-    return cols.map((c) => {
+    const editable = options?.editable;
+    const result: ColumnProps<Record<string, unknown>>[] = cols.map((c) => {
       const titleNode = c.dataType
         ? <Space spacing={4}><Text>{c.name}</Text><Text type="tertiary" size="small">{c.dataType}</Text></Space>
         : c.name;
@@ -506,6 +586,9 @@ export default function DbAdminPage() {
         ellipsis: { showTitle: false },
         render: renderCell,
       };
+      if (editable?.canWriteRow) {
+        col.onCell = makeOnCellDblClick(c.name);
+      }
       if (sortable) {
         col.sorter = true;
         let sortOrder: 'ascend' | 'descend' | false = false;
@@ -529,6 +612,27 @@ export default function DbAdminPage() {
       }
       return col;
     });
+    if (editable?.canWriteRow && editable.primaryKey.length > 0) {
+      result.push({
+        title: '操作',
+        key: '__actions',
+        width: 130,
+        fixed: 'right',
+        render: (_, record) => (
+          <Space>
+            <Button theme="borderless" size="small" onClick={() => openEditRow(record)}>编辑</Button>
+            <Popconfirm
+              title="确定要删除该行吗？"
+              content="此操作不可恢复"
+              onConfirm={() => handleDeleteRow(record)}
+            >
+              <Button theme="borderless" type="danger" size="small">删除</Button>
+            </Popconfirm>
+          </Space>
+        ),
+      });
+    }
+    return result;
   };
 
   const historyColumns: ColumnProps<HistoryItem>[] = [
@@ -708,19 +812,41 @@ export default function DbAdminPage() {
                               共 {rows.total.toLocaleString()} 行
                               {rowsOrderBy && (<> · 排序：<Text code>{rowsOrderBy} {rowsOrderDir}</Text></>)}
                               {Object.keys(rowsFilters).length > 0 && (<> · 筛选：<Text code>{Object.keys(rowsFilters).join(', ')}</Text></>)}
+                              {!hasPrimaryKey && isWritableTable && (
+                                <> · <Text type="warning">无主键，仅可插入与查看</Text></>
+                              )}
+                              {!isWritableTable && (
+                                <> · <Text type="tertiary">系统表只读</Text></>
+                              )}
                             </Text>
-                            {(rowsOrderBy || Object.keys(rowsFilters).length > 0) && (
-                              <Button size="small" theme="borderless" onClick={handleRowsResetAll}>重置排序 / 筛选</Button>
-                            )}
+                            <Space>
+                              {canWrite && isWritableTable && (
+                                <Button
+                                  size="small"
+                                  theme="solid"
+                                  type="primary"
+                                  icon={<Plus size={14} />}
+                                  onClick={openCreateRow}
+                                  disabled={!structure}
+                                >新增行</Button>
+                              )}
+                              {(rowsOrderBy || Object.keys(rowsFilters).length > 0) && (
+                                <Button size="small" theme="borderless" onClick={handleRowsResetAll}>重置排序 / 筛选</Button>
+                              )}
+                            </Space>
                           </div>
                           <ConfigurableTable
                             bordered
                             loading={rowsLoading}
                             columns={buildDataColumns(
-                              rows.list[0]
-                                ? Object.keys(rows.list[0]).map((n) => ({ name: n }))
-                                : Object.keys(rowsFilters).map((n) => ({ name: n })),
-                              { sortable: true, filterable: true },
+                              resolveDataCols(structure, rows.list, Object.keys(rowsFilters)),
+                              {
+                                sortable: true,
+                                filterable: true,
+                                editable: canWrite && isWritableTable
+                                  ? { primaryKey: structure?.primaryKey ?? [], canWriteRow: hasPrimaryKey }
+                                  : undefined,
+                              },
                             )}
                             dataSource={rows.list.map((r, i) => ({ ...r, __key: i }))}
                             rowKey="__key"
@@ -986,6 +1112,25 @@ export default function DbAdminPage() {
       >
         <JsonViewer value={JSON.stringify(explainData, null, 2)} height={500} width="100%" />
       </Modal>
+
+      {selected && structure && (
+        <RowEditModal
+          open={rowModalOpen}
+          mode={rowModalMode}
+          schema={selected.schema}
+          table={selected.name}
+          columns={structure.columns}
+          primaryKey={structure.primaryKey}
+          initial={rowModalInitial}
+          focusField={rowModalFocusField}
+          onClose={() => setRowModalOpen(false)}
+          onSuccess={() => {
+            setRowModalOpen(false);
+            Toast.success(rowModalMode === 'create' ? '已插入新行' : '已更新');
+            refreshRows();
+          }}
+        />
+      )}
     </div>
   );
 }
