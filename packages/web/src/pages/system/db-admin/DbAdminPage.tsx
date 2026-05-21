@@ -386,7 +386,18 @@ export default function DbAdminPage() {
   // ─── 主渲染 ──────────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: 16 }}>
-      <Tabs activeKey={activeTab} onChange={setActiveTab} type="line">
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        type="line"
+        tabBarStyle={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          background: 'var(--semi-color-bg-1)',
+          marginBottom: 8,
+        }}
+      >
         <TabPane tab={<span><TableIcon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />表浏览</span>} itemKey="browse">
           <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 240px)', minHeight: 480 }}>
             {/* 左侧表列表 */}
