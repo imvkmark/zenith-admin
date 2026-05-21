@@ -482,44 +482,17 @@ export default function DbAdminPage() {
                     </Title>
                   </div>
                   <Tabs activeKey={innerTab} onChange={setInnerTab} type="line" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }} contentStyle={{ flex: 1, overflow: 'auto', padding: 12, minHeight: 0, minWidth: 0 }}>
-                    <TabPane tab="结构" itemKey="structure">
+                    <TabPane tab={`结构（${structure?.columns.length ?? 0}）`} itemKey="structure">
                       {structureLoading ? <Spin /> : structure && (
-                        <div style={{ width: '100%' }}>
-                          <Title heading={6}>列（{structure.columns.length}）</Title>
-                          <ConfigurableTable<ColumnInfo>
-                            bordered
-                            columns={structureColumns}
-                            dataSource={structure.columns}
-                            rowKey="name"
-                            pagination={false}
-                            size="small"
-                            scroll={{ x: 'max-content' }}
-                          />
-                          <Title heading={6} style={{ marginTop: 16 }}>索引（{structure.indexes.length}）</Title>
-                          {structure.indexes.length === 0 ? <Empty title="无索引" /> : (
-                            <ConfigurableTable<IndexInfo>
-                              bordered
-                              columns={indexColumns}
-                              dataSource={structure.indexes}
-                              rowKey="name"
-                              pagination={false}
-                              size="small"
-                              scroll={{ x: 'max-content' }}
-                            />
-                          )}
-                          <Title heading={6} style={{ marginTop: 16 }}>外键（{structure.foreignKeys.length}）</Title>
-                          {structure.foreignKeys.length === 0 ? <Empty title="无外键" /> : (
-                            <ConfigurableTable<ForeignKeyInfo>
-                              bordered
-                              columns={fkColumns}
-                              dataSource={structure.foreignKeys}
-                              rowKey="name"
-                              pagination={false}
-                              size="small"
-                              scroll={{ x: 'max-content' }}
-                            />
-                          )}
-                        </div>
+                        <ConfigurableTable<ColumnInfo>
+                          bordered
+                          columns={structureColumns}
+                          dataSource={structure.columns}
+                          rowKey="name"
+                          pagination={false}
+                          size="small"
+                          scroll={{ x: 'max-content' }}
+                        />
                       )}
                     </TabPane>
                     <TabPane tab="数据" itemKey="data">
@@ -546,6 +519,36 @@ export default function DbAdminPage() {
                             />
                           </div>
                         </div>
+                      )}
+                    </TabPane>
+                    <TabPane tab={`索引（${structure?.indexes.length ?? 0}）`} itemKey="indexes">
+                      {structureLoading && <Spin />}
+                      {!structureLoading && structure?.indexes.length === 0 && <Empty title="无索引" />}
+                      {!structureLoading && structure && structure.indexes.length > 0 && (
+                        <ConfigurableTable<IndexInfo>
+                          bordered
+                          columns={indexColumns}
+                          dataSource={structure.indexes}
+                          rowKey="name"
+                          pagination={false}
+                          size="small"
+                          scroll={{ x: 'max-content' }}
+                        />
+                      )}
+                    </TabPane>
+                    <TabPane tab={`外键（${structure?.foreignKeys.length ?? 0}）`} itemKey="foreignKeys">
+                      {structureLoading && <Spin />}
+                      {!structureLoading && structure?.foreignKeys.length === 0 && <Empty title="无外键" />}
+                      {!structureLoading && structure && structure.foreignKeys.length > 0 && (
+                        <ConfigurableTable<ForeignKeyInfo>
+                          bordered
+                          columns={fkColumns}
+                          dataSource={structure.foreignKeys}
+                          rowKey="name"
+                          pagination={false}
+                          size="small"
+                          scroll={{ x: 'max-content' }}
+                        />
                       )}
                     </TabPane>
                   </Tabs>
