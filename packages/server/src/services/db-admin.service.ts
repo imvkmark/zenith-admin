@@ -485,6 +485,18 @@ async function runReadOnly<T>(callback: (tx: DbExecutor) => Promise<T>): Promise
 }
 
 /** 将 postgres-js 返回的结果整理为 QueryResult。超过 MAX_ROWS 时截断。 */
+/** 常见 PostgreSQL 类型 OID → 可读类型名，未收录的返回空字符串。 */
+const PG_TYPE_NAMES: Record<number, string> = {
+  16: 'bool', 17: 'bytea', 18: 'char', 19: 'name', 20: 'int8', 21: 'int2',
+  23: 'int4', 25: 'text', 26: 'oid', 114: 'json', 142: 'xml', 600: 'point',
+  700: 'float4', 701: 'float8', 869: 'inet', 650: 'cidr', 829: 'macaddr',
+  1000: 'bool[]', 1001: 'bytea[]', 1005: 'int2[]', 1007: 'int4[]',
+  1009: 'text[]', 1016: 'int8[]', 1021: 'float4[]', 1022: 'float8[]',
+  1042: 'bpchar', 1043: 'varchar', 1082: 'date', 1083: 'time',
+  1114: 'timestamp', 1184: 'timestamptz', 1186: 'interval',
+  1700: 'numeric', 2950: 'uuid', 3802: 'jsonb', 3807: 'jsonb[]',
+};
+
 function buildQueryResult(rawRows: unknown): QueryResult {
   const arr = rawRows as Array<Record<string, unknown>> & {
     columns?: Array<{ name: string; type?: number; parser?: { name?: string } }>;
@@ -494,10 +506,12 @@ function buildQueryResult(rawRows: unknown): QueryResult {
   // 列信息：优先用 postgres-js 提供的；否则用第一行 keys
   let columns: QueryResult['columns'];
   if (Array.isArray(arr.columns) && arr.columns.length > 0) {
-    columns = arr.columns.map((c) => ({
-      name: c.name,
-      dataType: c.parser?.name ?? String(c.type ?? ''),
-    }));
+    columns = arr.columns.map((c) => {
+      const parserName = c.parser?.name;
+      const oid = c.type;
+      const dataType = parserName ?? (oid != null ? (PG_TYPE_NAMES[oid] ?? '') : '');
+      return { name: c.name, dataType };
+    });
   } else if (rows[0]) {
     columns = Object.keys(rows[0]).map((n) => ({ name: n, dataType: '' }));
   } else {

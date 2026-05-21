@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
+  Banner,
   Button,
+  Collapse,
   Empty,
   Input,
   JsonViewer,
@@ -28,7 +30,10 @@ import {
   History,
   Trash2,
   Search,
+  Copy,
+  ArrowRight,
 } from 'lucide-react';
+import type { editor as MonacoEditor, KeyMod as KeyModT, KeyCode as KeyCodeT } from 'monaco-editor';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import Editor from '@monaco-editor/react';
 import { TOKEN_KEY } from '@zenith/shared';
@@ -192,8 +197,27 @@ export default function DbAdminPage() {
   const filteredTables = useMemo(() => {
     const kw = tableFilter.trim().toLowerCase();
     if (!kw) return tables;
-    return tables.filter((t) => `${t.schema}.${t.name}`.toLowerCase().includes(kw));
+    return tables.filter((t) =>
+      `${t.schema}.${t.name}`.toLowerCase().includes(kw)
+      || (t.comment ?? '').toLowerCase().includes(kw),
+    );
   }, [tables, tableFilter]);
+
+  const groupedTables = useMemo(() => {
+    const map = new Map<string, TableItem[]>();
+    for (const t of filteredTables) {
+      const arr = map.get(t.schema) ?? [];
+      arr.push(t);
+      map.set(t.schema, arr);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredTables]);
+
+  // 列名缓存：用于 Monaco SQL 自动补全；按需在 loadStructure 后追加
+  const structureColumnsCacheRef = useRef<Map<string, string[]>>(new Map());
+  // 表名引用：在 Monaco completionProvider 闭包中读最新值
+  const tablesRef = useRef<TableItem[]>([]);
+  useEffect(() => { tablesRef.current = tables; }, [tables]);
 
   const loadTables = useCallback(async () => {
     setTablesLoading(true);
@@ -207,7 +231,13 @@ export default function DbAdminPage() {
     const res = await request.get<TableStructure>(
       `/api/db-admin/tables/${encodeURIComponent(item.schema)}/${encodeURIComponent(item.name)}/structure`,
     );
-    if (res.code === 0 && res.data) setStructure(res.data);
+    if (res.code === 0 && res.data) {
+      setStructure(res.data);
+      structureColumnsCacheRef.current.set(
+        `${item.schema}.${item.name}`,
+        res.data.columns.map((c) => c.name),
+      );
+    }
     setStructureLoading(false);
   }, []);
 
@@ -303,8 +333,23 @@ export default function DbAdminPage() {
     void loadRows(selected, 1, rowsPageSize, undefined, undefined, {});
   };
 
+  // ─── 表名右侧快捷操作 ─────────────────────────────────────────────────────
+  const fullName = (t: TableItem) => (t.schema === 'public' ? t.name : `${t.schema}.${t.name}`);
+  const copyToClipboard = async (text: string, msg: string) => {
+    try { await navigator.clipboard.writeText(text); Toast.success(msg); }
+    catch { Toast.error('复制失败'); }
+  };
+  const handleCopyName = (t: TableItem) => copyToClipboard(fullName(t), `已复制 ${fullName(t)}`);
+  const handleCopySelect = (t: TableItem) =>
+    copyToClipboard(`SELECT * FROM ${fullName(t)} LIMIT 50;`, '已复制 SELECT 语句');
+  const handleOpenInConsole = (t: TableItem) => {
+    setSql(`SELECT * FROM ${fullName(t)} LIMIT 50;`);
+    setActiveTab('console');
+  };
+
   // ─── SQL 执行 ────────────────────────────────────────────────────────────────
-  const editorRef = useRef<{ getValue: () => string } | null>(null);
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const runQueryRef = useRef<() => void>(() => undefined);
 
   const runQuery = async () => {
     const text = editorRef.current?.getValue() ?? sql;
@@ -393,6 +438,9 @@ export default function DbAdminPage() {
       void loadHistory(1, historyPageSize);
     }
   };
+
+  // 让 Monaco 快捷键始终调用最新版 runQuery
+  useEffect(() => { runQueryRef.current = () => { void runQuery(); }; });
 
   // ─── 渲染辅助 ────────────────────────────────────────────────────────────────
   const structureColumns: ColumnProps<ColumnInfo>[] = [
@@ -546,13 +594,14 @@ export default function DbAdminPage() {
                 </div>
               </div>
               <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-              <List
-                dataSource={filteredTables}
-                loading={tablesLoading}
-                emptyContent={<Empty title="无匹配的表" style={{ padding: 32 }} />}
-                split={false}
-                size="small"
-                renderItem={(t) => {
+              {(() => {
+                if (tablesLoading && tables.length === 0) {
+                  return <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>;
+                }
+                if (filteredTables.length === 0) {
+                  return <Empty title="无匹配的表" style={{ padding: 32 }} />;
+                }
+                const renderTableItem = (t: TableItem) => {
                   const isActive = selected?.schema === t.schema && selected?.name === t.name;
                   return (
                     <List.Item
@@ -560,7 +609,7 @@ export default function DbAdminPage() {
                       onClick={() => handleSelectTable(t)}
                       style={{
                         cursor: 'pointer',
-                        padding: '8px 12px',
+                        padding: '6px 12px',
                         background: isActive ? 'var(--semi-color-primary-light-default)' : undefined,
                         borderBottom: '1px solid var(--semi-color-fill-0)',
                       }}
@@ -568,7 +617,6 @@ export default function DbAdminPage() {
                         <div style={{ minWidth: 0, width: '100%' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                             <Text strong={isActive} ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>
-                              {t.schema !== 'public' && <Text type="tertiary" size="small">{t.schema}.</Text>}
                               {t.name}
                             </Text>
                             <Text type="tertiary" size="small">{t.sizeText}</Text>
@@ -582,8 +630,35 @@ export default function DbAdminPage() {
                       }
                     />
                   );
-                }}
-              />
+                };
+                return (
+                  <Collapse
+                    expandIconPosition="left"
+                    defaultActiveKey={groupedTables.map(([s]) => s)}
+                    keepDOM={false}
+                  >
+                    {groupedTables.map(([schema, list]) => (
+                      <Collapse.Panel
+                        key={schema}
+                        itemKey={schema}
+                        header={
+                          <Space>
+                            <Text strong>{schema}</Text>
+                            <Text type="tertiary" size="small">{list.length} 张表</Text>
+                          </Space>
+                        }
+                      >
+                        <List
+                          dataSource={list}
+                          split={false}
+                          size="small"
+                          renderItem={renderTableItem}
+                        />
+                      </Collapse.Panel>
+                    ))}
+                  </Collapse>
+                );
+              })()}
               </div>
             </div>
 
@@ -591,8 +666,8 @@ export default function DbAdminPage() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid var(--semi-color-border)', borderRadius: 6, overflow: 'hidden', minWidth: 0 }}>
               {selected ? (
                 <>
-                  <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
-                    <Title heading={6} style={{ margin: 0 }}>
+                  <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <Title heading={6} style={{ margin: 0, minWidth: 0, flex: 1 }} ellipsis={{ showTooltip: true }}>
                       {selected.schema}.{selected.name}
                       {selected.comment && (
                         <Text type="tertiary" size="small" style={{ marginLeft: 8 }}>
@@ -603,6 +678,17 @@ export default function DbAdminPage() {
                         约 {selected.rowEstimate.toLocaleString()} 行 / {selected.sizeText}
                       </Text>
                     </Title>
+                    <Space spacing={4} style={{ flexShrink: 0 }}>
+                      <Tooltip content="复制表名">
+                        <Button size="small" theme="borderless" icon={<Copy size={14} />} onClick={() => handleCopyName(selected)} />
+                      </Tooltip>
+                      <Tooltip content="复制 SELECT 语句">
+                        <Button size="small" theme="borderless" onClick={() => handleCopySelect(selected)}>SELECT</Button>
+                      </Tooltip>
+                      <Tooltip content="在 SQL 控制台中查询">
+                        <Button size="small" theme="borderless" icon={<ArrowRight size={14} />} onClick={() => handleOpenInConsole(selected)}>查询</Button>
+                      </Tooltip>
+                    </Space>
                   </div>
                   <Tabs activeKey={innerTab} onChange={setInnerTab} type="line" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }} contentStyle={{ flex: 1, overflow: 'auto', padding: 12, minHeight: 0, minWidth: 0 }}>
                     <TabPane tab={`结构（${structure?.columns.length ?? 0}）`} itemKey="structure">
@@ -734,7 +820,85 @@ export default function DbAdminPage() {
                 theme={monacoTheme}
                 value={sql}
                 onChange={(v) => setSql(v ?? '')}
-                onMount={(ed) => { editorRef.current = ed; }}
+                onMount={(ed, monaco) => {
+                  editorRef.current = ed;
+                  const KeyMod = monaco.KeyMod as typeof KeyModT;
+                  const KeyCode = monaco.KeyCode as typeof KeyCodeT;
+                  ed.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, () => runQueryRef.current());
+                  monaco.languages.registerCompletionItemProvider('sql', {
+                    triggerCharacters: ['.', ' '],
+                    provideCompletionItems: (model, position) => {
+                      const word = model.getWordUntilPosition(position);
+                      const range = {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: word.startColumn,
+                        endColumn: word.endColumn,
+                      };
+                      const lineUpToCursor = model.getValueInRange({
+                        startLineNumber: position.lineNumber,
+                        startColumn: 1,
+                        endLineNumber: position.lineNumber,
+                        endColumn: position.column,
+                      });
+                      // 触发字符为 '.'，尝试取前一个 token 作为表名（含/不含 schema）
+                      const dotMatch = /([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)?)\.$/.exec(lineUpToCursor);
+                      if (dotMatch) {
+                        const ref = dotMatch[1];
+                        const cache = structureColumnsCacheRef.current;
+                        let cols: string[] | undefined;
+                        if (ref.includes('.')) {
+                          cols = cache.get(ref);
+                        } else {
+                          cols = cache.get(`public.${ref}`) ?? cache.get(ref);
+                          // 兜底：在所有 schema 中找同名表
+                          if (!cols) {
+                            for (const [k, v] of cache.entries()) {
+                              if (k.endsWith(`.${ref}`)) { cols = v; break; }
+                            }
+                          }
+                        }
+                        if (cols && cols.length > 0) {
+                          return {
+                            suggestions: cols.map((c) => ({
+                              label: c,
+                              kind: monaco.languages.CompletionItemKind.Field,
+                              insertText: c,
+                              detail: `${ref} 字段`,
+                              range,
+                            })),
+                          };
+                        }
+                      }
+                      // 默认：补全所有表名
+                      const ts = tablesRef.current;
+                      const suggestions = ts.flatMap((t) => {
+                        const full = `${t.schema}.${t.name}`;
+                        const detail = t.comment ? `${t.sizeText} · ${t.comment}` : t.sizeText;
+                        const items = [
+                          {
+                            label: full,
+                            kind: monaco.languages.CompletionItemKind.Class,
+                            insertText: full,
+                            detail,
+                            range,
+                          },
+                        ];
+                        if (t.schema === 'public') {
+                          items.push({
+                            label: t.name,
+                            kind: monaco.languages.CompletionItemKind.Class,
+                            insertText: t.name,
+                            detail,
+                            range,
+                          });
+                        }
+                        return items;
+                      });
+                      return { suggestions };
+                    },
+                  });
+                }}
                 options={{ minimap: { enabled: false }, fontSize: 13, automaticLayout: true, wordWrap: 'on' }}
               />
             </div>
@@ -750,13 +914,22 @@ export default function DbAdminPage() {
               </Tooltip>
               <Button icon={<Eye size={14} />} onClick={runExplain} disabled={!canQuery}>EXPLAIN</Button>
               <Button icon={<Download size={14} />} onClick={exportCsv} disabled={!canExport} loading={exportCsvLoading}>导出 CSV</Button>
-              <Text type="tertiary" size="small">硬上限 5000 行 / 60 秒</Text>
+              <Text type="tertiary" size="small">Ctrl+Enter 执行 · 硬上限 5000 行 / 60 秒</Text>
             </Space>
 
             {queryError && <Text type="danger" style={{ whiteSpace: 'pre-wrap' }}>{queryError}</Text>}
 
             {queryResult && (
               <div style={{ width: '100%' }}>
+                {queryResult.truncated && (
+                  <Banner
+                    type="warning"
+                    fullMode={false}
+                    closeIcon={null}
+                    description={`结果已截断为前 ${queryResult.rowCount} 行，请在 SQL 中加 LIMIT 或缩窄筛选条件以查看完整数据。`}
+                    style={{ marginBottom: 8 }}
+                  />
+                )}
                 <Space style={{ marginBottom: 8 }}>
                   <Tag color="blue">{queryResult.rowCount} 行</Tag>
                   <Tag color="grey">{queryResult.durationMs}ms</Tag>
