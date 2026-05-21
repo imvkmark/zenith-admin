@@ -4,7 +4,6 @@ import { dbBackups } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
 import { createPgDumpBackup, createDrizzleExportBackup } from '../lib/db-backup';
 import logger from '../lib/logger';
-import { currentUser } from '../lib/context';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime } from '../lib/datetime';
 
@@ -47,7 +46,6 @@ export async function listDbBackups(q: ListDbBackupsQuery) {
 }
 
 export async function createDbBackup(input: { type: 'pg_dump' | 'drizzle_export'; name?: string }) {
-  const user = currentUser();
   const { type, name } = input;
   const timestamp = formatFileTimestamp();
   const backupName = name || `${type}-${timestamp}`;
