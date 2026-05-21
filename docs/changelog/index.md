@@ -4,6 +4,30 @@
 
 ---
 
+## v0.24.1 - 2026-05-22
+
+### Added
+
+#### 数据库管理（DB Inspector）
+
+- 表数据视图支持「新增行」「双击单元格编辑」「行级删除」操作，配套后端 INSERT / UPDATE / DELETE 接口，全部走参数化 SQL 并写入审计日志
+- 系统表（`pg_catalog` / `information_schema` / `audit_logs` 等）与无主键表自动只读，受 `system:db-admin:write` 权限保护
+- 表浏览页支持按表中文注释搜索、按 schema 分组显示，表标题下方展示注释
+- 业务表与字段补齐中文 PostgreSQL `COMMENT`，提升数据库自描述性
+- SQL 控制台 CSV 导出按钮新增 loading 状态
+
+### Fixed
+
+- 修复 React 19 + TS 新 JSX transform 下 `JSX` 命名空间未导出导致 `build:demo` 失败的问题
+- 修复表注释在表格信息区显示错乱的问题
+
+### Changed
+
+- 调整 PostgreSQL 类型映射顺序，新增 INTERNAL_PARSER_NAMES 集合优化数据类型解析
+- 移除表格垂直滚动限制，优化大表展示体验
+
+---
+
 ## v0.24.0 - 2026-05-21
 
 ### Added
