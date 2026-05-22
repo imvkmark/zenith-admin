@@ -3,6 +3,7 @@ import ipRangeCheck from 'ip-range-check';
 import { getConfigBoolean, getConfigValue } from '../lib/system-config';
 import { errBody } from '../lib/openapi-schemas';
 import { getClientIp } from '../lib/request-helpers';
+import { writeIpAccessLog } from '../services/ip-access-logs.service';
 
 /** 免检路径：这些接口无需经过 IP 访问控制 */
 const EXEMPT_PATHS = new Set([
@@ -73,6 +74,7 @@ export const ipAccessMiddleware = createMiddleware(async (c, next) => {
   if (cfg.blacklistEnabled && cfg.blacklist.length > 0) {
     const blocked = ipRangeCheck(ip, cfg.blacklist);
     if (blocked) {
+      void writeIpAccessLog({ ip, path, method: c.req.method, blockType: 'blacklist', userAgent: c.req.header('user-agent') });
       return c.json(errBody('您的IP已被禁止访问', 403), 403);
     }
   }
@@ -81,6 +83,7 @@ export const ipAccessMiddleware = createMiddleware(async (c, next) => {
   if (cfg.whitelistEnabled && cfg.whitelist.length > 0) {
     const allowed = ipRangeCheck(ip, cfg.whitelist);
     if (!allowed) {
+      void writeIpAccessLog({ ip, path, method: c.req.method, blockType: 'whitelist', userAgent: c.req.header('user-agent') });
       return c.json(errBody('您的IP不在允许访问范围内', 403), 403);
     }
   }

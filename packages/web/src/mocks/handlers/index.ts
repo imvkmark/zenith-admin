@@ -33,6 +33,7 @@ import { smsTemplatesHandlers } from './sms-templates';
 import { smsSendLogsHandlers } from './sms-send-logs';
 import { inAppTemplatesHandlers } from './in-app-templates';
 import { inAppMessagesHandlers } from './in-app-messages';
+import { ipAccessLogsHandlers } from './ip-access-logs';
 
 export const handlers = [
   ...authHandlers,
@@ -70,4 +71,5 @@ export const handlers = [
   ...smsSendLogsHandlers,
   ...inAppTemplatesHandlers,
   ...inAppMessagesHandlers,
+  ...ipAccessLogsHandlers,
 ];

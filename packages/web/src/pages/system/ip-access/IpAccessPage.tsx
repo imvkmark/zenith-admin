@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button, Card, Switch, TextArea, Toast, Spin, Typography,
   Tabs, TabPane, Table, Tag, Input, Select,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { IpAccessLog, SystemConfig } from '@zenith/shared';
+import type { IpAccessLog, PaginatedResponse, SystemConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { Search, RotateCcw } from 'lucide-react';
+import { formatDateTime } from '@/utils/date';
 
 const { Title, Text } = Typography;
 
@@ -33,9 +34,121 @@ function toJsonArray(text: string): string {
   return JSON.stringify(lines);
 }
 
+// ─── 拦截日志子页面 ─────────────────────────────────────────────
+
+function IpAccessLogsTab() {
+  const [tableLoading, setTableLoading] = useState(false);
+  const [logList, setLogList] = useState<IpAccessLog[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  const [filterIp, setFilterIp] = useState('');
+  const [filterBlockType, setFilterBlockType] = useState<string | undefined>(undefined);
+  const searchIpRef = useRef('');
+  const searchBlockTypeRef = useRef<string | undefined>(undefined);
+
+  const fetchLogs = useCallback(async (p = 1, ip?: string, blockType?: string) => {
+    setTableLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
+      if (ip) params.set('ip', ip);
+      if (blockType) params.set('blockType', blockType);
+      const res = await request.get<PaginatedResponse<IpAccessLog>>(`/api/ip-access-logs?${params}`);
+      if (res.code === 0) {
+        setLogList(res.data.list);
+        setTotal(res.data.total);
+        setPage(p);
+      }
+    } finally {
+      setTableLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchLogs(1); }, [fetchLogs]);
+
+  const handleSearch = () => {
+    searchIpRef.current = filterIp;
+    searchBlockTypeRef.current = filterBlockType;
+    fetchLogs(1, filterIp, filterBlockType);
+  };
+
+  const handleReset = () => {
+    setFilterIp('');
+    setFilterBlockType(undefined);
+    searchIpRef.current = '';
+    searchBlockTypeRef.current = undefined;
+    fetchLogs(1, '', '');
+  };
+
+  const columns: ColumnProps<IpAccessLog>[] = [
+    { title: 'IP 地址', dataIndex: 'ip', width: 160 },
+    {
+      title: '拦截类型', dataIndex: 'blockType', width: 120,
+      render: (v: string) => (
+        <Tag color={v === 'blacklist' ? 'red' : 'blue'} size="small">
+          {v === 'blacklist' ? '黑名单' : '白名单'}
+        </Tag>
+      ),
+    },
+    { title: '请求路径', dataIndex: 'path', ellipsis: true },
+    { title: '请求方法', dataIndex: 'method', width: 100 },
+    { title: 'User-Agent', dataIndex: 'userAgent', ellipsis: true },
+    {
+      title: '拦截时间', dataIndex: 'createdAt', width: 180,
+      render: (v: string) => formatDateTime(v),
+    },
+  ];
+
+  return (
+    <>
+      <SearchToolbar>
+        <Input
+          prefix={<Search size={14} />}
+          placeholder="搜索 IP 地址"
+          value={filterIp}
+          onChange={(v) => setFilterIp(v)}
+          showClear
+          style={{ width: 200 }}
+        />
+        <Select
+          placeholder="拦截类型"
+          value={filterBlockType}
+          onChange={(v) => setFilterBlockType(v as string)}
+          showClear
+          style={{ width: 140 }}
+        >
+          <Select.Option value="blacklist">黑名单</Select.Option>
+          <Select.Option value="whitelist">白名单</Select.Option>
+        </Select>
+        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+      </SearchToolbar>
+      <Table
+        bordered
+        columns={columns}
+        dataSource={logList}
+        loading={tableLoading}
+        rowKey="id"
+        pagination={{
+          total,
+          currentPage: page,
+          pageSize,
+          showSizeChanger: false,
+          onPageChange: (p) => fetchLogs(p, searchIpRef.current, searchBlockTypeRef.current),
+        }}
+        scroll={{ x: 900 }}
+      />
+    </>
+  );
+}
+
+// ─── 主页面 ────────────────────────────────────────────────────
+
 export default function IpAccessPage() {
   const { hasPermission } = usePermission();
   const canUpdate = hasPermission('system:ip-access:update');
+  const canViewLog = hasPermission('system:ip-access:log');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<'whitelist' | 'blacklist' | null>(null);
@@ -104,15 +217,11 @@ export default function IpAccessPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-        <Spin size="large" />
-      </div>
-    );
-  }
-
-  return (
+  const configContent = loading ? (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+      <Spin size="large" />
+    </div>
+  ) : (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* 白名单 */}
       <Card>
@@ -180,5 +289,22 @@ export default function IpAccessPage() {
         )}
       </Card>
     </div>
+  );
+
+  if (!canViewLog) {
+    return configContent;
+  }
+
+  return (
+    <Tabs type="line">
+      <TabPane tab="访问控制配置" itemKey="config">
+        <div style={{ paddingTop: 16 }}>{configContent}</div>
+      </TabPane>
+      <TabPane tab="拦截日志" itemKey="logs">
+        <div style={{ paddingTop: 16 }}>
+          <IpAccessLogsTab />
+        </div>
+      </TabPane>
+    </Tabs>
   );
 }

@@ -18,6 +18,18 @@ export const LoginLogDTO = z
   })
   .openapi('LoginLog');
 
+export const IpAccessLogDTO = z
+  .object({
+    id: z.number().int(),
+    ip: z.string(),
+    path: z.string(),
+    method: z.string(),
+    blockType: z.enum(['blacklist', 'whitelist']),
+    userAgent: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('IpAccessLog');
+
 export const OperationLogDTO = z
   .object({
     id: z.number().int(),

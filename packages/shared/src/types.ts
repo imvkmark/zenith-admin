@@ -225,6 +225,17 @@ export interface LoginLog {
   createdAt: string;
 }
 
+// ─── IP Access Logs ──────────────────────────────────────
+export interface IpAccessLog {
+  id: number;
+  ip: string;
+  path: string;
+  method: string;
+  blockType: 'blacklist' | 'whitelist';
+  userAgent: string | null;
+  createdAt: string;
+}
+
 // ─── Operation Logs ──────────────────────────────────────
 export interface OperationLog {
   id: number;

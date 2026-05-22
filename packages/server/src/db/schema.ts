@@ -290,6 +290,20 @@ export const operationLogs = pgTable('operation_logs', {
 export type OperationLogRow = typeof operationLogs.$inferSelect;
 export type NewOperationLog = typeof operationLogs.$inferInsert;
 
+// ─── IP 访问控制拦截日志表 ───────────────────────────────────────────────────────
+export const ipAccessLogs = pgTable('ip_access_logs', {
+  id: serial('id').primaryKey(),
+  ip: varchar('ip', { length: 64 }).notNull(),
+  path: varchar('path', { length: 256 }).notNull(),
+  method: varchar('method', { length: 16 }).notNull(),
+  blockType: varchar('block_type', { length: 16 }).notNull(), // 'blacklist' | 'whitelist'
+  userAgent: varchar('user_agent', { length: 512 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type IpAccessLogRow = typeof ipAccessLogs.$inferSelect;
+export type NewIpAccessLog = typeof ipAccessLogs.$inferInsert;
+
 // ─── 公告表 ─────────────────────────────────────────────────────────────────
 export const announcements = pgTable('announcements', {
   id: serial('id').primaryKey(),

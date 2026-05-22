@@ -1,4 +1,4 @@
-import type { LoginLog, OperationLog } from '@zenith/shared';
+import type { IpAccessLog, LoginLog, OperationLog } from '@zenith/shared';
 import { mockDateTimeOffset } from '@/mocks/utils/date';
 
 export const mockLoginLogs: LoginLog[] = [
@@ -69,4 +69,12 @@ export const mockOperationLogs: OperationLog[] = [
     browser: 'Chrome 120',
     createdAt: mockDateTimeOffset(-5400 * 1000),
   },
+];
+
+export const mockIpAccessLogs: IpAccessLog[] = [
+  { id: 1, ip: '1.2.3.4', blockType: 'blacklist', path: '/api/users', method: 'GET', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0', createdAt: mockDateTimeOffset(-600 * 1000) },
+  { id: 2, ip: '5.6.7.8', blockType: 'blacklist', path: '/api/login', method: 'POST', userAgent: 'python-requests/2.31.0', createdAt: mockDateTimeOffset(-1200 * 1000) },
+  { id: 3, ip: '10.99.0.5', blockType: 'whitelist', path: '/api/system-configs', method: 'GET', userAgent: 'curl/7.88.1', createdAt: mockDateTimeOffset(-3600 * 1000) },
+  { id: 4, ip: '192.168.99.1', blockType: 'whitelist', path: '/api/roles', method: 'GET', userAgent: 'Mozilla/5.0 (Macintosh) Firefox/121.0', createdAt: mockDateTimeOffset(-7200 * 1000) },
+  { id: 5, ip: '1.2.3.4', blockType: 'blacklist', path: '/api/menus', method: 'GET', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0', createdAt: mockDateTimeOffset(-10800 * 1000) },
 ];
