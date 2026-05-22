@@ -172,7 +172,7 @@ export default function LogFilesPage() {
   };
 
   return (
-    <div style={{ display: 'flex', gap: 12, height: 'calc(100vh - 120px)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', gap: 12, height: '100%', overflow: 'hidden' }}>
       {/* ── 左侧文件列表 ─────────────────────────────────────── */}
       <div style={{
         width: 260,
