@@ -35,6 +35,7 @@ async function writeOperationLog(
   requestBody: unknown,
   beforeData: string | undefined,
   afterData: string | undefined,
+  responseBody: string | undefined,
 ) {
   try {
     const user = c.get('user') as JwtPayload | undefined;
@@ -60,6 +61,7 @@ async function writeOperationLog(
       beforeData: beforeData ?? null,
       afterData: afterData ?? null,
       responseCode,
+      responseBody: responseBody ?? null,
       durationMs,
       ip,
       userAgent: ua.slice(0, 512) || null,
@@ -122,11 +124,15 @@ export function guard(opts: GuardOptions) {
       const body = await resolveAuditRequestBody(c, opts.audit);
       // 捕获操作前快照（由路由处理器通过 setAuditBeforeData 注入）
       const beforeData = c.get('auditBeforeData') as string | undefined;
-      // 捕获响应体作为操作后快照
+      // 捕获响应体作为操作后快照，同时记录完整响应体
       let afterData: string | undefined;
+      let responseBodyStr: string | undefined;
       try {
         const cloned = c.res.clone();
-        const resJson = await cloned.json() as { code?: number; data?: unknown };
+        const rawText = await cloned.text();
+        // 完整响应体（限长 16KB，避免超大 payload）
+        if (rawText) responseBodyStr = rawText.length > 16384 ? `${rawText.slice(0, 16384)}…` : rawText;
+        const resJson = JSON.parse(rawText) as { code?: number; data?: unknown };
         if (resJson.code === 0 && resJson.data != null) {
           afterData = JSON.stringify(resJson.data);
         }
@@ -136,7 +142,7 @@ export function guard(opts: GuardOptions) {
       const durationMs = Date.now() - start;
       const auditOpts = opts.audit;
       setImmediate(() => {
-        writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData).catch(() => {});
+        writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData, responseBodyStr).catch(() => {});
       });
       return;
     }

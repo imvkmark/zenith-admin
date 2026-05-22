@@ -386,6 +386,13 @@
       "when": 1779664000000,
       "tag": "0054_great_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1779457863135,
+      "tag": "0055_little_susan_delgado",
+      "breakpoints": true
     }
   ]
 }

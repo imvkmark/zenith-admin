@@ -258,6 +258,26 @@ export function OperationLogsTable({
                   </div>
                 </TabPane>
               )}
+              <TabPane tab="响应详情" itemKey="response">
+                <div style={{ padding: '4px 0 8px' }}>
+                  {detailLog.responseBody ? (
+                    <DetailField label="完整响应体">
+                      {detailActiveTab === 'response' && (
+                        <JsonViewer
+                          className="operation-log-json-viewer"
+                          key={`res-${detailLog.id}`}
+                          value={(() => { try { return JSON.stringify(JSON.parse(detailLog.responseBody), null, 2); } catch { return detailLog.responseBody; } })()}
+                          height={360}
+                          width="100%"
+                          options={{ readOnly: true, autoWrap: true, formatOptions: { tabSize: 2, insertSpaces: true } }}
+                        />
+                      )}
+                    </DetailField>
+                  ) : (
+                    <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--semi-color-text-2)', fontSize: 13 }}>无响应体</div>
+                  )}
+                </div>
+              </TabPane>
             </Tabs>
           );
         })()}

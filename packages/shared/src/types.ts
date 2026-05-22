@@ -238,6 +238,7 @@ export interface OperationLog {
   beforeData: string | null;
   afterData: string | null;
   responseCode: number | null;
+  responseBody: string | null;
   durationMs: number | null;
   ip: string | null;
   userAgent: string | null;

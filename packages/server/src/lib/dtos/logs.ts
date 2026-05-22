@@ -31,6 +31,7 @@ export const OperationLogDTO = z
     beforeData: z.string().nullable(),
     afterData: z.string().nullable(),
     responseCode: z.number().int().nullable(),
+    responseBody: z.string().nullable(),
     durationMs: z.number().int().nullable(),
     ip: z.string().nullable(),
     userAgent: z.string().nullable(),

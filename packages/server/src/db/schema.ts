@@ -277,6 +277,7 @@ export const operationLogs = pgTable('operation_logs', {
   beforeData: text('before_data'),
   afterData: text('after_data'),
   responseCode: integer('response_code'),
+  responseBody: text('response_body'),
   durationMs: integer('duration_ms'),
   ip: varchar('ip', { length: 64 }),
   userAgent: varchar('user_agent', { length: 512 }),
