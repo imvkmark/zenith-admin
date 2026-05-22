@@ -11,6 +11,8 @@ import {
   useEdgesState,
   useReactFlow,
   ReactFlowProvider,
+  getNodesBounds,
+  getViewportForBounds,
   type Node as RFNode,
   type Edge as RFEdge,
   type NodeProps,
@@ -308,16 +310,29 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
       Toast.error('未找到画布');
       return;
     }
-    // 导出前先 fitView，避免仅导出可见区域
-    rf.fitView({ padding: 0.1, duration: 0 });
-    await new Promise((r) => setTimeout(r, 100));
-    const bounds = el.getBoundingClientRect();
+    if (nodes.length === 0) {
+      Toast.warning('无可导出内容');
+      return;
+    }
+    // 官方推荐：计算全图包围盒，生成一个避免依赖当前缩放的 viewport transform
+    const bounds = getNodesBounds(nodes);
+    const padding = 40;
+    const imageWidth = Math.min(8000, Math.ceil(bounds.width + padding * 2));
+    const imageHeight = Math.min(8000, Math.ceil(bounds.height + padding * 2));
+    const viewport = getViewportForBounds(bounds, imageWidth, imageHeight, 0.5, 2, padding);
+    Toast.info('正在生成图片...');
     try {
       const dataUrl = await toPng(el, {
         backgroundColor: '#ffffff',
-        width: bounds.width,
-        height: bounds.height,
-        pixelRatio: 2,
+        width: imageWidth,
+        height: imageHeight,
+        pixelRatio: 1,
+        cacheBust: true,
+        style: {
+          width: `${imageWidth}px`,
+          height: `${imageHeight}px`,
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+        },
       });
       const a = document.createElement('a');
       a.href = dataUrl;
@@ -327,7 +342,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
     } catch {
       Toast.error('导出失败');
     }
-  }, [rf]);
+  }, [nodes]);
 
   return (
     <div
