@@ -11,8 +11,6 @@ import {
   useEdgesState,
   useReactFlow,
   ReactFlowProvider,
-  getNodesBounds,
-  getViewportForBounds,
   type Node as RFNode,
   type Edge as RFEdge,
   type NodeProps,
@@ -21,7 +19,6 @@ import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { AutoComplete, Button, Switch, Space, Tooltip, Toast } from '@douyinfe/semi-ui';
 import { Download, Search } from 'lucide-react';
-import { toPng } from 'html-to-image';
 
 export interface ErColumn {
   name: string;
@@ -60,6 +57,92 @@ interface TableNodeData extends Record<string, unknown> {
 const NODE_WIDTH = 240;
 const ROW_HEIGHT = 22;
 const HEADER_HEIGHT = 32;
+
+function escapeXml(s: string): string {
+  return s.replace(/[<>&"']/g, (c) => {
+    if (c === '<') return '&lt;';
+    if (c === '>') return '&gt;';
+    if (c === '&') return '&amp;';
+    if (c === '"') return '&quot;';
+    return '&apos;';
+  });
+}
+
+function buildErSvg(nodes: RFNode[], edges: RFEdge[]): { svg: string; width: number; height: number } | null {
+  if (nodes.length === 0) return null;
+  const nodeMap = new Map<string, { x: number; y: number; w: number; h: number; data: TableNodeData }>();
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  nodes.forEach((n) => {
+    const data = n.data as TableNodeData;
+    const w = NODE_WIDTH;
+    const h = HEADER_HEIGHT + data.columns.length * ROW_HEIGHT + 8;
+    nodeMap.set(n.id, { x: n.position.x, y: n.position.y, w, h, data });
+    if (n.position.x < minX) minX = n.position.x;
+    if (n.position.y < minY) minY = n.position.y;
+    if (n.position.x + w > maxX) maxX = n.position.x + w;
+    if (n.position.y + h > maxY) maxY = n.position.y + h;
+  });
+  const padding = 40;
+  const width = Math.ceil(maxX - minX + padding * 2);
+  const height = Math.ceil(maxY - minY + padding * 2);
+  const tx = -minX + padding;
+  const ty = -minY + padding;
+
+  const edgePaths = edges.map((e) => {
+    const s = nodeMap.get(e.source);
+    const t = nodeMap.get(e.target);
+    if (!s || !t) return '';
+    const sx = s.x + s.w + tx;
+    const sy = s.y + s.h / 2 + ty;
+    const ex = t.x + tx;
+    const ey = t.y + t.h / 2 + ty;
+    const dx = Math.max(40, Math.abs(ex - sx) / 2);
+    const label = typeof e.label === 'string' ? e.label : '';
+    const mx = (sx + ex) / 2;
+    const my = (sy + ey) / 2;
+    return `<path d="M ${sx} ${sy} C ${sx + dx} ${sy}, ${ex - dx} ${ey}, ${ex} ${ey}" stroke="#1677ff" stroke-width="1.2" fill="none" marker-end="url(#er-arrow)" />`
+      + (label ? `<text x="${mx}" y="${my - 4}" font-size="10" fill="#888" text-anchor="middle">${escapeXml(label)}</text>` : '');
+  }).join('');
+
+  const nodeGroups = nodes.map((n) => {
+    const info = nodeMap.get(n.id);
+    if (!info) return '';
+    const { x, y, w, h, data } = info;
+    const X = x + tx;
+    const Y = y + ty;
+    const rows = data.columns.map((col, i) => {
+      const cy = HEADER_HEIGHT + i * ROW_HEIGHT;
+      const isPk = col.isPrimaryKey;
+      const isFk = !isPk && data.fkColumns.has(col.name);
+      let marker = '';
+      if (isPk) marker = 'PK';
+      else if (isFk) marker = 'FK';
+      const markerColor = isPk ? '#f7ba1e' : '#1677ff';
+      return `<line x1="0" y1="${cy}" x2="${w}" y2="${cy}" stroke="#eee" stroke-dasharray="2,2"/>`
+        + (marker ? `<text x="10" y="${cy + 14}" font-size="9" font-weight="700" fill="${markerColor}">${marker}</text>` : '')
+        + `<text x="32" y="${cy + 14}" font-size="11" fill="#333" font-weight="${isPk ? 600 : 400}">${escapeXml(col.name)}</text>`
+        + `<text x="${w - 10}" y="${cy + 14}" font-size="9" fill="#999" text-anchor="end">${escapeXml(col.dataType)}</text>`;
+    }).join('');
+    return `<g transform="translate(${X},${Y})">`
+      + `<rect x="0" y="0" width="${w}" height="${h}" rx="6" ry="6" fill="#fff" stroke="#d9d9d9"/>`
+      + `<path d="M 6 0 H ${w - 6} A 6 6 0 0 1 ${w} 6 V ${HEADER_HEIGHT} H 0 V 6 A 6 6 0 0 1 6 0 Z" fill="#f5f5f5"/>`
+      + `<line x1="0" y1="${HEADER_HEIGHT}" x2="${w}" y2="${HEADER_HEIGHT}" stroke="#d9d9d9"/>`
+      + `<text x="10" y="21" font-size="12" font-weight="600"><tspan fill="#999">${escapeXml(data.schema)}.</tspan><tspan fill="#333">${escapeXml(data.name)}</tspan></text>`
+      + rows
+      + `</g>`;
+  }).join('');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">`
+    + `<defs><marker id="er-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1677ff"/></marker></defs>`
+    + `<rect width="100%" height="100%" fill="#ffffff"/>`
+    + edgePaths
+    + nodeGroups
+    + `</svg>`;
+  return { svg, width, height };
+}
 
 function estimateHeight(colCount: number): number {
   return HEADER_HEIGHT + colCount * ROW_HEIGHT + 8;
@@ -305,44 +388,71 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
   }, [nodes, rf]);
 
   const handleExportPng = useCallback(async () => {
-    const el = wrapperRef.current?.querySelector<HTMLElement>('.react-flow__viewport');
-    if (!el) {
-      Toast.error('未找到画布');
-      return;
-    }
     if (nodes.length === 0) {
       Toast.warning('无可导出内容');
       return;
     }
-    // 官方推荐：计算全图包围盒，生成一个避免依赖当前缩放的 viewport transform
-    const bounds = getNodesBounds(nodes);
-    const padding = 40;
-    const imageWidth = Math.min(8000, Math.ceil(bounds.width + padding * 2));
-    const imageHeight = Math.min(8000, Math.ceil(bounds.height + padding * 2));
-    const viewport = getViewportForBounds(bounds, imageWidth, imageHeight, 0.5, 2, padding);
-    Toast.info('正在生成图片...');
+    const built = buildErSvg(nodes, edges);
+    if (!built) {
+      Toast.error('导出失败');
+      return;
+    }
+    const { svg, width, height } = built;
+    const scale = 2;
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     try {
-      const dataUrl = await toPng(el, {
-        backgroundColor: '#ffffff',
-        width: imageWidth,
-        height: imageHeight,
-        pixelRatio: 1,
-        cacheBust: true,
-        style: {
-          width: `${imageWidth}px`,
-          height: `${imageHeight}px`,
-          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
-        },
+      const img = new Image();
+      img.decoding = 'sync';
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('image load failed'));
+        img.src = url;
       });
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `er-diagram-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
-      a.click();
-      Toast.success('已导出 PNG');
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('canvas ctx null');
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((png) => {
+        if (!png) {
+          Toast.error('导出失败');
+          return;
+        }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(png);
+        a.download = `er-diagram-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        Toast.success('已导出 PNG');
+      }, 'image/png');
     } catch {
       Toast.error('导出失败');
+    } finally {
+      URL.revokeObjectURL(url);
     }
-  }, [nodes]);
+  }, [nodes, edges]);
+
+  const handleExportSvg = useCallback(() => {
+    if (nodes.length === 0) {
+      Toast.warning('无可导出内容');
+      return;
+    }
+    const built = buildErSvg(nodes, edges);
+    if (!built) {
+      Toast.error('导出失败');
+      return;
+    }
+    const blob = new Blob([built.svg], { type: 'image/svg+xml;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `er-diagram-${new Date().toISOString().replace(/[:.]/g, '-')}.svg`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    Toast.success('已导出 SVG');
+  }, [nodes, edges]);
 
   return (
     <div
@@ -384,6 +494,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
             </Space>
           </Tooltip>
           <Button icon={<Download size={14} />} size="small" onClick={handleExportPng}>导出 PNG</Button>
+          <Button size="small" onClick={handleExportSvg}>导出 SVG</Button>
         </Space>
       </div>
       <ReactFlow
