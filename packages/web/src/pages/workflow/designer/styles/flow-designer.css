@@ -7,13 +7,14 @@
 /* ─── 画布容器 ─────────────────────────────────────────────────────── */
 
 .fd-canvas {
+  position: relative;
   flex: 1;
   overflow: auto;
   background:
     radial-gradient(circle, var(--fd-canvas-dot) 1px, transparent 1px);
   background-size: 16px 16px;
   background-color: var(--fd-canvas-bg);
-  padding: 40px 0 80px;
+  padding: 8px 0 80px;
   /* 默认（浅色）变量 */
   --fd-canvas-bg: #f5f5f5;
   --fd-canvas-dot: #e5e5e5;
@@ -528,6 +529,29 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   gap: 4px;
   color: var(--semi-color-text-2);
   font-size: 13px;
+}
+
+.fd-canvas__toolbar {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 16px 16px auto;
+  padding: 6px 8px;
+  width: fit-content;
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.fd-canvas__toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--semi-color-border);
+  margin: 0 4px;
 }
 
 /* ─── 步骤导航 ────────────────────────────────────────────────────── */

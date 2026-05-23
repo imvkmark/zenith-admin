@@ -160,7 +160,7 @@ export async function publishDefinition(id: number) {
       description: existing.description,
       flowData: existing.flowData,
       formFields: existing.formFields,
-      publishedBy: user?.id ?? null,
+      publishedBy: user?.userId ?? null,
       tenantId: existing.tenantId,
     });
     const [u] = await tx

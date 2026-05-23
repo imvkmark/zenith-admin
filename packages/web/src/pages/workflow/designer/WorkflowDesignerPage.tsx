@@ -420,47 +420,6 @@ export default function WorkflowDesignerPage() {
               预览
             </Button>
           )}
-          {currentStep === 3 && (
-            <>
-              <Button
-                icon={<Undo2 size={14} />}
-                type="tertiary"
-                theme="borderless"
-                onClick={history.undo}
-                disabled={!history.canUndo}
-                title="撤销 (Ctrl+Z)"
-              >
-                撤销
-              </Button>
-              <Button
-                icon={<Redo2 size={14} />}
-                type="tertiary"
-                theme="borderless"
-                onClick={history.redo}
-                disabled={!history.canRedo}
-                title="重做 (Ctrl+Shift+Z)"
-              >
-                重做
-              </Button>
-              <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
-                导出
-              </Button>
-              <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport}>
-                导入
-              </Button>
-              {!isNew && (
-                <Button icon={<History size={14} />} type="tertiary" theme="borderless" onClick={openHistoryModal}>
-                  历史版本
-                </Button>
-              )}
-              <div className="fd-toolbar__zoom">
-                <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomOut} />
-                <span>{zoom}%</span>
-                <Button icon={<Plus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomIn} />
-                <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomReset} />
-              </div>
-            </>
-          )}
           <Button
             icon={<Save size={14} />}
             type="primary"
@@ -510,6 +469,47 @@ export default function WorkflowDesignerPage() {
       {/* 步骤 ③ 流程设计画布 */}
       {currentStep === 3 && (
         <div className="fd-canvas">
+          <div className="fd-canvas__toolbar">
+            <Button
+              icon={<Undo2 size={14} />}
+              type="tertiary"
+              theme="borderless"
+              onClick={history.undo}
+              disabled={!history.canUndo}
+              title="撤销 (Ctrl+Z)"
+            >
+              撤销
+            </Button>
+            <Button
+              icon={<Redo2 size={14} />}
+              type="tertiary"
+              theme="borderless"
+              onClick={history.redo}
+              disabled={!history.canRedo}
+              title="重做 (Ctrl+Shift+Z)"
+            >
+              重做
+            </Button>
+            <span className="fd-canvas__toolbar-divider" />
+            <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
+              导出
+            </Button>
+            <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport}>
+              导入
+            </Button>
+            {!isNew && (
+              <Button icon={<History size={14} />} type="tertiary" theme="borderless" onClick={openHistoryModal}>
+                历史版本
+              </Button>
+            )}
+            <span className="fd-canvas__toolbar-divider" />
+            <div className="fd-toolbar__zoom">
+              <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomOut} />
+              <span>{zoom}%</span>
+              <Button icon={<Plus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomIn} />
+              <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomReset} />
+            </div>
+          </div>
           <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
             <FlowRenderer
               process={process}
