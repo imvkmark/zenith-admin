@@ -3,7 +3,8 @@
  *
  * 监听 node.entered，当节点类型为 'trigger' 时执行配置的动作：
  * - webhook / callback：调用外部 HTTP 接口
- * - updateData / deleteData：暂记录占位执行记录（后续实现）
+ * - updateData：更新当前实例 formData 中指定字段
+ * - deleteData：删除当前实例 formData 中指定字段
  *
  * 当前为非阻塞执行：流程已经在 expandTasksToRows 中往下推进，
  * 触发器仅产生 workflow_trigger_executions 跟踪记录。
@@ -65,6 +66,47 @@ async function executeHttpTrigger(
   }
 }
 
+async function executeDataMutation(
+  cfg: WorkflowTriggerNodeConfig,
+  instanceId: number,
+  formData: Record<string, unknown>,
+): Promise<{ status: 'success' | 'failed'; responseBody: string | null; errorMessage: string | null; durationMs: number; requestBody: string }> {
+  const t0 = Date.now();
+  const next: Record<string, unknown> = { ...formData };
+  const fieldKeys = cfg.fieldKeys ?? [];
+  if (cfg.triggerType === 'updateData') {
+    const values = cfg.fieldValues ?? {};
+    for (const key of fieldKeys) {
+      const template = values[key];
+      next[key] = template === undefined ? null : renderTemplate(template, formData);
+    }
+  } else if (cfg.triggerType === 'deleteData') {
+    for (const key of fieldKeys) {
+      delete next[key];
+    }
+  }
+  const requestBody = JSON.stringify({ fieldKeys, fieldValues: cfg.fieldValues ?? null });
+  try {
+    await db.update(workflowInstances).set({ formData: next }).where(eq(workflowInstances.id, instanceId));
+    return {
+      status: 'success',
+      responseBody: JSON.stringify(next).slice(0, 4096),
+      errorMessage: null,
+      durationMs: Date.now() - t0,
+      requestBody,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      status: 'failed',
+      responseBody: null,
+      errorMessage: msg.slice(0, 1024),
+      durationMs: Date.now() - t0,
+      requestBody,
+    };
+  }
+}
+
 async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: string): Promise<void> {
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, instanceId)).limit(1);
   if (!inst) return;
@@ -89,13 +131,24 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
   let result: Awaited<ReturnType<typeof executeHttpTrigger>>;
   if (triggerType === 'webhook' || triggerType === 'callback') {
     result = await executeHttpTrigger(cfg, formData);
-  } else {
-    // updateData / deleteData 占位记录（暂未接入业务表更新）
+  } else if (triggerType === 'updateData' || triggerType === 'deleteData') {
+    const m = await executeDataMutation(cfg, instanceId, formData);
     result = {
-      status: 'skipped' as never,
+      status: m.status,
+      responseStatus: null,
+      responseBody: m.responseBody,
+      errorMessage: m.errorMessage,
+      durationMs: m.durationMs,
+      requestUrl: '',
+      requestMethod: triggerType,
+      requestBody: m.requestBody,
+    };
+  } else {
+    result = {
+      status: 'failed',
       responseStatus: null,
       responseBody: null,
-      errorMessage: `触发器类型 ${triggerType} 暂未实现`,
+      errorMessage: `未知触发器类型 ${triggerType as string}`,
       durationMs: 0,
       requestUrl: '',
       requestMethod: '',

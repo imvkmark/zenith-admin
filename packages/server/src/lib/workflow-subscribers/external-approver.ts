@@ -11,14 +11,34 @@ import { db } from '../../db';
 import { workflowInstances, workflowTasks } from '../../db/schema';
 import { workflowEventBus } from '../workflow-event-bus';
 import { httpPost } from '../http-client';
+import { approveTask, rejectTask } from '../../services/workflow-instances.service';
 import logger from '../logger';
 import type { WorkflowFlowData, WorkflowExternalApprovalConfig } from '@zenith/shared';
 
 const TIMEOUT_MS_DEFAULT = 10_000;
 const CALLBACK_PATH_PREFIX = '/api/public/workflow/external-callback';
+const FALLBACK_COMMENT = '[系统] 外部审批服务调用失败，按节点 fallbackStrategy 自动处理';
 
 function sign(secret: string, timestamp: string, body: string): string {
   return createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
+}
+
+async function applyFallback(
+  taskId: number,
+  strategy: WorkflowExternalApprovalConfig['fallbackStrategy'],
+): Promise<void> {
+  const effective = strategy ?? 'manual';
+  if (effective === 'manual') return; // 维持任务待人工处理
+  await db.update(workflowTasks).set({ externalDispatchStatus: 'fallback' }).where(eq(workflowTasks.id, taskId));
+  try {
+    if (effective === 'autoApprove') {
+      await approveTask(taskId, FALLBACK_COMMENT);
+    } else if (effective === 'autoReject') {
+      await rejectTask(taskId, FALLBACK_COMMENT);
+    }
+  } catch (err) {
+    logger.error('[external-approver] fallback 执行失败', { taskId, strategy: effective, err });
+  }
 }
 
 async function dispatchExternalApproval(taskId: number): Promise<void> {
@@ -35,6 +55,7 @@ async function dispatchExternalApproval(taskId: number): Promise<void> {
   if (!ext?.enabled || !ext.url) {
     await db.update(workflowTasks).set({ externalDispatchStatus: 'failed' }).where(eq(workflowTasks.id, taskId));
     logger.warn('[external-approver] 缺少 externalApproval 配置', { taskId });
+    await applyFallback(taskId, ext?.fallbackStrategy);
     return;
   }
 
@@ -71,10 +92,12 @@ async function dispatchExternalApproval(taskId: number): Promise<void> {
     } else {
       await db.update(workflowTasks).set({ externalDispatchStatus: 'failed' }).where(eq(workflowTasks.id, taskId));
       logger.warn('[external-approver] 外部审批服务返回非 2xx', { taskId, status: resp.status });
+      await applyFallback(taskId, ext.fallbackStrategy);
     }
   } catch (err) {
     await db.update(workflowTasks).set({ externalDispatchStatus: 'failed' }).where(eq(workflowTasks.id, taskId));
     logger.error('[external-approver] 调用外部审批服务失败', { taskId, err });
+    await applyFallback(taskId, ext.fallbackStrategy);
   }
 }
 
