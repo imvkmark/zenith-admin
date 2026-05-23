@@ -2,10 +2,11 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
-import { WorkflowDefinitionDTO } from '../lib/openapi-dtos';
+import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO } from '../lib/openapi-dtos';
 import {
   listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
   updateDefinition, publishDefinition, disableDefinition, deleteDefinition, getWorkflowDefinitionBeforeAudit,
+  listVersions, restoreVersion,
 } from '../services/workflow-definitions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -155,6 +156,47 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, publishedRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, deleteRouteDef] as const);
+const VersionParam = z.object({
+  id: z.coerce.number().int().positive(),
+  versionId: z.coerce.number().int().positive(),
+});
+
+const listVersionsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/versions', tags: ['WorkflowDefinitions'], summary: '历史版本列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.array(WorkflowDefinitionVersionDTO), 'ok'),
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await listVersions(c.req.valid('param').id)), 200),
+});
+
+const restoreVersionRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/versions/{versionId}/restore', tags: ['WorkflowDefinitions'], summary: '恢复历史版本',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:definition:edit', audit: { description: '恢复历史版本', module: '工作流管理' } })] as const,
+    request: { params: VersionParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowDefinitionDTO, '恢复成功'),
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id, versionId } = c.req.valid('param');
+    const before = await getWorkflowDefinitionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    const r = await restoreVersion(id, versionId);
+    return c.json(okBody(r, '已恢复为草稿'), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, publishedRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, deleteRouteDef, listVersionsRoute, restoreVersionRoute] as const);
 
 export default router;

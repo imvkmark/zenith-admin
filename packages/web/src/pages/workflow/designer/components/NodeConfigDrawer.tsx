@@ -19,6 +19,7 @@ import AdvancedSettingsTab from './tabs/AdvancedSettingsTab';
 
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
+interface UserGroupOption { id: number; name: string; }
 interface FormField { key: string; label: string; }
 
 interface NodeConfigDrawerProps {
@@ -26,6 +27,7 @@ interface NodeConfigDrawerProps {
   node: FlowNode | null;
   users: UserOption[];
   roles: RoleOption[];
+  userGroups?: UserGroupOption[];
   formFields: FormField[];
   allNodes?: Array<{ id: string; name: string; type: FlowNodeType }>;
   onSave: (nodeId: string, updates: { name?: string; props?: Record<string, unknown> }) => void;
@@ -37,6 +39,7 @@ export default function NodeConfigDrawer({
   node,
   users,
   roles,
+  userGroups = [],
   formFields,
   allNodes = [],
   onSave,
@@ -136,6 +139,7 @@ export default function NodeConfigDrawer({
                   formDeptHeadLevel={(props.formDeptHeadLevel as number) ?? 1}
                   users={users}
                   roles={roles}
+                  userGroups={userGroups}
                   formFields={formFields}
                   allNodes={allNodes}
                   onChange={handlePropsChange}

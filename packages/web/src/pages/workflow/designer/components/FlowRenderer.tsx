@@ -13,6 +13,7 @@ interface FlowRendererProps {
   process: { initiator: FlowNode };
   onEditNode: (node: FlowNode) => void;
   onDeleteNode: (nodeId: string) => void;
+  onDuplicateNode?: (nodeId: string) => void;
   onAddNodeAfter: (parentId: string, nodeType: FlowNodeType) => void;
   onAddNodeInBranch: (branchNodeId: string, branchId: string, nodeType: FlowNodeType) => void;
   onAddBranch: (branchNodeId: string) => void;
@@ -24,6 +25,7 @@ export default function FlowRenderer({
   process,
   onEditNode,
   onDeleteNode,
+  onDuplicateNode,
   onAddNodeAfter,
   onAddNodeInBranch,
   onAddBranch,
@@ -51,6 +53,7 @@ export default function FlowRenderer({
             node={node}
             onEdit={onEditNode}
             onDelete={onDeleteNode}
+            onDuplicate={onDuplicateNode}
           />
         )}
 

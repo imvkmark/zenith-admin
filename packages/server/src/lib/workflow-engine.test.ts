@@ -316,3 +316,131 @@ describe('validateFlowData', () => {
     expect(result.errors.some(e => e.includes('条件'))).toBe(true);
   });
 });
+
+// ─── 测试 handler 节点（办理节点） ─────────────────────────────────────────────
+
+function makeHandlerFlow(): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'h1', type: 'handler', label: '人工办理', assigneeId: 11 } },
+      { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+    ],
+  };
+}
+
+function makeRouteFlow(): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'rg', type: 'routeGateway', label: '路由' } },
+      { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'a-vip', type: 'approve', label: 'VIP审批', assigneeId: 30 } },
+      { id: 'n4', position: { x: 2, y: 1 }, data: { key: 'a-normal', type: 'approve', label: '普通审批', assigneeId: 31, isDefault: true } },
+      { id: 'n5', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3', condition: { field: 'vip', operator: 'eq', value: 'true' } },
+      { id: 'e3', source: 'n2', target: 'n4' },
+      { id: 'e4', source: 'n3', target: 'n5' },
+      { id: 'e5', source: 'n4', target: 'n5' },
+    ],
+  };
+}
+
+function makeInclusiveFlow(): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'fork', type: 'inclusiveGateway', label: '包容分叉' } },
+      { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'a-fin', type: 'approve', label: '财务', assigneeId: 40 } },
+      { id: 'n4', position: { x: 2, y: 1 }, data: { key: 'a-legal', type: 'approve', label: '法务', assigneeId: 41 } },
+      { id: 'n5', position: { x: 2, y: 2 }, data: { key: 'a-default', type: 'approve', label: '兜底', assigneeId: 42, isDefault: true } },
+      { id: 'n6', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3', condition: { field: 'needFin', operator: 'eq', value: 'true' } },
+      { id: 'e3', source: 'n2', target: 'n4', condition: { field: 'needLegal', operator: 'eq', value: 'true' } },
+      { id: 'e4', source: 'n2', target: 'n5' },
+      { id: 'e5', source: 'n3', target: 'n6' },
+      { id: 'e6', source: 'n4', target: 'n6' },
+      { id: 'e7', source: 'n5', target: 'n6' },
+    ],
+  };
+}
+
+function makeAutoFlow(autoType: 'delay' | 'trigger' | 'subProcess'): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'n2', position: { x: 1, y: 0 }, data: { key: 'auto', type: autoType, label: `自动-${autoType}` } },
+      { id: 'n3', position: { x: 2, y: 0 }, data: { key: 'a1', type: 'approve', label: '审批', assigneeId: 99 } },
+      { id: 'n4', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'n2' },
+      { id: 'e2', source: 'n2', target: 'n3' },
+      { id: 'e3', source: 'n3', target: 'n4' },
+    ],
+  };
+}
+
+describe('advanceFlow - handler node', () => {
+  it('creates handler task at start', () => {
+    const result = getInitialTasks(makeHandlerFlow());
+    expect(result.tasksToCreate).toHaveLength(1);
+    expect(result.tasksToCreate[0].nodeKey).toBe('h1');
+    expect(result.tasksToCreate[0].nodeType).toBe('handler');
+  });
+
+  it('finishes after handler complete', () => {
+    const result = advanceFlow(makeHandlerFlow(), 'h1', {}, new Set(['start', 'h1']));
+    expect(result.finished).toBe(true);
+  });
+});
+
+describe('advanceFlow - route gateway', () => {
+  it('routes by matching condition', () => {
+    const result = advanceFlow(makeRouteFlow(), 'start', { vip: 'true' }, new Set(['start']));
+    expect(result.tasksToCreate[0].nodeKey).toBe('a-vip');
+  });
+
+  it('falls back to default branch when no condition matches', () => {
+    const result = advanceFlow(makeRouteFlow(), 'start', { vip: 'false' }, new Set(['start']));
+    expect(result.tasksToCreate[0].nodeKey).toBe('a-normal');
+  });
+});
+
+describe('advanceFlow - inclusive gateway', () => {
+  it('forks into all matching branches', () => {
+    const result = advanceFlow(makeInclusiveFlow(), 'start', { needFin: 'true', needLegal: 'true' }, new Set(['start']));
+    const keys = result.tasksToCreate.map(t => t.nodeKey).sort((a, b) => a.localeCompare(b));
+    expect(keys).toEqual(['a-fin', 'a-legal']);
+  });
+
+  it('forks into single matching branch', () => {
+    const result = advanceFlow(makeInclusiveFlow(), 'start', { needFin: 'true', needLegal: 'false' }, new Set(['start']));
+    expect(result.tasksToCreate.map(t => t.nodeKey)).toEqual(['a-fin']);
+  });
+
+  it('falls back to default when no condition matches', () => {
+    const result = advanceFlow(makeInclusiveFlow(), 'start', { needFin: 'false', needLegal: 'false' }, new Set(['start']));
+    expect(result.tasksToCreate.map(t => t.nodeKey)).toEqual(['a-default']);
+  });
+});
+
+describe('advanceFlow - auto nodes (delay/trigger/subProcess)', () => {
+  for (const t of ['delay', 'trigger', 'subProcess'] as const) {
+    it(`auto-passes ${t} node and reaches next approve`, () => {
+      const result = advanceFlow(makeAutoFlow(t), 'start', {}, new Set(['start']));
+      const approveTask = result.tasksToCreate.find(task => task.nodeKey === 'a1');
+      expect(approveTask).toBeDefined();
+      expect(approveTask?.assigneeId).toBe(99);
+    });
+  }
+});

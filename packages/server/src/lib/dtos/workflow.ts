@@ -21,6 +21,22 @@ export const WorkflowDefinitionDTO = z
   })
   .openapi('WorkflowDefinition');
 
+export const WorkflowDefinitionVersionDTO = z
+  .object({
+    id: z.number().int(),
+    definitionId: z.number().int(),
+    version: z.number().int(),
+    name: z.string(),
+    description: z.string().nullable(),
+    flowData: z.unknown().nullable(),
+    formFields: z.unknown().nullable(),
+    publishedAt: z.string(),
+    publishedBy: z.number().int().nullable(),
+    publishedByName: z.string().nullable().optional(),
+    tenantId: z.number().int().nullable(),
+  })
+  .openapi('WorkflowDefinitionVersion');
+
 export const WorkflowTaskDTO = z
   .object({
     id: z.number().int(),

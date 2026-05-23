@@ -126,6 +126,22 @@ export const createPositionSchema = z.object({
 
 export const updatePositionSchema = createPositionSchema.partial();
 
+// ─── 用户组 Schema ────────────────────────────────────────────────────────
+export const createUserGroupSchema = z.object({
+  name: z.string().min(1, '用户组名称不能为空').max(64),
+  code: z.string().min(1, '用户组编码不能为空').max(64).regex(/^\w+$/, '用户组编码只能包含字母、数字和下划线'),
+  description: z.string().max(256).optional(),
+  ownerId: z.number().int().positive().nullable().optional(),
+  departmentId: z.number().int().positive().nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+
+export const updateUserGroupSchema = createUserGroupSchema.partial();
+
+export const assignUserGroupMembersSchema = z.object({
+  userIds: z.array(z.number().int().positive()),
+});
+
 // ─── 字典 Schema ──────────────────────────────────────────────────────────────
 export const createDictSchema = z.object({
   name: z.string().min(1, '字典名称不能为空').max(64),
@@ -225,6 +241,9 @@ export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
 export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;
 export type CreatePositionInput = z.infer<typeof createPositionSchema>;
 export type UpdatePositionInput = z.infer<typeof updatePositionSchema>;
+export type CreateUserGroupInput = z.infer<typeof createUserGroupSchema>;
+export type UpdateUserGroupInput = z.infer<typeof updateUserGroupSchema>;
+export type AssignUserGroupMembersInput = z.infer<typeof assignUserGroupMembersSchema>;
 export type CreateDictInput = z.infer<typeof createDictSchema>;
 export type UpdateDictInput = z.infer<typeof updateDictSchema>;
 export type CreateDictItemInput = z.infer<typeof createDictItemSchema>;
@@ -479,15 +498,53 @@ export const workflowEdgeConditionSchema = z.object({
   value: z.union([z.string(), z.number(), z.boolean()]),
 });
 
-export const workflowNodeConfigSchema = z.object({
+export const workflowNodeTypeSchema = z.enum([
+  'start',
+  'approve',
+  'handler',
+  'end',
+  'exclusiveGateway',
+  'parallelGateway',
+  'inclusiveGateway',
+  'routeGateway',
+  'ccNode',
+  'delay',
+  'trigger',
+  'subProcess',
+]);
+
+export const workflowAssigneeTypeSchema = z.enum([
+  'user', 'role', 'department', 'userGroup',
+  'initiator', 'initiatorLeader', 'initiatorDept',
+  'manager', 'multiLevelManager', 'multiLevelDeptHead',
+  'formUser', 'formDepartment', 'nodeApprover', 'initiatorSelect',
+]);
+
+export const workflowApproveMethodSchema = z.enum(['and', 'or', 'sequential', 'auto']);
+
+export const workflowNodeConfigSchema = z.looseObject({
   key: z.string().min(1),
-  type: z.enum(['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode']),
+  type: workflowNodeTypeSchema,
   label: z.string().min(1),
   assigneeId: z.number().int().nullable().optional(),
   assigneeName: z.string().nullable().optional(),
   assigneeIds: z.array(z.number().int()).nullable().optional(),
   assigneeNames: z.array(z.string()).nullable().optional(),
   isDefault: z.boolean().optional(),
+  assigneeType: workflowAssigneeTypeSchema.optional(),
+  userIds: z.array(z.number().int()).nullable().optional(),
+  roleIds: z.array(z.number().int()).nullable().optional(),
+  deptIds: z.array(z.number().int()).nullable().optional(),
+  userGroupIds: z.array(z.number().int()).nullable().optional(),
+  approveMethod: workflowApproveMethodSchema.optional(),
+  managerLevel: z.number().int().min(1).optional(),
+  multiLevelEndType: z.enum(['topLevel', 'level', 'role']).optional(),
+  multiLevelEndLevel: z.number().int().min(1).optional(),
+  multiLevelEndRoleId: z.number().int().optional(),
+  formUserField: z.string().optional(),
+  formDeptField: z.string().optional(),
+  formDeptHeadLevel: z.number().int().min(1).optional(),
+  nodeApproverNodeId: z.string().optional(),
 });
 
 export const workflowFieldVisibilityConditionSchema = z.object({

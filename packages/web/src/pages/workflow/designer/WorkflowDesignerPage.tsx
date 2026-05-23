@@ -3,9 +3,10 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Spin, Toast, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, Download, Eye, Minus, Plus, RotateCcw, Save, Send, Upload } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowFormField } from '@zenith/shared';
+import { Button, Modal, Spin, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { ArrowLeft, Download, Eye, History, Minus, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField } from '@zenith/shared';
 import { request } from '@/utils/request';
 
 import type { FlowNode, FlowBranch, FlowNodeType, FlowProcess, BranchNodeType, ConditionGroup } from './types';
@@ -23,7 +24,9 @@ import {
   treeToFlat,
   deepClone,
   collectAllNodes,
+  duplicateNode,
 } from './utils';
+import { useHistoryState } from './hooks/useHistoryState';
 import FlowRenderer from './components/FlowRenderer';
 import NodeConfigDrawer from './components/NodeConfigDrawer';
 import ConditionEditor from './components/ConditionEditor';
@@ -50,9 +53,10 @@ export default function WorkflowDesignerPage() {
   const [pageLoading, setPageLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
-  const [process, setProcess] = useState<FlowProcess>(createDefaultProcess());
+  const [process, setProcess, history] = useHistoryState<FlowProcess>(createDefaultProcess());
   const [users, setUsers] = useState<UserOption[]>([]);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [userGroups, setUserGroups] = useState<Array<{ id: number; name: string }>>([]);
 
   // 节点编辑抽屉
   const [editingNode, setEditingNode] = useState<FlowNode | null>(null);
@@ -73,6 +77,11 @@ export default function WorkflowDesignerPage() {
 
   // 预览
   const [previewVisible, setPreviewVisible] = useState(false);
+
+  // 历史版本
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [versions, setVersions] = useState<WorkflowDefinitionVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
 
   // 更多设置
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettingsData>(DEFAULT_ADVANCED_SETTINGS);
@@ -98,7 +107,7 @@ export default function WorkflowDesignerPage() {
           if (res.data.formFields) setLocalFormFields(res.data.formFields);
           const fd = res.data.flowData;
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
-            setProcess((fd as unknown as Record<string, unknown>).process as FlowProcess);
+            history.reset((fd as unknown as Record<string, unknown>).process);
           }
         }
       }).finally(() => setPageLoading(false));
@@ -114,6 +123,11 @@ export default function WorkflowDesignerPage() {
     request.get<RoleOption[]>('/api/roles/all').then(res => {
       if (res.code === 0 && res.data) {
         setRoles(res.data);
+      }
+    });
+    request.get<Array<{ id: number; name: string }>>('/api/user-groups/all').then(res => {
+      if (res.code === 0 && res.data) {
+        setUserGroups(res.data.map(g => ({ id: g.id, name: g.name })));
       }
     });
   }, []);
@@ -132,6 +146,11 @@ export default function WorkflowDesignerPage() {
 
   const handleDeleteNode = useCallback((nodeId: string) => {
     setProcess(prev => removeNode(prev, nodeId));
+  }, []);
+
+  const handleDuplicateNode = useCallback((nodeId: string) => {
+    setProcess(prev => duplicateNode(prev, nodeId));
+    Toast.success({ content: '节点已复制', duration: 2 });
   }, []);
 
   const handleEditNode = useCallback((node: FlowNode) => {
@@ -276,6 +295,28 @@ export default function WorkflowDesignerPage() {
   const handleZoomOut = () => setZoom(z => Math.max(z - 10, 50));
   const handleZoomReset = () => setZoom(100);
 
+  // ─── 快捷键：Undo / Redo ──────────────────────────────────────────
+
+  useEffect(() => {
+    if (currentStep !== 3) return;
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      const meta = e.ctrlKey || e.metaKey;
+      if (!meta) return;
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        history.undo();
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        e.preventDefault();
+        history.redo();
+      }
+    };
+    globalThis.addEventListener('keydown', handler);
+    return () => globalThis.removeEventListener('keydown', handler);
+  }, [currentStep, history]);
+
   // ─── 步骤导航标签 ──────────────────────────────────────────────────
 
   const STEPS = [
@@ -294,7 +335,36 @@ export default function WorkflowDesignerPage() {
 
   // ─── 渲染 ─────────────────────────────────────────────────────────
 
-  const isEditable = definition?.status !== 'published';
+  // 已发布流程也允许编辑；保存后后端会自动将 status 转为 draft，需重新发布。
+
+  // 历史版本
+  const openHistoryModal = async () => {
+    if (isNew || !id) return;
+    setHistoryModalVisible(true);
+    setVersionsLoading(true);
+    try {
+      const res = await request.get<WorkflowDefinitionVersion[]>(`/api/workflows/definitions/${id}/versions`);
+      if (res.code === 0) setVersions(res.data ?? []);
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const handleRestoreVersion = (ver: WorkflowDefinitionVersion) => {
+    Modal.confirm({
+      title: `确认恢复到 v${ver.version}？`,
+      content: '当前未保存的修改将被覆盖，流程将转为草稿状态，需要重新发布。',
+      onOk: async () => {
+        const res = await request.post<WorkflowDefinition>(`/api/workflows/definitions/${id}/versions/${ver.id}/restore`, {});
+        if (res.code === 0) {
+          Toast.success('已恢复为草稿');
+          setHistoryModalVisible(false);
+          // 重新加载页面以同步画布
+          globalThis.location.reload();
+        }
+      },
+    });
+  };
 
   if (pageLoading) {
     return (
@@ -352,12 +422,37 @@ export default function WorkflowDesignerPage() {
           )}
           {currentStep === 3 && (
             <>
+              <Button
+                icon={<Undo2 size={14} />}
+                type="tertiary"
+                theme="borderless"
+                onClick={history.undo}
+                disabled={!history.canUndo}
+                title="撤销 (Ctrl+Z)"
+              >
+                撤销
+              </Button>
+              <Button
+                icon={<Redo2 size={14} />}
+                type="tertiary"
+                theme="borderless"
+                onClick={history.redo}
+                disabled={!history.canRedo}
+                title="重做 (Ctrl+Shift+Z)"
+              >
+                重做
+              </Button>
               <Button icon={<Download size={14} />} type="tertiary" theme="borderless" onClick={handleExport}>
                 导出
               </Button>
-              <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport} disabled={!isEditable}>
+              <Button icon={<Upload size={14} />} type="tertiary" theme="borderless" onClick={handleImport}>
                 导入
               </Button>
+              {!isNew && (
+                <Button icon={<History size={14} />} type="tertiary" theme="borderless" onClick={openHistoryModal}>
+                  历史版本
+                </Button>
+              )}
               <div className="fd-toolbar__zoom">
                 <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={handleZoomOut} />
                 <span>{zoom}%</span>
@@ -371,7 +466,6 @@ export default function WorkflowDesignerPage() {
             type="primary"
             loading={saving}
             onClick={() => void handleSave()}
-            disabled={!isEditable}
           >
             保存
           </Button>
@@ -381,10 +475,10 @@ export default function WorkflowDesignerPage() {
               type="primary"
               theme="solid"
               onClick={async () => {
-                const res = await request.put(`/api/workflows/definitions/${id}/publish`);
+                const res = await request.post(`/api/workflows/definitions/${id}/publish`, {});
                 if (res.code === 0) {
                   Toast.success('发布成功');
-                  setDefinition(prev => prev ? { ...prev, status: 'published' } : prev);
+                  setDefinition(prev => prev ? { ...prev, status: 'published', version: prev.version + 1 } : prev);
                 }
               }}
             >
@@ -421,6 +515,7 @@ export default function WorkflowDesignerPage() {
               process={process}
               onEditNode={handleEditNode}
               onDeleteNode={handleDeleteNode}
+              onDuplicateNode={handleDuplicateNode}
               onAddNodeAfter={handleAddNodeAfter}
               onAddNodeInBranch={handleAddNodeInBranch}
               onAddBranch={handleAddBranch}
@@ -452,6 +547,7 @@ export default function WorkflowDesignerPage() {
         node={editingNode}
         users={users}
         roles={roles}
+        userGroups={userGroups}
         formFields={formFields}
         allNodes={collectAllNodes(process.initiator)}
         onSave={handleSaveNode}
@@ -466,6 +562,43 @@ export default function WorkflowDesignerPage() {
         onSave={handleSaveBranchConditions}
         onCancel={() => { setConditionEditorVisible(false); setEditingBranch(null); }}
       />
+
+      {/* 历史版本 */}
+      <Modal
+        title="历史版本"
+        visible={historyModalVisible}
+        onCancel={() => setHistoryModalVisible(false)}
+        footer={null}
+        width={720}
+      >
+        <Table
+          dataSource={versions}
+          loading={versionsLoading}
+          rowKey="id"
+          pagination={false}
+          columns={[
+            { title: '版本号', dataIndex: 'version', width: 90, render: (v: number) => <Tag color="blue">v{v}</Tag> },
+            { title: '名称', dataIndex: 'name' },
+            { title: '发布人', dataIndex: 'publishedByName', width: 120, render: (v?: string) => v ?? '-' },
+            { title: '发布时间', dataIndex: 'publishedAt', width: 170 },
+            {
+              title: '操作',
+              width: 100,
+              fixed: 'right',
+              render: (_: unknown, record: WorkflowDefinitionVersion) => (
+                <Button
+                  theme="borderless"
+                  size="small"
+                  onClick={() => handleRestoreVersion(record)}
+                  disabled={record.version === definition?.version && definition?.status === 'published'}
+                >
+                  恢复
+                </Button>
+              ),
+            },
+          ] as ColumnProps<WorkflowDefinitionVersion>[]}
+        />
+      </Modal>
     </div>
   );
 }

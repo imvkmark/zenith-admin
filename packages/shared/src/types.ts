@@ -137,7 +137,21 @@ export interface Position {
   createdAt: string;
   updatedAt: string;
 }
-
+// ─── 用户组 ────────────────────────────────────────────────────────────
+export interface UserGroup {
+  id: number;
+  name: string;
+  code: string;
+  description?: string | null;
+  ownerId?: number | null;
+  ownerName?: string | null;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  memberCount?: number;
+  status: EntityStatus;
+  createdAt: string;
+  updatedAt: string;
+}
 // ─── 字典 ─────────────────────────────────────────────────────────────────────
 export interface Dict {
   id: number;
@@ -518,7 +532,19 @@ export interface UserApiTokenCreated {
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
 export type WorkflowInstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
 export type WorkflowTaskStatus = 'pending' | 'approved' | 'rejected' | 'skipped';
-export type WorkflowNodeType = 'start' | 'approve' | 'end' | 'exclusiveGateway' | 'parallelGateway' | 'ccNode';
+export type WorkflowNodeType =
+  | 'start'
+  | 'approve'
+  | 'handler'
+  | 'end'
+  | 'exclusiveGateway'
+  | 'parallelGateway'
+  | 'inclusiveGateway'
+  | 'routeGateway'
+  | 'ccNode'
+  | 'delay'
+  | 'trigger'
+  | 'subProcess';
 export type WorkflowConditionOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains';
 
 // 连线条件表达式（排他网关出边使用）
@@ -528,16 +554,65 @@ export interface WorkflowEdgeCondition {
   value: string | number | boolean;
 }
 
+/** 审批人来源类型 */
+export type WorkflowAssigneeType =
+  | 'user'              // 指定成员
+  | 'role'              // 指定角色
+  | 'department'        // 部门负责人
+  | 'userGroup'         // 用户组
+  | 'initiator'         // 发起人本人
+  | 'initiatorLeader'   // 发起人上级（兼容旧字段）
+  | 'initiatorDept'     // 发起人部门主管（兼容旧字段）
+  | 'manager'           // 直属主管（支持多层级 managerLevel）
+  | 'multiLevelManager' // 连续多级上级
+  | 'multiLevelDeptHead'// 连续多级部门负责人
+  | 'formUser'          // 表单内联系人字段
+  | 'formDepartment'    // 表单内部门字段
+  | 'nodeApprover'      // 节点审批人（关联前序节点）
+  | 'initiatorSelect';  // 发起人自选（在发起时已经填到 userIds 中）
+
+/** 审批方式 */
+export type WorkflowApproveMethod =
+  | 'and'         // 会签：所有人通过
+  | 'or'          // 或签：任一人通过
+  | 'sequential'  // 顺序会签：按顺序逐一通过
+  | 'auto';       // 自动通过
+
 // 流程节点配置（存在 flowData JSON 中）
 export interface WorkflowNodeConfig {
   key: string;       // 节点唯一标识
   type: WorkflowNodeType;
   label: string;     // 显示名称
-  assigneeId?: number | null;   // 审批人 ID（approve 节点）
+  assigneeId?: number | null;   // 审批人 ID（approve 节点单人）
   assigneeName?: string | null;
-  assigneeIds?: number[] | null;  // 抄送节点：多个接收人 ID
+  assigneeIds?: number[] | null;  // 抄送节点 / 多人配置：多个接收人 ID
   assigneeNames?: string[] | null;
   isDefault?: boolean;            // 排他网关：是否默认出口
+  /** 审批人来源类型（人工节点） */
+  assigneeType?: WorkflowAssigneeType;
+  /** 当 assigneeType = 'user' 时指定的成员 IDs */
+  userIds?: number[] | null;
+  /** 当 assigneeType = 'role' 时指定的角色 IDs */
+  roleIds?: number[] | null;
+  /** 当 assigneeType = 'department' 时指定的部门 IDs */
+  deptIds?: number[] | null;
+  /** 当 assigneeType = 'userGroup' 时指定的用户组 IDs */
+  userGroupIds?: number[] | null;
+  /** 审批方式（人工节点，多人时生效） */
+  approveMethod?: WorkflowApproveMethod;
+  /** manager / multiLevelManager 的层级（1 = 直属上级） */
+  managerLevel?: number;
+  /** 多级模式的终点类型 */
+  multiLevelEndType?: 'topLevel' | 'level' | 'role';
+  multiLevelEndLevel?: number;
+  multiLevelEndRoleId?: number;
+  /** formUser 策略：表单中联系人字段的 key */
+  formUserField?: string;
+  /** formDepartment 策略：表单中部门字段的 key */
+  formDeptField?: string;
+  formDeptHeadLevel?: number;
+  /** nodeApprover 策略：关联前序节点 ID */
+  nodeApproverNodeId?: string;
 }
 
 // React Flow 数据结构（flowData JSON）
@@ -630,6 +705,20 @@ export interface WorkflowDefinition {
   createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkflowDefinitionVersion {
+  id: number;
+  definitionId: number;
+  version: number;
+  name: string;
+  description: string | null;
+  flowData: WorkflowFlowData | null;
+  formFields: WorkflowFormField[] | null;
+  publishedAt: string;
+  publishedBy: number | null;
+  publishedByName?: string | null;
+  tenantId: number | null;
 }
 
 export interface WorkflowTask {

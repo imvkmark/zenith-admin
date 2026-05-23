@@ -254,6 +254,33 @@ export function removeBranch(process: FlowProcess, branchNodeId: string, branchI
   return cloned;
 }
 
+/**
+ * 复制节点：在源节点之后插入一个深拷贝副本（重新生成 id，剥离 children）。
+ * 用于设计器的「复制节点」功能。
+ */
+export function duplicateNode(process: FlowProcess, nodeId: string): FlowProcess {
+  const cloned = deepClone(process);
+  const source = findNodeById(cloned.initiator, nodeId);
+  if (!source || source.type === 'initiator') return process;
+  const copy: FlowNode = {
+    ...deepClone(source),
+    id: genId(source.type),
+    name: source.name ? `${source.name} 副本` : '',
+    children: undefined,
+  };
+  // 分支节点的分支也要重新生成 id
+  if (copy.branches) {
+    copy.branches = copy.branches.map(b => ({
+      ...b,
+      id: genId('branch'),
+      children: undefined,
+    }));
+  }
+  copy.children = source.children;
+  source.children = copy;
+  return cloned;
+}
+
 // ─── 内部辅助 ────────────────────────────────────────────────────────
 
 function findNodeById(node: FlowNode | undefined, id: string): FlowNode | undefined {
@@ -408,8 +435,11 @@ function flattenNode(
 
   if (node.branches && node.branches.length > 0) {
     // 分支节点 → 网关
-    const gwType = node.type === 'parallelBranch' || node.type === 'inclusiveBranch'
-      ? 'parallelGateway' : 'exclusiveGateway';
+    let gwType: string;
+    if (node.type === 'parallelBranch') gwType = 'parallelGateway';
+    else if (node.type === 'inclusiveBranch') gwType = 'inclusiveGateway';
+    else if (node.type === 'routeBranch') gwType = 'routeGateway';
+    else gwType = 'exclusiveGateway';
 
     // Fork gateway
     const forkId = `gw-fork-${node.id}`;
@@ -485,11 +515,11 @@ function mapNodeType(type: FlowNodeType): string {
   switch (type) {
     case 'initiator': return 'start';
     case 'approver': return 'approve';
-    case 'handler': return 'approve';
+    case 'handler': return 'handler';
     case 'cc': return 'ccNode';
-    case 'delay': return 'timerEvent';
-    case 'trigger': return 'receiveTask';
-    case 'subProcess': return 'callActivity';
+    case 'delay': return 'delay';
+    case 'trigger': return 'trigger';
+    case 'subProcess': return 'subProcess';
     default: return 'approve';
   }
 }

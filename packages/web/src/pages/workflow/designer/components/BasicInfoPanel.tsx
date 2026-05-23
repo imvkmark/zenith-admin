@@ -45,8 +45,8 @@ export default function BasicInfoPanel({ definition, isNew, onFieldChange }: Rea
           />
           {!isNew && definition && (
             <>
-              <Form.Input field="version" label="版本号" disabled initValue={String(definition.version)} />
-              <Form.Input field="status" label="状态" disabled initValue={getStatusLabel(definition.status)} />
+              <Form.Input key={`v-${definition.version}`} field="version" label="版本号" disabled initValue={String(definition.version)} />
+              <Form.Input key={`s-${definition.status}`} field="status" label="状态" disabled initValue={getStatusLabel(definition.status)} />
             </>
           )}
         </Form>

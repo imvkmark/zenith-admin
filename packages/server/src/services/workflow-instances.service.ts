@@ -58,10 +58,137 @@ import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, users } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { advanceFlow, getInitialTasks, validateFlowData } from '../lib/workflow-engine';
-import type { WorkflowFlowData } from '@zenith/shared';
+import { advanceFlow, getInitialTasks, validateFlowData, type TaskAction } from '../lib/workflow-engine';
+import type { WorkflowApproveMethod, WorkflowFlowData } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
+import { resolveAssigneeIds } from './workflow-assignee-resolver.service';
+import type { DbExecutor } from '../db/types';
+
+/**
+ * 将引擎输出的 TaskAction[] 展开为实际需插入的 workflow_tasks 行。
+ * - approve / handler：调用 resolver 展开为多人，依据 approveMethod 写入状态／sequence
+ * - ccNode / delay / trigger / subProcess：保持原样
+ */
+async function expandTasksToRows(
+  tasks: TaskAction[],
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown> },
+): Promise<Array<typeof workflowTasks.$inferInsert>> {
+  const rows: Array<typeof workflowTasks.$inferInsert> = [];
+  for (const t of tasks) {
+    if (t.nodeType !== 'approve' && t.nodeType !== 'handler') {
+      rows.push({
+        instanceId: ctx.instanceId,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: t.nodeType,
+        assigneeId: t.assigneeId,
+        status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
+      });
+      continue;
+    }
+    // 节点级"自动通过/拒绝"开关（前端 ApprovalType）也可能通过 nodeConfig 传入；
+    // 这里先处理 approveMethod=='auto' 的多人审批"自动通过"语义：直接落 approved 行。
+    const rawMethod = t.nodeConfig.approveMethod;
+    if (rawMethod === 'auto') {
+      rows.push({
+        instanceId: ctx.instanceId,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: t.nodeType,
+        assigneeId: null,
+        status: 'approved' as const,
+        actionAt: new Date(),
+      });
+      continue;
+    }
+
+    const userIds = await resolveAssigneeIds(t.nodeConfig, {
+      initiatorId: ctx.initiatorId,
+      executor: ctx.executor,
+      formData: ctx.formData,
+      instanceId: ctx.instanceId,
+    });
+    // 未解析到任何人：写入一条无 assignee 的 pending 任务作为占位（避免隐性 stall）
+    if (userIds.length === 0) {
+      rows.push({
+        instanceId: ctx.instanceId,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: t.nodeType,
+        assigneeId: null,
+        status: 'pending' as const,
+      });
+      continue;
+    }
+    const fallbackMethod: Exclude<WorkflowApproveMethod, 'auto'> = userIds.length > 1 ? 'and' : 'or';
+    const method: Exclude<WorkflowApproveMethod, 'auto'> = rawMethod && rawMethod !== 'auto' ? rawMethod : fallbackMethod;
+    userIds.forEach((uid, idx) => {
+      rows.push({
+        instanceId: ctx.instanceId,
+        nodeKey: t.nodeKey,
+        nodeName: t.nodeName,
+        nodeType: t.nodeType,
+        assigneeId: uid,
+        // 顺序会签：只有第一人 pending，其余 waiting
+        status: method === 'sequential' && idx > 0 ? 'waiting' as const : 'pending' as const,
+        taskOrder: method === 'sequential' ? idx : null,
+        approveMethod: userIds.length > 1 ? method : null,
+      });
+    });
+  }
+  return rows;
+}
+
+/**
+ * 检查同一 (instanceId, nodeKey) 下的全部任务是否已达成完成条件。
+ * - and （会签）：所有人 approved 才完成
+ * - or  （或签）：任一人 approved 即完成，其余 pending 任务自动 skipped
+ * - sequential（顺序会签）：逐个转换 waiting -> pending，全部 approved 后完成
+ */
+async function checkNodeCompletion(
+  tx: DbExecutor,
+  instanceId: number,
+  nodeKey: string,
+): Promise<{ completed: boolean; method: WorkflowApproveMethod | null }> {
+  const siblings = await tx.select().from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)));
+  if (siblings.length === 0) return { completed: true, method: null };
+  const method = siblings.find((t) => t.approveMethod)?.approveMethod ?? null;
+
+  if (!method || method === 'and') {
+    const allDone = siblings.every((t) => t.status === 'approved' || t.status === 'skipped');
+    return { completed: allDone, method };
+  }
+  if (method === 'or') {
+    const anyApproved = siblings.some((t) => t.status === 'approved');
+    if (anyApproved) {
+      // 其余 pending 任务跳过
+      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
+        .where(and(
+          eq(workflowTasks.instanceId, instanceId),
+          eq(workflowTasks.nodeKey, nodeKey),
+          eq(workflowTasks.status, 'pending'),
+        ));
+      return { completed: true, method };
+    }
+    return { completed: false, method };
+  }
+  if (method === 'sequential') {
+    const allApproved = siblings.every((t) => t.status === 'approved');
+    if (allApproved) return { completed: true, method };
+    // 将下一个 waiting 按 taskOrder 提升为 pending
+    const nextWaiting = siblings
+      .filter((t) => t.status === 'waiting')
+      .sort((a, b) => (a.taskOrder ?? 0) - (b.taskOrder ?? 0))[0];
+    if (nextWaiting) {
+      await tx.update(workflowTasks).set({ status: 'pending' })
+        .where(eq(workflowTasks.id, nextWaiting.id));
+    }
+    return { completed: false, method };
+  }
+  return { completed: false, method };
+}
 
 type InstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
 
@@ -246,16 +373,13 @@ export async function createInstance(data: { definitionId: number; title: string
       tenantId: getCreateTenantId(user),
     }).returning();
     if (initialResult.tasksToCreate.length > 0) {
-      await tx.insert(workflowTasks).values(
-        initialResult.tasksToCreate.map((t) => ({
-          instanceId: createdInstance.id,
-          nodeKey: t.nodeKey,
-          nodeName: t.nodeName,
-          nodeType: t.nodeType,
-          assigneeId: t.assigneeId,
-          status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
-        })),
-      );
+      const rows = await expandTasksToRows(initialResult.tasksToCreate, {
+        instanceId: createdInstance.id,
+        initiatorId: user.userId,
+        executor: tx,
+        formData,
+      });
+      if (rows.length > 0) await tx.insert(workflowTasks).values(rows);
     }
     return createdInstance;
   });
@@ -305,6 +429,17 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
       actionAt: new Date(),
     }).where(eq(workflowTasks.id, taskId));
 
+    // 检查当前节点是否已足够推进（会签/或签/顺序会签）
+    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey);
+    if (!completed) {
+      // 节点尚未完成（如会签还有人未处理 / 顺序会签等待下一位）
+      const [row] = await tx.update(workflowInstances)
+        .set({ currentNodeKey: task.nodeKey })
+        .where(eq(workflowInstances.id, inst.id))
+        .returning();
+      return { row, finished: false, advanced: false };
+    }
+
     const allTasks = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.status, 'approved')));
     const completedKeys = new Set(allTasks.map((t) => t.nodeKey));
     completedKeys.add('start');
@@ -313,37 +448,42 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
 
     if (advanceResult.finished && advanceResult.tasksToCreate.length === 0) {
       const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      return { row, finished: true };
+      return { row, finished: true, advanced: true };
     }
 
     if (advanceResult.tasksToCreate.length > 0) {
-      await tx.insert(workflowTasks).values(
-        advanceResult.tasksToCreate.map((t) => ({
-          instanceId: inst.id,
-          nodeKey: t.nodeKey,
-          nodeName: t.nodeName,
-          nodeType: t.nodeType,
-          assigneeId: t.assigneeId,
-          status: t.nodeType === 'ccNode' ? 'skipped' as const : 'pending' as const,
-        })),
-      );
+      const rows = await expandTasksToRows(advanceResult.tasksToCreate, {
+        instanceId: inst.id,
+        initiatorId: inst.initiatorId,
+        executor: tx,
+        formData,
+      });
+      if (rows.length > 0) await tx.insert(workflowTasks).values(rows);
     }
 
     if (advanceResult.finished) {
       const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
-      return { row, finished: true };
+      return { row, finished: true, advanced: true };
     }
 
     const [row] = await tx.update(workflowInstances)
       .set({ currentNodeKey: advanceResult.currentNodeKeys[0] ?? null })
       .where(eq(workflowInstances.id, inst.id))
       .returning();
-    return { row, finished: false };
+    return { row, finished: false, advanced: true };
   });
 
+  let message: string;
+  if (updated.finished) {
+    message = '审批通过，流程已完成';
+  } else if (updated.advanced) {
+    message = '审批通过，流程已推进';
+  } else {
+    message = '审批通过，等待其他审批人处理';
+  }
   return {
     instance: mapInstance(updated.row),
-    message: updated.finished ? '审批通过，流程已完成' : '审批通过，流程已推进',
+    message,
   };
 }
 
@@ -359,6 +499,14 @@ export async function rejectTask(taskId: number, comment: string) {
     await tx.update(workflowTasks)
       .set({ status: 'rejected', comment, actionAt: new Date() })
       .where(eq(workflowTasks.id, taskId));
+    // 同节点其他 pending / waiting 任务跳过
+    await tx.update(workflowTasks)
+      .set({ status: 'skipped', actionAt: new Date() })
+      .where(and(
+        eq(workflowTasks.instanceId, inst.id),
+        eq(workflowTasks.nodeKey, task.nodeKey),
+        or(eq(workflowTasks.status, 'pending'), eq(workflowTasks.status, 'waiting')),
+      ));
     const [row] = await tx.update(workflowInstances)
       .set({ status: 'rejected', currentNodeKey: null })
       .where(eq(workflowInstances.id, inst.id))

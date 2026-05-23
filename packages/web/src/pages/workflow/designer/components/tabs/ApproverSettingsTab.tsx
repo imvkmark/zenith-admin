@@ -14,6 +14,7 @@ import { CircleHelp } from 'lucide-react';
 
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
+interface UserGroupOption { id: number; name: string; }
 
 interface ApproverSettingsTabProps {
   nodeType: FlowNodeType;
@@ -34,6 +35,7 @@ interface ApproverSettingsTabProps {
   formDeptHeadLevel?: number;
   users: UserOption[];
   roles: RoleOption[];
+  userGroups?: UserGroupOption[];
   formFields: Array<{ key: string; label: string; type?: string }>;
   allNodes?: Array<{ id: string; name: string; type: FlowNodeType }>;
   onChange: (updates: Record<string, unknown>) => void;
@@ -58,6 +60,7 @@ export default function ApproverSettingsTab({
   formDeptHeadLevel = 1,
   users,
   roles,
+  userGroups = [],
   formFields,
   allNodes = [],
   onChange,
@@ -312,8 +315,8 @@ export default function ApproverSettingsTab({
                 filter
                 style={{ width: '100%' }}
                 placeholder="请选择用户组"
-                optionList={[]}
-                emptyContent="请先在系统中配置用户组"
+                optionList={userGroups.map(g => ({ value: g.id, label: g.name }))}
+                emptyContent={userGroups.length === 0 ? '请先在系统中配置用户组' : '无匹配项'}
               />
             </Form.Slot>
           )}

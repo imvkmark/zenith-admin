@@ -1,5 +1,6 @@
 export * from './roles';
 export * from './positions';
+export * from './user-groups';
 export * from './users';
 export * from './menus';
 export * from './departments';

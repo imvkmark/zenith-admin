@@ -4,6 +4,7 @@ import { rolesHandlers } from './roles';
 import { menusHandlers } from './menus';
 import { departmentsHandlers } from './departments';
 import { positionsHandlers } from './positions';
+import { userGroupsHandlers } from './user-groups';
 import { dictsHandlers } from './dicts';
 import { systemConfigsHandlers } from './system-configs';
 import { announcementsHandlers } from './announcements';
@@ -42,6 +43,7 @@ export const handlers = [
   ...menusHandlers,
   ...departmentsHandlers,
   ...positionsHandlers,
+  ...userGroupsHandlers,
   ...dictsHandlers,
   ...systemConfigsHandlers,
   ...announcementsHandlers,

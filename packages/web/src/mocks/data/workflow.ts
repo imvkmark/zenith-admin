@@ -1,5 +1,6 @@
 import type {
   WorkflowDefinition,
+  WorkflowDefinitionVersion,
   WorkflowInstance,
   WorkflowTask,
 } from '@zenith/shared';
@@ -311,3 +312,76 @@ let nextDefinitionId = mockWorkflowDefinitions.length + 1;
 export function getNextInstanceId() { return nextInstanceId++; }
 export function getNextTaskId() { return nextTaskId++; }
 export function getNextDefinitionId() { return nextDefinitionId++; }
+
+// ─── 流程定义历史版本 ─────────────────────────────────────────────────────
+
+export const mockWorkflowDefinitionVersions: WorkflowDefinitionVersion[] = [
+  {
+    id: 1,
+    definitionId: 1,
+    version: 1,
+    name: '请假申请',
+    description: '初版',
+    flowData: LEAVE_FLOW_DATA,
+    formFields: mockWorkflowDefinitions[0].formFields,
+    publishedAt: '2026-01-10 08:00:00',
+    publishedBy: 1,
+    publishedByName: '张三',
+    tenantId: 1,
+  },
+  {
+    id: 2,
+    definitionId: 1,
+    version: 2,
+    name: '请假申请',
+    description: '调整审批人',
+    flowData: LEAVE_FLOW_DATA,
+    formFields: mockWorkflowDefinitions[0].formFields,
+    publishedAt: '2026-01-25 10:00:00',
+    publishedBy: 1,
+    publishedByName: '张三',
+    tenantId: 1,
+  },
+  {
+    id: 3,
+    definitionId: 1,
+    version: 3,
+    name: '请假申请',
+    description: '增加 HR 节点',
+    flowData: LEAVE_FLOW_DATA,
+    formFields: mockWorkflowDefinitions[0].formFields,
+    publishedAt: '2026-02-15 10:30:00',
+    publishedBy: 1,
+    publishedByName: '张三',
+    tenantId: 1,
+  },
+  {
+    id: 4,
+    definitionId: 2,
+    version: 1,
+    name: '费用报销',
+    description: '初版',
+    flowData: EXPENSE_FLOW_DATA,
+    formFields: mockWorkflowDefinitions[1].formFields,
+    publishedAt: '2026-01-15 09:00:00',
+    publishedBy: 1,
+    publishedByName: '张三',
+    tenantId: 1,
+  },
+  {
+    id: 5,
+    definitionId: 2,
+    version: 2,
+    name: '费用报销',
+    description: '增加票据校验',
+    flowData: EXPENSE_FLOW_DATA,
+    formFields: mockWorkflowDefinitions[1].formFields,
+    publishedAt: '2026-03-01 14:00:00',
+    publishedBy: 1,
+    publishedByName: '张三',
+    tenantId: 1,
+  },
+];
+
+let nextDefinitionVersionId = mockWorkflowDefinitionVersions.length + 1;
+export function getNextDefinitionVersionId() { return nextDefinitionVersionId++; }

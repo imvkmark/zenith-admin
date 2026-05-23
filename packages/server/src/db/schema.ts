@@ -149,6 +149,31 @@ export const userPositions = pgTable('user_positions', {
   positionId: integer('position_id').notNull().references(() => positions.id, { onDelete: 'cascade' }),
 }, (t) => [primaryKey({ columns: [t.userId, t.positionId] })]);
 
+// ─── 用户组表 ─────────────────────────────────────────────────────────────────
+export const userGroups = pgTable('user_groups', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  code: varchar('code', { length: 64 }).notNull(),
+  description: varchar('description', { length: 256 }),
+  ownerId: integer('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  departmentId: integer('department_id').references((): AnyPgColumn => departments.id, { onDelete: 'set null' }),
+  status: statusEnum('status').notNull().default('enabled'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('user_groups_tenant_code_unique').on(t.tenantId, t.code)]);
+
+export type UserGroupRow = typeof userGroups.$inferSelect;
+export type NewUserGroup = typeof userGroups.$inferInsert;
+
+// ─── 用户-用户组关联表 ────────────────────────────────────────────────────────
+export const userGroupMembers = pgTable('user_group_members', {
+  groupId: integer('group_id').notNull().references(() => userGroups.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.groupId, t.userId] })]);
+
 // ─── 角色-菜单关联表 ──────────────────────────────────────────────────────────
 export const roleMenus = pgTable('role_menus', {
   roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
@@ -738,8 +763,22 @@ export type NewTag = typeof tags.$inferInsert;
 
 export const workflowDefinitionStatusEnum = pgEnum('workflow_definition_status', ['draft', 'published', 'disabled']);
 export const workflowInstanceStatusEnum = pgEnum('workflow_instance_status', ['draft', 'running', 'approved', 'rejected', 'withdrawn']);
-export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending', 'approved', 'rejected', 'skipped']);
-export const workflowNodeTypeEnum = pgEnum('workflow_node_type', ['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode']);
+export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending', 'approved', 'rejected', 'skipped', 'waiting']);
+export const workflowApproveMethodEnum = pgEnum('workflow_approve_method', ['and', 'or', 'sequential']);
+export const workflowNodeTypeEnum = pgEnum('workflow_node_type', [
+  'start',
+  'approve',
+  'handler',
+  'end',
+  'exclusiveGateway',
+  'parallelGateway',
+  'inclusiveGateway',
+  'routeGateway',
+  'ccNode',
+  'delay',
+  'trigger',
+  'subProcess',
+]);
 
 // 流程定义
 export const workflowDefinitions = pgTable('workflow_definitions', {
@@ -758,6 +797,23 @@ export const workflowDefinitions = pgTable('workflow_definitions', {
 
 export type WorkflowDefinitionRow = typeof workflowDefinitions.$inferSelect;
 export type NewWorkflowDefinition = typeof workflowDefinitions.$inferInsert;
+
+// 流程定义版本快照（发布时写入一行）
+export const workflowDefinitionVersions = pgTable('workflow_definition_versions', {
+  id: serial('id').primaryKey(),
+  definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  description: text('description'),
+  flowData: jsonb('flow_data'),
+  formFields: jsonb('form_fields'),
+  publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
+  publishedBy: integer('published_by').references(() => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+}, (t) => [unique('workflow_def_versions_def_ver_uniq').on(t.definitionId, t.version)]);
+
+export type WorkflowDefinitionVersionRow = typeof workflowDefinitionVersions.$inferSelect;
+export type NewWorkflowDefinitionVersion = typeof workflowDefinitionVersions.$inferInsert;
 
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {
@@ -789,6 +845,10 @@ export const workflowTasks = pgTable('workflow_tasks', {
   status: workflowTaskStatusEnum('status').default('pending').notNull(),
   comment: text('comment'),
   actionAt: timestamp('action_at', { withTimezone: true }),
+  /** 顺序会签中的顺序（0-based），非顺序场景为 null */
+  taskOrder: integer('task_order'),
+  /** 多人审批方式（仅同一 nodeKey 多 task 时生效） */
+  approveMethod: workflowApproveMethodEnum('approve_method'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -868,6 +928,7 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
   users: many(users),
   roles: many(roles),
   dicts: many(dicts),
+  userGroups: many(userGroups),
   managedFiles: many(managedFiles),
   announcements: many(announcements),
   systemConfigs: many(systemConfigs),
@@ -879,6 +940,7 @@ export const departmentsRelations = relations(departments, ({ one, many }) => ({
   tenant: one(tenants, { fields: [departments.tenantId], references: [tenants.id] }),
   users: many(users),
   leader: one(users, { fields: [departments.leaderId], references: [users.id], relationName: 'departmentLeader' }),
+  userGroups: many(userGroups),
 }));
 
 export const positionsRelations = relations(positions, ({ one, many }) => ({
@@ -886,11 +948,25 @@ export const positionsRelations = relations(positions, ({ one, many }) => ({
   userPositions: many(userPositions),
 }));
 
+export const userGroupsRelations = relations(userGroups, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [userGroups.tenantId], references: [tenants.id] }),
+  owner: one(users, { fields: [userGroups.ownerId], references: [users.id], relationName: 'userGroupOwner' }),
+  department: one(departments, { fields: [userGroups.departmentId], references: [departments.id] }),
+  members: many(userGroupMembers),
+}));
+
+export const userGroupMembersRelations = relations(userGroupMembers, ({ one }) => ({
+  group: one(userGroups, { fields: [userGroupMembers.groupId], references: [userGroups.id] }),
+  user: one(users, { fields: [userGroupMembers.userId], references: [users.id] }),
+}));
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   department: one(departments, { fields: [users.departmentId], references: [departments.id] }),
   tenant: one(tenants, { fields: [users.tenantId], references: [tenants.id] }),
   userRoles: many(userRoles),
   userPositions: many(userPositions),
+  userGroupMembers: many(userGroupMembers),
+  ownedUserGroups: many(userGroups, { relationName: 'userGroupOwner' }),
   oauthAccounts: many(userOauthAccounts),
   apiTokens: many(userApiTokens),
   passwordResetTokens: many(passwordResetTokens),
@@ -983,6 +1059,13 @@ export const workflowDefinitionsRelations = relations(workflowDefinitions, ({ on
   tenant: one(tenants, { fields: [workflowDefinitions.tenantId], references: [tenants.id] }),
   createdByUser: one(users, { fields: [workflowDefinitions.createdBy], references: [users.id] }),
   instances: many(workflowInstances),
+  versions: many(workflowDefinitionVersions),
+}));
+
+export const workflowDefinitionVersionsRelations = relations(workflowDefinitionVersions, ({ one }) => ({
+  definition: one(workflowDefinitions, { fields: [workflowDefinitionVersions.definitionId], references: [workflowDefinitions.id] }),
+  publishedByUser: one(users, { fields: [workflowDefinitionVersions.publishedBy], references: [users.id] }),
+  tenant: one(tenants, { fields: [workflowDefinitionVersions.tenantId], references: [tenants.id] }),
 }));
 
 export const workflowInstancesRelations = relations(workflowInstances, ({ one, many }) => ({

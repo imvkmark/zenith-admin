@@ -3,8 +3,8 @@
  *
  * Body 区域根据节点属性显示丰富的配置摘要
  */
-import { ChevronRight, X } from 'lucide-react';
-import { Tooltip } from '@douyinfe/semi-ui';
+import { ChevronRight, Copy, X } from 'lucide-react';
+import { Popconfirm, Tooltip } from '@douyinfe/semi-ui';
 import type { FlowNode, AssigneeType, ApproveMethod, ApprovalType, OperationPermission, FieldPermission } from '../types';
 import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METHOD_OPTIONS, APPROVAL_TYPE_OPTIONS } from '../constants';
 
@@ -12,6 +12,7 @@ interface NodeCardProps {
   node: FlowNode;
   onEdit: (node: FlowNode) => void;
   onDelete: (nodeId: string) => void;
+  onDuplicate?: (nodeId: string) => void;
 }
 
 function getNodeInfo(type: FlowNode['type']) {
@@ -137,7 +138,7 @@ function getNodeTags(node: FlowNode): string[] {
   return tags;
 }
 
-export default function NodeCard({ node, onEdit, onDelete }: Readonly<NodeCardProps>) {
+export default function NodeCard({ node, onEdit, onDelete, onDuplicate }: Readonly<NodeCardProps>) {
   const info = getNodeInfo(node.type);
   const color = NODE_COLOR_MAP[node.type] ?? '#999';
   const Icon = info?.icon;
@@ -160,15 +161,32 @@ export default function NodeCard({ node, onEdit, onDelete }: Readonly<NodeCardPr
         )}
         <span className="fd-node-card__header-title">{node.name || info?.label || '节点'}</span>
         <span className="fd-node-card__header-actions">
-          <Tooltip content="删除">
+          {onDuplicate && (
+            <Tooltip content="复制节点">
+              <span
+                role="none"
+                className="fd-node-card__delete-btn"
+                onClick={(e) => { e.stopPropagation(); onDuplicate(node.id); }}
+              >
+                <Copy size={12} />
+              </span>
+            </Tooltip>
+          )}
+          <Popconfirm
+            title="确认删除此节点？"
+            content="节点上的配置将一并被删除"
+            position="top"
+            onConfirm={() => onDelete(node.id)}
+          >
             <span
               role="none"
               className="fd-node-card__delete-btn"
-              onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
+              onClick={(e) => e.stopPropagation()}
+              title="删除"
             >
               <X size={12} />
             </span>
-          </Tooltip>
+          </Popconfirm>
         </span>
       </div>
 

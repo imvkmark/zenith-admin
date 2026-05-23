@@ -4,9 +4,11 @@ import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
   mockWorkflowTasks,
+  mockWorkflowDefinitionVersions,
   getNextInstanceId,
   getNextTaskId,
   getNextDefinitionId,
+  getNextDefinitionVersionId,
 } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
 
@@ -78,12 +80,15 @@ export const workflowHandlers = [
     const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
     if (idx === -1) return err('流程定义不存在', 404);
     const body = await request.json() as Partial<WorkflowDefinition>;
+    const prev = mockWorkflowDefinitions[idx];
+    // 已发布的流程保存后自动转为草稿
+    const nextStatus = prev.status === 'published' && body.status === undefined ? 'draft' : prev.status;
     const updated = {
-      ...mockWorkflowDefinitions[idx],
+      ...prev,
       ...body,
-      id: mockWorkflowDefinitions[idx].id,
-      status: mockWorkflowDefinitions[idx].status,
-      version: mockWorkflowDefinitions[idx].version + 1,
+      id: prev.id,
+      status: nextStatus,
+      version: prev.version,
       updatedAt: mockDateTime(),
     };
     mockWorkflowDefinitions[idx] = updated;
@@ -95,10 +100,28 @@ export const workflowHandlers = [
     const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
     if (idx === -1) return err('流程定义不存在', 404);
     if (!mockWorkflowDefinitions[idx].flowData) return err('流程图不能为空，请先设计流程');
+    const cur = mockWorkflowDefinitions[idx];
+    const newVersion = cur.version + 1;
+    const now = mockDateTime();
+    // 生成快照
+    mockWorkflowDefinitionVersions.push({
+      id: getNextDefinitionVersionId(),
+      definitionId: cur.id,
+      version: newVersion,
+      name: cur.name,
+      description: cur.description,
+      flowData: cur.flowData,
+      formFields: cur.formFields,
+      publishedAt: now,
+      publishedBy: 1,
+      publishedByName: '张三',
+      tenantId: cur.tenantId,
+    });
     mockWorkflowDefinitions[idx] = {
-      ...mockWorkflowDefinitions[idx],
+      ...cur,
       status: 'published',
-      updatedAt: mockDateTime(),
+      version: newVersion,
+      updatedAt: now,
     };
     return ok(mockWorkflowDefinitions[idx]);
   }),
@@ -121,6 +144,34 @@ export const workflowHandlers = [
     if (idx === -1) return err('流程定义不存在', 404);
     mockWorkflowDefinitions.splice(idx, 1);
     return ok(null);
+  }),
+
+  // 流程定义历史版本列表
+  http.get('/api/workflows/definitions/:id/versions', ({ params }) => {
+    const definitionId = Number(params.id);
+    if (!mockWorkflowDefinitions.find(d => d.id === definitionId)) return err('流程定义不存在', 404);
+    const list = mockWorkflowDefinitionVersions
+      .filter(v => v.definitionId === definitionId)
+      .sort((a, b) => b.version - a.version);
+    return ok(list);
+  }),
+
+  // 恢复历史版本
+  http.post('/api/workflows/definitions/:id/versions/:versionId/restore', ({ params }) => {
+    const idx = mockWorkflowDefinitions.findIndex(d => d.id === Number(params.id));
+    if (idx === -1) return err('流程定义不存在', 404);
+    const ver = mockWorkflowDefinitionVersions.find(v => v.id === Number(params.versionId) && v.definitionId === Number(params.id));
+    if (!ver) return err('历史版本不存在', 404);
+    mockWorkflowDefinitions[idx] = {
+      ...mockWorkflowDefinitions[idx],
+      name: ver.name,
+      description: ver.description,
+      flowData: ver.flowData,
+      formFields: ver.formFields,
+      status: 'draft',
+      updatedAt: mockDateTime(),
+    };
+    return ok(mockWorkflowDefinitions[idx]);
   }),
 
   // ─── 流程实例 Handler ──────────────────────────────────────────────────────

@@ -2,12 +2,13 @@
  * 工作流 DAG 执行引擎
  *
  * 支持的节点类型：
- * - start: 开始节点
- * - approve: 人工审批节点
- * - end: 结束节点
- * - exclusiveGateway: 排他网关（XOR） — 根据条件走一条路径
- * - parallelGateway: 并行网关（AND） — fork 时创建多个任务，join 时等待全部完成
- * - ccNode: 抄送节点 — 通知但不阻塞流程
+ * - start / end
+ * - approve / handler   —— 人工节点，创建任务等待操作
+ * - exclusiveGateway / routeGateway   —— 排他网关，根据条件走一条路径
+ * - parallelGateway     —— 并行网关：fork 时创建多个任务，join 时等待全部完成
+ * - inclusiveGateway    —— 包容网关：fork 时激活所有匹配条件的分支，join 等同 parallel join
+ * - ccNode              —— 抄送节点，非阻塞，自动创建抄送任务后继续推进
+ * - delay / trigger / subProcess —— 当前作为非阻塞自动节点（占位实现），P2 由调度器接管
  */
 import type {
   WorkflowFlowData,
@@ -101,6 +102,8 @@ export interface TaskAction {
   nodeName: string;
   nodeType: WorkflowNodeConfig['type'];
   assigneeId: number | null;
+  /** 节点完整配置，供上层解析 assigneeType / approveMethod 等 */
+  nodeConfig: WorkflowNodeConfig;
 }
 
 /** 引擎推进结果 */
@@ -139,6 +142,28 @@ export function advanceFlow(
   const currentNodeKeys: string[] = [];
   let finished = false;
 
+  // 统一推进到下一个节点：根据节点类型决定 创建任务 / 标记结束 / 继续入队
+  function enqueueNext(targetId: string, queue: string[]): void {
+    const nextNode = nodeMap.get(targetId);
+    if (!nextNode) return;
+    const t = nextNode.data.type;
+    if (t === 'approve' || t === 'handler') {
+      tasksToCreate.push({
+        nodeKey: nextNode.data.key,
+        nodeName: nextNode.data.label,
+        nodeType: t,
+        assigneeId: nextNode.data.assigneeId ?? null,
+        nodeConfig: nextNode.data,
+      });
+      currentNodeKeys.push(nextNode.data.key);
+    } else if (t === 'end') {
+      finished = true;
+    } else {
+      // start / 各类网关 / ccNode / delay / trigger / subProcess —— 继续 BFS
+      queue.push(targetId);
+    }
+  }
+
   // BFS 向前推进
   const queue: string[] = [currentFlowNode.id];
   const visited = new Set<string>();
@@ -162,8 +187,8 @@ export function advanceFlow(
     const outs = outEdges.get(nodeId) ?? [];
     if (outs.length === 0) continue;
 
-    if (nodeType === 'exclusiveGateway') {
-      // 排他网关：找第一个满足条件的出边，或 default 出边
+    if (nodeType === 'exclusiveGateway' || nodeType === 'routeGateway') {
+      // 排他/路由网关：找第一个满足条件的出边，或 default 出边
       let chosenTarget: string | null = null;
       let defaultTarget: string | null = null;
 
@@ -177,63 +202,46 @@ export function advanceFlow(
             break;
           }
         }
-        // 对应节点标记了 isDefault
-        if (targetNode.data.isDefault) {
-          defaultTarget = target;
-        }
-        // 没有条件的边作为 fallback default
-        if (!edge.condition && !defaultTarget) {
-          defaultTarget = target;
-        }
+        if (targetNode.data.isDefault) defaultTarget = target;
+        if (!edge.condition && !defaultTarget) defaultTarget = target;
       }
 
       const nextId = chosenTarget ?? defaultTarget;
-      if (nextId) {
-        const nextNode = nodeMap.get(nextId);
-        if (nextNode) {
-          if (nextNode.data.type === 'approve') {
-            tasksToCreate.push({
-              nodeKey: nextNode.data.key,
-              nodeName: nextNode.data.label,
-              nodeType: 'approve',
-              assigneeId: nextNode.data.assigneeId ?? null,
-            });
-            currentNodeKeys.push(nextNode.data.key);
-          } else if (nextNode.data.type === 'end') {
-            finished = true;
-          } else {
-            // 网关后接其他网关或 ccNode，继续 BFS
-            queue.push(nextId);
-          }
-        }
-      }
-    } else if (nodeType === 'parallelGateway') {
-      // 并行网关：判断是 fork 还是 join
+      if (nextId) enqueueNext(nextId, queue);
+    } else if (nodeType === 'parallelGateway' || nodeType === 'inclusiveGateway') {
+      // 并行/包容网关：判断是 fork 还是 join
       const inCount = (inEdges.get(nodeId) ?? []).length;
       const outCount = outs.length;
+      const isFork = outCount > 1 || (outCount === 1 && inCount <= 1);
 
-      if (outCount > 1 || (outCount === 1 && inCount <= 1)) {
-        // Fork：向所有出边推进
-        for (const { target } of outs) {
-          const nextNode = nodeMap.get(target);
-          if (!nextNode) continue;
-
-          if (nextNode.data.type === 'approve') {
-            tasksToCreate.push({
-              nodeKey: nextNode.data.key,
-              nodeName: nextNode.data.label,
-              nodeType: 'approve',
-              assigneeId: nextNode.data.assigneeId ?? null,
-            });
-            currentNodeKeys.push(nextNode.data.key);
-          } else if (nextNode.data.type === 'end') {
-            finished = true;
-          } else {
-            queue.push(target);
+      if (isFork) {
+        if (nodeType === 'inclusiveGateway') {
+          // 包容网关 fork：激活所有匹配条件的分支；若都不匹配则走 default
+          let matched = 0;
+          let defaultTarget: string | null = null;
+          for (const { target, edge } of outs) {
+            const targetNode = nodeMap.get(target);
+            if (!targetNode) continue;
+            if (edge.condition) {
+              if (evaluateCondition(edge.condition, formData)) {
+                enqueueNext(target, queue);
+                matched++;
+              }
+            } else if (targetNode.data.isDefault) {
+              defaultTarget = target;
+            } else if (!defaultTarget) {
+              defaultTarget = target;
+            }
           }
+          if (matched === 0 && defaultTarget) enqueueNext(defaultTarget, queue);
+        } else {
+          // 并行 fork：所有出边都激活
+          for (const { target } of outs) enqueueNext(target, queue);
         }
       } else {
         // Join：检查所有入边对应的节点是否都已完成
+        // 注：当前 inclusiveGateway 的 join 也使用"等待全部入边"语义；
+        //     若 fork 时部分分支未激活，会出现 join 永久阻塞 —— 由 P2 通过路径追踪修复。
         const inSources = inEdges.get(nodeId) ?? [];
         const allCompleted = inSources.every(srcId => {
           const srcNode = nodeMap.get(srcId);
@@ -241,27 +249,9 @@ export function advanceFlow(
         });
 
         if (allCompleted) {
-          // 所有分支汇聚完成，继续推进
-          for (const { target } of outs) {
-            const nextNode = nodeMap.get(target);
-            if (!nextNode) continue;
-
-            if (nextNode.data.type === 'approve') {
-              tasksToCreate.push({
-                nodeKey: nextNode.data.key,
-                nodeName: nextNode.data.label,
-                nodeType: 'approve',
-                assigneeId: nextNode.data.assigneeId ?? null,
-              });
-              currentNodeKeys.push(nextNode.data.key);
-            } else if (nextNode.data.type === 'end') {
-              finished = true;
-            } else {
-              queue.push(target);
-            }
-          }
+          for (const { target } of outs) enqueueNext(target, queue);
         }
-        // 如果未全部完成，不推进（等待其他分支完成）
+        // 否则不推进，等待其他分支完成
       }
     } else if (nodeType === 'ccNode') {
       // 抄送节点：创建抄送任务（自动完成），继续推进
@@ -272,34 +262,24 @@ export function advanceFlow(
             nodeName: node.data.label,
             nodeType: 'ccNode',
             assigneeId: ccId,
+            nodeConfig: node.data,
           });
         }
       }
-      // 抄送不阻塞，继续向后推进
-      for (const { target } of outs) {
-        queue.push(target);
-      }
+      for (const { target } of outs) enqueueNext(target, queue);
+    } else if (nodeType === 'delay' || nodeType === 'trigger' || nodeType === 'subProcess') {
+      // 自动节点占位实现：创建一条无 assignee 的任务记录用于追踪，并继续推进
+      tasksToCreate.push({
+        nodeKey: node.data.key,
+        nodeName: node.data.label,
+        nodeType,
+        assigneeId: null,
+        nodeConfig: node.data,
+      });
+      for (const { target } of outs) enqueueNext(target, queue);
     } else {
-      // start / approve — 已完成的节点，向后推进
-      for (const { target } of outs) {
-        const nextNode = nodeMap.get(target);
-        if (!nextNode) continue;
-
-        if (nextNode.data.type === 'approve') {
-          tasksToCreate.push({
-            nodeKey: nextNode.data.key,
-            nodeName: nextNode.data.label,
-            nodeType: 'approve',
-            assigneeId: nextNode.data.assigneeId ?? null,
-          });
-          currentNodeKeys.push(nextNode.data.key);
-        } else if (nextNode.data.type === 'end') {
-          finished = true;
-        } else {
-          // 网关或 ccNode
-          queue.push(target);
-        }
-      }
+      // start / approve / handler — 已完成的节点，向后推进
+      for (const { target } of outs) enqueueNext(target, queue);
     }
   }
 
@@ -333,27 +313,26 @@ export function validateFlowData(flowData: WorkflowFlowData): { valid: boolean; 
   const endNodes = flowData.nodes.filter(n => n.data.type === 'end');
   if (endNodes.length === 0) errors.push('流程缺少结束节点');
 
-  const approveNodes = flowData.nodes.filter(n => n.data.type === 'approve');
-  if (approveNodes.length === 0) errors.push('流程至少需要一个审批节点');
+  const approveNodes = flowData.nodes.filter(n => n.data.type === 'approve' || n.data.type === 'handler');
+  if (approveNodes.length === 0) errors.push('流程至少需要一个审批/办理节点');
 
-  // 检查排他网关出边是否配置了条件
+  // 检查排他/路由网关出边是否配置了条件
   const { outEdges } = buildAdjacency(flowData);
   for (const node of flowData.nodes) {
-    if (node.data.type === 'exclusiveGateway') {
+    if (node.data.type === 'exclusiveGateway' || node.data.type === 'routeGateway') {
       const outs = outEdges.get(node.id) ?? [];
       if (outs.length < 2) {
-        errors.push(`排他网关"${node.data.label}"至少需要2条出边`);
+        errors.push(`排他/路由网关"${node.data.label}"至少需要2条出边`);
       }
-      // 至少一条出边需要有条件，或者有一个 default 出边
       const hasCondition = outs.some(o => o.edge.condition);
       if (!hasCondition && outs.length > 1) {
-        errors.push(`排他网关"${node.data.label}"的出边需要配置条件`);
+        errors.push(`排他/路由网关"${node.data.label}"的出边需要配置条件`);
       }
     }
-    if (node.data.type === 'parallelGateway') {
+    if (node.data.type === 'parallelGateway' || node.data.type === 'inclusiveGateway') {
       const outs = outEdges.get(node.id) ?? [];
       if (outs.length === 0) {
-        errors.push(`并行网关"${node.data.label}"缺少出边`);
+        errors.push(`并行/包容网关"${node.data.label}"缺少出边`);
       }
     }
   }
