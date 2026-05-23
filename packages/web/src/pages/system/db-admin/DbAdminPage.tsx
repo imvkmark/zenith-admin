@@ -959,7 +959,7 @@ export default function DbAdminPage() {
         }}
       >
         <TabPane tab={<span><TableIcon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />表浏览</span>} itemKey="browse">
-          <div style={{ height: '100%', minHeight: 480 }}>
+          <div style={{ padding: 12, height: '100%', minHeight: 480, boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
             <MasterDetailLayout
               gap={12}
               bordered
