@@ -21,6 +21,7 @@ import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
+import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -127,6 +128,7 @@ function InstanceDetailDrawer({
 
 export default function MyApplicationsPage() {
   const formApi = useRef<FormApi | null>(null);
+  const dynamicFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
   const [page, setPage] = useState(1);
@@ -192,11 +194,16 @@ export default function MyApplicationsPage() {
     if (!formApi.current) return;
     try {
       const values = await formApi.current.validate() as Record<string, unknown>;
+      let formData: Record<string, unknown> = {};
+      if (dynamicFormApi.current && selectedDef?.formFields && selectedDef.formFields.length > 0) {
+        const dyn = await dynamicFormApi.current.validate();
+        formData = dyn;
+      }
       setSubmitting(true);
       const res = await request.post('/api/workflows/instances', {
         definitionId: values.definitionId,
         title: values.title,
-        formData: {},
+        formData,
       });
       if (res.code === 0) {
         Toast.success('申请已提交');
@@ -305,7 +312,7 @@ export default function MyApplicationsPage() {
         onCancel={() => { setApplyVisible(false); setSelectedDef(null); }}
         onOk={() => void handleSubmitApply()}
         okButtonProps={{ loading: submitting }}
-        style={{ width: 500 }}
+        style={{ width: 640 }}
       >
         <Form getFormApi={api => { formApi.current = api; }}>
           <Form.Select
@@ -333,6 +340,15 @@ export default function MyApplicationsPage() {
             </div>
           )}
         </Form>
+        {selectedDef?.formFields && selectedDef.formFields.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 16 }}>
+            <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>填写表单</Typography.Text>
+            <WorkflowFormRenderer
+              fields={selectedDef.formFields}
+              getFormApi={api => { dynamicFormApi.current = api; }}
+            />
+          </div>
+        )}
       </Modal>
     </div>
   );

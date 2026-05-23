@@ -589,6 +589,11 @@ export const workflowFormFieldSchema: z.ZodType<unknown> = z.lazy(() =>
     max: z.number().optional(),
     pattern: z.string().optional(),
     patternMessage: z.string().optional(),
+    daysFromKey: z.string().optional(),
+    optionsFrom: z.object({
+      sourceKey: z.string().min(1),
+      mapping: z.record(z.string(), z.array(z.string())),
+    }).optional(),
     columns: z.array(z.object({
       span: z.number().min(1).max(24),
       fields: z.array(workflowFormFieldSchema),

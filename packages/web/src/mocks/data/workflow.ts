@@ -222,8 +222,15 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
               { span: 12, fields: [{ key: 'transport', label: '交通方式', type: 'select', required: true, options: ['飞机', '高铁', '汽车', '其他'] }] },
             ],
           },
+          {
+            key: 'row_class', label: '舱位', type: 'row',
+            columns: [
+              { span: 12, fields: [{ key: 'cabinClass', label: '舱位/车次类型', type: 'select', placeholder: '依赖交通方式', helpText: '选项随交通方式动态变化', optionsFrom: { sourceKey: 'transport', mapping: { '飞机': ['经济舱', '公务舱', '头等舱'], '高铁': ['二等座', '一等座', '商务座'], '汽车': ['大巴', '商务车'], '其他': ['其他'] } } }] },
+              { span: 12, fields: [{ key: 'roundTrip', label: '是否往返', type: 'select', options: ['是', '否'] }] },
+            ],
+          },
           { key: 'dateRange', label: '出差时间', type: 'dateRange', required: true, dateFormat: 'YYYY-MM-DD' },
-          { key: 'days', label: '出差天数', type: 'number', required: true, unit: '天', min: 1, max: 60, precision: 0, helpText: '由出差时间自动估算，可手动调整' },
+          { key: 'days', label: '出差天数', type: 'number', required: true, unit: '天', min: 1, max: 60, precision: 0, daysFromKey: 'dateRange', helpText: '选定出差时间后自动计算' },
           { key: 'urgency', label: '紧急程度', type: 'rate', rateMax: 5, helpText: '影响审批优先级' },
         ],
       },

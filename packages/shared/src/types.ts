@@ -706,6 +706,12 @@ export interface WorkflowFormField {
   max?: number;                    // 数字/金额最大值
   pattern?: string;                // 正则表达式
   patternMessage?: string;         // 正则不匹配时的提示
+  // 字段联动
+  daysFromKey?: string;            // 数字字段：从指定 dateRange 字段自动计算天数
+  optionsFrom?: {                  // select/multiSelect：依据父字段值动态生成选项
+    sourceKey: string;             // 父字段 key
+    mapping: Record<string, string[]>; // 父值 -> 子选项数组
+  };
   // Layout fields
   columns?: WorkflowFormFieldColumn[];  // for 'row' type
   title?: string;                       // for 'group' type header

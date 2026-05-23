@@ -164,6 +164,15 @@ export default function FieldConfigPanel({
             </div>
           )}
 
+          {/* 级联：选项依赖父字段 */}
+          {hasOptions && (
+            <CascadeEditor
+              field={field}
+              allFields={allFields}
+              onChange={onChange}
+            />
+          )}
+
           {/* 数字/金额精度 */}
           {isAmountOrNumber && (
             <div className="fd-form-config__field">
@@ -189,6 +198,15 @@ export default function FieldConfigPanel({
                 placeholder="如 元、天、件"
               />
             </div>
+          )}
+
+          {/* 联动：从日期范围自动计算天数 */}
+          {field.type === 'number' && (
+            <DateRangeLinkageEditor
+              field={field}
+              allFields={allFields}
+              onChange={onChange}
+            />
           )}
 
           {/* 评分上限 */}
@@ -689,6 +707,118 @@ function DetailChildrenEditor({
       >
         添加列
       </Button>
+    </div>
+  );
+}
+
+// ─── dateRange → 天数 联动配置 ────────────────────────────────────
+
+function collectFlat(list: WorkflowFormField[]): WorkflowFormField[] {
+  const out: WorkflowFormField[] = [];
+  for (const f of list) {
+    out.push(f);
+    if (f.type === 'row' && f.columns) for (const c of f.columns) out.push(...collectFlat(c.fields));
+    else if ((f.type === 'group' || f.type === 'detail') && f.children) out.push(...collectFlat(f.children));
+  }
+  return out;
+}
+
+function DateRangeLinkageEditor({
+  field, allFields, onChange,
+}: Readonly<{
+  field: WorkflowFormField;
+  allFields: WorkflowFormField[];
+  onChange: (updates: Partial<WorkflowFormField>) => void;
+}>) {
+  const rangeFields = collectFlat(allFields).filter(f => f.type === 'dateRange' && f.key !== field.key);
+  if (rangeFields.length === 0) return null;
+  return (
+    <div className="fd-form-config__field">
+      <Typography.Text strong size="small">联动：自动计算天数</Typography.Text>
+      <Select
+        value={field.daysFromKey ?? ''}
+        onChange={(v) => onChange({ daysFromKey: (v as string) || undefined })}
+        placeholder="选择日期范围字段（不联动则留空）"
+        style={{ width: '100%' }}
+        showClear
+        optionList={[
+          { value: '', label: '不联动' },
+          ...rangeFields.map(f => ({ value: f.key, label: f.label })),
+        ]}
+      />
+      <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+        选定后，此字段会根据日期范围自动填入「结束-开始+1」天数并禁用手填
+      </Typography.Text>
+    </div>
+  );
+}
+
+// ─── select 级联：依赖父字段的选项映射 ────────────────────────────
+
+function CascadeEditor({
+  field, allFields, onChange,
+}: Readonly<{
+  field: WorkflowFormField;
+  allFields: WorkflowFormField[];
+  onChange: (updates: Partial<WorkflowFormField>) => void;
+}>) {
+  const parentCandidates = collectFlat(allFields).filter(
+    f => (f.type === 'select') && f.key !== field.key && (f.options?.length ?? 0) > 0,
+  );
+  if (parentCandidates.length === 0) return null;
+
+  const current = field.optionsFrom;
+  const parent = current ? parentCandidates.find(f => f.key === current.sourceKey) : null;
+
+  const setParent = (sourceKey: string | undefined) => {
+    if (!sourceKey) {
+      onChange({ optionsFrom: undefined });
+      return;
+    }
+    const pf = parentCandidates.find(f => f.key === sourceKey);
+    const mapping: Record<string, string[]> = {};
+    for (const opt of pf?.options ?? []) mapping[opt] = current?.mapping[opt] ?? [];
+    onChange({ optionsFrom: { sourceKey, mapping } });
+  };
+
+  const setMapping = (parentValue: string, opts: string[]) => {
+    if (!current) return;
+    onChange({ optionsFrom: { ...current, mapping: { ...current.mapping, [parentValue]: opts } } });
+  };
+
+  return (
+    <div className="fd-form-config__field">
+      <Typography.Text strong size="small">级联：选项依赖父字段</Typography.Text>
+      <Select
+        value={current?.sourceKey ?? ''}
+        onChange={(v) => setParent((v as string) || undefined)}
+        placeholder="选择父字段（不级联则留空）"
+        style={{ width: '100%' }}
+        showClear
+        optionList={[
+          { value: '', label: '不级联' },
+          ...parentCandidates.map(f => ({ value: f.key, label: f.label })),
+        ]}
+      />
+      {current && parent && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {(parent.options ?? []).map(opt => (
+            <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Typography.Text size="small" style={{ width: 80, flexShrink: 0 }}>{opt}</Typography.Text>
+              <TagInput
+                size="small"
+                value={current.mapping[opt] ?? []}
+                onChange={(v) => setMapping(opt, v)}
+                placeholder="子选项"
+                style={{ flex: 1 }}
+              />
+            </div>
+          ))}
+          <Typography.Text type="tertiary" size="small">
+            为每个父选项配置可见的子选项；父值变化时已选的子值会被自动清空
+          </Typography.Text>
+        </div>
+      )}
     </div>
   );
 }
