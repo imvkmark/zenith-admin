@@ -222,7 +222,7 @@ export default function WorkflowDefinitionsPage() {
   ];
 
   return (
-    <div className="page-container" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+    <div className="page-container" style={{ display: 'flex', flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
       <CategorySidebar
         categories={categories}
         selectedId={selectedCategoryId}

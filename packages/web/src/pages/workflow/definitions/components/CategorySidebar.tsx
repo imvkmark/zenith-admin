@@ -2,7 +2,7 @@
  * 流程定义页左侧分类侧栏
  */
 import { useState } from 'react';
-import { Button, Dropdown, Popconfirm, SideSheet, Space, Toast, Form } from '@douyinfe/semi-ui';
+import { Button, Dropdown, List, Modal, Popconfirm, Space, Toast, Form } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { MoreHorizontal, Plus } from 'lucide-react';
 import type { WorkflowCategory } from '@zenith/shared';
@@ -21,17 +21,23 @@ const PRESET_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#
 export default function CategorySidebar({ categories, selectedId, onSelect, onChanged, canManage }: Readonly<Props>) {
   const [editVisible, setEditVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowCategory | null>(null);
+  const [editKey, setEditKey] = useState(0);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formApi, setFormApi] = useState<FormApi | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string>('');
 
   const openNew = () => {
     setEditing(null);
+    setSelectedColor('');
+    setEditKey(k => k + 1);
     setEditVisible(true);
   };
 
   const openEdit = (c: WorkflowCategory) => {
     setEditing(c);
+    setSelectedColor(c.color ?? '');
+    setEditKey(k => k + 1);
     setEditVisible(true);
   };
 
@@ -44,7 +50,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         name: values.name,
         code: values.code || null,
         icon: values.icon || null,
-        color: values.color || null,
+        color: selectedColor || null,
         sort: typeof values.sort === 'number' ? values.sort : Number(values.sort) || 0,
         description: values.description || null,
       };
@@ -72,72 +78,75 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
     }
   };
 
-  const renderItem = (label: string, count: number | null, isAll: boolean, c?: WorkflowCategory) => {
-    const isActive = isAll ? selectedId === null : selectedId === c?.id;
+  type ListItem = { id: number | null; name: string; color?: string | null };
+  const listData: ListItem[] = [{ id: null, name: '全部流程', color: null }, ...categories];
+
+  const renderItem = (item: ListItem) => {
+    const isAll = item.id === null;
+    const isActive = isAll ? selectedId === null : selectedId === item.id;
     return (
-      <button
-        type="button"
-        onClick={() => onSelect(isAll ? null : c?.id ?? null)}
+      <List.Item
         style={{
-          width: '100%',
-          textAlign: 'left',
-          padding: '8px 12px',
+          padding: '7px 8px',
           borderRadius: 6,
-          border: 'none',
           cursor: 'pointer',
           background: isActive ? 'var(--semi-color-fill-1)' : 'transparent',
-          borderLeft: `3px solid ${isActive ? (c?.color ?? 'var(--semi-color-primary)') : 'transparent'}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontSize: 13,
+          marginBottom: 2,
         }}
-      >
-        {c?.color ? (
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-        ) : <span style={{ width: 10 }} />}
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-        {count !== null && <span style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>{count}</span>}
-        {canManage && c && (
-          <Dropdown
-            trigger="custom"
-            visible={openMenuId === c.id}
-            onClickOutSide={() => setOpenMenuId(null)}
-            position="bottomRight"
-            render={
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={() => { setOpenMenuId(null); openEdit(c); }}>编辑</Dropdown.Item>
-                <Dropdown.Item>
-                  <Popconfirm
-                    title="确定删除该分类？"
-                    content="分类下若仍有流程将无法删除"
-                    onConfirm={() => { setOpenMenuId(null); void handleDelete(c); }}
-                  >
-                    <span style={{ color: 'var(--semi-color-danger)' }}>删除</span>
-                  </Popconfirm>
-                </Dropdown.Item>
-              </Dropdown.Menu>
+        onClick={() => onSelect(isAll ? null : item.id!)}
+        main={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, userSelect: 'none' }}>
+            {item.color
+              ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+              : <span style={{ width: 8, flexShrink: 0 }} />
             }
-          >
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === c.id ? null : c.id); }}
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 2, display: 'flex' }}
+            <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--semi-color-text-0)' }}>
+              {item.name}
+            </span>
+          </div>
+        }
+        extra={
+          canManage && !isAll ? (
+            <Dropdown
+              trigger="custom"
+              visible={openMenuId === item.id}
+              onClickOutSide={() => setOpenMenuId(null)}
+              position="bottomRight"
+              render={
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={() => { setOpenMenuId(null); openEdit(item as WorkflowCategory); }}>编辑</Dropdown.Item>
+                  <Dropdown.Item>
+                    <Popconfirm
+                      title="确定删除该分类？"
+                      content="分类下若仍有流程将无法删除"
+                      onConfirm={() => { setOpenMenuId(null); void handleDelete(item as WorkflowCategory); }}
+                    >
+                      <span style={{ color: 'var(--semi-color-danger)' }}>删除</span>
+                    </Popconfirm>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              }
             >
-              <MoreHorizontal size={14} />
-            </button>
-          </Dropdown>
-        )}
-      </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id!); }}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            </Dropdown>
+          ) : null
+        }
+      />
     );
   };
 
   return (
     <div style={{
-      width: 240, flexShrink: 0,
+      width: 220, flexShrink: 0,
       background: 'var(--semi-color-bg-1)',
       borderRadius: 8, border: '1px solid var(--semi-color-border)',
-      padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
+      padding: '8px 8px',
       alignSelf: 'flex-start',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px 8px', borderBottom: '1px solid var(--semi-color-border)', marginBottom: 4 }}>
@@ -146,31 +155,30 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
           <Button theme="borderless" size="small" icon={<Plus size={14} />} onClick={openNew}>新增</Button>
         )}
       </div>
-      {renderItem('全部流程', null, true)}
-      {categories.map(c => (
-        <div key={c.id}>{renderItem(c.name, null, false, c)}</div>
-      ))}
 
-      <SideSheet
+      <List<ListItem>
+        size="small"
+        split={false}
+        dataSource={listData}
+        renderItem={renderItem}
+      />
+
+      <Modal
         title={editing ? '编辑分类' : '新增分类'}
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
-        width={480}
-        bodyStyle={{ padding: 16 }}
-        footer={(
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={() => setEditVisible(false)}>取消</Button>
-            <Button type="primary" loading={submitting} onClick={() => void handleSubmit()}>保存</Button>
-          </Space>
-        )}
+        onOk={() => void handleSubmit()}
+        confirmLoading={submitting}
+        okText="保存"
+        size="small"
       >
         <Form
+          key={editKey}
           getFormApi={api => setFormApi(api)}
           initValues={{
             name: editing?.name ?? '',
             code: editing?.code ?? '',
             icon: editing?.icon ?? '',
-            color: editing?.color ?? '',
             sort: editing?.sort ?? 0,
             description: editing?.description ?? '',
           }}
@@ -188,23 +196,29 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
                 <button
                   key={color}
                   type="button"
-                  onClick={() => formApi?.setValue('color', color)}
+                  onClick={() => setSelectedColor(selectedColor === color ? '' : color)}
                   style={{
                     width: 24, height: 24, borderRadius: '50%', background: color,
-                    border: formApi?.getValue('color') === color ? '2px solid var(--semi-color-text-0)' : '2px solid transparent',
+                    border: selectedColor === color ? '2px solid var(--semi-color-text-0)' : '2px solid transparent',
                     cursor: 'pointer',
+                    flexShrink: 0,
                   }}
                   aria-label={color}
                 />
               ))}
-              <Form.Input field="color" noLabel placeholder="自定义 #hex" style={{ width: 120 }} />
+              <input
+                type="text"
+                value={selectedColor}
+                onChange={e => setSelectedColor(e.target.value)}
+                placeholder="自定义 #hex"
+                style={{ width: 110, border: '1px solid var(--semi-color-border)', borderRadius: 4, padding: '4px 8px', fontSize: 13, outline: 'none' }}
+              />
             </Space>
           </Form.Slot>
-          <Form.Input field="icon" label="图标名称" placeholder="lucide 图标名（可选）" />
           <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
           <Form.TextArea field="description" label="描述" autosize={{ minRows: 2, maxRows: 4 }} />
         </Form>
-      </SideSheet>
+      </Modal>
     </div>
   );
 }
