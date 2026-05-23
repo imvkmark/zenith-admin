@@ -6,6 +6,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  SideSheet,
   Space,
   Spin,
   Tag,
@@ -14,9 +15,11 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import dayjs from 'dayjs';
 import { Eye, FileInput, Plus, RotateCcw, Search } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowInstance, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -127,6 +130,7 @@ function InstanceDetailDrawer({
 }
 
 export default function MyApplicationsPage() {
+  const { user } = useAuth();
   const formApi = useRef<FormApi | null>(null);
   const dynamicFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
@@ -305,14 +309,19 @@ export default function MyApplicationsPage() {
         onRefresh={() => void fetchList()}
       />
 
-      {/* 发起申请弹窗 */}
-      <Modal
+      {/* 发起申请抽屉 */}
+      <SideSheet
         title="发起申请"
         visible={applyVisible}
         onCancel={() => { setApplyVisible(false); setSelectedDef(null); }}
-        onOk={() => void handleSubmitApply()}
-        okButtonProps={{ loading: submitting }}
-        style={{ width: 640 }}
+        width={720}
+        bodyStyle={{ padding: 16 }}
+        footer={(
+          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+            <Button onClick={() => { setApplyVisible(false); setSelectedDef(null); }}>取消</Button>
+            <Button type="primary" loading={submitting} onClick={() => void handleSubmitApply()}>提交</Button>
+          </Space>
+        )}
       >
         <Form getFormApi={api => { formApi.current = api; }}>
           <Form.Select
@@ -323,14 +332,19 @@ export default function MyApplicationsPage() {
             style={{ width: '100%' }}
             optionList={definitions.map(d => ({ value: d.id, label: d.name }))}
             onChange={v => {
-              const def = definitions.find(d => d.id === v);
-              setSelectedDef(def ?? null);
+              const def = definitions.find(d => d.id === v) ?? null;
+              setSelectedDef(def);
+              if (def) {
+                const who = user?.nickname || user?.username || '我';
+                const auto = `${def.name} - ${who} - ${dayjs().format('YYYY-MM-DD')}`;
+                formApi.current?.setValue('title', auto);
+              }
             }}
           />
           <Form.Input
             field="title"
             label="申请标题"
-            placeholder="请简要描述申请内容"
+            placeholder="选择流程后自动生成，可手动修改"
             rules={[{ required: true, message: '请填写申请标题' }]}
           />
           {selectedDef?.description && (
@@ -349,7 +363,7 @@ export default function MyApplicationsPage() {
             />
           </div>
         )}
-      </Modal>
+      </SideSheet>
     </div>
   );
 }
