@@ -108,7 +108,7 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '流程名称',
       dataIndex: 'name',
-      width: 160,
+      width: 260,
       ellipsis: true,
     },
     {
@@ -164,7 +164,8 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 240,
+      width: 160,
+      fixed: 'right',
       render: (_: unknown, record: WorkflowDefinition) => (
         <Space>
           <Button theme="borderless" size="small" onClick={() => navigate(`/workflow/designer/${record.id}`)}>

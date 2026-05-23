@@ -170,7 +170,8 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         onOk={() => void handleSubmit()}
         confirmLoading={submitting}
         okText="保存"
-        size="small"
+        width={520}
+        bodyStyle={{ paddingBottom: 24 }}
       >
         <Form
           key={editKey}
@@ -182,7 +183,8 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
             sort: editing?.sort ?? 0,
             description: editing?.description ?? '',
           }}
-          labelPosition="top"
+          labelPosition="left"
+          labelWidth={90}
         >
           <Form.Input
             field="name" label="名称"
