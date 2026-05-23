@@ -537,3 +537,122 @@ const columns: ColumnProps<Region>[] = [
 - `scroll.y` 是虚拟化生效的**必要条件**，`calc(100vh - 260px)` 适配大多数管理页面布局（260px ≈ 顶栏 + 工具栏 + 内边距）
 - 菜单管理等数据量小（< 200 条）且有复杂自定义渲染器的树形表格，**不建议**开启 `virtualized`
 - 开启 `virtualized` 后，`expandedRowKeys` 受控展开仍正常工作，无需额外处理
+
+---
+
+## 左右分栏布局（MasterDetailLayout）
+
+适用于消息中心、智能对话、AI 侧边栏、数据库管理表浏览、日志文件等具有「左侧列表 + 右侧详情」结构的页面。统一使用 `MasterDetailLayout` 组件，路径：`packages/web/src/components/MasterDetailLayout.tsx`。
+
+### 标准模式：页面直接作为 Outlet 根节点
+
+页面直接从 `admin-content`（flex 容器，分配了确定高度）继承高度，**直接返回 MasterDetailLayout**，无需外层 wrapper：
+
+```tsx
+import MasterDetailLayout from '@/components/MasterDetailLayout';
+
+export default function XxxPage() {
+  return (
+    <MasterDetailLayout
+      defaultSize={260}        // 左栏默认宽度
+      minSize={200}
+      maxSize={480}
+      persistKey="xxx-page"    // localStorage 持久化键
+      master={(
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          {/* 顶部固定区域（搜索/工具栏） */}
+          <div style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
+            ...
+          </div>
+          {/* 滚动列表区域 */}
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            ...
+          </div>
+        </div>
+      )}
+      detail={(
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          ...
+        </div>
+      )}
+    />
+  );
+}
+```
+
+### 嵌套在 Semi Design Tabs 内时
+
+Semi Design 的 `semi-tabs-pane-motion-overlay` 会打断高度继承链，必须采用以下完整写法：
+
+**高度链约束**（缺一不可）：
+1. 页面根 div：`height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden'`
+2. `<Tabs>` 加 `className="tabs-fill-height"`（已在 `global.css` 定义）、`style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}`、`contentStyle={{ flex: 1, minHeight: 0, overflow: 'hidden' }}`
+3. 需要全高的 `<TabPane>` 加 `style={{ height: '100%' }}`
+4. TabPane 内层 wrapper div：`style={{ height: '100%' }}`
+
+```tsx
+export default function XxxPage() {
+  return (
+    <div style={{ height: '100%', boxSizing: 'border-box', padding: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Tabs
+        className="tabs-fill-height"
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+        contentStyle={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
+        tabBarStyle={{ marginBottom: 8 }}
+      >
+        <TabPane tab="列表" itemKey="list" style={{ height: '100%' }}>
+          <div style={{ height: '100%' }}>
+            <MasterDetailLayout
+              defaultSize={300}
+              minSize={220}
+              maxSize={520}
+              persistKey="xxx-list"
+              master={(
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                  <div style={{ padding: 12, borderBottom: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
+                    {/* 搜索/过滤 */}
+                  </div>
+                  <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                    {/* 列表内容 */}
+                  </div>
+                </div>
+              )}
+              detail={<div>详情区域</div>}
+            />
+          </div>
+        </TabPane>
+        <TabPane tab="其他" itemKey="other">
+          {/* 其他 tab 无高度限制需求时不需要加 style={{ height: '100%' }} */}
+        </TabPane>
+      </Tabs>
+    </div>
+  );
+}
+```
+
+### 主侧在右时（`side="right"`）
+
+某些页面左侧为主内容区，右侧为可收起的辅助面板（如 AI 侧边栏）：
+- 将宽的内容放在 `detail`（左侧，`flex:1`）
+- 将窄的可调整面板放在 `master`（右侧，`flexShrink:0`）
+- 设置 `side="right"` 使 master 渲染在右边
+
+```tsx
+<MasterDetailLayout
+  side="right"
+  defaultSize={380}
+  minSize={300}
+  maxSize={600}
+  collapsed={!panelVisible}
+  persistKey="xxx-sidebar"
+  detail={<MainContent />}    // 宽的主体内容（左侧）
+  master={<SidePanel />}      // 窄的辅助面板（右侧，可调整宽度）
+/>
+```
+
+### 常见陷阱
+
+- **master 内需要头部 + 滚动列表**：必须在 master 内用 flex column 容器包裹，搜索头固定（`flexShrink: 0`），列表 flex: 1 + overflow: auto + minHeight: 0
+- **不要把 master 的 div 写成 Fragment（`<>`）**：Fragment 无法接受 `height: '100%'`，列表将无高度约束
+- **Tabs 嵌套时不加 `className="tabs-fill-height"`**：会导致 Semi Design 的动画层破坏高度链，列表内容撑满后无滚动
+- **MasterDetailLayout 的 `gap` 默认为 0**：如不需要间距且无边框，保持默认即可
