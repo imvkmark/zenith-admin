@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Banner,
   Button,
   Form,
   Modal,
@@ -15,6 +16,7 @@ import { RotateCcw } from 'lucide-react';
 import type { WorkflowInstance, WorkflowDefinition, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
+import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
@@ -36,6 +38,9 @@ export default function PendingApprovalsPage() {
   const [detail, setDetail] = useState<WorkflowInstance | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDef, setDetailDef] = useState<WorkflowDefinition | null>(null);
+  const [rejectInstance, setRejectInstance] = useState<WorkflowInstance | null>(null);
+  const [rejectDef, setRejectDef] = useState<WorkflowDefinition | null>(null);
+  const [rejectHintLoading, setRejectHintLoading] = useState(false);
 
   const fetchList = useCallback(async (p = page, ps = pageSize) => {
     setLoading(true);
@@ -99,6 +104,35 @@ export default function PendingApprovalsPage() {
       setSubmitting(false);
     }
   };
+
+  const openReject = useCallback(async (item: PendingItem) => {
+    setSelectedItem(item);
+    setRejectVisible(true);
+    // 若详情面板已为同一实例加载过定义，复用；否则现拉
+    if (detail?.id === item.id && detailDef) {
+      setRejectInstance(detail);
+      setRejectDef(detailDef);
+      return;
+    }
+    setRejectInstance(null);
+    setRejectDef(null);
+    setRejectHintLoading(true);
+    try {
+      const instRes = await request.get<WorkflowInstance>(`/api/workflows/instances/${item.id}`);
+      if (instRes.code === 0) {
+        setRejectInstance(instRes.data);
+        const defRes = await request.get<WorkflowDefinition>(`/api/workflows/definitions/${instRes.data.definitionId}`);
+        if (defRes.code === 0) setRejectDef(defRes.data);
+      }
+    } finally {
+      setRejectHintLoading(false);
+    }
+  }, [detail, detailDef]);
+
+  const rejectHint = useMemo(
+    () => resolveRejectTargetHint(rejectInstance, rejectDef?.flowData ?? null),
+    [rejectInstance, rejectDef]
+  );
 
   const handleReject = async () => {
     if (!selectedItem) return;
@@ -172,7 +206,7 @@ export default function PendingApprovalsPage() {
             theme="borderless"
             size="small"
             type="danger"
-            onClick={() => { setSelectedItem(record); setRejectVisible(true); }}
+            onClick={() => { void openReject(record); }}
           >
             驳回
           </Button>
@@ -220,7 +254,14 @@ export default function PendingApprovalsPage() {
             extraActions={selectedItem ? (
               <Space>
                 <Button type="primary" onClick={() => setApproveVisible(true)}>通过</Button>
-                <Button type="danger" onClick={() => setRejectVisible(true)}>驳回</Button>
+                <Button
+                  type="danger"
+                  onClick={() => {
+                    if (selectedItem) void openReject(selectedItem);
+                  }}
+                >
+                  驳回
+                </Button>
               </Space>
             ) : undefined}
           />
@@ -246,12 +287,23 @@ export default function PendingApprovalsPage() {
       <Modal
         title="驳回申请"
         visible={rejectVisible}
-        onCancel={() => setRejectVisible(false)}
+        onCancel={() => {
+          setRejectVisible(false);
+          setRejectInstance(null);
+          setRejectDef(null);
+        }}
         onOk={() => void handleReject()}
         okButtonProps={{ loading: submitting, type: 'danger' }}
         okText="确认驳回"
-        style={{ width: 440 }}
+        style={{ width: 480 }}
       >
+        <Banner
+          type={rejectHint.terminating ? 'warning' : 'info'}
+          description={rejectHintLoading ? '正在加载驳回去向...' : rejectHint.text}
+          fullMode={false}
+          closeIcon={null}
+          style={{ marginBottom: 16 }}
+        />
         <Form getFormApi={api => { rejectFormApi.current = api; }}>
           <Form.TextArea
             field="comment"
