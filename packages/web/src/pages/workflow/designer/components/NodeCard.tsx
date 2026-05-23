@@ -13,6 +13,7 @@ interface NodeCardProps {
   onEdit: (node: FlowNode) => void;
   onDelete: (nodeId: string) => void;
   onDuplicate?: (nodeId: string) => void;
+  readOnly?: boolean;
 }
 
 function getNodeInfo(type: FlowNode['type']) {
@@ -138,7 +139,7 @@ function getNodeTags(node: FlowNode): string[] {
   return tags;
 }
 
-export default function NodeCard({ node, onEdit, onDelete, onDuplicate }: Readonly<NodeCardProps>) {
+export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly = false }: Readonly<NodeCardProps>) {
   const info = getNodeInfo(node.type);
   const color = NODE_COLOR_MAP[node.type] ?? '#999';
   const Icon = info?.icon;
@@ -150,7 +151,8 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate }: Readon
     <button
       type="button"
       className="fd-node-card"
-      onClick={() => onEdit(node)}
+      onClick={readOnly ? undefined : () => onEdit(node)}
+      tabIndex={readOnly ? -1 : 0}
     >
       {/* 标题栏 */}
       <div className="fd-node-card__header" style={{ background: color }}>
@@ -160,6 +162,7 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate }: Readon
           </span>
         )}
         <span className="fd-node-card__header-title">{node.name || info?.label || '节点'}</span>
+        {!readOnly && (
         <span className="fd-node-card__header-actions">
           {onDuplicate && (
             <Tooltip content="复制节点">
@@ -188,6 +191,7 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate }: Readon
             </span>
           </Popconfirm>
         </span>
+        )}
       </div>
 
       {/* 内容区 */}

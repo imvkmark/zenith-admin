@@ -61,6 +61,7 @@ export const workflowHandlers = [
       id: getNextDefinitionId(),
       name: body.name ?? '新流程',
       description: body.description ?? null,
+      categoryId: body.categoryId ?? null,
       flowData: body.flowData ?? null,
       formFields: body.formFields ?? null,
       status: 'draft',

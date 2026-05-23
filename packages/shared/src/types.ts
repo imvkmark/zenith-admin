@@ -721,6 +721,10 @@ export interface WorkflowDefinition {
   id: number;
   name: string;
   description: string | null;
+  categoryId: number | null;
+  categoryName?: string | null;
+  categoryColor?: string | null;
+  categoryIcon?: string | null;
   flowData: WorkflowFlowData | null;
   formFields: WorkflowFormField[] | null;
   status: WorkflowDefinitionStatus;
@@ -728,6 +732,19 @@ export interface WorkflowDefinition {
   tenantId: number | null;
   createdBy: number | null;
   createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowCategory {
+  id: number;
+  name: string;
+  code: string | null;
+  icon: string | null;
+  color: string | null;
+  sort: number;
+  description: string | null;
+  tenantId: number | null;
   createdAt: string;
   updatedAt: string;
 }

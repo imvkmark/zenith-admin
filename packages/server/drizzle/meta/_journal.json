@@ -428,6 +428,13 @@
       "when": 1779664400002,
       "tag": "0060_worried_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1779541817502,
+      "tag": "0061_empty_madame_masque",
+      "breakpoints": true
     }
   ]
 }

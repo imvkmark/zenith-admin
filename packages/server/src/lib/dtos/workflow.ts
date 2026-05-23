@@ -4,11 +4,31 @@
 import { z } from '@hono/zod-openapi';
 import { auditFields } from './_audit';
 
+export const WorkflowCategoryDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    code: z.string().nullable(),
+    icon: z.string().nullable(),
+    color: z.string().nullable(),
+    sort: z.number().int(),
+    description: z.string().nullable(),
+    tenantId: z.number().int().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('WorkflowCategory');
+
 export const WorkflowDefinitionDTO = z
   .object({
     id: z.number().int(),
     name: z.string(),
     description: z.string().nullable(),
+    categoryId: z.number().int().nullable(),
+    categoryName: z.string().nullable().optional(),
+    categoryColor: z.string().nullable().optional(),
+    categoryIcon: z.string().nullable().optional(),
     flowData: z.unknown().nullable(),
     formFields: z.unknown().nullable(),
     status: z.enum(['draft', 'published', 'disabled']),

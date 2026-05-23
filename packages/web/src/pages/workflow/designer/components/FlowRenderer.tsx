@@ -11,15 +11,18 @@ import BranchContainer from './BranchContainer';
 
 interface FlowRendererProps {
   process: { initiator: FlowNode };
-  onEditNode: (node: FlowNode) => void;
-  onDeleteNode: (nodeId: string) => void;
+  onEditNode?: (node: FlowNode) => void;
+  onDeleteNode?: (nodeId: string) => void;
   onDuplicateNode?: (nodeId: string) => void;
-  onAddNodeAfter: (parentId: string, nodeType: FlowNodeType) => void;
-  onAddNodeInBranch: (branchNodeId: string, branchId: string, nodeType: FlowNodeType) => void;
-  onAddBranch: (branchNodeId: string) => void;
-  onRemoveBranch: (branchNodeId: string, branchId: string) => void;
-  onEditBranch: (branch: FlowBranch, branchNodeId: string) => void;
+  onAddNodeAfter?: (parentId: string, nodeType: FlowNodeType) => void;
+  onAddNodeInBranch?: (branchNodeId: string, branchId: string, nodeType: FlowNodeType) => void;
+  onAddBranch?: (branchNodeId: string) => void;
+  onRemoveBranch?: (branchNodeId: string, branchId: string) => void;
+  onEditBranch?: (branch: FlowBranch, branchNodeId: string) => void;
+  readOnly?: boolean;
 }
+
+const noop = () => { /* noop */ };
 
 export default function FlowRenderer({
   process,
@@ -31,9 +34,17 @@ export default function FlowRenderer({
   onAddBranch,
   onRemoveBranch,
   onEditBranch,
+  readOnly = false,
 }: Readonly<FlowRendererProps>) {
 
-  /** 递归渲染节点链 */
+  const editNode = onEditNode ?? noop;
+  const deleteNode = onDeleteNode ?? noop;
+  const addAfter = onAddNodeAfter ?? noop;
+  const addInBranch = onAddNodeInBranch ?? noop;
+  const addBranch = onAddBranch ?? noop;
+  const removeBranch = onRemoveBranch ?? noop;
+  const editBranch = onEditBranch ?? noop;
+
   function renderNodeChain(node: FlowNode | undefined, _parentId: string): React.ReactNode {
     if (!node) return null;
 
@@ -42,25 +53,25 @@ export default function FlowRenderer({
         {isBranchNode(node.type) ? (
           <BranchContainer
             node={node}
-            onAddBranch={onAddBranch}
-            onRemoveBranch={onRemoveBranch}
-            onEditBranch={onEditBranch}
-            onAddNodeInBranch={onAddNodeInBranch}
+            onAddBranch={addBranch}
+            onRemoveBranch={removeBranch}
+            onEditBranch={editBranch}
+            onAddNodeInBranch={addInBranch}
             renderChildren={(childNode, key) => renderNodeChain(childNode, key)}
+            readOnly={readOnly}
           />
         ) : (
           <NodeCard
             node={node}
-            onEdit={onEditNode}
-            onDelete={onDeleteNode}
+            onEdit={editNode}
+            onDelete={deleteNode}
             onDuplicate={onDuplicateNode}
+            readOnly={readOnly}
           />
         )}
 
-        {/* 节点后的 "+" 按钮 */}
-        <AddNodeButton onAdd={(type) => onAddNodeAfter(node.id, type)} />
+        {!readOnly && <AddNodeButton onAdd={(type) => addAfter(node.id, type)} />}
 
-        {/* 递归渲染后续节点 */}
         {node.children && renderNodeChain(node.children, node.id)}
       </>
     );
@@ -68,19 +79,15 @@ export default function FlowRenderer({
 
   return (
     <div className="fd-flow-wrap">
-      {/* 发起人 */}
       <InitiatorNode
         node={process.initiator}
-        onEdit={onEditNode}
+        onEdit={editNode}
       />
 
-      {/* 发起人后的 "+" */}
-      <AddNodeButton onAdd={(type) => onAddNodeAfter(process.initiator.id, type)} />
+      {!readOnly && <AddNodeButton onAdd={(type) => addAfter(process.initiator.id, type)} />}
 
-      {/* 后续节点链 */}
       {renderNodeChain(process.initiator.children, process.initiator.id)}
 
-      {/* 结束节点 */}
       <EndNode />
     </div>
   );

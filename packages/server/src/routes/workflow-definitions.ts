@@ -14,6 +14,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const createWorkflowDefinitionSchema = z.object({
   name: z.string().min(1).max(64),
   description: z.string().max(500).nullable().optional(),
+  categoryId: z.number().int().nullable().optional(),
   flowData: z.looseObject({}).nullable().optional(),
   formFields: z.array(z.looseObject({})).nullable().optional(),
   status: z.enum(['draft', 'published', 'disabled']).default('draft'),
@@ -25,7 +26,7 @@ const listRoute = defineOpenAPIRoute({
     method: 'get', path: '/', tags: ['WorkflowDefinitions'], summary: '流程定义列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional() }) },
+    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), status: z.string().optional(), categoryId: z.coerce.number().int().optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(WorkflowDefinitionDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listDefinitions(c.req.valid('query'))), 200),

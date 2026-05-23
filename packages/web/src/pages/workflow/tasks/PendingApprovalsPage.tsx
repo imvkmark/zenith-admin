@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
-  Descriptions,
   Form,
   Modal,
+  SideSheet,
   Space,
+  Spin,
   Toast,
-  Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -16,8 +16,7 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import ApprovalTimeline from '@/components/ApprovalTimeline';
-import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
+import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 
 type PendingItem = WorkflowInstance & { pendingTaskId: number };
 
@@ -59,6 +58,7 @@ export default function PendingApprovalsPage() {
   }, [fetchList]);
 
   const openDetail = (item: PendingItem) => {
+    setSelectedItem(item);
     setDetailLoading(true);
     setDetailVisible(true);
     setDetailDef(null);
@@ -196,45 +196,29 @@ export default function PendingApprovalsPage() {
       />
 
       {/* 申请详情弹窗 */}
-      <Modal
+      <SideSheet
         title="申请详情"
         visible={detailVisible}
         onCancel={() => { setDetailVisible(false); setDetail(null); setDetailDef(null); }}
-        footer={null}
-        style={{ width: 720 }}
+        width={780}
+        bodyStyle={{ padding: 16 }}
       >
         {detailLoading ? (
-          <div style={{ textAlign: 'center', padding: 32 }}>加载中...</div>
-        ) : null}
-        {!detailLoading && detail !== null && detail !== undefined ? (
-          <div>
-            <Descriptions
-              data={[
-                { key: '申请标题', value: detail.title },
-                { key: '流程名称', value: detail.definitionName ?? '—' },
-                { key: '申请人', value: detail.initiatorName ?? '—' },
-                { key: '提交时间', value: formatDateTime(detail.createdAt) },
-              ]}
-            />
-            {detailDef?.formFields && detailDef.formFields.length > 0 ? (
-              <div style={{ marginTop: 16 }}>
-                <Typography.Title heading={6} style={{ marginBottom: 8 }}>表单内容</Typography.Title>
-                <WorkflowFormRenderer
-                  fields={detailDef.formFields}
-                  initValues={detail.formData ?? {}}
-                  readOnly
-                />
-              </div>
-            ) : null}
-            {detail.tasks && detail.tasks.length > 0 ? (
-              <div style={{ marginTop: 16 }}>
-                <Typography.Title heading={6} style={{ marginBottom: 8 }}>审批流程</Typography.Title>
-                <ApprovalTimeline tasks={detail.tasks} />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        ) : (
+          <WorkflowInstanceDetailPanel
+            instance={detail}
+            definition={detailDef}
+            loading={detailLoading}
+            extraActions={selectedItem ? (
+              <Space>
+                <Button type="primary" onClick={() => setApproveVisible(true)}>通过</Button>
+                <Button type="danger" onClick={() => setRejectVisible(true)}>驳回</Button>
+              </Space>
+            ) : undefined}
+          />
+        )}
+      </SideSheet>
 
       {/* 审批通过弹窗 */}
       <Modal

@@ -15,6 +15,7 @@ interface BranchContainerProps {
   onEditBranch: (branch: FlowBranch, branchNodeId: string) => void;
   onAddNodeInBranch: (branchNodeId: string, branchId: string, nodeType: FlowNodeType) => void;
   renderChildren: (childNode: FlowNode | undefined, parentId: string) => React.ReactNode;
+  readOnly?: boolean;
 }
 
 function getBranchNameClass(type: BranchNodeType, isDefault?: boolean): string {
@@ -48,6 +49,7 @@ export default function BranchContainer({
   onEditBranch,
   onAddNodeInBranch,
   renderChildren,
+  readOnly = false,
 }: Readonly<BranchContainerProps>) {
   const branches = node.branches ?? [];
   const color = NODE_COLOR_MAP[node.type];
@@ -57,7 +59,7 @@ export default function BranchContainer({
 
   return (
     <div className="fd-branch-wrap">
-      {/* 添加条件/分支按钮 */}
+      {!readOnly && (
       <button
         className="fd-branch-add-btn"
         type="button"
@@ -66,16 +68,14 @@ export default function BranchContainer({
       >
         {addLabel}
       </button>
+      )}
 
-      {/* 分支列容器 */}
       <div className="fd-branch-box">
         {branches.map((branch, index) => (
           <div key={branch.id} className="fd-branch-col">
-            {/* 顶部竖线 */}
             <div className="fd-branch-col-top-line" />
 
-            {/* 分支标题卡 */}
-            <button className="fd-branch-title" type="button" onClick={() => onEditBranch(branch, node.id)}>
+            <button className="fd-branch-title" type="button" onClick={readOnly ? undefined : () => onEditBranch(branch, node.id)} tabIndex={readOnly ? -1 : 0}>
               <div className="fd-branch-title__header">
                 <span className={getBranchNameClass(branchType, branch.isDefault)}>
                   {branch.name}
@@ -90,8 +90,7 @@ export default function BranchContainer({
                 {getBranchDesc(branch, branchType)}
               </div>
 
-              {/* 删除分支按钮 */}
-              {canRemoveBranch && !branch.isDefault && (
+              {!readOnly && canRemoveBranch && !branch.isDefault && (
                 <span
                   className="fd-branch-title__close"
                   role="none"
@@ -103,15 +102,14 @@ export default function BranchContainer({
               )}
             </button>
 
-            {/* 分支内添加节点 */}
-            <AddNodeButton
-              onAdd={(type) => onAddNodeInBranch(node.id, branch.id, type)}
-            />
+            {!readOnly && (
+              <AddNodeButton
+                onAdd={(type) => onAddNodeInBranch(node.id, branch.id, type)}
+              />
+            )}
 
-            {/* 分支内子节点 */}
             {renderChildren(branch.children, `branch-${branch.id}-${index}`)}
 
-            {/* 底部竖线 */}
             <div className="fd-branch-col-bottom-line" />
           </div>
         ))}

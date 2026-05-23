@@ -780,11 +780,30 @@ export const workflowNodeTypeEnum = pgEnum('workflow_node_type', [
   'subProcess',
 ]);
 
+// 流程分类
+export const workflowCategories = pgTable('workflow_categories', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  code: varchar('code', { length: 64 }),
+  icon: varchar('icon', { length: 64 }),
+  color: varchar('color', { length: 16 }),
+  sort: integer('sort').default(0).notNull(),
+  description: text('description'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('workflow_categories_code_uniq').on(t.code)]);
+
+export type WorkflowCategoryRow = typeof workflowCategories.$inferSelect;
+export type NewWorkflowCategory = typeof workflowCategories.$inferInsert;
+
 // 流程定义
 export const workflowDefinitions = pgTable('workflow_definitions', {
   id: serial('id').primaryKey(),
   name: varchar('name', { length: 64 }).notNull(),
   description: text('description'),
+  categoryId: integer('category_id').references(() => workflowCategories.id, { onDelete: 'set null' }),
   flowData: jsonb('flow_data'), // React Flow 节点+边 JSON
   formFields: jsonb('form_fields'), // 表单字段配置 JSON
   status: workflowDefinitionStatusEnum('status').default('draft').notNull(),
@@ -1055,9 +1074,15 @@ export const dbBackupsRelations = relations(dbBackups, ({ one }) => ({
   createdByUser: one(users, { fields: [dbBackups.createdBy], references: [users.id] }),
 }));
 
+export const workflowCategoriesRelations = relations(workflowCategories, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [workflowCategories.tenantId], references: [tenants.id] }),
+  definitions: many(workflowDefinitions),
+}));
+
 export const workflowDefinitionsRelations = relations(workflowDefinitions, ({ one, many }) => ({
   tenant: one(tenants, { fields: [workflowDefinitions.tenantId], references: [tenants.id] }),
   createdByUser: one(users, { fields: [workflowDefinitions.createdBy], references: [users.id] }),
+  category: one(workflowCategories, { fields: [workflowDefinitions.categoryId], references: [workflowCategories.id] }),
   instances: many(workflowInstances),
   versions: many(workflowDefinitionVersions),
 }));

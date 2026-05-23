@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
-  Descriptions,
   Form,
-  Modal,
   Popconfirm,
   Select,
   SideSheet,
   Space,
   Spin,
+  Tabs,
+  TabPane,
   Tag,
   Toast,
   Typography,
@@ -23,16 +23,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import ApprovalTimeline from '@/components/ApprovalTimeline';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
+import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
+import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
+import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
+import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
-
-function formatFormValue(v: unknown): string {
-  if (v == null) return '';
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v as string | number | boolean);
-}
 
 const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft: { text: '草稿', color: 'grey' },
@@ -55,13 +52,23 @@ function InstanceDetailDrawer({
 }>) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WorkflowInstance | null>(null);
+  const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
 
   useEffect(() => {
     if (!visible || !instanceId) return;
     setLoading(true);
-    request.get<WorkflowInstance>(`/api/workflows/instances/${instanceId}`)
-      .then(res => { if (res.code === 0) setData(res.data); })
+    setDefinition(null);
+    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${instanceId}`)
+      .then(res => {
+        if (res.code === 0) {
+          setData(res.data);
+          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`);
+        }
+        return null;
+      })
+      .then(defRes => { if (defRes?.code === 0) setDefinition(defRes.data); })
       .finally(() => setLoading(false));
+    p.catch(() => undefined);
   }, [visible, instanceId]);
 
   const handleWithdraw = async () => {
@@ -74,58 +81,29 @@ function InstanceDetailDrawer({
     }
   };
 
-  const statusInfo = data ? INSTANCE_STATUS_MAP[data.status] : null;
-
   return (
-    <Modal
+    <SideSheet
       title="申请详情"
       visible={visible}
       onCancel={onClose}
+      width={760}
+      bodyStyle={{ padding: 16 }}
       footer={
         data?.status === 'running' ? (
-          <Popconfirm title="确定要撤回吗？" onConfirm={() => void handleWithdraw()}>
-            <Button type="danger">撤回申请</Button>
-          </Popconfirm>
+          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+            <Popconfirm title="确定要撤回吗？" onConfirm={() => void handleWithdraw()}>
+              <Button type="danger">撤回申请</Button>
+            </Popconfirm>
+          </Space>
         ) : null
       }
-      style={{ width: 600 }}
     >
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-      ) : null}
-      {!loading && data !== null && data !== undefined ? (
-        <div>
-          <Descriptions
-            data={[
-              { key: '申请标题', value: data.title },
-              { key: '流程名称', value: data.definitionName ?? '—' },
-              { key: '发起人', value: data.initiatorName ?? '—' },
-              {
-                key: '当前状态',
-                value: statusInfo
-                  ? (<Tag color={statusInfo.color}>{statusInfo.text}</Tag>)
-                  : (<span>{data.status}</span>),
-              },
-              { key: '提交时间', value: formatDateTime(data.createdAt) },
-            ]}
-          />
-          {data.formData && Object.keys(data.formData).length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Typography.Title heading={6} style={{ marginBottom: 8 }}>表单内容</Typography.Title>
-              <Descriptions
-                data={Object.entries(data.formData).map(([k, v]) => ({ key: k, value: formatFormValue(v) }))}
-              />
-            </div>
-          )}
-          {data.tasks && data.tasks.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Typography.Title heading={6} style={{ marginBottom: 12 }}>审批记录</Typography.Title>
-              <ApprovalTimeline tasks={data.tasks} />
-            </div>
-          )}
-        </div>
-      ) : null}
-    </Modal>
+      ) : (
+        <WorkflowInstanceDetailPanel instance={data} definition={definition} loading={loading} />
+      )}
+    </SideSheet>
   );
 }
 
@@ -145,6 +123,8 @@ export default function MyApplicationsPage() {
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [applyCategoryId, setApplyCategoryId] = useState<number | null>(null);
+  const { categories } = useWorkflowCategories();
 
   const fetchList = useCallback(async (p = page, st = searchStatus, ps = pageSize) => {
     setLoading(true);
@@ -325,12 +305,30 @@ export default function MyApplicationsPage() {
       >
         <Form getFormApi={api => { formApi.current = api; }}>
           <Form.Select
+            field="categoryId"
+            label="流程分类"
+            placeholder="全部分类"
+            showClear
+            style={{ width: '100%' }}
+            initValue={applyCategoryId ?? undefined}
+            onChange={v => {
+              const next = typeof v === 'number' ? v : null;
+              setApplyCategoryId(next);
+              setSelectedDef(null);
+              formApi.current?.setValue('definitionId', undefined);
+              formApi.current?.setValue('title', '');
+            }}
+            optionList={categories.map(c => ({ value: c.id, label: c.name }))}
+          />
+          <Form.Select
             field="definitionId"
             label="选择流程"
             placeholder="请选择要发起的流程"
             rules={[{ required: true, message: '请选择流程' }]}
             style={{ width: '100%' }}
-            optionList={definitions.map(d => ({ value: d.id, label: d.name }))}
+            optionList={definitions
+              .filter(d => applyCategoryId === null || d.categoryId === applyCategoryId)
+              .map(d => ({ value: d.id, label: d.name }))}
             onChange={v => {
               const def = definitions.find(d => d.id === v) ?? null;
               setSelectedDef(def);
@@ -354,13 +352,26 @@ export default function MyApplicationsPage() {
             </div>
           )}
         </Form>
-        {selectedDef?.formFields && selectedDef.formFields.length > 0 && (
-          <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 16 }}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>填写表单</Typography.Text>
-            <WorkflowFormRenderer
-              fields={selectedDef.formFields}
-              getFormApi={api => { dynamicFormApi.current = api; }}
-            />
+        {selectedDef && (
+          <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 12 }}>
+            <Tabs type="line" defaultActiveKey="form">
+              <TabPane tab="填写表单" itemKey="form">
+                {selectedDef.formFields && selectedDef.formFields.length > 0 ? (
+                  <WorkflowFormRenderer
+                    fields={selectedDef.formFields}
+                    getFormApi={api => { dynamicFormApi.current = api; }}
+                  />
+                ) : (
+                  <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>
+                )}
+              </TabPane>
+              <TabPane tab="流程图预览" itemKey="graph">
+                <WorkflowGraphView flowData={selectedDef.flowData} />
+              </TabPane>
+              <TabPane tab="节点详情" itemKey="nodes">
+                <WorkflowNodeListView flowData={selectedDef.flowData} />
+              </TabPane>
+            </Tabs>
           </div>
         )}
       </SideSheet>

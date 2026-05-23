@@ -2,7 +2,7 @@
  * 工作流设计器页面 — 钉钉/飞书风格垂直流程设计器
  */
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowFormField } from '@zenith/shared';
@@ -88,6 +88,14 @@ export default function WorkflowDesignerPage() {
   // 基础信息（内联编辑）
   const [metaName, setMetaName] = useState('');
   const [metaDesc, setMetaDesc] = useState('');
+  const [searchParams] = useSearchParams();
+  const initialCategoryId = (() => {
+    const v = searchParams.get('categoryId');
+    if (!v) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  })();
+  const [metaCategoryId, setMetaCategoryId] = useState<number | null>(initialCategoryId);
 
   // 同步表单字段到视图
   const formFields: Array<{ key: string; label: string; type: WorkflowFormField['type']; options?: string[] }> =
@@ -103,6 +111,7 @@ export default function WorkflowDesignerPage() {
           setDefinition(res.data);
           setMetaName(res.data.name);
           setMetaDesc(res.data.description ?? '');
+          setMetaCategoryId(res.data.categoryId ?? null);
           if (res.data.formFields) setLocalFormFields(res.data.formFields);
           const fd = res.data.flowData;
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
@@ -254,10 +263,11 @@ export default function WorkflowDesignerPage() {
     await doSave({
       name: metaName,
       description: metaDesc || null,
+      categoryId: metaCategoryId,
     });
   };
 
-  const doSave = async (meta: { name: string; description?: string | null }) => {
+  const doSave = async (meta: { name: string; description?: string | null; categoryId: number | null }) => {
     setSaving(true);
     try {
       const flat = treeToFlat(process);
@@ -265,6 +275,7 @@ export default function WorkflowDesignerPage() {
       const payload = {
         name: meta.name,
         description: meta.description ?? null,
+        categoryId: meta.categoryId,
         flowData,
         formFields: localFormFields.length > 0 ? localFormFields : null,
       };
@@ -428,7 +439,9 @@ export default function WorkflowDesignerPage() {
         <BasicInfoPanel
           definition={definition}
           isNew={isNew}
+          categoryId={metaCategoryId}
           onFieldChange={handleMetaFieldChange}
+          onCategoryChange={setMetaCategoryId}
         />
       )}
 

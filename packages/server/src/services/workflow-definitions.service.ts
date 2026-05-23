@@ -4,13 +4,19 @@ import { formatDateTime } from '../lib/datetime';
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
 export function mapDefinition(
-  row: typeof workflowDefinitions.$inferSelect,
+  row: typeof workflowDefinitions.$inferSelect & {
+    category?: { name: string | null; color: string | null; icon: string | null } | null;
+  },
   createdByName?: string | null,
 ) {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
+    categoryId: row.categoryId ?? null,
+    categoryName: row.category?.name ?? null,
+    categoryColor: row.category?.color ?? null,
+    categoryIcon: row.category?.icon ?? null,
     flowData: row.flowData,
     formFields: row.formFields,
     status: row.status,
@@ -56,20 +62,24 @@ import { currentUser } from '../lib/context';
 
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
 
-export async function listDefinitions(query: { page?: number; pageSize?: number; keyword?: string; status?: string }) {
+export async function listDefinitions(query: { page?: number; pageSize?: number; keyword?: string; status?: string; categoryId?: number }) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, keyword, status } = query;
+  const { page = 1, pageSize = 20, keyword, status, categoryId } = query;
   const tc = tenantCondition(workflowDefinitions, user);
   const conditions = [];
   if (tc) conditions.push(tc);
   if (keyword) conditions.push(like(workflowDefinitions.name, `%${escapeLike(keyword)}%`));
   if (status) conditions.push(eq(workflowDefinitions.status, status as WorkflowDefinitionStatus));
+  if (categoryId) conditions.push(eq(workflowDefinitions.categoryId, categoryId));
   const where = conditions.length ? and(...conditions) : undefined;
   const [total, rows] = await Promise.all([
     db.$count(workflowDefinitions, where),
     db.query.workflowDefinitions.findMany({
       where,
-      with: { createdByUser: { columns: { nickname: true } } },
+      with: {
+        createdByUser: { columns: { nickname: true } },
+        category: { columns: { name: true, color: true, icon: true } },
+      },
       orderBy: desc(workflowDefinitions.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
@@ -99,19 +109,23 @@ export async function getDefinition(id: number) {
   const where = findDefinition(id);
   const row = await db.query.workflowDefinitions.findFirst({
     where,
-    with: { createdByUser: { columns: { nickname: true } } },
+    with: {
+      createdByUser: { columns: { nickname: true } },
+      category: { columns: { name: true, color: true, icon: true } },
+    },
   });
   if (!row) throw new HTTPException(404, { message: '流程定义不存在' });
   return mapDefinition(row, row.createdByUser?.nickname ?? null);
 }
 
 export async function createDefinition(data: {
-  name: string; description?: string | null; flowData?: unknown; formFields?: unknown; status?: WorkflowDefinitionStatus;
+  name: string; description?: string | null; categoryId?: number | null; flowData?: unknown; formFields?: unknown; status?: WorkflowDefinitionStatus;
 }) {
   const user = currentUser();
   const [row] = await db.insert(workflowDefinitions).values({
     name: data.name,
     description: data.description ?? null,
+    categoryId: data.categoryId ?? null,
     flowData: data.flowData ?? null,
     formFields: data.formFields ?? null,
     status: data.status ?? 'draft',
@@ -121,7 +135,7 @@ export async function createDefinition(data: {
 }
 
 export async function updateDefinition(id: number, data: Partial<{
-  name: string; description: string | null; flowData: unknown; formFields: unknown; status: WorkflowDefinitionStatus;
+  name: string; description: string | null; categoryId: number | null; flowData: unknown; formFields: unknown; status: WorkflowDefinitionStatus;
 }>) {
   const where = findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
@@ -221,7 +235,10 @@ export async function deleteDefinition(id: number) {
 export async function getWorkflowDefinitionBeforeAudit(id: number) {
   const row = await db.query.workflowDefinitions.findFirst({
     where: findDefinition(id),
-    with: { createdByUser: { columns: { nickname: true } } },
+    with: {
+      createdByUser: { columns: { nickname: true } },
+      category: { columns: { name: true, color: true, icon: true } },
+    },
   });
   if (!row) return null;
   return mapDefinition(row, row.createdByUser?.nickname ?? null);

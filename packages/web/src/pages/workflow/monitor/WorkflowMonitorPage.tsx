@@ -3,22 +3,22 @@ import {
   Avatar,
   Button,
   Card,
-  Descriptions,
   Input,
-  Modal,
   Select,
+  SideSheet,
   Space,
+  Spin,
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
-import type { WorkflowInstance } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowInstance } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import ApprovalTimeline from '@/components/ApprovalTimeline';
+import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -100,6 +100,7 @@ export default function WorkflowMonitorPage() {
   // 详情弹窗
   const [detailVisible, setDetailVisible] = useState(false);
   const [detail, setDetail] = useState<WorkflowInstance | null>(null);
+  const [detailDef, setDetailDef] = useState<WorkflowDefinition | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const fetchList = useCallback(async (p = page, kw = keyword, st = statusFilter, ps = pageSize) => {
@@ -143,10 +144,18 @@ export default function WorkflowMonitorPage() {
   const openDetail = (item: WorkflowInstance) => {
     setDetailLoading(true);
     setDetailVisible(true);
-    request.get<WorkflowInstance>(`/api/workflows/instances/${item.id}`)
-      .then(res => { if (res.code === 0) setDetail(res.data); })
-      .catch(() => undefined)
+    setDetailDef(null);
+    const p = request.get<WorkflowInstance>(`/api/workflows/instances/${item.id}`)
+      .then(res => {
+        if (res.code === 0) {
+          setDetail(res.data);
+          return request.get<WorkflowDefinition>(`/api/workflows/definitions/${res.data.definitionId}`);
+        }
+        return null;
+      })
+      .then(defRes => { if (defRes?.code === 0) setDetailDef(defRes.data); })
       .finally(() => setDetailLoading(false));
+    p.catch(() => undefined);
   };
 
   const stats = data?.stats ?? { total: 0, running: 0, approved: 0, rejected: 0, withdrawn: 0 };
@@ -266,40 +275,19 @@ export default function WorkflowMonitorPage() {
       />
 
       {/* 详情弹窗 */}
-      <Modal
+      <SideSheet
         title="流程详情"
         visible={detailVisible}
-        onCancel={() => { setDetailVisible(false); setDetail(null); }}
-        footer={null}
-        style={{ width: 600 }}
+        onCancel={() => { setDetailVisible(false); setDetail(null); setDetailDef(null); }}
+        width={760}
+        bodyStyle={{ padding: 16 }}
       >
         {detailLoading ? (
-          <div style={{ textAlign: 'center', padding: 32 }}>加载中...</div>
-        ) : null}
-        {!detailLoading && detail ? (
-          <div>
-            <Descriptions
-              data={[
-                { key: '申请标题',  value: detail.title },
-                { key: '流程名称',  value: detail.definitionName ?? '—' },
-                { key: '申请人',    value: detail.initiatorName ?? '—' },
-                {
-                  key: '状态',
-                  value: (<Tag color={INSTANCE_STATUS_MAP[detail.status]?.color ?? 'grey'}>{INSTANCE_STATUS_MAP[detail.status]?.text ?? detail.status}</Tag>),
-                },
-                { key: '提交时间',  value: formatDateTime(detail.createdAt) },
-                { key: '最后更新',  value: formatDateTime(detail.updatedAt) },
-              ]}
-            />
-            {detail.tasks && detail.tasks.length > 0 ? (
-              <div style={{ marginTop: 20 }}>
-                <Typography.Title heading={6} style={{ marginBottom: 12 }}>审批流程</Typography.Title>
-                <ApprovalTimeline tasks={detail.tasks} />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        ) : (
+          <WorkflowInstanceDetailPanel instance={detail} definition={detailDef} loading={detailLoading} />
+        )}
+      </SideSheet>
     </div>
   );
 }

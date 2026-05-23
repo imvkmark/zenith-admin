@@ -10,6 +10,8 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
+import CategorySidebar from './components/CategorySidebar';
+import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -32,8 +34,10 @@ export default function WorkflowDefinitionsPage() {
   const [searchStatus, setSearchStatus] = useState('');
   const [historyTarget, setHistoryTarget] = useState<WorkflowDefinition | null>(null);
   const [openMoreId, setOpenMoreId] = useState<number | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const { categories, refetch: refetchCategories } = useWorkflowCategories();
 
-  const fetchList = useCallback(async (p = page, kw = searchKeyword, st = searchStatus) => {
+  const fetchList = useCallback(async (p = page, kw = searchKeyword, st = searchStatus, cid = selectedCategoryId) => {
     setLoading(true);
     try {
       const query = new URLSearchParams({
@@ -41,6 +45,7 @@ export default function WorkflowDefinitionsPage() {
         pageSize: String(pageSize),
         ...(kw ? { keyword: kw } : {}),
         ...(st ? { status: st } : {}),
+        ...(cid === null ? {} : { categoryId: String(cid) }),
       }).toString();
       const res = await request.get<PaginatedResponse<WorkflowDefinition>>(`/api/workflows/definitions?${query}`);
       if (res.code === 0) {
@@ -50,11 +55,16 @@ export default function WorkflowDefinitionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchKeyword, searchStatus]);
+  }, [page, pageSize, searchKeyword, searchStatus, selectedCategoryId]);
 
   useEffect(() => {
     void fetchList();
   }, [fetchList]);
+
+  const handleSelectCategory = (id: number | null) => {
+    setSelectedCategoryId(id);
+    void fetchList(1, searchKeyword, searchStatus, id);
+  };
 
   const handleSearch = () => {
     setSearchKeyword(keyword);
@@ -100,6 +110,21 @@ export default function WorkflowDefinitionsPage() {
       dataIndex: 'name',
       width: 160,
       ellipsis: true,
+    },
+    {
+      title: '分类',
+      dataIndex: 'categoryName',
+      width: 110,
+      render: (_v: unknown, record: WorkflowDefinition) => {
+        if (!record.categoryName) return <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>;
+        const color = record.categoryColor ?? undefined;
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {color && <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />}
+            <span>{record.categoryName}</span>
+          </span>
+        );
+      },
     },
     {
       title: '描述',
@@ -197,7 +222,15 @@ export default function WorkflowDefinitionsPage() {
   ];
 
   return (
-    <div className="page-container">
+    <div className="page-container" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <CategorySidebar
+        categories={categories}
+        selectedId={selectedCategoryId}
+        onSelect={handleSelectCategory}
+        onChanged={() => { refetchCategories(); void fetchList(); }}
+        canManage={hasPermission('workflow:definition:create')}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
       <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
@@ -221,7 +254,10 @@ export default function WorkflowDefinitionsPage() {
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
           {hasPermission('workflow:definition:create') && (
-            <Button type="primary" icon={<Plus size={14} />} onClick={() => navigate('/workflow/designer/new')}>
+            <Button type="primary" icon={<Plus size={14} />} onClick={() => {
+              const qs = selectedCategoryId === null ? '' : `?categoryId=${selectedCategoryId}`;
+              navigate(`/workflow/designer/new${qs}`);
+            }}>
               新建流程
             </Button>
           )}
@@ -249,6 +285,7 @@ export default function WorkflowDefinitionsPage() {
           onRestored={() => { void fetchList(); }}
         />
       )}
+      </div>
     </div>
   );
 }
