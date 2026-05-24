@@ -233,7 +233,7 @@ export default function NodeConfigDrawer({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                           <Form.Slot label="回调 URL">
                             <Input
-                              value={(ext.url as string) ?? ''}
+                              value={typeof ext.url === 'string' ? ext.url : ''}
                               onChange={(v) => updateExt({ url: v })}
                               placeholder="https://example.com/approve"
                             />
@@ -241,7 +241,7 @@ export default function NodeConfigDrawer({
                           <Form.Slot label="签名密钥 secret">
                             <Input
                               mode="password"
-                              value={(ext.secret as string) ?? ''}
+                              value={typeof ext.secret === 'string' ? ext.secret : ''}
                               onChange={(v) => updateExt({ secret: v })}
                               placeholder="用于 HMAC-SHA256 签名"
                             />
@@ -293,7 +293,7 @@ export default function NodeConfigDrawer({
                 <Typography.Title heading={6} style={{ marginBottom: 16 }}>发起人设置</Typography.Title>
                 <Form.Slot label="发起人范围说明">
                   <Input
-                    value={(props.initiatorDesc as string) ?? ''}
+                    value={typeof props.initiatorDesc === 'string' ? props.initiatorDesc : ''}
                     onChange={(v) => handlePropsChange({ initiatorDesc: v })}
                     placeholder="如：所有人 / 指定部门"
                   />
@@ -426,7 +426,7 @@ export default function NodeConfigDrawer({
                 </Form.Slot>
                 <Form.Slot label="请求地址">
                   <Input
-                    value={(props.webhookUrl as string) ?? ''}
+                    value={typeof props.webhookUrl === 'string' ? props.webhookUrl : ''}
                     onChange={(v) => handlePropsChange({ webhookUrl: v })}
                     placeholder="https://example.com/webhook"
                   />
@@ -453,7 +453,7 @@ export default function NodeConfigDrawer({
               <>
                 <Form.Slot label="操作字段 key（多个用英文逗号分隔）">
                   <Input
-                    value={Array.isArray(props.fieldKeys) ? (props.fieldKeys as string[]).join(',') : (props.fieldKeys as string) ?? ''}
+                    value={Array.isArray(props.fieldKeys) ? props.fieldKeys.join(',') : typeof props.fieldKeys === 'string' ? props.fieldKeys : ''}
                     onChange={(v) => handlePropsChange({ fieldKeys: v.split(',').map((s) => s.trim()).filter(Boolean) })}
                     placeholder="title,amount"
                   />

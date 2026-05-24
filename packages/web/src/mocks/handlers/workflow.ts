@@ -152,7 +152,7 @@ export const workflowHandlers = [
   // 流程定义历史版本列表
   http.get('/api/workflows/definitions/:id/versions', ({ params }) => {
     const definitionId = Number(params.id);
-    if (!mockWorkflowDefinitions.find(d => d.id === definitionId)) return err('流程定义不存在', 404);
+    if (!mockWorkflowDefinitions.some(d => d.id === definitionId)) return err('流程定义不存在', 404);
     const list = mockWorkflowDefinitionVersions
       .filter(v => v.definitionId === definitionId)
       .sort((a, b) => b.version - a.version);

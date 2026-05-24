@@ -65,14 +65,13 @@ import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type { DbExecutor } from '../db/types';
 import { workflowEventBus } from '../lib/workflow-event-bus';
 import { randomBytes } from 'node:crypto';
-import type { WorkflowEventActor } from '@zenith/shared';
 
 /** 发射实例生命周期事件的辅助函数 */
 function emitInstanceEvent(
@@ -440,7 +439,7 @@ export async function createInstance(data: { definitionId: number; title: string
   if (!def) throw new HTTPException(404, { message: '流程定义不存在或未发布' });
   const scopeType = (def.initiatorScopeType ?? 'all') as 'all' | 'users' | 'departments' | 'roles';
   const scopeIds = Array.isArray(def.initiatorScopeIds)
-    ? def.initiatorScopeIds.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0)
+    ? def.initiatorScopeIds.map(Number).filter((v) => Number.isInteger(v) && v > 0)
     : [];
   if (scopeType !== 'all') {
     let allowed = false;

@@ -27,7 +27,9 @@ const TIMEOUT_MS_DEFAULT = 10_000;
 function renderTemplate(template: string, formData: Record<string, unknown>): string {
   return template.replace(/\{\{form\.([^}]+)\}\}/g, (_, key) => {
     const v = formData[key.trim()];
-    return v === undefined || v === null ? '' : String(v);
+    if (v === undefined || v === null) return '';
+    if (typeof v === 'object') return '';
+    return String(v);
   });
 }
 
@@ -37,7 +39,7 @@ async function executeHttpTrigger(
 ): Promise<{ status: 'success' | 'failed'; responseStatus: number | null; responseBody: string | null; errorMessage: string | null; durationMs: number; requestUrl: string; requestMethod: string; requestBody: string | null }> {
   const url = cfg.webhookUrl ?? '';
   const method = (cfg.httpMethod ?? 'POST').toUpperCase() as 'GET' | 'POST' | 'PUT';
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(cfg.headers ?? {}) };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...cfg.headers };
   const bodyStr = method === 'GET' || !cfg.bodyTemplate ? null : renderTemplate(cfg.bodyTemplate, formData);
   const t0 = Date.now();
 
@@ -123,7 +125,7 @@ async function dispatchTrigger(instanceId: number, nodeKey: string, nodeName: st
   const [task] = await db.select().from(workflowTasks)
     .where(eq(workflowTasks.instanceId, instanceId))
     .orderBy(workflowTasks.id);
-  const taskId = task && task.nodeKey === nodeKey ? task.id : null;
+  const taskId = task?.nodeKey === nodeKey ? task.id : null;
 
   const formData = (inst.formData ?? {}) as Record<string, unknown>;
   const triggerType: WorkflowTriggerType = cfg.triggerType;

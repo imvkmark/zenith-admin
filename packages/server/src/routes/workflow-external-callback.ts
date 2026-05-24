@@ -87,7 +87,7 @@ const callback = defineOpenAPIRoute({
       const sig = parseSignature(c.req.header('X-Zenith-Signature'));
       if (!sig) throw new HTTPException(401, { message: '缺少签名头 X-Zenith-Signature' });
       // 防重放：5 分钟内
-      const tsNum = parseInt(sig.ts, 10);
+      const tsNum = Number.parseInt(sig.ts, 10);
       if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 300) {
         throw new HTTPException(401, { message: '签名时间戳过期' });
       }

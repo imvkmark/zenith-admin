@@ -326,7 +326,7 @@ export async function insertDelivery(input: {
     taskId: input.taskId,
     eventId: input.eventId,
     eventType: input.eventType,
-    payload: input.payload as Record<string, unknown>,
+    payload: input.payload,
     status: 'pending',
     tenantId: input.tenantId,
   }).returning();

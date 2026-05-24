@@ -10,7 +10,7 @@ export function mapDefinition(
   createdByName?: string | null,
 ) {
   const initiatorScopeIds = Array.isArray(row.initiatorScopeIds)
-    ? row.initiatorScopeIds.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0)
+    ? row.initiatorScopeIds.map(Number).filter((v) => Number.isInteger(v) && v > 0)
     : null;
   return {
     id: row.id,
@@ -70,7 +70,7 @@ type WorkflowInitiatorScopeType = 'all' | 'users' | 'departments' | 'roles';
 
 function normalizeScopeIds(ids: unknown): number[] {
   if (!Array.isArray(ids)) return [];
-  return ids.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0);
+  return ids.map(Number).filter((v) => Number.isInteger(v) && v > 0);
 }
 
 function canUserInitiateByScope(

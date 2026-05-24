@@ -25,25 +25,24 @@ function sign(secret: string, timestamp: string, body: string): string {
 
 async function applyFallback(
   taskId: number,
-  strategy: WorkflowExternalApprovalConfig['fallbackStrategy'],
+  strategy: WorkflowExternalApprovalConfig['fallbackStrategy'] = 'manual',
 ): Promise<void> {
-  const effective = strategy ?? 'manual';
-  if (effective === 'manual') return; // 维持任务待人工处理
+  if (strategy === 'manual') return; // 维持任务待人工处理
   await db.update(workflowTasks).set({ externalDispatchStatus: 'fallback' }).where(eq(workflowTasks.id, taskId));
   try {
-    if (effective === 'autoApprove') {
+    if (strategy === 'autoApprove') {
       await approveTask(taskId, FALLBACK_COMMENT);
-    } else if (effective === 'autoReject') {
+    } else if (strategy === 'autoReject') {
       await rejectTask(taskId, FALLBACK_COMMENT);
     }
   } catch (err) {
-    logger.error('[external-approver] fallback 执行失败', { taskId, strategy: effective, err });
+    logger.error('[external-approver] fallback 执行失败', { taskId, strategy, err });
   }
 }
 
 async function dispatchExternalApproval(taskId: number): Promise<void> {
   const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
-  if (!task || !task.externalCallbackId) return;
+  if (!task?.externalCallbackId) return;
   if (task.externalDispatchStatus === 'dispatched') return;
 
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);

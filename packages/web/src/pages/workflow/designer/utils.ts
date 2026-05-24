@@ -1,7 +1,7 @@
 /**
  * 钉钉/飞书风格流程设计器 — 工具函数
  */
-import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType } from './types';
+import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType } from './types';
 import { DEFAULT_BRANCH_COUNT } from './constants';
 
 let idCounter = 0;
@@ -36,7 +36,7 @@ export function createNode(type: FlowNode['type'], name?: string): FlowNode {
 
   // 分支节点需要初始化默认分支
   if (type === 'conditionBranch' || type === 'parallelBranch' || type === 'inclusiveBranch' || type === 'routeBranch') {
-    const count = DEFAULT_BRANCH_COUNT[type as BranchNodeType];
+    const count = DEFAULT_BRANCH_COUNT[type];
     node.branches = [];
     for (let i = 0; i < count; i++) {
       if (type === 'conditionBranch' && i === count - 1) {
