@@ -162,16 +162,16 @@ export default function WorkflowDesignerPage() {
   const handleAddNodeInBranch = useCallback((branchNodeId: string, branchId: string, nodeType: FlowNodeType) => {
     const newNode = createNode(nodeType, getDefaultName(nodeType));
     setProcess(prev => insertNodeInBranch(prev, branchNodeId, branchId, newNode));
-  }, []);
+  }, [setProcess]);
 
   const handleDeleteNode = useCallback((nodeId: string) => {
     setProcess(prev => removeNode(prev, nodeId));
-  }, []);
+  }, [setProcess]);
 
   const handleDuplicateNode = useCallback((nodeId: string) => {
     setProcess(prev => duplicateNode(prev, nodeId));
     Toast.success({ content: '节点已复制', duration: 2 });
-  }, []);
+  }, [setProcess]);
 
   const handleEditNode = useCallback((node: FlowNode) => {
     setEditingNode(deepClone(node));
@@ -182,7 +182,7 @@ export default function WorkflowDesignerPage() {
     setProcess(prev => updateNode(prev, nodeId, updates));
     setDrawerVisible(false);
     setEditingNode(null);
-  }, []);
+  }, [setProcess]);
 
   // ─── 分支操作 ─────────────────────────────────────────────────────
 
@@ -211,11 +211,11 @@ export default function WorkflowDesignerPage() {
       const newBranch = createBranch(branchNode?.type as BranchNodeType ?? 'conditionBranch', count + 1);
       return addBranchToProcess(prev, branchNodeId, newBranch);
     });
-  }, []);
+  }, [setProcess]);
 
   const handleRemoveBranch = useCallback((branchNodeId: string, branchId: string) => {
     setProcess(prev => removeBranchFromProcess(prev, branchNodeId, branchId));
-  }, []);
+  }, [setProcess]);
 
   const handleEditBranch = useCallback((branch: FlowBranch, _branchNodeId: string) => {
     setEditingBranch(deepClone(branch));
@@ -226,7 +226,7 @@ export default function WorkflowDesignerPage() {
     setProcess(prev => updateBranch(prev, branchId, { conditions }));
     setConditionEditorVisible(false);
     setEditingBranch(null);
-  }, []);
+  }, [setProcess]);
 
   // ─── 导入导出 ─────────────────────────────────────────────────────
 
@@ -262,7 +262,7 @@ export default function WorkflowDesignerPage() {
       }
     };
     input.click();
-  }, []);
+  }, [setProcess]);
 
   // ─── 保存 ─────────────────────────────────────────────────────────
 

@@ -20,7 +20,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
           labelPosition="left"
           labelWidth={180}
           onValueChange={(values: Record<string, unknown>) => {
-            onChange({ ...settings, ...values } as AdvancedSettingsData);
+            onChange({ ...settings, ...values });
           }}
         >
           <Form.Switch field="allowWithdraw" label="允许撤回" />
