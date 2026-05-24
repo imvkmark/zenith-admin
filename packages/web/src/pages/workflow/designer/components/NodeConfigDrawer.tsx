@@ -28,6 +28,16 @@ function stringifyHeadersOrBody(v: unknown): string {
   try { return JSON.stringify(v, null, 2); } catch { return ''; }
 }
 
+function formatFieldKeys(fieldKeys: unknown): string {
+  if (Array.isArray(fieldKeys)) {
+    return fieldKeys.join(',');
+  }
+  if (typeof fieldKeys === 'string') {
+    return fieldKeys;
+  }
+  return '';
+}
+
 interface NodeConfigDrawerProps {
   visible: boolean;
   node: FlowNode | null;
@@ -453,7 +463,7 @@ export default function NodeConfigDrawer({
               <>
                 <Form.Slot label="操作字段 key（多个用英文逗号分隔）">
                   <Input
-                    value={Array.isArray(props.fieldKeys) ? props.fieldKeys.join(',') : typeof props.fieldKeys === 'string' ? props.fieldKeys : ''}
+                    value={formatFieldKeys(props.fieldKeys)}
                     onChange={(v) => handlePropsChange({ fieldKeys: v.split(',').map((s) => s.trim()).filter(Boolean) })}
                     placeholder="title,amount"
                   />

@@ -29,7 +29,8 @@ function renderTemplate(template: string, formData: Record<string, unknown>): st
     const v = formData[key.trim()];
     if (v === undefined || v === null) return '';
     if (typeof v === 'object') return '';
-    return String(v);
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+    return '';
   });
 }
 

@@ -127,7 +127,7 @@ export default function WorkflowDesignerPage() {
         }
       }).finally(() => setPageLoading(false));
     }
-  }, [id, isNew]);
+  }, [id, isNew, history]);
 
   useEffect(() => {
     request.get<UserOption[]>('/api/users/all').then(res => {
@@ -157,7 +157,7 @@ export default function WorkflowDesignerPage() {
   const handleAddNodeAfter = useCallback((parentId: string, nodeType: FlowNodeType) => {
     const newNode = createNode(nodeType, getDefaultName(nodeType));
     setProcess(prev => insertNodeAfter(prev, parentId, newNode));
-  }, []);
+  }, [setProcess]);
 
   const handleAddNodeInBranch = useCallback((branchNodeId: string, branchId: string, nodeType: FlowNodeType) => {
     const newNode = createNode(nodeType, getDefaultName(nodeType));

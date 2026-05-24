@@ -87,7 +87,7 @@ export default function PendingApprovalsPage() {
   const handleApprove = async () => {
     if (!selectedItem) return;
     try {
-      const values = await approveFormApi.current?.validate() as Record<string, unknown> | undefined;
+      const values = await approveFormApi.current?.validate();
       setSubmitting(true);
       const res = await request.post(
         `/api/workflows/tasks/${selectedItem.pendingTaskId}/approve`,

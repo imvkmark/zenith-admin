@@ -1,7 +1,7 @@
 /**
  * 钉钉/飞书风格流程设计器 — 工具函数
  */
-import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType } from './types';
+import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType } from './types';
 import { DEFAULT_BRANCH_COUNT } from './constants';
 
 let idCounter = 0;
