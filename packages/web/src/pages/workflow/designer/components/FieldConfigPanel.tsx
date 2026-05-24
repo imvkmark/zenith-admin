@@ -13,6 +13,16 @@ interface FieldConfigPanelProps {
   onChange: (updates: Partial<WorkflowFormField>) => void;
 }
 
+function formatVisibilityValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+}
+
 export default function FieldConfigPanel({
   field,
   allFields,
@@ -360,7 +370,7 @@ export default function FieldConfigPanel({
                 />
               </div>
               {field.columns?.map((col, i) => (
-                <div className="fd-form-config__field" key={i}>
+                <div className="fd-form-config__field" key={`${col.span}-${i}`}>
                   <Typography.Text size="small" style={{ marginBottom: 4, display: 'block' }}>第 {i + 1} 列宽度 (24栅格)</Typography.Text>
                   <InputNumber
                     min={1} max={24}
@@ -560,7 +570,7 @@ export default function FieldConfigPanel({
                   <div className="fd-form-config__field">
                     <Typography.Text size="small">值</Typography.Text>
                     <Input
-                      value={String(field.visibilityCondition.value ?? '')}
+                      value={formatVisibilityValue(field.visibilityCondition.value)}
                       onChange={(v) =>
                         onChange({
                           visibilityCondition: { ...field.visibilityCondition!, value: v },
