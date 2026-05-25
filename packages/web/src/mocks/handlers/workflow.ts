@@ -338,16 +338,19 @@ export const workflowHandlers = [
 
   // 审批通过
   http.post('/api/workflows/tasks/:taskId/approve', async ({ params, request }) => {
-    const body = await request.json() as { comment?: string };
+    const body = await request.json() as { comment?: string; attachments?: Array<{ name: string; url: string; size?: number }> };
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
     if (taskIdx === -1) return err('任务不存在', 404);
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
     const now = mockDateTime();
+    const attachSuffix = body.attachments && body.attachments.length > 0
+      ? `\n[附件]${body.attachments.map(a => a.name).join(', ')}`
+      : '';
     mockWorkflowTasks[taskIdx] = {
       ...mockWorkflowTasks[taskIdx],
       status: 'approved',
-      comment: body.comment ?? null,
+      comment: (body.comment ?? '') + attachSuffix || null,
       actionAt: now,
     };
 
@@ -409,5 +412,91 @@ export const workflowHandlers = [
     }
 
     return ok(mockWorkflowTasks[taskIdx]);
+  }),
+
+  // 转办
+  http.post('/api/workflows/tasks/:taskId/transfer', async ({ params, request }) => {
+    const body = await request.json() as { targetUserId: number; comment?: string };
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
+    if (taskIdx === -1) return err('任务不存在', 404);
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+    mockWorkflowTasks[taskIdx] = {
+      ...mockWorkflowTasks[taskIdx],
+      assigneeId: body.targetUserId,
+      assigneeName: `用户${body.targetUserId}`,
+      comment: `[转办] ${body.comment ?? ''}`,
+    };
+    return ok(mockWorkflowTasks[taskIdx]);
+  }),
+
+  // 委派
+  http.post('/api/workflows/tasks/:taskId/delegate', async ({ params, request }) => {
+    const body = await request.json() as { targetUserId: number; comment?: string };
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
+    if (taskIdx === -1) return err('任务不存在', 404);
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+    mockWorkflowTasks[taskIdx] = {
+      ...mockWorkflowTasks[taskIdx],
+      assigneeId: body.targetUserId,
+      assigneeName: `用户${body.targetUserId}`,
+      comment: `[委派] ${body.comment ?? ''}`,
+    };
+    return ok(mockWorkflowTasks[taskIdx]);
+  }),
+
+  // 加签
+  http.post('/api/workflows/tasks/:taskId/add-sign', async ({ params, request }) => {
+    const body = await request.json() as { targetUserIds: number[]; position: 'before' | 'after'; comment?: string };
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
+    if (taskIdx === -1) return err('任务不存在', 404);
+    const current = mockWorkflowTasks[taskIdx];
+    if (current.status !== 'pending') return err('该任务已处理');
+    const now = mockDateTime();
+    if (body.position === 'before') {
+      mockWorkflowTasks[taskIdx] = { ...current, status: 'waiting' };
+    }
+    body.targetUserIds.forEach(uid => {
+      mockWorkflowTasks.push({
+        id: getNextTaskId(),
+        instanceId: current.instanceId,
+        nodeKey: current.nodeKey,
+        nodeName: current.nodeName,
+        nodeType: current.nodeType,
+        assigneeId: uid,
+        assigneeName: `用户${uid}`,
+        assigneeAvatar: null,
+        status: 'pending',
+        comment: `[加签] ${body.comment ?? ''}`,
+        actionAt: null,
+        actionButtons: null,
+        createdAt: now,
+      });
+    });
+    return HttpResponse.json({ code: 0, message: `已加签 ${body.targetUserIds.length} 人`, data: null });
+  }),
+
+  // 退回
+  http.post('/api/workflows/tasks/:taskId/return', async ({ params, request }) => {
+    const body = await request.json() as { targetNodeKey: string; comment: string };
+    const taskIdx = mockWorkflowTasks.findIndex(t => t.id === Number(params.taskId));
+    if (taskIdx === -1) return err('任务不存在', 404);
+    if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
+    const now = mockDateTime();
+    const current = mockWorkflowTasks[taskIdx];
+    mockWorkflowTasks[taskIdx] = {
+      ...current,
+      status: 'rejected',
+      comment: `[退回至 ${body.targetNodeKey}] ${body.comment}`,
+      actionAt: now,
+    };
+    const instIdx = mockWorkflowInstances.findIndex(i => i.id === current.instanceId);
+    if (instIdx !== -1) {
+      mockWorkflowInstances[instIdx] = {
+        ...mockWorkflowInstances[instIdx],
+        currentNodeKey: body.targetNodeKey,
+        updatedAt: now,
+      };
+    }
+    return ok(mockWorkflowInstances[instIdx] ?? null);
   }),
 ];

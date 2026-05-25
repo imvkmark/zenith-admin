@@ -9,12 +9,14 @@ import {
   Spin,
   Toast,
   Typography,
+  Upload,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw } from 'lucide-react';
-import type { WorkflowInstance, WorkflowDefinition, PaginatedResponse } from '@zenith/shared';
+import type { WorkflowInstance, WorkflowDefinition, PaginatedResponse, WorkflowTask, WorkflowActionButtonKey, WorkflowActionButtonConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -23,9 +25,33 @@ import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceD
 
 type PendingItem = WorkflowInstance & { pendingTaskId: number };
 
+const DEFAULT_BUTTONS: Record<WorkflowActionButtonKey, WorkflowActionButtonConfig> = {
+  approve: { enabled: true, displayName: '同意', opinionName: '审批意见' },
+  reject: { enabled: true, displayName: '拒绝', opinionName: '拒绝原因' },
+  transfer: { enabled: false, displayName: '转办', opinionName: '转办说明' },
+  delegate: { enabled: false, displayName: '委派', opinionName: '委派说明' },
+  addSign: { enabled: false, displayName: '加签', opinionName: '加签说明' },
+  return: { enabled: false, displayName: '退回', opinionName: '退回原因' },
+};
+
+function resolveButton(
+  cfg: Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>> | null | undefined,
+  key: WorkflowActionButtonKey,
+): WorkflowActionButtonConfig {
+  const defaults = DEFAULT_BUTTONS[key];
+  const override = cfg?.[key];
+  return override ? { ...defaults, ...override } : defaults;
+}
+
+interface UploadedFile { name: string; url: string; size?: number }
+
 export default function PendingApprovalsPage() {
   const approveFormApi = useRef<FormApi | null>(null);
   const rejectFormApi = useRef<FormApi | null>(null);
+  const transferFormApi = useRef<FormApi | null>(null);
+  const delegateFormApi = useRef<FormApi | null>(null);
+  const addSignFormApi = useRef<FormApi | null>(null);
+  const returnFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
   const [page, setPage] = useState(1);
@@ -33,6 +59,10 @@ export default function PendingApprovalsPage() {
   const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
   const [approveVisible, setApproveVisible] = useState(false);
   const [rejectVisible, setRejectVisible] = useState(false);
+  const [transferVisible, setTransferVisible] = useState(false);
+  const [delegateVisible, setDelegateVisible] = useState(false);
+  const [addSignVisible, setAddSignVisible] = useState(false);
+  const [returnVisible, setReturnVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detail, setDetail] = useState<WorkflowInstance | null>(null);
@@ -41,6 +71,41 @@ export default function PendingApprovalsPage() {
   const [rejectInstance, setRejectInstance] = useState<WorkflowInstance | null>(null);
   const [rejectDef, setRejectDef] = useState<WorkflowDefinition | null>(null);
   const [rejectHintLoading, setRejectHintLoading] = useState(false);
+  const [approveAttachments, setApproveAttachments] = useState<UploadedFile[]>([]);
+  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
+
+  const currentTask: WorkflowTask | null = useMemo(() => {
+    if (!detail || !selectedItem) return null;
+    return detail.tasks?.find((t) => t.id === selectedItem.pendingTaskId) ?? null;
+  }, [detail, selectedItem]);
+
+  const actionButtons = currentTask?.actionButtons ?? null;
+  const btnApprove = useMemo(() => resolveButton(actionButtons, 'approve'), [actionButtons]);
+  const btnReject = useMemo(() => resolveButton(actionButtons, 'reject'), [actionButtons]);
+  const btnTransfer = useMemo(() => resolveButton(actionButtons, 'transfer'), [actionButtons]);
+  const btnDelegate = useMemo(() => resolveButton(actionButtons, 'delegate'), [actionButtons]);
+  const btnAddSign = useMemo(() => resolveButton(actionButtons, 'addSign'), [actionButtons]);
+  const btnReturn = useMemo(() => resolveButton(actionButtons, 'return'), [actionButtons]);
+
+  const returnTargetOptions = useMemo(() => {
+    if (!detailDef || !currentTask) return [] as Array<{ label: string; value: string }>;
+    const nodes = detailDef.flowData?.nodes ?? [];
+    return nodes
+      .filter((n) => (n.data.type === 'approve' || n.data.type === 'handler') && n.data.key !== currentTask.nodeKey)
+      .map((n) => ({ label: n.data.label ?? n.data.key, value: n.data.key }));
+  }, [detailDef, currentTask]);
+
+  const loadUserOptions = useCallback(async () => {
+    if (userOptions.length > 0) return;
+    try {
+      const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
+      if (res.code === 0) {
+        setUserOptions(res.data.map((u) => ({ label: `${u.nickname ?? u.username}`, value: u.id })));
+      }
+    } catch {
+      // ignore
+    }
+  }, [userOptions.length]);
 
   const fetchList = useCallback(async (p = page, ps = pageSize) => {
     setLoading(true);
@@ -88,14 +153,22 @@ export default function PendingApprovalsPage() {
     if (!selectedItem) return;
     try {
       const values = await approveFormApi.current?.validate();
+      if (btnApprove.uploadRequired && approveAttachments.length === 0) {
+        Toast.error('请上传附件后再提交');
+        return;
+      }
       setSubmitting(true);
       const res = await request.post(
         `/api/workflows/tasks/${selectedItem.pendingTaskId}/approve`,
-        { comment: values?.comment ?? '' }
+        {
+          comment: values?.comment ?? '',
+          attachments: approveAttachments.length > 0 ? approveAttachments : undefined,
+        }
       );
       if (res.code === 0) {
         Toast.success('审批通过');
         setApproveVisible(false);
+        setApproveAttachments([]);
         void fetchList();
       }
     } catch {
@@ -153,6 +226,60 @@ export default function PendingApprovalsPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const submitSimpleAction = async (
+    path: string,
+    body: Record<string, unknown>,
+    successMsg: string,
+    closer: () => void,
+  ) => {
+    if (!selectedItem) return;
+    try {
+      setSubmitting(true);
+      const res = await request.post(`/api/workflows/tasks/${selectedItem.pendingTaskId}/${path}`, body);
+      if (res.code === 0) {
+        Toast.success(successMsg);
+        closer();
+        void fetchList();
+        setDetailVisible(false);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTransfer = async () => {
+    try {
+      const values = await transferFormApi.current?.validate() as { targetUserId: number; comment?: string };
+      await submitSimpleAction('transfer', values, '已转办', () => setTransferVisible(false));
+    } catch { /* validation */ }
+  };
+
+  const handleDelegate = async () => {
+    try {
+      const values = await delegateFormApi.current?.validate() as { targetUserId: number; comment?: string };
+      await submitSimpleAction('delegate', values, '已委派', () => setDelegateVisible(false));
+    } catch { /* validation */ }
+  };
+
+  const handleAddSign = async () => {
+    try {
+      const values = await addSignFormApi.current?.validate() as { targetUserIds: number[]; position: 'before' | 'after'; comment?: string };
+      await submitSimpleAction('add-sign', values, '已加签', () => setAddSignVisible(false));
+    } catch { /* validation */ }
+  };
+
+  const handleReturn = async () => {
+    try {
+      const values = await returnFormApi.current?.validate() as { targetNodeKey: string; comment: string };
+      await submitSimpleAction('return', values, '已退回', () => setReturnVisible(false));
+    } catch { /* validation */ }
+  };
+
+  const openUserPickerModal = (opener: () => void) => {
+    void loadUserOptions();
+    opener();
   };
 
   const columns: ColumnProps<PendingItem>[] = [
@@ -252,16 +379,37 @@ export default function PendingApprovalsPage() {
             definition={detailDef}
             loading={detailLoading}
             extraActions={selectedItem ? (
-              <Space>
-                <Button type="primary" onClick={() => setApproveVisible(true)}>通过</Button>
-                <Button
-                  type="danger"
-                  onClick={() => {
-                    if (selectedItem) void openReject(selectedItem);
-                  }}
-                >
-                  驳回
-                </Button>
+              <Space wrap>
+                {btnApprove.enabled !== false && (
+                  <Button type="primary" onClick={() => { setApproveAttachments([]); setApproveVisible(true); }}>
+                    {btnApprove.displayName ?? '同意'}
+                  </Button>
+                )}
+                {btnReject.enabled !== false && (
+                  <Button type="danger" onClick={() => { if (selectedItem) void openReject(selectedItem); }}>
+                    {btnReject.displayName ?? '拒绝'}
+                  </Button>
+                )}
+                {btnTransfer.enabled && (
+                  <Button onClick={() => openUserPickerModal(() => setTransferVisible(true))}>
+                    {btnTransfer.displayName ?? '转办'}
+                  </Button>
+                )}
+                {btnDelegate.enabled && (
+                  <Button onClick={() => openUserPickerModal(() => setDelegateVisible(true))}>
+                    {btnDelegate.displayName ?? '委派'}
+                  </Button>
+                )}
+                {btnAddSign.enabled && (
+                  <Button onClick={() => openUserPickerModal(() => setAddSignVisible(true))}>
+                    {btnAddSign.displayName ?? '加签'}
+                  </Button>
+                )}
+                {btnReturn.enabled && (
+                  <Button onClick={() => setReturnVisible(true)}>
+                    {btnReturn.displayName ?? '退回'}
+                  </Button>
+                )}
               </Space>
             ) : undefined}
           />
@@ -270,17 +418,43 @@ export default function PendingApprovalsPage() {
 
       {/* 审批通过弹窗 */}
       <Modal
-        title="审批通过"
+        title={btnApprove.displayName ? `${btnApprove.displayName}` : '审批通过'}
         visible={approveVisible}
-        onCancel={() => setApproveVisible(false)}
+        onCancel={() => { setApproveVisible(false); setApproveAttachments([]); }}
         onOk={() => void handleApprove()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
-        okText="确认通过"
-        style={{ width: 440 }}
+        okText="确认"
+        style={{ width: 480 }}
       >
         <Form getFormApi={api => { approveFormApi.current = api; }}>
-          <Form.TextArea field="comment" label="审批意见（可选）" placeholder="请填写审批意见" rows={3} />
+          <Form.TextArea
+            field="comment"
+            label={btnApprove.opinionName ?? '审批意见'}
+            placeholder={`请填写${btnApprove.opinionName ?? '审批意见'}`}
+            rows={3}
+          />
         </Form>
+        <div style={{ marginTop: 12 }}>
+          <Typography.Text strong>
+            附件{btnApprove.uploadRequired ? <span style={{ color: 'var(--semi-color-danger)' }}> *</span> : null}
+          </Typography.Text>
+          <Upload
+            action={`${config.apiBaseUrl}/api/files/upload-one`}
+            headers={{ Authorization: `Bearer ${localStorage.getItem('zenith_token') ?? ''}` }}
+            name="file"
+            limit={5}
+            onSuccess={(res: unknown) => {
+              const r = res as { code?: number; data?: { url: string; originalName?: string; size?: number } };
+              if (r?.code === 0 && r.data) {
+                setApproveAttachments((prev) => [...prev, { name: r.data!.originalName ?? '附件', url: r.data!.url, size: r.data!.size }]);
+              }
+            }}
+            onRemove={(_file, _fileList, currentFile) => {
+              setApproveAttachments((prev) => prev.filter((a) => a.name !== currentFile.name));
+              return true;
+            }}
+          />
+        </div>
       </Modal>
 
       {/* 驳回弹窗 */}
@@ -310,6 +484,115 @@ export default function PendingApprovalsPage() {
             label="驳回原因"
             placeholder="请填写驳回原因"
             rules={[{ required: true, message: '请填写驳回原因' }]}
+            rows={3}
+          />
+        </Form>
+      </Modal>
+
+      {/* 转办弹窗 */}
+      <Modal
+        title={btnTransfer.displayName ?? '转办'}
+        visible={transferVisible}
+        onCancel={() => setTransferVisible(false)}
+        onOk={() => void handleTransfer()}
+        okButtonProps={{ loading: submitting, type: 'primary' }}
+        okText="确认"
+        style={{ width: 480 }}
+      >
+        <Form getFormApi={api => { transferFormApi.current = api; }}>
+          <Form.Select
+            field="targetUserId"
+            label="转办人"
+            placeholder="请选择转办人"
+            filter
+            optionList={userOptions}
+            rules={[{ required: true, message: '请选择转办人' }]}
+            style={{ width: '100%' }}
+          />
+          <Form.TextArea field="comment" label={btnTransfer.opinionName ?? '转办说明'} rows={3} />
+        </Form>
+      </Modal>
+
+      {/* 委派弹窗 */}
+      <Modal
+        title={btnDelegate.displayName ?? '委派'}
+        visible={delegateVisible}
+        onCancel={() => setDelegateVisible(false)}
+        onOk={() => void handleDelegate()}
+        okButtonProps={{ loading: submitting, type: 'primary' }}
+        okText="确认"
+        style={{ width: 480 }}
+      >
+        <Form getFormApi={api => { delegateFormApi.current = api; }}>
+          <Form.Select
+            field="targetUserId"
+            label="委派人"
+            placeholder="请选择委派人"
+            filter
+            optionList={userOptions}
+            rules={[{ required: true, message: '请选择委派人' }]}
+            style={{ width: '100%' }}
+          />
+          <Form.TextArea field="comment" label={btnDelegate.opinionName ?? '委派说明'} rows={3} />
+        </Form>
+      </Modal>
+
+      {/* 加签弹窗 */}
+      <Modal
+        title={btnAddSign.displayName ?? '加签'}
+        visible={addSignVisible}
+        onCancel={() => setAddSignVisible(false)}
+        onOk={() => void handleAddSign()}
+        okButtonProps={{ loading: submitting, type: 'primary' }}
+        okText="确认"
+        style={{ width: 520 }}
+      >
+        <Form getFormApi={api => { addSignFormApi.current = api; }} initValues={{ position: 'after' }}>
+          <Form.Select
+            field="targetUserIds"
+            label="加签人"
+            placeholder="请选择加签人，可多选"
+            multiple
+            filter
+            optionList={userOptions}
+            rules={[{ required: true, message: '请选择加签人' }]}
+            style={{ width: '100%' }}
+          />
+          <Form.RadioGroup field="position" label="位置">
+            <Form.Radio value="before">前加签（自己之前先签）</Form.Radio>
+            <Form.Radio value="after">后加签（自己之后并签）</Form.Radio>
+          </Form.RadioGroup>
+          <Form.TextArea field="comment" label={btnAddSign.opinionName ?? '加签说明'} rows={3} />
+        </Form>
+      </Modal>
+
+      {/* 退回弹窗 */}
+      <Modal
+        title={btnReturn.displayName ?? '退回'}
+        visible={returnVisible}
+        onCancel={() => setReturnVisible(false)}
+        onOk={() => void handleReturn()}
+        okButtonProps={{ loading: submitting, type: 'primary' }}
+        okText="确认"
+        style={{ width: 480 }}
+      >
+        <Form
+          getFormApi={api => { returnFormApi.current = api; }}
+          initValues={{ targetNodeKey: btnReturn.jumpToNodeKey ?? undefined }}
+        >
+          <Form.Select
+            field="targetNodeKey"
+            label="退回到节点"
+            placeholder="请选择退回节点"
+            optionList={returnTargetOptions}
+            rules={[{ required: true, message: '请选择退回节点' }]}
+            style={{ width: '100%' }}
+          />
+          <Form.TextArea
+            field="comment"
+            label={btnReturn.opinionName ?? '退回原因'}
+            placeholder="请填写退回原因"
+            rules={[{ required: true, message: '请填写退回原因' }]}
             rows={3}
           />
         </Form>

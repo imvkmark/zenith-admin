@@ -602,6 +602,29 @@ export type WorkflowOperationPermission =
   | 'opinionRequired';
 export type WorkflowFieldPermission = 'read' | 'edit' | 'hidden';
 
+/** 审批操作按钮 key（运行时支持的任务动作） */
+export type WorkflowActionButtonKey =
+  | 'approve'    // 通过
+  | 'reject'     // 拒绝
+  | 'transfer'   // 转办
+  | 'delegate'   // 委派
+  | 'addSign'    // 加签
+  | 'return';    // 退回
+
+/** 单个操作按钮的配置 */
+export interface WorkflowActionButtonConfig {
+  /** 是否启用此按钮 */
+  enabled: boolean;
+  /** 按钮显示名称（覆盖默认文案） */
+  displayName?: string;
+  /** 审批意见输入框的标签文案 */
+  opinionName?: string;
+  /** 跳转配置：拒绝/退回时跳转到目标节点 key（仅 reject / return 生效） */
+  jumpToNodeKey?: string;
+  /** 上传配置：执行此动作时是否强制要求上传附件 */
+  uploadRequired?: boolean;
+}
+
 export interface WorkflowTimeoutConfig {
   enabled: boolean;
   duration: number;
@@ -646,6 +669,8 @@ export interface WorkflowNodeConfig {
   sameInitiatorStrategy?: WorkflowSameInitiatorStrategy;
   deduplicateStrategy?: WorkflowDeduplicateStrategy;
   operations?: WorkflowOperationPermission[];
+  /** 操作按钮配置：每个 key 对应一个按钮的显示/启用/上传/跳转设置 */
+  actionButtons?: Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>>;
   fieldPermissions?: Record<string, WorkflowFieldPermission>;
   timeout?: WorkflowTimeoutConfig;
   /** manager / multiLevelManager 的层级（1 = 直属上级） */
@@ -901,6 +926,8 @@ export interface WorkflowTask {
   /** 外部审批回调 ID（task.status='waiting' + externalApproval 启用时生效） */
   externalCallbackId?: string | null;
   externalDispatchStatus?: WorkflowTaskExternalDispatchStatus | null;
+  /** 当前节点配置中的操作按钮设置（仅审批节点） */
+  actionButtons?: Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>> | null;
   createdAt: string;
 }
 

@@ -78,6 +78,26 @@ export type OperationPermission =
 /** 表单字段权限 */
 export type FieldPermission = 'read' | 'edit' | 'hidden';
 
+/** 审批操作按钮 key */
+export type ActionButtonKey =
+  | 'approve'
+  | 'reject'
+  | 'transfer'
+  | 'delegate'
+  | 'addSign'
+  | 'return';
+
+/** 单个操作按钮的配置 */
+export interface ActionButtonConfig {
+  enabled: boolean;
+  displayName?: string;
+  opinionName?: string;
+  jumpToNodeKey?: string;
+  uploadRequired?: boolean;
+}
+
+export type ActionButtonsConfig = Partial<Record<ActionButtonKey, ActionButtonConfig>>;
+
 /** 超时处理配置 */
 export interface TimeoutConfig {
   enabled: boolean;
@@ -128,6 +148,7 @@ export interface ApproverNodeProps {
   sameInitiatorStrategy?: SameInitiatorStrategy;  // 审批人=发起人时
   deduplicateStrategy?: DeduplicateStrategy;      // 审批人去重
   operations: OperationPermission[];
+  actionButtons?: ActionButtonsConfig;
   fieldPermissions: Record<string, FieldPermission>;
   timeout?: TimeoutConfig;
 }

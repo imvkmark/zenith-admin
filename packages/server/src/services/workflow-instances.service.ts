@@ -5,6 +5,7 @@ export function mapTask(
   row: typeof workflowTasks.$inferSelect,
   assigneeName?: string | null,
   assigneeAvatar?: string | null,
+  actionButtons?: Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>> | null,
 ) {
   return {
     id: row.id,
@@ -18,6 +19,7 @@ export function mapTask(
     status: row.status,
     comment: row.comment,
     actionAt: formatNullableDateTime(row.actionAt),
+    actionButtons: actionButtons ?? null,
     externalCallbackId: row.externalCallbackId ?? null,
     externalDispatchStatus: row.externalDispatchStatus ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -65,7 +67,7 @@ import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { resolveAssigneeIds } from './workflow-assignee-resolver.service';
@@ -801,7 +803,12 @@ export async function getInstanceDetail(id: number) {
   const isInitiator = row.initiatorId === user.userId;
   const isAssignee = row.tasks.some((t) => t.assigneeId === user.userId);
   if (!isInitiator && !isAssignee) throw new HTTPException(403, { message: '无权查看' });
-  const tasks = row.tasks.map((t) => mapTask(t, t.assignee?.nickname, t.assignee?.avatar));
+  const snapshot = row.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const tasks = row.tasks.map((t) => {
+    const cfg = snapshot?.flowData?.nodes.find((n) => n.data.key === t.nodeKey)?.data;
+    const actionButtons = cfg?.actionButtons;
+    return mapTask(t, t.assignee?.nickname, t.assignee?.avatar, actionButtons ?? null);
+  });
   return mapInstance(row, {
     definitionName: row.definition?.name ?? null,
     initiatorName: row.initiator?.nickname ?? null,
@@ -952,7 +959,7 @@ export interface ApproveResult {
   message: string;
 }
 
-export async function approveTask(taskId: number, comment?: string): Promise<ApproveResult> {
+export async function approveTask(taskId: number, comment?: string, attachments?: Array<{ name: string; url: string; size?: number }>): Promise<ApproveResult> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
@@ -960,7 +967,17 @@ export async function approveTask(taskId: number, comment?: string): Promise<App
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
-  return approveTaskCore(task, inst, comment, { userId: user.userId, name: user.username });
+  // 校验“操作按钮设置”中通过按钮的 uploadRequired
+  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
+  const approveBtn = (nodeCfg?.actionButtons as { approve?: { uploadRequired?: boolean } } | undefined)?.approve;
+  if (approveBtn?.uploadRequired && (!attachments || attachments.length === 0)) {
+    throw new HTTPException(400, { message: '请上传附件后再提交' });
+  }
+  const enrichedComment = attachments && attachments.length > 0
+    ? `${comment ?? ''}\n[附件]${attachments.map((a) => a.name).join(', ')}`.trim()
+    : comment;
+  return approveTaskCore(task, inst, enrichedComment, { userId: user.userId, name: user.username });
 }
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并审批通过 */
@@ -1128,8 +1145,14 @@ export async function rejectTaskCore(
   const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
   const flowData = snapshot?.flowData;
   const currentNodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
-  const strategy = currentNodeCfg?.rejectStrategy ?? 'terminate';
-  const rejectToNodeKey = currentNodeCfg?.rejectToNodeKey;
+  // 优先采用“操作按钮设置”中拒绝按钮的跳转配置
+  const actionRejectJump = (currentNodeCfg?.actionButtons as { reject?: { jumpToNodeKey?: string } } | undefined)?.reject?.jumpToNodeKey;
+  let strategy: 'terminate' | 'returnPrev' | 'returnStart' | 'returnToNode' = currentNodeCfg?.rejectStrategy ?? 'terminate';
+  let rejectToNodeKey: string | undefined = currentNodeCfg?.rejectToNodeKey;
+  if (actionRejectJump) {
+    strategy = 'returnToNode';
+    rejectToNodeKey = actionRejectJump;
+  }
 
   // 解析目标节点（returnPrev / returnStart / returnToNode）
   let targetNodeKey: string | null = null;
@@ -1289,4 +1312,129 @@ export async function rejectTaskCore(
   }
 
   return mapInstance(updated.row);
+}
+
+// ─── 转办 / 委派 / 加签 / 退回 ─────────────────────────────────────────────────
+
+/** 通用：获取当前用户名下的 pending 任务 + 实例（含校验） */
+async function getOwnPendingTask(taskId: number) {
+  const user = currentUser();
+  const [task] = await db.select().from(workflowTasks)
+    .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId)))
+    .limit(1);
+  if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
+  if (task.status !== 'pending') throw new HTTPException(400, { message: '任务已处理' });
+  const [inst] = await db.select().from(workflowInstances)
+    .where(eq(workflowInstances.id, task.instanceId)).limit(1);
+  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '流程实例不在进行中' });
+  return { task, inst, actor: { userId: user.userId, name: user.username } };
+}
+
+/** 转办：将当前任务的处理人改为目标用户 */
+export async function transferTask(taskId: number, targetUserId: number, comment?: string) {
+  const { task, inst, actor } = await getOwnPendingTask(taskId);
+  if (targetUserId === task.assigneeId) {
+    throw new HTTPException(400, { message: '转办人不能是当前处理人' });
+  }
+  const [target] = await db.select({ id: users.id, nickname: users.nickname })
+    .from(users).where(eq(users.id, targetUserId)).limit(1);
+  if (!target) throw new HTTPException(400, { message: '转办人不存在' });
+  const transferSuffix = comment ? `：${comment}` : '';
+  const transferComment = `[转办] 由 ${actor.name ?? '系统'} 转办${transferSuffix}`;
+  const [updated] = await db.update(workflowTasks)
+    .set({ assigneeId: targetUserId, comment: transferComment })
+    .where(eq(workflowTasks.id, task.id))
+    .returning();
+  emitTaskEvent('task.transferred', mapTask(updated, target.nickname),
+    { definitionId: inst.definitionId, tenantId: inst.tenantId, actor, comment: transferComment });
+  return mapTask(updated, target.nickname);
+}
+
+/** 委派：与转办类似，但语义为"临时代办"，意见名加上委派标记 */
+export async function delegateTask(taskId: number, targetUserId: number, comment?: string) {
+  const { task, inst, actor } = await getOwnPendingTask(taskId);
+  if (targetUserId === task.assigneeId) {
+    throw new HTTPException(400, { message: '委派人不能是当前处理人' });
+  }
+  const [target] = await db.select({ id: users.id, nickname: users.nickname })
+    .from(users).where(eq(users.id, targetUserId)).limit(1);
+  if (!target) throw new HTTPException(400, { message: '委派人不存在' });
+  const delegateSuffix = comment ? `：${comment}` : '';
+  const delegateComment = `[委派] 由 ${actor.name ?? '系统'} 委派${delegateSuffix}`;
+  const [updated] = await db.update(workflowTasks)
+    .set({ assigneeId: targetUserId, comment: delegateComment })
+    .where(eq(workflowTasks.id, task.id))
+    .returning();
+  emitTaskEvent('task.transferred', mapTask(updated, target.nickname),
+    { definitionId: inst.definitionId, tenantId: inst.tenantId, actor, comment: delegateComment });
+  return mapTask(updated, target.nickname);
+}
+
+/** 加签：在当前节点新增若干同节点 pending 任务（与原任务一并参与节点完成判定） */
+export async function addSignTask(
+  taskId: number,
+  targetUserIds: number[],
+  position: 'before' | 'after',
+  comment?: string,
+) {
+  const { task, inst, actor } = await getOwnPendingTask(taskId);
+  if (targetUserIds.length === 0) throw new HTTPException(400, { message: '请选择加签人' });
+  // 与现有同节点任务共用 approveMethod（保证完成判定一致）
+  const [sibling] = await db.select().from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, task.nodeKey)))
+    .limit(1);
+  const approveMethod = sibling?.approveMethod ?? 'and';
+  const posLabel = position === 'before' ? '前' : '后';
+  const addSignSuffix = comment ? `：${comment}` : '';
+  const addSignComment = `[加签-${posLabel}] 由 ${actor.name ?? '系统'} 发起${addSignSuffix}`;
+
+  const created = await db.transaction(async (tx) => {
+    // before：原任务先转为 waiting，加签任务为 pending；后续由 sequential 逻辑或单独完成回调推进
+    // after：原任务保持 pending，加签任务以 pending 一起并行
+    if (position === 'before') {
+      await tx.update(workflowTasks).set({ status: 'waiting' }).where(eq(workflowTasks.id, task.id));
+    }
+    const newRows = await tx.insert(workflowTasks).values(
+      targetUserIds.map((uid) => ({
+        instanceId: inst.id,
+        nodeKey: task.nodeKey,
+        nodeName: task.nodeName,
+        nodeType: task.nodeType,
+        assigneeId: uid,
+        status: 'pending' as const,
+        comment: addSignComment,
+        approveMethod,
+      })),
+    ).returning();
+    return newRows;
+  });
+
+  const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
+  for (const t of created) {
+    emitTaskEvent('task.created', mapTask(t), meta);
+    if (t.assigneeId) emitTaskEvent('task.assigned', mapTask(t), meta);
+  }
+  return { created: created.map((t) => mapTask(t)), message: `已加签 ${created.length} 人` };
+}
+
+/** 退回：将当前任务驳回到指定前序节点（使用 rejectTaskCore 的 returnToNode 路径） */
+export async function returnTask(taskId: number, targetNodeKey: string, comment: string) {
+  const { task, inst, actor } = await getOwnPendingTask(taskId);
+  const flowData = (inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null)?.flowData;
+  if (!flowData) throw new HTTPException(500, { message: '流程快照数据异常' });
+  const targetNode = flowData.nodes.find((n) => n.data.key === targetNodeKey)?.data;
+  if (!targetNode) throw new HTTPException(400, { message: '退回目标节点不存在' });
+  if (targetNode.type !== 'approve' && targetNode.type !== 'handler') {
+    throw new HTTPException(400, { message: '只能退回到审批/办理节点' });
+  }
+  // 临时覆盖快照中当前节点的 rejectStrategy / rejectToNodeKey，使 rejectTaskCore 走 returnToNode 路径
+  const overriddenSnapshot = structuredClone(inst.definitionSnapshot) as { flowData?: WorkflowFlowData };
+  const currentNode = overriddenSnapshot.flowData?.nodes.find((n) => n.data.key === task.nodeKey);
+  if (currentNode) {
+    currentNode.data.rejectStrategy = 'returnToNode';
+    currentNode.data.rejectToNodeKey = targetNodeKey;
+  }
+  const instOverridden = { ...inst, definitionSnapshot: overriddenSnapshot };
+  return rejectTaskCore(task, instOverridden, comment, actor);
 }

@@ -683,6 +683,10 @@ function flattenNode(
         fallbackStrategy: (p.externalApprovalFallback as string) ?? 'manual',
       };
     }
+    // 操作按钮配置：直接透传 actionButtons 对象
+    if (p.actionButtons && typeof p.actionButtons === 'object') {
+      dataExtra.actionButtons = p.actionButtons;
+    }
   }
   nodes.push({
     id: flatId,

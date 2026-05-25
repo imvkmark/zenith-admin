@@ -10,11 +10,12 @@
  */
 import { useEffect, useState } from 'react';
 import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, InputNumber, Switch } from '@douyinfe/semi-ui';
-import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy } from '../types';
+import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig } from '../types';
 import { ADDABLE_NODE_TYPES, DEFAULT_APPROVER_OPERATIONS, DELAY_UNIT_OPTIONS, TRIGGER_TYPE_OPTIONS } from '../constants';
 import ApproverSettingsTab from './tabs/ApproverSettingsTab';
 import FormPermissionTab from './tabs/FormPermissionTab';
 import OperationPermissionTab from './tabs/OperationPermissionTab';
+import ActionButtonsTab from './tabs/ActionButtonsTab';
 import AdvancedSettingsTab from './tabs/AdvancedSettingsTab';
 
 interface UserOption { id: number; nickname: string; }
@@ -334,6 +335,17 @@ export default function NodeConfigDrawer({
               <OperationPermissionTab
                 operations={(props.operations as OperationPermission[]) ?? DEFAULT_APPROVER_OPERATIONS}
                 onChange={(ops) => handlePropsChange({ operations: ops })}
+              />
+            </TabPane>
+          )}
+
+          {/* 操作按钮设置 Tab（仅审批人） */}
+          {hasOperationPermission && (
+            <TabPane tab="操作按钮设置" itemKey="actionButtons">
+              <ActionButtonsTab
+                value={props.actionButtons as ActionButtonsConfig | undefined}
+                onChange={(next) => handlePropsChange({ actionButtons: next })}
+                jumpTargetNodes={rejectableAncestorNodes}
               />
             </TabPane>
           )}

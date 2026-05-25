@@ -534,6 +534,16 @@ export const workflowOperationPermissionSchema = z.enum([
   'approve', 'reject', 'transfer', 'addSign', 'return', 'comment', 'signature', 'opinionRequired',
 ]);
 export const workflowFieldPermissionSchema = z.enum(['read', 'edit', 'hidden']);
+export const workflowActionButtonKeySchema = z.enum([
+  'approve', 'reject', 'transfer', 'delegate', 'addSign', 'return',
+]);
+export const workflowActionButtonConfigSchema = z.object({
+  enabled: z.boolean(),
+  displayName: z.string().max(32).optional(),
+  opinionName: z.string().max(32).optional(),
+  jumpToNodeKey: z.string().optional(),
+  uploadRequired: z.boolean().optional(),
+});
 export const workflowTimeoutConfigSchema = z.object({
   enabled: z.boolean(),
   duration: z.number().int().min(1),
@@ -564,6 +574,7 @@ export const workflowNodeConfigSchema = z.looseObject({
   sameInitiatorStrategy: workflowSameInitiatorStrategySchema.optional(),
   deduplicateStrategy: workflowDeduplicateStrategySchema.optional(),
   operations: z.array(workflowOperationPermissionSchema).optional(),
+  actionButtons: z.record(workflowActionButtonKeySchema, workflowActionButtonConfigSchema).optional(),
   fieldPermissions: z.record(z.string(), workflowFieldPermissionSchema).optional(),
   timeout: workflowTimeoutConfigSchema.optional(),
   managerLevel: z.number().int().min(1).optional(),
@@ -653,10 +664,36 @@ export const createWorkflowInstanceSchema = z.object({
 
 export const approveWorkflowTaskSchema = z.object({
   comment: z.string().max(500).optional(),
+  attachments: z.array(z.object({
+    name: z.string().max(255),
+    url: z.string().max(1024),
+    size: z.number().int().nonnegative().optional(),
+  })).optional(),
 });
 
 export const rejectWorkflowTaskSchema = z.object({
   comment: z.string().min(1, '驳回原因不能为空').max(500),
+});
+
+export const transferWorkflowTaskSchema = z.object({
+  targetUserId: z.number().int().positive('请选择转办人'),
+  comment: z.string().max(500).optional(),
+});
+
+export const delegateWorkflowTaskSchema = z.object({
+  targetUserId: z.number().int().positive('请选择委派人'),
+  comment: z.string().max(500).optional(),
+});
+
+export const addSignWorkflowTaskSchema = z.object({
+  targetUserIds: z.array(z.number().int().positive()).min(1, '请选择加签人'),
+  position: z.enum(['before', 'after']).default('after'),
+  comment: z.string().max(500).optional(),
+});
+
+export const returnWorkflowTaskSchema = z.object({
+  targetNodeKey: z.string().min(1, '请选择退回节点'),
+  comment: z.string().min(1, '退回原因不能为空').max(500),
 });
 
 export type CreateWorkflowDefinitionInput = z.infer<typeof createWorkflowDefinitionSchema>;
@@ -664,6 +701,10 @@ export type UpdateWorkflowDefinitionInput = z.infer<typeof updateWorkflowDefinit
 export type CreateWorkflowInstanceInput = z.infer<typeof createWorkflowInstanceSchema>;
 export type ApproveWorkflowTaskInput = z.infer<typeof approveWorkflowTaskSchema>;
 export type RejectWorkflowTaskInput = z.infer<typeof rejectWorkflowTaskSchema>;
+export type TransferWorkflowTaskInput = z.infer<typeof transferWorkflowTaskSchema>;
+export type DelegateWorkflowTaskInput = z.infer<typeof delegateWorkflowTaskSchema>;
+export type AddSignWorkflowTaskInput = z.infer<typeof addSignWorkflowTaskSchema>;
+export type ReturnWorkflowTaskInput = z.infer<typeof returnWorkflowTaskSchema>;
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export const chatLinkPreviewSchema = z.object({

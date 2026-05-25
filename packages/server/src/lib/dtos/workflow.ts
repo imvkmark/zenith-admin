@@ -72,6 +72,13 @@ export const WorkflowTaskDTO = z
     status: z.enum(['pending', 'approved', 'rejected', 'skipped', 'waiting']),
     comment: z.string().nullable(),
     actionAt: z.string().nullable(),
+    actionButtons: z.record(z.string(), z.object({
+      enabled: z.boolean(),
+      displayName: z.string().optional(),
+      opinionName: z.string().optional(),
+      jumpToNodeKey: z.string().optional(),
+      uploadRequired: z.boolean().optional(),
+    })).nullable().optional(),
     createdAt: z.string(),
   })
   .openapi('WorkflowTask');
