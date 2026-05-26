@@ -1,11 +1,20 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { PDFViewer, ZoomMode } from '@embedpdf/react-pdf-viewer';
-import type { PDFViewerRef } from '@embedpdf/react-pdf-viewer';
-import { Button, Typography } from '@douyinfe/semi-ui';
+import type { PDFViewerRef, PluginRegistry } from '@embedpdf/react-pdf-viewer';
+import { Button, Select, Typography } from '@douyinfe/semi-ui';
 import { FileText, X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
 
 const { Text } = Typography;
+
+type ZoomLevel = ZoomMode | number;
+
+const ZOOM_OPTIONS: { value: ZoomLevel; label: string }[] = [
+  { value: ZoomMode.Automatic, label: '自动缩放' },
+  { value: ZoomMode.FitPage,   label: '适合页高' },
+  { value: ZoomMode.FitWidth,  label: '适合页宽' },
+  { value: 1,                  label: '实际大小' },
+];
 
 /** 读取文档上当前生效的 CSS 变量值（fallback 备用值） */
 function cssVar(name: string, fallback: string): string {
@@ -21,7 +30,29 @@ interface PDFPreviewPanelProps {
 
 export function PDFPreviewPanel({ file, onClose }: PDFPreviewPanelProps) {
   const viewerRef = useRef<PDFViewerRef>(null);
+  const registryRef = useRef<PluginRegistry | null>(null);
   const { isDark } = useThemeController();
+  const [zoomMode, setZoomMode] = useState<ZoomLevel>(ZoomMode.FitWidth);
+
+  const handleReady = useCallback((registry: PluginRegistry) => {
+    registryRef.current = registry;
+  }, []);
+
+  const handleZoomChange = useCallback(async (level: ZoomLevel) => {
+    setZoomMode(level);
+    const registry = registryRef.current;
+    if (!registry) return;
+
+    type DocManagerAPI = { getActiveDocumentId: () => string | null };
+    type ZoomAPI = { forDocument: (id: string) => { requestZoom: (l: ZoomLevel) => void } | null };
+
+    const docManager = (registry.getPlugin('document-manager') as { provides: () => DocManagerAPI } | null)?.provides();
+    const docId = docManager?.getActiveDocumentId();
+    if (!docId) return;
+
+    const zoomPlugin = (registry.getPlugin('zoom') as { provides: () => ZoomAPI } | null)?.provides();
+    zoomPlugin?.forDocument(docId)?.requestZoom(level);
+  }, []);
 
   // 读取当前 Semi Design CSS 变量，构建贴合主题的颜色配置
   const themeConfig = useMemo(() => {
@@ -130,10 +161,17 @@ export function PDFPreviewPanel({ file, onClose }: PDFPreviewPanelProps) {
         <FileText size={15} style={{ color: '#E54D4D', flexShrink: 0 }} />
         <Text
           ellipsis={{ showTooltip: true }}
-          style={{ flex: 1, fontSize: 13, fontWeight: 500 }}
+          style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0 }}
         >
           {file.name}
         </Text>
+        <Select
+          value={zoomMode}
+          onChange={(v) => handleZoomChange(v as ZoomLevel)}
+          size="small"
+          style={{ width: 96, flexShrink: 0 }}
+          optionList={ZOOM_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+        />
         <Button
           theme="borderless"
           size="small"
@@ -148,6 +186,7 @@ export function PDFPreviewPanel({ file, onClose }: PDFPreviewPanelProps) {
         <PDFViewer
           key={isDark ? 'dark' : 'light'}
           ref={viewerRef}
+          onReady={handleReady}
           config={{
             theme: themeConfig,
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
