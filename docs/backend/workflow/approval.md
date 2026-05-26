@@ -123,3 +123,28 @@
 1. 流程实例状态变为「已撤回」
 2. 所有未处理的任务自动标记为「已跳过」
 3. 触发撤回事件，可订阅该事件做后续处理
+
+## 加签 / 减签
+
+允许审批人在不修改流程定义的前提下，临时拉人参与或移除已加签的审批人。前端入口在「待办审批」页面，需要节点配置 `actionButtons.addSign.enabled = true`、`actionButtons.reduceSign.enabled = true`。
+
+### 加签位置
+
+| 位置 | 语义 | 任务 `comment` 前缀 |
+| --- | --- | --- |
+| `before`（前加签） | 原任务挂起（`status = waiting`），加签人先审批；全部完成后原任务自动恢复 `pending` | `[加签-前]` |
+| `after`（后加签） | 原审批人继续完成，再交给加签人接力 | `[加签-后]` |
+| `parallel`（并加签） | 加签人与原审批人并行处理，按节点 `approveMethod` 汇总 | `[加签-并]` |
+
+### 减签
+
+只能减掉「由加签产生的待办任务」（`comment` 以 `[加签-` 开头且 `status = pending`），减签后任务标记为 `skipped`。
+
+### 事件
+
+| 事件 | 触发时机 |
+| --- | --- |
+| `task.addSigned` | 加签产生新任务时，每个加签任务触发一次 |
+| `task.reduceSigned` | 减签使任务变为 `skipped` 时，每个被减签任务触发一次 |
+
+事件 payload 与其他 `task.*` 事件一致（`WorkflowTaskEventPayload`），`meta.comment` 携带加签 / 减签时填写的备注。

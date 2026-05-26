@@ -26,7 +26,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const WORKFLOW_EVENT_TYPES = [
   'instance.created', 'instance.approved', 'instance.rejected', 'instance.withdrawn',
   'node.entered', 'node.left',
-  'task.created', 'task.assigned', 'task.approved', 'task.rejected', 'task.skipped', 'task.transferred',
+  'task.created', 'task.assigned', 'task.approved', 'task.rejected', 'task.skipped', 'task.transferred', 'task.addSigned', 'task.reduceSigned',
 ] as const;
 
 const UpsertBody = z.object({

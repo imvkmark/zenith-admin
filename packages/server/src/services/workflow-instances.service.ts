@@ -97,7 +97,7 @@ function emitInstanceEvent(
 
 /** 发射任务生命周期事件的辅助函数 */
 function emitTaskEvent(
-  type: 'task.created' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.assigned',
+  type: 'task.created' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.assigned' | 'task.addSigned' | 'task.reduceSigned',
   task: WorkflowTaskDto,
   meta: { definitionId: number; tenantId: number | null; actor?: { userId: number; name?: string | null }; comment?: string | null },
 ) {
@@ -652,6 +652,25 @@ async function checkNodeCompletion(
     .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)));
   if (siblings.length === 0) return { completed: true, method: null };
   const method = siblings.find((t) => t.approveMethod)?.approveMethod ?? null;
+
+  // before-加签恢复：如果同节点存在挂起原任务（status=waiting且非顺序会签）且所有 [加签-前] 任务都已处理，则将原任务升回 pending，让节点能够继续流转。
+  const beforeSuspended = siblings.filter((t) => t.status === 'waiting' && t.taskOrder == null);
+  if (beforeSuspended.length > 0) {
+    const beforeSignTasks = siblings.filter((t) => t.comment?.startsWith('[加签-前]'));
+    const allBeforeResolved = beforeSignTasks.length > 0
+      && beforeSignTasks.every((t) => t.status === 'approved' || t.status === 'skipped');
+    if (allBeforeResolved) {
+      const restoredIds = beforeSuspended.map((t) => t.id);
+      await tx.update(workflowTasks).set({ status: 'pending' })
+        .where(inArray(workflowTasks.id, restoredIds));
+      for (const t of beforeSuspended) {
+        siblings[siblings.findIndex((s) => s.id === t.id)] = { ...t, status: 'pending' };
+      }
+    } else {
+      // 原任务仍需等待加签人完成，节点不可能完成
+      return { completed: false, method };
+    }
+  }
 
   if (!method || method === 'and') {
     const allDone = siblings.every((t) => t.status === 'approved' || t.status === 'skipped');
@@ -1487,6 +1506,7 @@ export async function addSignTask(
   for (const t of created) {
     emitTaskEvent('task.created', mapTask(t), meta);
     if (t.assigneeId) emitTaskEvent('task.assigned', mapTask(t), meta);
+    emitTaskEvent('task.addSigned', mapTask(t), { ...meta, comment: addSignComment });
   }
   return { created: created.map((t) => mapTask(t)), message: `已加签 ${created.length} 人` };
 }
@@ -1531,6 +1551,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
   const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
   for (const t of removed) {
     emitTaskEvent('task.skipped', mapTask(t), meta);
+    emitTaskEvent('task.reduceSigned', mapTask(t), { ...meta, comment: reduceComment });
   }
   return { removed: removed.map((t) => mapTask(t)), message: `已减签 ${removed.length} 人` };
 }

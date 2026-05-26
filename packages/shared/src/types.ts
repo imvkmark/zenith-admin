@@ -1046,7 +1046,9 @@ export type WorkflowEventType =
   | 'task.approved'
   | 'task.rejected'
   | 'task.skipped'
-  | 'task.transferred';
+  | 'task.transferred'
+  | 'task.addSigned'
+  | 'task.reduceSigned';
 
 export interface WorkflowEventActor {
   userId: number;
@@ -1078,7 +1080,7 @@ export interface WorkflowNodeEventPayload extends WorkflowEventBase {
 }
 
 export interface WorkflowTaskEventPayload extends WorkflowEventBase {
-  type: 'task.created' | 'task.assigned' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred';
+  type: 'task.created' | 'task.assigned' | 'task.approved' | 'task.rejected' | 'task.skipped' | 'task.transferred' | 'task.addSigned' | 'task.reduceSigned';
   task: WorkflowTask;
   comment?: string | null;
 }
