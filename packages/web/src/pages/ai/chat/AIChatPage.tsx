@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { AIChatDialogue, AIChatInput, Typography, Button, Tag, RadioGroup, Radio, Select, Toast, List as SemiList } from '@douyinfe/semi-ui';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
+import { AIChatDialogue, AIChatInput, Typography, Button, Tag, RadioGroup, Radio, Select, Toast, List as SemiList, Tooltip } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
-import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench } from 'lucide-react';
+import { MessageSquarePlus, Trash2, Globe, AlignLeft, AlignJustify, Bot, Wrench, FileText } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { useAuth } from '@/hooks/useAuth';
+import { PDFPreviewPanel } from './PDFPreviewPanel';
 
 const { Configure } = AIChatInput;
 const { Title, Text } = Typography;
@@ -262,6 +263,82 @@ function nextMsgId() {
   return `msg-${++msgIdCounter}`;
 }
 
+function truncateName(name: string, max = 12) {
+  return name.length > max ? `${name.slice(0, max)}…` : name;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+interface PdfFileCardProps {
+  readonly filename: string;
+  readonly size: string;
+  readonly onClick?: () => void;
+}
+
+function PdfFileCard({ filename, size, onClick }: PdfFileCardProps) {
+  const inner = (
+    <>
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 6,
+          background: '#ff4d4f22',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <FileText size={20} color="#ff4d4f" />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: 'var(--semi-color-text-0)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            maxWidth: 160,
+          }}
+          title={filename}
+        >
+          {filename}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginTop: 2 }}>
+          PDF · {size}
+        </div>
+      </div>
+    </>
+  );
+  const cardStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '10px 14px',
+    borderRadius: 10,
+    background: 'var(--semi-color-bg-2)',
+    border: '1px solid var(--semi-color-border)',
+    maxWidth: 260,
+    userSelect: 'none',
+    textAlign: 'left',
+  };
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} style={{ ...cardStyle, cursor: 'pointer' }}>
+        {inner}
+      </button>
+    );
+  }
+  return <div style={cardStyle}>{inner}</div>;
+}
+
 export default function AIChatPage() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState(DEMO_CONVERSATIONS);
@@ -275,9 +352,59 @@ export default function AIChatPage() {
     thinkMode: 'fast',
   });
   const dialogueRef = useRef<AIChatDialogueInstance | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+
+  // AIChatInput 内置上传按鈕的拦截处理：选择 PDF 后直接开启预览，不实际上传
+  const handleBeforeUpload = useCallback(
+    (fileInfo: { file: { fileInstance?: File; name: string; size?: number } }) => {
+      const rawFile = fileInfo.file?.fileInstance;
+      if (rawFile) {
+        setPdfFile(rawFile);
+        const fileMsg: Message = {
+          id: nextMsgId(),
+          role: 'user',
+          content: [
+            {
+              type: 'pdf_card',
+              filename: rawFile.name,
+              size: formatFileSize(rawFile.size),
+              fileInstance: rawFile,
+            },
+          ] as NonNullable<AIChatMessage['content']>,
+          createdAt: Date.now(),
+          status: 'completed',
+        };
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeConvId ? { ...c, messages: [...c.messages, fileMsg] } : c
+          )
+        );
+      }
+      // 始终返回 false 阻止实际上传
+      return false as const;
+    },
+    [activeConvId]
+  );
 
   const activeConv = conversations.find((c) => c.id === activeConvId);
   const messages = activeConv?.messages ?? [];
+
+  // eslint-disable-next-line react/no-unstable-nested-components
+  const dialogueRenderConfig = useMemo(() => ({
+    renderDialogueContentItem: {
+      // eslint-disable-next-line react/no-unstable-nested-components
+      pdf_card: (item: Record<string, unknown>) => (
+        <PdfFileCard
+          filename={item.filename as string}
+          size={item.size as string}
+          onClick={() => {
+            const fi = item.fileInstance;
+            if (fi instanceof File) setPdfFile(fi);
+          }}
+        />
+      ),
+    },
+  }), [setPdfFile]);
 
   const roleConfig = {
     user: {
@@ -473,110 +600,145 @@ export default function AIChatPage() {
         </>
       )}
       detail={(
-        <>
-          {/* 顶栏 */}
-        <div
-          style={{
-            padding: '12px 20px',
-            borderBottom: '1px solid var(--semi-color-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'var(--semi-color-bg-1)',
-          }}
-        >
-          <Title heading={6} style={{ margin: 0 }}>
-            {activeConv?.title ?? '智能对话'}
-          </Title>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Tag color="purple" size="small">演示模式</Tag>
-            <Select
-              value={mode}
-              onChange={(v) => setMode(v as 'bubble' | 'noBubble' | 'userBubble')}
-              size="small"
-              placeholder="请选择模式"
-              style={{ width: 110 }}
-              optionList={[
-                { value: 'bubble', label: '双侧气泡' },
-                { value: 'noBubble', label: '无气泡' },
-                { value: 'userBubble', label: '用户气泡' },
-              ]}
-            />
-            <RadioGroup
-              type="button"
-              value={align}
-              onChange={(e) => setAlign(e.target.value as 'leftRight' | 'leftAlign')}
-              buttonSize="small"
+        <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+          {/* 聊天区域 */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+            {/* 顶栏 */}
+            <div
+              style={{
+                padding: '12px 20px',
+                borderBottom: '1px solid var(--semi-color-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--semi-color-bg-1)',
+                flexShrink: 0,
+              }}
             >
-              <Radio value="leftRight"><AlignJustify size={12} /></Radio>
-              <Radio value="leftAlign"><AlignLeft size={12} /></Radio>
-            </RadioGroup>
-          </div>
-        </div>
-
-        {/* 对话内容 */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <AIChatDialogue
-            ref={dialogueRef}
-            chats={messages}
-            roleConfig={roleConfig}
-            hints={generating ? [] : HINTS}
-            align={align}
-            mode={mode}
-            onMessageCopy={() => Toast.success('已复制到剪贴板')}
-            onMessageGoodFeedback={() => Toast.success('感谢您的正向反馈')}
-            onMessageBadFeedback={() => Toast.info('感谢您的反馈，我们会持续改进')}
-            onMessageReset={() => Toast.info('重新生成需接入真实 AI 服务')}
-            onHintClick={handleHintClick}
-            onChatsChange={(chats) => {
-              updateMessages(() => chats as Message[]);
-            }}
-            style={{ height: '100%' }}
-          />
-        </div>
-
-        {/* 输入框 */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)' }}>
-          <AIChatInput
-            placeholder="向 AI 提问，或点击上方提示快速发送..."
-            generating={generating}
-            onMessageSend={handleMessageSend}
-            onStopGenerate={handleStopGenerate}
-            onConfigureChange={(value) => setConfigureValues(value as Record<string, unknown>)}
-            renderConfigureArea={() => (
-              <Configure>
-                <Configure.Select
-                  field="model"
-                  initValue="gpt-4o"
-                  optionList={MODEL_OPTIONS}
-                />
-                <Configure.Button
-                  field="webSearch"
-                  initValue={false}
-                  icon={<Globe size={14} />}
-                >
-                  联网搜索
-                </Configure.Button>
-                <Configure.RadioButton
-                  field="thinkMode"
-                  initValue="fast"
-                  options={THINK_MODE_OPTIONS}
-                />
-                <Configure.Mcp
-                  showConfigure={false}
-                  onConfigureButtonClick={() => Toast.info('MCP 配置面板')}
-                  options={[
-                    { icon: <Bot size={14} />, label: 'Semi MCP', value: 'semi-mcp', active: true },
-                    { icon: <Wrench size={14} />, label: 'Code Exec', value: 'code-exec', active: false },
-                    { icon: <Globe size={14} />, label: 'Web Search', value: 'web-search', active: true },
+              <Title heading={6} style={{ margin: 0 }}>
+                {activeConv?.title ?? '智能对话'}
+              </Title>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Tag color="purple" size="small">演示模式</Tag>
+                {pdfFile && (
+                  <Tooltip content="点击关闭预览">
+                    <Button
+                      theme="solid"
+                      type="primary"
+                      size="small"
+                      icon={<FileText size={13} />}
+                      onClick={() => setPdfFile(null)}
+                    >
+                      {truncateName(pdfFile.name)}
+                    </Button>
+                  </Tooltip>
+                )}
+                <Select
+                  value={mode}
+                  onChange={(v) => setMode(v as 'bubble' | 'noBubble' | 'userBubble')}
+                  size="small"
+                  placeholder="请选择模式"
+                  style={{ width: 110 }}
+                  optionList={[
+                    { value: 'bubble', label: '双侧气泡' },
+                    { value: 'noBubble', label: '无气泡' },
+                    { value: 'userBubble', label: '用户气泡' },
                   ]}
                 />
-              </Configure>
-            )}
-            style={{ borderRadius: 12 }}
-          />
+                <RadioGroup
+                  type="button"
+                  value={align}
+                  onChange={(e) => setAlign(e.target.value as 'leftRight' | 'leftAlign')}
+                  buttonSize="small"
+                >
+                  <Radio value="leftRight"><AlignJustify size={12} /></Radio>
+                  <Radio value="leftAlign"><AlignLeft size={12} /></Radio>
+                </RadioGroup>
+              </div>
+            </div>
+
+            {/* 对话内容 */}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <AIChatDialogue
+                ref={dialogueRef}
+                chats={messages}
+                roleConfig={roleConfig}
+                hints={generating ? [] : HINTS}
+                align={align}
+                mode={mode}
+                onMessageCopy={() => Toast.success('已复制到剪贴板')}
+                onMessageGoodFeedback={() => Toast.success('感谢您的正向反馈')}
+                onMessageBadFeedback={() => Toast.info('感谢您的反馈，我们会持续改进')}
+                onMessageReset={() => Toast.info('重新生成需接入真实 AI 服务')}
+                onHintClick={handleHintClick}
+                onFileClick={(fileItem: Record<string, unknown>) => {
+                  const fi = fileItem?.fileInstance;
+                  if (fi instanceof File) setPdfFile(fi);
+                }}
+                dialogueRenderConfig={dialogueRenderConfig}
+                onChatsChange={(chats) => {
+                  updateMessages(() => chats as Message[]);
+                }}
+                style={{ height: '100%' }}
+              />
+            </div>
+
+            {/* 输入框 */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--semi-color-border)', background: 'var(--semi-color-bg-1)', flexShrink: 0 }}>
+              <AIChatInput
+                placeholder="向 AI 提问，或点击下方回形针上传 PDF 预览..."
+                generating={generating}
+                onMessageSend={handleMessageSend}
+                onStopGenerate={handleStopGenerate}
+                onConfigureChange={(value) => setConfigureValues(value)}
+                uploadProps={{
+                  action: '',
+                  accept: '.pdf,application/pdf',
+                  beforeUpload: handleBeforeUpload,
+                }}
+                renderConfigureArea={() => (
+                  <Configure>
+                    <Configure.Select
+                      field="model"
+                      initValue="gpt-4o"
+                      optionList={MODEL_OPTIONS}
+                    />
+                    <Configure.Button
+                      field="webSearch"
+                      initValue={false}
+                      icon={<Globe size={14} />}
+                    >
+                      联网搜索
+                    </Configure.Button>
+                    <Configure.RadioButton
+                      field="thinkMode"
+                      initValue="fast"
+                      options={THINK_MODE_OPTIONS}
+                    />
+                    <Configure.Mcp
+                      showConfigure={false}
+                      onConfigureButtonClick={() => Toast.info('MCP 配置面板')}
+                      options={[
+                        { icon: <Bot size={14} />, label: 'Semi MCP', value: 'semi-mcp', active: true },
+                        { icon: <Wrench size={14} />, label: 'Code Exec', value: 'code-exec', active: false },
+                        { icon: <Globe size={14} />, label: 'Web Search', value: 'web-search', active: true },
+                      ]}
+                    />
+                  </Configure>
+                )}
+                style={{ borderRadius: 12 }}
+              />
+            </div>
+          </div>
+
+          {/* PDF 预览面板（右侧） */}
+          {pdfFile && (
+            <PDFPreviewPanel
+              file={pdfFile}
+              onClose={() => setPdfFile(null)}
+            />
+          )}
         </div>
-        </>
       )}
     />
   );
