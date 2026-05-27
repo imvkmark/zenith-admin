@@ -577,6 +577,8 @@ export default function AIChatPage() {
                       field="model"
                       initValue={modelOptions[0]?.value ?? ''}
                       optionList={modelOptions}
+                      style={{ minWidth: 160 }}
+                      placeholder="选择模型"
                     />
                     <Configure.Button
                       field="webSearch"
