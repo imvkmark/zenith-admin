@@ -8,7 +8,7 @@ interface AppLogoProps {
 
 export default function AppLogo({ size = 28, variant = 'solid', className }: Readonly<AppLogoProps>) {
   const borderRadius = Math.round(size * 0.25);
-  const fontSize = Math.round(size * 0.5);
+  const fontSize = Math.round(size * 0.68);
   const cls = ['app-logo', `app-logo--${variant}`, className].filter(Boolean).join(' ');
   return (
     <div
