@@ -154,6 +154,12 @@ export function useTabsStore(maxCount: number = 20, onEvict?: (evicted: TabItem[
       const from = prev.findIndex((t) => t.key === fromKey);
       const to = prev.findIndex((t) => t.key === toKey);
       if (from < 0 || to < 0 || from === to) return prev;
+      // 禁止跨区段拖拽：pinned ↔ regular 不可混排
+      const fromTab = prev[from];
+      const toTab = prev[to];
+      if (!!fromTab.pinned !== !!toTab.pinned) return prev;
+      // home tab 不可移动
+      if (fromTab.key === '/' || toTab.key === '/') return prev;
       const next = [...prev];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
