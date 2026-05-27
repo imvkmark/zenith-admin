@@ -5,6 +5,7 @@ export interface TabItem {
   key: string;
   title: string;
   closable: boolean;
+  pinned?: boolean;
 }
 
 const HOME_TAB: TabItem = { key: '/', title: '首页', closable: false };
@@ -22,6 +23,14 @@ function readPersistedTabs(): { tabs: TabItem[]; activeKey: string } | null {
   } catch {
     return null;
   }
+}
+
+/** 排序：home → pinned → regular */
+function sortTabs(tabs: TabItem[]): TabItem[] {
+  const home = tabs.filter((t) => t.key === '/');
+  const pinned = tabs.filter((t) => t.pinned && t.key !== '/');
+  const regular = tabs.filter((t) => !t.pinned && t.key !== '/');
+  return [...home, ...pinned, ...regular];
 }
 
 export function useTabsStore(maxCount: number = 20, onEvict?: (evicted: TabItem[]) => void, keepTabs: boolean = false) {
@@ -152,5 +161,13 @@ export function useTabsStore(maxCount: number = 20, onEvict?: (evicted: TabItem[
     });
   }, []);
 
-  return { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs };
+  const pinTab = useCallback((key: string) => {
+    setTabs((prev) => sortTabs(prev.map((t) => t.key === key ? { ...t, pinned: true, closable: false } : t)));
+  }, []);
+
+  const unpinTab = useCallback((key: string) => {
+    setTabs((prev) => sortTabs(prev.map((t) => t.key === key ? { ...t, pinned: false, closable: true } : t)));
+  }, []);
+
+  return { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab };
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, ColorPicker, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
-import { Bell, Building2, Check, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette } from 'lucide-react';
+import { Bell, Building2, Check, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette, Pin } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -184,7 +184,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   // 每次 App 会话只弹一次：见过一次后不再重复
   const evictToastShownRef = useRef(false);
-  const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs } = useTabsStore(
+  const { tabs, activeKey, setActiveKey, addTab, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab } = useTabsStore(
     preferences.tabsMaxCount,
     (evicted) => {
       if (evictToastShownRef.current) return;
@@ -1035,6 +1035,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
                       let menuHtml = '';
                       menuHtml += buildItem('refresh', '刷新页面');
+                      if (tab.key !== '/') {
+                        menuHtml += tab.pinned
+                          ? buildItem('unpin', '取消固定')
+                          : buildItem('pin', '固定标签页');
+                      }
                       menuHtml += `<div class="admin-tab-ctx-divider"></div>`;
                       menuHtml += buildItem('close', '关闭当前', !tab.closable);
                       menuHtml += buildItem('close-others', '关闭其他', !hasClosableOthers);
@@ -1089,6 +1094,10 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                         }
                         if (action === 'refresh') {
                           handleTabRefresh(tab.key);
+                        } else if (action === 'pin') {
+                          pinTab(tab.key);
+                        } else if (action === 'unpin') {
+                          unpinTab(tab.key);
                         } else if (action === 'close') {
                           handleTabClose(tab.key);
                         } else if (action === 'close-others') {
@@ -1113,6 +1122,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       <span className="admin-tab-item__icon">{renderLucideIcon(pathIconMap[tab.key], 14)}</span>
                     )}
                     <span className="admin-tab-item__text">{tab.title}</span>
+                    {tab.pinned && (
+                      <span className="admin-tab-item__pin"><Pin size={10} /></span>
+                    )}
                     {tab.closable && (
                       <button
                         type="button"
