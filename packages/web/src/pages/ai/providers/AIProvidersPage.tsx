@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Col, Form, Modal, Popconfirm, Row, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Modal, Popconfirm, Row, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -215,11 +215,9 @@ export default function AIProvidersPage() {
   ];
 
   return (
-    <>
+    <div className="page-container">
       <SearchToolbar>
-        <Form.Input
-          noLabel
-          field="search"
+        <Input
           placeholder="搜索名称/模型"
           prefix={<Search size={14} />}
           showClear
@@ -365,6 +363,6 @@ export default function AIProvidersPage() {
         </Form>
       </Modal>
 
-    </>
+    </div>
   );
 }
