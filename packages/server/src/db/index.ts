@@ -57,7 +57,8 @@ function wrapInsertReturn(insert: AnyBuilder, table: unknown): AnyBuilder {
   // 同时拦截 .onConflictDoUpdate({ set })：冲突时也注入 updated_by
   const origOnConflict = insert.onConflictDoUpdate?.bind(insert);
   if (origOnConflict) {
-    insert.onConflictDoUpdate = (cfg: { set?: unknown; [k: string]: unknown }) => {
+    insert.onConflictDoUpdate = (...args: unknown[]) => {
+      const cfg = args[0] as { set?: unknown; [k: string]: unknown };
       const next = cfg && typeof cfg === 'object' ? { ...cfg, set: injectOnUpdate(table, cfg.set ?? {}) } : cfg;
       return origOnConflict(next);
     };
@@ -68,7 +69,7 @@ function wrapInsertReturn(insert: AnyBuilder, table: unknown): AnyBuilder {
 function wrapInsertBuilder(builder: AnyBuilder, table: unknown): AnyBuilder {
   const orig = builder.values?.bind(builder);
   if (!orig) return builder;
-  builder.values = (data: unknown) => wrapInsertReturn(orig(injectOnCreate(table, data)), table);
+  builder.values = (data: unknown) => wrapInsertReturn(orig(injectOnCreate(table, data)) as AnyBuilder, table);
   return builder;
 }
 

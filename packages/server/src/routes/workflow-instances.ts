@@ -154,7 +154,7 @@ const rejectRoute = defineOpenAPIRoute({
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
     const r = await rejectTask(taskId, comment);
-    return c.json(okBody(r, '已驳回'), 200);
+    return c.json(okBody(r.instance, r.message), 200);
   },
 });
 
@@ -271,7 +271,7 @@ const returnRoute = defineOpenAPIRoute({
     const before = await getWorkflowTaskBeforeAudit(taskId);
     if (before) setAuditBeforeData(c, before);
     const r = await returnTask(taskId, targetNodeKeys, comment);
-    return c.json(okBody(r, '已退回'), 200);
+    return c.json(okBody(r.instance, r.message), 200);
   },
 });
 

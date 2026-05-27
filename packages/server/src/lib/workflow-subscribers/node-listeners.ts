@@ -39,9 +39,9 @@ async function fireListener(listener: NodeListenerConfig, event: WorkflowTaskEve
   };
   try {
     if (listener.method === 'GET') {
-      await httpGet(listener.url, { headers, timeoutMs: TIMEOUT_MS });
+      await httpGet(listener.url, { headers, timeout: TIMEOUT_MS });
     } else {
-      await httpPost(listener.url, payload, { headers, timeoutMs: TIMEOUT_MS });
+      await httpPost(listener.url, payload, { headers, timeout: TIMEOUT_MS });
     }
     logger.info('[workflow-node-listener] dispatched', { url: listener.url, eventId: event.eventId, listenerEvent });
   } catch (err) {

@@ -57,11 +57,11 @@ export async function processWorkflowTaskTimeouts(): Promise<{ processed: number
         await db.update(workflowTasks)
           .set({ timeoutRemindCount: nextCount, timeoutAt: nextTimeoutAt })
           .where(eq(workflowTasks.id, task.id));
-        logger.info({ taskId: task.id, instanceId: inst.id, nextCount, maxRemind }, 'workflow task timeout remind');
+        logger.info('workflow task timeout remind', { taskId: task.id, instanceId: inst.id, nextCount, maxRemind });
         reminded += 1;
       }
     } catch (err) {
-      logger.error({ err, taskId: task.id }, 'processWorkflowTaskTimeouts: action failed');
+      logger.error('processWorkflowTaskTimeouts: action failed', { err, taskId: task.id });
     }
   }
 

@@ -500,8 +500,8 @@ async function expandTasksToRows(
         nodeName: t.nodeName,
         nodeType: t.nodeType,
         assigneeId: t.assigneeId,
-        status: t.nodeType === 'ccNode' ? 'skipped' as const : 'approved' as const,
-        actionAt: t.nodeType === 'ccNode' ? null : new Date(),
+        status: (t.nodeType as string) === 'ccNode' ? 'skipped' as const : 'approved' as const,
+        actionAt: (t.nodeType as string) === 'ccNode' ? null : new Date(),
       });
       continue;
     }
@@ -1214,7 +1214,7 @@ export async function approveTaskCore(
   };
 }
 
-export async function rejectTask(taskId: number, comment: string) {
+export async function rejectTask(taskId: number, comment: string): Promise<ApproveResult> {
   const user = currentUser();
   const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
   if (!task) throw new HTTPException(404, { message: '任务不存在或无权操作' });
@@ -1245,7 +1245,7 @@ export async function rejectTaskCore(
   inst: typeof workflowInstances.$inferSelect,
   comment: string,
   actor: WorkflowEventActor,
-) {
+): Promise<ApproveResult> {
   const taskId = task.id;
   // 比例会签：在阈值仍可达成时，仅标记当前任务 rejected，不触发整节点驳回
   if (task.approveMethod === 'ratio' && task.approveRatio) {
@@ -1262,7 +1262,7 @@ export async function rejectTaskCore(
         .returning();
       const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
       emitTaskEvent('task.rejected', mapTask(rejectedTask), { ...meta, comment });
-      return mapInstance(inst);
+      return { instance: mapInstance(inst), message: '已驳回' };
     }
   }
   // 读取节点驳回策略
@@ -1435,7 +1435,7 @@ export async function rejectTaskCore(
     }
   }
 
-  return mapInstance(updated.row);
+  return { instance: mapInstance(updated.row), message: '已驳回' };
 }
 
 // ─── 转办 / 委派 / 加签 / 退回 ─────────────────────────────────────────────────
