@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Spin } from '@douyinfe/semi-ui';
 import { Lock, CheckCircle } from 'lucide-react';
+import { config } from '@/config';
 import { request } from '@/utils/request';
 
 const { Title, Text } = Typography;
@@ -141,7 +142,7 @@ export default function ResetPasswordPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: '#fff', fontWeight: 700, fontSize: 18,
             }}>Z</div>
-            <span style={{ fontWeight: 700, fontSize: 16 }}>Zenith Admin</span>
+            <span style={{ fontWeight: 700, fontSize: 16 }}>{config.appTitle}</span>
           </div>
           <Title heading={3} style={{ marginBottom: 6 }}>重置密码</Title>
           <Text type="tertiary" style={{ fontSize: 13 }}>

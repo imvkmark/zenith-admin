@@ -260,7 +260,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
         <div className="login-brand">
           <div className="login-logo-wrap">
             <AppLogo size={40} variant="glass" />
-            <span className="login-brand-name">Zenith Admin</span>
+            <span className="login-brand-name">{config.appTitle}</span>
           </div>
           <div className="login-eyebrow">企业级后台管理</div>
           <h1 className="login-headline">
@@ -284,7 +284,7 @@ export default function LoginPage({ onLogin, onRegister }: Readonly<LoginPagePro
         <div className="login-form-wrapper">
           <div className="login-mobile-brand">
             <AppLogo size={40} />
-            <span className="login-brand-name">Zenith Admin</span>
+            <span className="login-brand-name">{config.appTitle}</span>
           </div>
           <div className="login-form-header">
             <Title heading={3} style={{ marginBottom: 6, fontWeight: 700 }}>
