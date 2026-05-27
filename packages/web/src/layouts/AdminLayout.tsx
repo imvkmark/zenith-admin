@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, ColorPicker, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
-import { Bell, Building2, Check, Inbox, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette } from 'lucide-react';
+import { Bell, Building2, Check, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -858,7 +858,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           <Dropdown.Menu>
             <Dropdown.Item icon={<UserIcon size={14} strokeWidth={1.5} />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
             <Dropdown.Item
-              icon={<Inbox size={14} strokeWidth={1.5} />}
+              icon={<Bell size={14} strokeWidth={1.5} />}
               onClick={() => navigate('/inbox')}
             >
               我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
