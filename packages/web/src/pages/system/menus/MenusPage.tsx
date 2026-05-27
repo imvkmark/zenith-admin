@@ -162,6 +162,11 @@ export default function MenusPage() {
       parentId: parentId ?? 0,
       icon: iconValue || undefined,
       visible: values.visible === undefined ? true : values.visible === 'show',
+      // 显式处理可选字段，避免 Semi UI 清空后字段被省略导致后端不更新
+      path: values.path === undefined ? '' : values.path,
+      component: values.component === undefined ? '' : values.component,
+      name: values.name === undefined ? '' : values.name,
+      permission: values.permission === undefined ? '' : values.permission,
     };
     const res = editingMenu
       ? await request.put(`/api/menus/${editingMenu.id}`, payload)
@@ -378,7 +383,12 @@ export default function MenusPage() {
             </Col>
             {(menuType === 'menu' || menuType === 'directory') && (
               <Col span={12}>
-                <Form.Input field="path" label="路由路径" placeholder="请输入路由路径" rules={[{ required: true, message: '请输入路由路径' }]} />
+                <Form.Input
+                  field="path"
+                  label="路由路径"
+                  placeholder="请输入路由路径"
+                  rules={menuType === 'menu' ? [{ required: true, message: '请输入路由路径' }] : undefined}
+                />
               </Col>
             )}
             {menuType === 'menu' && (
