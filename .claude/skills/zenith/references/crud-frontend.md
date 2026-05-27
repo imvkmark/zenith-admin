@@ -325,6 +325,7 @@ export default function XxxPage() {
           getFormApi={(api) => {
             formApi.current = api;
           }}
+          allowEmpty
           initValues={formInitValues}
           labelPosition="left"
           labelWidth={80}
