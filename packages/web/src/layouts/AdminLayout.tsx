@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Badge, Breadcrumb, Button, ColorPicker, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { Bell, Building2, Check, Inbox, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, User as UserIcon, Settings, LogOut, X, Palette } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
-import type { User, Menu, InAppMessage, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
+import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, type NavLayout } from '@/hooks/usePreferences';
 import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
@@ -18,6 +18,7 @@ import NProgress from '@/components/NProgress';
 import Watermark from '@/components/Watermark';
 import QuickChatButton from '@/components/QuickChatButton';
 import AppLogo from '@/components/AppLogo';
+import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import './AdminLayout.css';
 
 // 主题图标
@@ -53,6 +54,8 @@ const markAllMessagesRead = (prev: InAppMessage[]) =>
   prev.map((m) => (m.isRead ? m : { ...m, isRead: true }));
 const removeMessageById = (id: number) => (prev: InAppMessage[]) =>
   prev.filter((m) => m.id !== id);
+const markAnnouncementRead = (id: number) => (prev: (Announcement & { isRead: boolean })[]) =>
+  prev.map((a) => (a.id === id ? { ...a, isRead: true } : a));
 
 type NavItem = {
   itemKey: string;
@@ -282,6 +285,9 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [inAppMessages, setInAppMessages] = useState<InAppMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
+  const [announcementPopVisible, setAnnouncementPopVisible] = useState(false);
+  const [recentAnnouncements, setRecentAnnouncements] = useState<(Announcement & { isRead: boolean })[]>([]);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [messagePopVisible, setMessagePopVisible] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<InAppMessage | null>(null);
   const recentInAppMessageRef = useRef(new Map<string, number>());
@@ -292,14 +298,28 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     });
   }, []);
 
+  const fetchRecentAnnouncements = useCallback(() => {
+    request.get<(Announcement & { isRead: boolean })[]>('/api/announcements/published', { silent: true }).then((res) => {
+      if (res.code === 0 && res.data) setRecentAnnouncements(res.data);
+    });
+  }, []);
+
   useEffect(() => { fetchAnnouncementUnreadCount(); }, [fetchAnnouncementUnreadCount]);
 
   // 监听 announcement 事件同步公告未读数
   useEffect(() => {
-    const handler = () => fetchAnnouncementUnreadCount();
+    const handler = () => { fetchAnnouncementUnreadCount(); fetchRecentAnnouncements(); };
     globalThis.addEventListener('announcement:refresh', handler);
     return () => globalThis.removeEventListener('announcement:refresh', handler);
-  }, [fetchAnnouncementUnreadCount]);
+  }, [fetchAnnouncementUnreadCount, fetchRecentAnnouncements]);
+
+  const markAnnouncementAsRead = (id: number) => {
+    request.post(`/api/announcements/${id}/read`, undefined, { silent: true }).then((res) => {
+      if (res.code !== 0) return;
+      setRecentAnnouncements(markAnnouncementRead(id));
+      setAnnouncementUnreadCount((c) => Math.max(0, c - 1));
+    });
+  };
 
   const fetchInAppMessages = useCallback(() => {
     request.get<{ list: InAppMessage[]; total: number }>('/api/in-app-messages?page=1&pageSize=10', { silent: true }).then((res) => {
@@ -670,20 +690,73 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           <div style={{ width: 1, height: 16, backgroundColor: 'var(--color-border)', margin: '0 4px' }} />
         </>
       )}
-      <Tooltip content="公告中心" position="bottom">
+      <Popover
+        visible={announcementPopVisible}
+        onVisibleChange={(v) => { setAnnouncementPopVisible(v); if (v) fetchRecentAnnouncements(); }}
+        position="bottomRight"
+        trigger="hover"
+        mouseEnterDelay={200}
+        mouseLeaveDelay={300}
+        showArrow
+        content={
+          <div style={{ width: 360, maxHeight: 440, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px 8px', fontWeight: 600, fontSize: 14, borderBottom: '1px solid var(--semi-color-border)' }}>
+              最新公告
+            </div>
+            {recentAnnouncements.length === 0 ? (
+              <Empty description="暂无公告" style={{ padding: '24px 0' }} />
+            ) : (
+              <List
+                style={{ overflow: 'auto', maxHeight: 340 }}
+                dataSource={recentAnnouncements}
+                renderItem={(item) => (
+                  <List.Item
+                    key={item.id}
+                    style={{ padding: '10px 16px', cursor: 'pointer', opacity: item.isRead ? 0.55 : 1 }}
+                    onClick={() => {
+                      if (!item.isRead) markAnnouncementAsRead(item.id);
+                      setAnnouncementPopVisible(false);
+                      setSelectedAnnouncement(item);
+                    }}
+                    header={null}
+                    main={
+                      <div>
+                        <Typography.Text strong style={{ fontSize: 13 }}>{item.title}</Typography.Text>
+                        <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', margin: '3px 0 4px', maxHeight: 40, overflow: 'hidden', lineHeight: 1.5 }}>
+                          {item.content.replace(/<[^>]*>/g, '')}
+                        </div>
+                        <Typography.Text style={{ fontSize: 11, color: 'var(--semi-color-text-3)' }}>
+                          {formatDateTime(item.publishTime ?? item.createdAt)}
+                        </Typography.Text>
+                      </div>
+                    }
+                  />
+                )}
+              />
+            )}
+            <div style={{ padding: '8px 16px', borderTop: '1px solid var(--semi-color-border)', textAlign: 'center' }}>
+              <Button theme="borderless" type="primary" size="small" onClick={() => { setAnnouncementPopVisible(false); navigate('/announcements'); }}>
+                查看全部
+              </Button>
+            </div>
+          </div>
+        }
+      >
         <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
           <Badge dot={announcementUnreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
-            <button className="admin-theme-btn" title="公告中心" onClick={() => navigate('/announcements')}>
+            <button className="admin-theme-btn" title="公告中心">
               <Megaphone size={16} strokeWidth={1.5} />
             </button>
           </Badge>
         </div>
-      </Tooltip>
+      </Popover>
       <Popover
         visible={messagePopVisible}
-        onVisibleChange={setMessagePopVisible}
+        onVisibleChange={(v) => { setMessagePopVisible(v); if (v) fetchInAppMessages(); }}
         position="bottomRight"
-        trigger="click"
+        trigger="hover"
+        mouseEnterDelay={200}
+        mouseLeaveDelay={300}
         showArrow
         content={
           <div style={{ width: 360, maxHeight: 440, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -745,15 +818,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </div>
         }
       >
-        <Tooltip content="我的消息" position="bottom">
-          <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
-            <Badge dot={unreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
-              <button className="admin-theme-btn" title="我的消息">
-                <Bell size={16} strokeWidth={1.5} />
-              </button>
-            </Badge>
-          </div>
-        </Tooltip>
+        <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
+          <Badge dot={unreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
+            <button className="admin-theme-btn" title="我的消息">
+              <Bell size={16} strokeWidth={1.5} />
+            </button>
+          </Badge>
+        </div>
       </Popover>
       <Tooltip content={<span>颜色模式：{themeLabelMap[mode].label}</span>} position="bottom">
         <Dropdown
@@ -1347,6 +1418,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           </div>
         )}
       </Modal>
+
+      {/* ===== 公告详情 Modal ===== */}
+      <AnnouncementDetailModal
+        announcement={selectedAnnouncement}
+        visible={selectedAnnouncement !== null}
+        onClose={() => setSelectedAnnouncement(null)}
+      />
     </div>
   );
 
