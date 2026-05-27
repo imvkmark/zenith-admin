@@ -54,6 +54,12 @@ export const announcementsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: { list: paged, total, page, pageSize } });
   }),
 
+  // 未读公告数（Demo 模式：返回已发布公告总数，不持久化已读状态）
+  http.get('/api/announcements/unread-count', () => {
+    const count = mockAnnouncements.filter((n) => n.publishStatus === 'published').length;
+    return HttpResponse.json({ code: 0, message: 'ok', data: { count } });
+  }),
+
   // 全部标记为已读（Demo 模式不持久化，直接返回成功）
   http.post('/api/announcements/read-all', () => {
     return HttpResponse.json({ code: 0, message: 'ok', data: null });

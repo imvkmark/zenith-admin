@@ -6,11 +6,12 @@ import {
   ErrorResponse, PaginationQuery, BatchIdsBody, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody,
 } from '../lib/openapi-schemas';
-import { AnnouncementDTO, AnnouncementReadStatsDTO } from '../lib/openapi-dtos';
+import { AnnouncementDTO, AnnouncementReadStatsDTO, AnnouncementUnreadCountDTO } from '../lib/openapi-dtos';
 import {
   listPublishedForUser, markAnnouncementRead, markAllAnnouncementsRead, getInbox, listAnnouncements,
   exportAnnouncements, batchDeleteAnnouncements, getAnnouncementReadStats, getAnnouncementDetail,
   createAnnouncement, updateAnnouncement, deleteAnnouncement, getAnnouncementBeforeAudit, getAnnouncementsBeforeAudit,
+  getUnreadAnnouncementCount,
 } from '../services/announcements.service';
 
 const announcementsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -40,6 +41,16 @@ const publishedRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(z.array(AnnouncementDTO), 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listPublishedForUser()), 200),
+});
+
+const unreadCountRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/unread-count', tags: ['Announcements'], summary: '未读公告数',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(AnnouncementUnreadCountDTO, '未读公告数') },
+  }),
+  handler: async (c) => c.json(okBody({ count: await getUnreadAnnouncementCount() }), 200),
 });
 
 const readRoute = defineOpenAPIRoute({
@@ -215,7 +226,7 @@ const deleteRouteDef = defineOpenAPIRoute({
 });
 
 announcementsRouter.openapiRoutes([
-  publishedRoute, readRoute, readAllRoute, inboxRoute, listRoute, exportRouteDef,
+  publishedRoute, unreadCountRoute, readRoute, readAllRoute, inboxRoute, listRoute, exportRouteDef,
   batchDeleteRoute, readStatsRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef,
 ] as const);
 

@@ -129,6 +129,20 @@ export async function markAllAnnouncementsRead() {
   setImmediate(() => sendToUser(userId, { type: 'announcement:read-all', payload: {} }));
 }
 
+export async function getUnreadAnnouncementCount(): Promise<number> {
+  const user = currentUser();
+  const tc = tenantCondition(announcements, user);
+  const accessFilter = buildAccessFilter(user.userId);
+  const baseWhere = and(eq(announcements.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
+  const joinCond = and(eq(announcementReads.announcementId, announcements.id), eq(announcementReads.userId, user.userId));
+  const [row] = await db
+    .select({ count: count() })
+    .from(announcements)
+    .leftJoin(announcementReads, joinCond)
+    .where(and(baseWhere, isNull(announcementReads.id)));
+  return Number(row?.count ?? 0);
+}
+
 export async function getInbox(q: { page?: number; pageSize?: number; isRead?: string }) {
   const user = currentUser();
   const { page = 1, pageSize = 10, isRead } = q;

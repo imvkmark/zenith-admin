@@ -41,3 +41,7 @@ export const AnnouncementReadStatsDTO = z
     pageSize: z.number().int(),
   })
   .openapi('AnnouncementReadStats');
+
+export const AnnouncementUnreadCountDTO = z
+  .object({ count: z.number().int() })
+  .openapi('AnnouncementUnreadCount');

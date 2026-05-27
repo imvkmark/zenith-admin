@@ -281,9 +281,25 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   // ─── 公告 ──────────────────────────────────────────────────────────────────
   const [inAppMessages, setInAppMessages] = useState<InAppMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [announcementUnreadCount, setAnnouncementUnreadCount] = useState(0);
   const [messagePopVisible, setMessagePopVisible] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<InAppMessage | null>(null);
   const recentInAppMessageRef = useRef(new Map<string, number>());
+
+  const fetchAnnouncementUnreadCount = useCallback(() => {
+    request.get<{ count: number }>('/api/announcements/unread-count', { silent: true }).then((res) => {
+      if (res.code === 0 && res.data) setAnnouncementUnreadCount(res.data.count ?? 0);
+    });
+  }, []);
+
+  useEffect(() => { fetchAnnouncementUnreadCount(); }, [fetchAnnouncementUnreadCount]);
+
+  // 监听 announcement 事件同步公告未读数
+  useEffect(() => {
+    const handler = () => fetchAnnouncementUnreadCount();
+    globalThis.addEventListener('announcement:refresh', handler);
+    return () => globalThis.removeEventListener('announcement:refresh', handler);
+  }, [fetchAnnouncementUnreadCount]);
 
   const fetchInAppMessages = useCallback(() => {
     request.get<{ list: InAppMessage[]; total: number }>('/api/in-app-messages?page=1&pageSize=10', { silent: true }).then((res) => {
@@ -655,9 +671,13 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         </>
       )}
       <Tooltip content="公告中心" position="bottom">
-        <button className="admin-theme-btn" title="公告中心" onClick={() => navigate('/announcements')}>
-          <Megaphone size={16} strokeWidth={1.5} />
-        </button>
+        <div style={{ display: 'inline-flex', cursor: 'pointer' }}>
+          <Badge dot={announcementUnreadCount > 0} className="admin-notify-badge" style={{ zIndex: 1 }}>
+            <button className="admin-theme-btn" title="公告中心" onClick={() => navigate('/announcements')}>
+              <Megaphone size={16} strokeWidth={1.5} />
+            </button>
+          </Badge>
+        </div>
       </Tooltip>
       <Popover
         visible={messagePopVisible}
@@ -772,7 +792,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             >
               我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
             </Dropdown.Item>
-            <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={() => navigate('/announcements')}>公告中心</Dropdown.Item>
+            <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={() => navigate('/announcements')}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}</Dropdown.Item>
             <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
             <Dropdown.Divider />
             <Dropdown.Item
