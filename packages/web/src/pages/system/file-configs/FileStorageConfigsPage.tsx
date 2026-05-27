@@ -34,9 +34,8 @@ const { Text } = Typography;
 
 type FileStorageConfigFormValues = UpdateFileStorageConfigInput;
 
-function normalizeOptional(value?: string) {
-  const next = value?.trim();
-  return next || undefined;
+function normalizeOptional(value?: string): string {
+  return value?.trim() ?? '';
 }
 
 function buildPayload(provider: FileStorageProvider, isDefault: boolean, values: FileStorageConfigFormValues): CreateFileStorageConfigInput {
@@ -191,7 +190,7 @@ export default function FileStorageConfigsPage() {
       throw new Error('validation');
     }
     if (!values) throw new Error('validation');
-    const payload = buildPayload(formProvider, formIsDefault, values as FileStorageConfigFormValues);
+    const payload = buildPayload(formProvider, formIsDefault, values);
     const res = editingConfig
       ? await request.put<FileStorageConfig>(`/api/file-storage-configs/${editingConfig.id}`, payload)
       : await request.post<FileStorageConfig>('/api/file-storage-configs', payload);
