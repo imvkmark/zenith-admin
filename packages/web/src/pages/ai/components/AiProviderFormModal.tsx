@@ -185,6 +185,8 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
 
   const isUser = props.mode === 'user';
   const editTarget = isUser ? undefined : props.editTarget;
+  const existingUserConfig = isUser ? (props as { mode: 'user'; userConfig?: import('@zenith/shared').UserAiConfig | null }).userConfig : null;
+  const isEditing = isUser ? !!existingUserConfig : !!editTarget;
   let title = '新增服务商';
   if (isUser) title = '我的 AI 配置';
   else if (editTarget) title = '编辑服务商';
@@ -232,11 +234,9 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
       onCancel={onClose}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          {!isUser && (
-            <Button loading={testLoading} disabled={detailLoading} onClick={() => void handleTestConnection()}>
+          <Button loading={testLoading} disabled={detailLoading} onClick={() => void handleTestConnection()}>
               测试连接
             </Button>
-          )}
           <Button disabled={submitLoading || testLoading} onClick={onClose}>取消</Button>
           <Button type="primary" loading={submitLoading} disabled={detailLoading || testLoading} onClick={() => void handleOk()}>确定</Button>
         </div>
@@ -264,8 +264,8 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               <Form.Input
                 field="name"
                 label="名称"
-                rules={isUser ? undefined : [{ required: true, message: '请输入名称' }]}
-                placeholder={isUser ? '可选' : ''}
+                rules={[{ required: true, message: '请输入名称' }]}
+                placeholder=""
               />
             </Col>
             <Col span={12}>
@@ -283,7 +283,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               <Form.Input
                 field="baseUrl"
                 label="API 地址"
-                rules={isUser ? undefined : [{ required: true, message: '请输入 API 地址' }]}
+                rules={[{ required: true, message: '请输入 API 地址' }]}
                 placeholder="https://api.openai.com/v1"
               />
             </Col>
@@ -291,9 +291,9 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               <Form.Input
                 field="apiKey"
                 label="API Key"
-                rules={isUser || editTarget ? undefined : [{ required: true, message: '请输入 API Key' }]}
+                rules={isEditing ? undefined : [{ required: true, message: '请输入 API Key' }]}
                 mode="password"
-                placeholder={editTarget ?? isUser ? '留空保留原值' : ''}
+                placeholder={isEditing ? '留空保留原值' : ''}
               />
             </Col>
           </Row>
@@ -303,7 +303,7 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               <Form.Input
                 field="model"
                 label="模型"
-                rules={isUser ? undefined : [{ required: true, message: '请输入模型名称' }]}
+                rules={[{ required: true, message: '请输入模型名称' }]}
                 placeholder="gpt-4o"
               />
             </Col>
