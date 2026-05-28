@@ -138,6 +138,13 @@ export function mapXxx(row: XxxRow) {
   };
 }
 
+// ─── 获取单个实体（用于详情页/编辑弹窗实时获取） ──────────────────────────
+export async function getXxx(id: number) {
+  const [row] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
+  if (!row) throw new HTTPException(404, { message: 'XXX 不存在' });
+  return mapXxx(row);
+}
+
 // ─── 前置校验（抛 HTTPException，由全局 onError 转为标准 JSON 错误响应） ────
 export async function ensureXxxExists(id: number) {
   const [row] = await db.select().from(xxxs).where(eq(xxxs.id, id)).limit(1);
@@ -193,7 +200,7 @@ import {
 // 实体 DTO 必须从中心仓库导入（严禁路由内本地声明 .openapi('EntityName')）
 import { XxxDTO } from '../lib/openapi-dtos';
 // 业务逻辑统一从 service 导入
-import { listXxx, createXxx, updateXxx, deleteXxx, ensureXxxExists } from '../services/xxx.service';
+import { listXxx, getXxx, createXxx, updateXxx, deleteXxx, ensureXxxExists } from '../services/xxx.service';
 // 可直接从 @zenith/shared 导入（使用 Zod v4）
 // import { createXxxSchema, updateXxxSchema } from '@zenith/shared';
 
@@ -207,6 +214,27 @@ const createXxxSchema = z.object({
   status: z.enum(['enabled', 'disabled']).default('enabled'),
 });
 const updateXxxSchema = createXxxSchema.partial();
+
+// ─── GET /{id} — 详情 ────────────────────────────────────────────────────
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}',
+    tags: ['XXX管理'], summary: '获取 XXX 详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:xxx:list' })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(XxxDTO, 'XXX 详情'),
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const row = await getXxx(id);
+    return c.json(okBody(row), 200);
+  },
+});
 
 // ─── GET / — 分页列表 ────────────────────────────────────────────────────
 const listRoute = defineOpenAPIRoute({
@@ -302,7 +330,7 @@ const deleteRoute_ = defineOpenAPIRoute({
 });
 
 // 统一注册所有路由（必须在 export 之前）
-xxxRouter.openapiRoutes([listRoute, createRoute_, updateRoute_, deleteRoute_] as const);
+xxxRouter.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_] as const);
 
 export default xxxRouter;
 ```

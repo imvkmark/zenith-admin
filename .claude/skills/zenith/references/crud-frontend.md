@@ -17,7 +17,7 @@ packages/web/src/pages/xxx/XxxPage.tsx
 ```tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Button, Form, Input, Select, Space,
+  Button, Form, Input, Select, Space, Spin,
   Modal, Toast, Popconfirm,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -62,6 +62,7 @@ export default function XxxPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingXxx, setEditingXxx] = useState<Xxx | null>(null);  // null=新增，有值=编辑
   const [submitting, setSubmitting] = useState(false);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   // 字典数据（使用 useDictItems 加载）
   const { items: statusItems } = useDictItems('common_status');
@@ -132,14 +133,23 @@ export default function XxxPage() {
     setModalVisible(true);
   }
 
-  function openEdit(record: Xxx) {
+  async function openEdit(record: Xxx) {
     setEditingXxx(record);
     setModalVisible(true);
+    setModalDetailLoading(true);
+    const res = await request.get<Xxx>(`/api/xxxs/${record.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setEditingXxx(res.data);
+    } else {
+      Toast.error(res.message || '获取信息失败');
+    }
   }
 
   function closeModal() {
     setModalVisible(false);
     setEditingXxx(null);
+    setModalDetailLoading(false);
   }
 
   // Form 初始值（编辑时回填，新增时清空）
@@ -316,42 +326,44 @@ export default function XxxPage() {
         visible={modalVisible}
         onOk={handleModalOk}
         onCancel={closeModal}
-        okButtonProps={{ loading: submitting }}
+        okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
         width={520}
         maskClosable={false}
       >
-        <Form
-          key={editingXxx?.id ?? 'new'}  // key 变化时强制重置 Form 内部状态
-          getFormApi={(api) => {
-            formApi.current = api;
-          }}
-          allowEmpty
-          initValues={formInitValues}
-          labelPosition="left"
-          labelWidth={80}
-        >
-          <Form.Input
-            field="name"
-            label="名称"
-            placeholder="请输入名称"
-            rules={[{ required: true, message: '名称不能为空' }]}
-          />
-          <Form.TextArea
-            field="description"
-            label="描述"
-            placeholder="请输入描述（可选）"
-          />
-          <Form.Select
-            field="status"
-            label="状态"
-            optionList={statusItems.map((i) => ({
-              value: i.value,
-              label: i.label,
-            }))}
-            rules={[{ required: true, message: '请选择状态' }]}
-          />
-          {/* 如需关联选择，在此添加 Form.Select 多选等 */}
-        </Form>
+        <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
+          <Form
+            key={editingXxx?.id ?? 'new'}  // key 变化时强制重置 Form 内部状态
+            getFormApi={(api) => {
+              formApi.current = api;
+            }}
+            allowEmpty
+            initValues={formInitValues}
+            labelPosition="left"
+            labelWidth={80}
+          >
+            <Form.Input
+              field="name"
+              label="名称"
+              placeholder="请输入名称"
+              rules={[{ required: true, message: '名称不能为空' }]}
+            />
+            <Form.TextArea
+              field="description"
+              label="描述"
+              placeholder="请输入描述（可选）"
+            />
+            <Form.Select
+              field="status"
+              label="状态"
+              optionList={statusItems.map((i) => ({
+                value: i.value,
+                label: i.label,
+              }))}
+              rules={[{ required: true, message: '请选择状态' }]}
+            />
+            {/* 如需关联选择，在此添加 Form.Select 多选等 */}
+          </Form>
+        </Spin>
       </Modal>
     </div>
   );
