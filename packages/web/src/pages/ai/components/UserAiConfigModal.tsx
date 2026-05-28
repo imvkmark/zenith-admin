@@ -127,7 +127,7 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
                     placeholder="如 gpt-4o、qwen-plus"
                     rules={[
                       {
-                        required: formState.values.isEnabled,
+                        required: formState.values?.isEnabled,
                         message: '启用配置时模型名称必填',
                       },
                     ]}
@@ -142,7 +142,7 @@ export default function UserAiConfigModal({ visible, onClose, onSaved }: UserAiC
                     placeholder="如 https://api.openai.com/v1"
                     rules={[
                       {
-                        required: formState.values.isEnabled,
+                        required: formState.values?.isEnabled,
                         message: '启用配置时 API 地址必填',
                       },
                     ]}

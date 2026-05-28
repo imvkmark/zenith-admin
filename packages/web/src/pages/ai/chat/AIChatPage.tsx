@@ -165,7 +165,7 @@ export default function AIChatPage() {
     const options = [...userOption, ...sysOptions];
     setModelOptions(options);
     if (options.length > 0) {
-      setConfigureValues((prev) => ({ ...prev, model: options[0].value }));
+      setConfigureValues({ ...configureValuesRef.current, model: options[0].value });
     }
   }, [setConfigureValues]);
 

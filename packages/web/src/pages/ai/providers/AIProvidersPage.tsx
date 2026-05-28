@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Col, Form, Input, Modal, Popconfirm, Row, Space, Switch, Tag, Toast } from '@douyinfe/semi-ui';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Button, Col, Form, Input, Modal, Popconfirm, Row, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -44,7 +44,8 @@ export default function AIProvidersPage() {
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [form, setForm] = useState<FormValues>({
+  const [formKey, setFormKey] = useState(0);
+  const [formInitValues, setFormInitValues] = useState<FormValues>({
     name: '',
     provider: 'openai_compatible',
     baseUrl: '',
@@ -56,6 +57,7 @@ export default function AIProvidersPage() {
     isDefault: false,
     isEnabled: true,
   });
+  const formApiRef = useRef<{ getValues: () => FormValues } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -73,7 +75,7 @@ export default function AIProvidersPage() {
 
   const openCreate = () => {
     setEditTarget(null);
-    setForm({
+    setFormInitValues({
       name: '',
       provider: 'openai_compatible',
       baseUrl: '',
@@ -85,12 +87,13 @@ export default function AIProvidersPage() {
       isDefault: false,
       isEnabled: true,
     });
+    setFormKey((k) => k + 1);
     setModalVisible(true);
   };
 
   const openEdit = (record: AiProviderConfig) => {
     setEditTarget(record);
-    setForm({
+    setFormInitValues({
       name: record.name,
       provider: record.provider,
       baseUrl: record.baseUrl,
@@ -102,17 +105,20 @@ export default function AIProvidersPage() {
       isDefault: record.isDefault,
       isEnabled: record.isEnabled,
     });
+    setFormKey((k) => k + 1);
     setModalVisible(true);
   };
 
   const handleSubmit = async () => {
     setSubmitLoading(true);
     try {
+      const values = formApiRef.current?.getValues();
+      if (!values) return;
       if (editTarget) {
-        await request.put(`/api/ai/providers/${editTarget.id}`, form);
+        await request.put(`/api/ai/providers/${editTarget.id}`, values);
         Toast.success('修改成功');
       } else {
-        await request.post('/api/ai/providers', form);
+        await request.post('/api/ai/providers', values);
         Toast.success('创建成功');
       }
       setModalVisible(false);
@@ -254,23 +260,25 @@ export default function AIProvidersPage() {
         okButtonProps={{ loading: submitLoading }}
         width={720}
       >
-        <Form labelPosition="left" labelWidth={90}>
+        <Form
+          key={formKey}
+          labelPosition="left"
+          labelWidth={90}
+          initValues={formInitValues}
+          getFormApi={(api) => { formApiRef.current = api; }}
+        >
           <Row gutter={16}>
             <Col span={12}>
               <Form.Input
                 field="name"
                 label="名称"
                 rules={[{ required: true, message: '请输入名称' }]}
-                value={form.name}
-                onChange={(v) => setForm((f) => ({ ...f, name: String(v ?? '') }))}
               />
             </Col>
             <Col span={12}>
               <Form.Select
                 field="provider"
                 label="供应商类型"
-                value={form.provider}
-                onChange={(v) => setForm((f) => ({ ...f, provider: v as AiProvider }))}
                 optionList={PROVIDER_OPTIONS}
                 style={{ width: '100%' }}
               />
@@ -282,8 +290,6 @@ export default function AIProvidersPage() {
                 field="baseUrl"
                 label="API 地址"
                 rules={[{ required: true, message: '请输入 API 地址' }]}
-                value={form.baseUrl}
-                onChange={(v) => setForm((f) => ({ ...f, baseUrl: String(v ?? '') }))}
                 placeholder="https://api.openai.com/v1"
               />
             </Col>
@@ -292,8 +298,6 @@ export default function AIProvidersPage() {
                 field="apiKey"
                 label="API Key"
                 rules={[{ required: !editTarget, message: '请输入 API Key' }]}
-                value={form.apiKey}
-                onChange={(v) => setForm((f) => ({ ...f, apiKey: String(v ?? '') }))}
                 mode="password"
                 placeholder={editTarget ? '留空保留原值' : ''}
               />
@@ -305,8 +309,6 @@ export default function AIProvidersPage() {
                 field="model"
                 label="模型"
                 rules={[{ required: true, message: '请输入模型名称' }]}
-                value={form.model}
-                onChange={(v) => setForm((f) => ({ ...f, model: String(v ?? '') }))}
                 placeholder="gpt-4o"
               />
             </Col>
@@ -314,8 +316,6 @@ export default function AIProvidersPage() {
               <Form.Input
                 field="temperature"
                 label="温度"
-                value={form.temperature}
-                onChange={(v) => setForm((f) => ({ ...f, temperature: String(v ?? '0.7') }))}
                 placeholder="0.7"
               />
             </Col>
@@ -325,8 +325,6 @@ export default function AIProvidersPage() {
               <Form.InputNumber
                 field="maxTokens"
                 label="最大 Token"
-                value={form.maxTokens}
-                onChange={(v) => setForm((f) => ({ ...f, maxTokens: Number(v ?? 4096) }))}
                 min={1}
                 max={128000}
               />
@@ -334,20 +332,10 @@ export default function AIProvidersPage() {
             <Col span={12}>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Form.Slot label="默认">
-                    <Switch
-                      checked={form.isDefault}
-                      onChange={(v) => setForm((f) => ({ ...f, isDefault: Boolean(v) }))}
-                    />
-                  </Form.Slot>
+                  <Form.Switch field="isDefault" label="默认" />
                 </Col>
                 <Col span={12}>
-                  <Form.Slot label="启用">
-                    <Switch
-                      checked={form.isEnabled}
-                      onChange={(v) => setForm((f) => ({ ...f, isEnabled: Boolean(v) }))}
-                    />
-                  </Form.Slot>
+                  <Form.Switch field="isEnabled" label="启用" />
                 </Col>
               </Row>
             </Col>
@@ -355,8 +343,6 @@ export default function AIProvidersPage() {
           <Form.TextArea
             field="systemPrompt"
             label="系统提示词"
-            value={form.systemPrompt ?? ''}
-            onChange={(v) => setForm((f) => ({ ...f, systemPrompt: v ? String(v) : null }))}
             rows={3}
             placeholder="可选，为空则使用默认提示词"
           />
