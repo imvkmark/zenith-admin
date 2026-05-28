@@ -58,41 +58,30 @@ async function seed() {
 
 async function seedRest() {
   // ─── 2. 菜单数据（数据来源：@zenith/shared SEED_MENUS）─────────────────────
-  const menuRows = SEED_MENUS.map((row) => ({
-    id: row.id,
-    parentId: row.parentId,
-    title: row.title,
-    name: row.name ?? null,
-    path: row.path ?? null,
-    component: row.component ?? null,
-    icon: row.icon ?? null,
-    type: row.type,
-    permission: row.permission ?? null,
-    sort: row.sort,
-    status: row.status,
-    visible: row.visible,
-  }));
-  if (menuRows.length > 0) {
-    await db.insert(menus).values(menuRows).onConflictDoUpdate({
-      target: menus.id,
-      set: {
-        parentId:   sql`excluded.parent_id`,
-        title:      sql`excluded.title`,
-        name:       sql`excluded.name`,
-        path:       sql`excluded.path`,
-        component:  sql`excluded.component`,
-        icon:       sql`excluded.icon`,
-        type:       sql`excluded.type`,
-        permission: sql`excluded.permission`,
-        sort:       sql`excluded.sort`,
-        status:     sql`excluded.status`,
-        visible:    sql`excluded.visible`,
-        updatedAt:  new Date(),
-      },
-    });
+  // 只在数据库为空时插入种子菜单，避免覆盖用户通过 UI 修改的数据
+  const existingMenus = await db.select({ id: menus.id }).from(menus).limit(1);
+  if (existingMenus.length === 0) {
+    const menuRows = SEED_MENUS.map((row) => ({
+      id: row.id,
+      parentId: row.parentId,
+      title: row.title,
+      name: row.name ?? null,
+      path: row.path ?? null,
+      component: row.component ?? null,
+      icon: row.icon ?? null,
+      type: row.type,
+      permission: row.permission ?? null,
+      sort: row.sort,
+      status: row.status,
+      visible: row.visible,
+    }));
+    if (menuRows.length > 0) {
+      await db.insert(menus).values(menuRows).onConflictDoNothing({ target: menus.id });
+    }
+    logger.info('  ✔ Menus seeded (first-time init)');
+  } else {
+    logger.info('  ✔ Menus skipped (already exist)');
   }
-  await db.execute(sql`SELECT setval('menus_id_seq', GREATEST((SELECT MAX(id) FROM menus), 1))`);
-  logger.info('  ✔ Menus upserted');
 
   // ─── 3. 角色数据（数据来源：@zenith/shared SEED_ROLES）────────────────────
   const roleRows = SEED_ROLES.map(({ id, name, code, description, status, dataScope }) => ({ id, name, code, description, status, dataScope }));
