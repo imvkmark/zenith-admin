@@ -161,6 +161,10 @@ export const usersHandlers = [
   }),
 
   // 批量导入用户
+  http.post('/api/users/:id/unlock', () => {
+    return HttpResponse.json({ code: 0, message: 'success', data: null });
+  }),
+
   http.post('/api/users/import', () => {
     return HttpResponse.json({
       code: 0,

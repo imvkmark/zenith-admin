@@ -182,6 +182,22 @@ export async function clearLoginAttempts(username: string): Promise<void> {
   await redis.del(`${LOGIN_ATTEMPT_PREFIX}${username}`);
 }
 
+/** 批量检查多个账号的锁定剩余秒数（0 表示未锁定），使用 pipeline 减少 RTT */
+export async function batchCheckLoginLock(usernames: string[]): Promise<Map<string, number>> {
+  if (usernames.length === 0) return new Map();
+  const pipeline = redis.pipeline();
+  for (const username of usernames) {
+    pipeline.ttl(`${LOGIN_LOCK_PREFIX}${username}`);
+  }
+  const results = await pipeline.exec();
+  const map = new Map<string, number>();
+  usernames.forEach((username, i) => {
+    const [err, ttl] = results?.[i] ?? [null, -2];
+    map.set(username, err ? 0 : Math.max(Number(ttl), 0));
+  });
+  return map;
+}
+
 /** 管理员手动解除账号锁定 */
 export async function unlockUser(username: string): Promise<void> {
   await Promise.all([

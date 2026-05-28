@@ -24,6 +24,7 @@ export const UserDTO = z
     status: z.enum(['enabled', 'disabled']).openapi({ example: 'enabled' }),
     passwordUpdatedAt: z.string().optional(),
     requirePasswordChange: z.boolean().optional(),
+    isLocked: z.boolean().optional().openapi({ description: '账号是否被锁定（登录失败次数过多）' }),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),

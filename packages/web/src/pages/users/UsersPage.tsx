@@ -355,6 +355,7 @@ export default function UsersPage() {
     const res = await request.post(`/api/users/${id}/unlock`, {});
     if (res.code === 0) {
       Toast.success('解锁成功');
+      void fetchUsers();
     }
   };
 
@@ -397,6 +398,9 @@ export default function UsersPage() {
           <span className="table-cell-ellipsis" title={`${record.nickname}（${record.username}）`}>
             {record.nickname}（{record.username}）
           </span>
+          {record.isLocked && (
+            <Tag size="small" color="red" style={{ flexShrink: 0 }}>已锁定</Tag>
+          )}
         </div>
       ),
     },
@@ -492,7 +496,9 @@ export default function UsersPage() {
                     setPasswordUser(record);
                     setPasswordModalVisible(true);
                   }}>修改密码</Dropdown.Item>
-                  <Dropdown.Item onClick={() => handleUnlock(record.id)}>解锁</Dropdown.Item>
+                  {record.isLocked && (
+                    <Dropdown.Item onClick={() => handleUnlock(record.id)}>解锁</Dropdown.Item>
+                  )}
                 </Dropdown.Menu>
               }
             >

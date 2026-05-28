@@ -33,6 +33,7 @@ export interface User {
   status: EntityStatus;
   passwordUpdatedAt: string;
   requirePasswordChange?: boolean;
+  isLocked?: boolean;
   createdAt: string;
   updatedAt: string;
 }
