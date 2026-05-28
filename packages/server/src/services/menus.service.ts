@@ -48,7 +48,11 @@ export function buildMenuTree(list: Omit<Menu, 'children'>[]): Menu[] {
     }
   });
   const sortNodes = (nodes: Menu[]) => {
-    nodes.sort((a, b) => a.sort - b.sort);
+    nodes.sort((a, b) => {
+      // visible=true 的优先排在前面
+      if (a.visible !== b.visible) return a.visible ? -1 : 1;
+      return a.sort - b.sort;
+    });
     nodes.forEach((n) => n.children && sortNodes(n.children));
   };
   sortNodes(roots);
