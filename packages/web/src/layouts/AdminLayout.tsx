@@ -144,7 +144,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [watermarkConfig, setWatermarkConfig] = useState({ enabled: false, content: '', fontSize: 14, opacity: 0.15 });
 
   useEffect(() => {
-    request.get<{ list: SystemConfig[]; total: number }>('/api/system-configs?keyword=watermark_&pageSize=10', { silent: true })
+    request.get<{ list: SystemConfig[]; total: number }>('/api/system-configs?keys=watermark_enabled,watermark_content,watermark_font_size,watermark_opacity', { silent: true })
       .then((res) => {
         if (res.code === 0 && res.data?.list) {
           const list = res.data.list;

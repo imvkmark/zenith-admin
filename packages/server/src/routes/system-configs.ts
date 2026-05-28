@@ -48,7 +48,7 @@ const listRoute = defineOpenAPIRoute({
     method: 'get', path: '/', tags: ['SystemConfigs'], summary: '配置分页列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), configType: z.enum(configTypeValues).optional() }) },
+    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), configType: z.enum(configTypeValues).optional(), keys: z.string().optional().openapi({ description: '按 configKey 精确批量查询，逗号分隔，传此参数时忽略分页' }) }) },
     responses: { ...commonErrorResponses, ...okPaginated(SystemConfigDTO, '配置列表') },
   }),
   handler: async (c) => c.json(okBody(await listSystemConfigs(c.req.valid('query'))), 200),

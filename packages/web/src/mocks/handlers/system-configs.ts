@@ -20,6 +20,14 @@ export const systemConfigsHandlers = [
     const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const keyword = url.searchParams.get('keyword') ?? '';
     const configType = url.searchParams.get('configType') ?? '';
+    const keysParam = url.searchParams.get('keys') ?? '';
+
+    // 精确批量查询模式（不分页）
+    if (keysParam) {
+      const keyList = keysParam.split(',').map((k) => k.trim()).filter(Boolean);
+      const list = mockSystemConfigs.filter((c) => keyList.includes(c.configKey));
+      return HttpResponse.json({ code: 0, message: 'ok', data: { list, total: list.length, page: 1, pageSize: list.length } });
+    }
 
     let list = mockSystemConfigs.filter((c) => {
       if (keyword && !c.configKey.includes(keyword) && !c.description.includes(keyword)) return false;

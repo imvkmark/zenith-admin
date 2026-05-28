@@ -1,4 +1,4 @@
-import { eq, like, and, ne, desc } from 'drizzle-orm';
+import { eq, like, and, ne, desc, inArray } from 'drizzle-orm';
 import { mergeWhere, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { systemConfigs } from '../db/schema';
@@ -25,17 +25,29 @@ export interface ListSystemConfigsQuery {
   pageSize?: number;
   keyword?: string;
   configType?: ConfigType;
+  keys?: string;
 }
 
 export async function listSystemConfigs(q: ListSystemConfigsQuery) {
   const user = currentUser();
+  const tc = tenantCondition(systemConfigs, user);
+
+  // 精确批量查询模式（按 key 列表查，不分页）
+  if (q.keys) {
+    const keyList = q.keys.split(',').map((k) => k.trim()).filter(Boolean);
+    if (keyList.length === 0) return { list: [], total: 0, page: 1, pageSize: keyList.length };
+    const conditions = [inArray(systemConfigs.configKey, keyList)];
+    const where = tc ? and(...conditions, tc) : and(...conditions);
+    const rows = await db.select().from(systemConfigs).where(where).orderBy(desc(systemConfigs.id));
+    return { list: rows.map(mapConfig), total: rows.length, page: 1, pageSize: rows.length };
+  }
+
   const page = Number(q.page) || 1;
   const pageSize = Number(q.pageSize) || 10;
   const conditions = [];
   if (q.keyword) conditions.push(like(systemConfigs.configKey, `%${q.keyword}%`));
   if (q.configType) conditions.push(eq(systemConfigs.configType, q.configType));
   const where = and(...conditions);
-  const tc = tenantCondition(systemConfigs, user);
   const finalWhere = mergeWhere(where, tc);
   const [total, rows] = await Promise.all([
     db.$count(systemConfigs, finalWhere),
