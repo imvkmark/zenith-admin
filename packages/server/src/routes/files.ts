@@ -4,7 +4,7 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, BatchIdsBody } from '../lib/openapi-schemas';
 import { ManagedFileDTO } from '../lib/openapi-dtos';
 import {
-  readFileContent, listManagedFiles, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip,
+  readFileContent, listManagedFiles, getManagedFile, uploadManagedFileFromBody, deleteManagedFile, batchDeleteFiles, getManagedFileBeforeAudit, batchDownloadFilesAsZip,
 } from '../services/files.service';
 
 const filesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -48,6 +48,21 @@ const contentRoute = defineOpenAPIRoute({
       },
     });
   },
+});
+
+const getOneRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['Files'], summary: '获取文件详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:file:list' })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(ManagedFileDTO, '文件详情'),
+      404: { content: jsonContent(ErrorResponse), description: '文件不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await getManagedFile(c.req.valid('param').id)), 200),
 });
 
 const listRoute = defineOpenAPIRoute({
@@ -170,7 +185,7 @@ const uploadOneRoute = defineOpenAPIRoute({
   },
 });
 
-filesRouter.openapiRoutes([contentRoute, listRoute, uploadRoute, uploadOneRoute, batchDeleteRoute, deleteRoute] as const);
+filesRouter.openapiRoutes([contentRoute, listRoute, getOneRoute, uploadRoute, uploadOneRoute, batchDeleteRoute, deleteRoute] as const);
 
 // 非 OpenAPI 路由：批量下载打包为 zip 流式响应
 filesRouter.post('/batch-download', authMiddleware, guard({ permission: 'system:file:list' }), async (c) => {

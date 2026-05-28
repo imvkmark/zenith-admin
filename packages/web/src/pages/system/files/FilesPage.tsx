@@ -235,6 +235,7 @@ export default function FilesPage() {
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const viewMode = preferences.filesViewMode ?? 'list';
 
   const toggleViewMode = (mode: 'list' | 'grid') => {
@@ -263,6 +264,18 @@ export default function FilesPage() {
       });
     } else {
       setSelectedRowKeys((prev) => prev.filter((k) => !currentPageIds.includes(k)));
+    }
+  };
+
+  const handleOpenDetail = async (file: ManagedFile) => {
+    setDetailFile(file);
+    setModalDetailLoading(true);
+    const res = await request.get<ManagedFile>(`/api/files/${file.id}`);
+    setModalDetailLoading(false);
+    if (res.code === 0 && res.data) {
+      setDetailFile(res.data);
+    } else {
+      Toast.error(res.message || '获取文件信息失败');
     }
   };
 
@@ -594,7 +607,7 @@ export default function FilesPage() {
             clickToHide
             render={
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => setDetailFile(record)}>详情</Dropdown.Item>
+                <Dropdown.Item onClick={() => void handleOpenDetail(record)}>详情</Dropdown.Item>
                 <Dropdown.Item onClick={() => handleCopyUrl(record)}>复制链接</Dropdown.Item>
                 {hasPermission('system:file:delete') && (
                   <>
@@ -800,7 +813,7 @@ export default function FilesPage() {
       <Modal
         title="文件详情"
         visible={!!detailFile}
-        onCancel={() => setDetailFile(null)}
+        onCancel={() => { setDetailFile(null); setModalDetailLoading(false); }}
         footer={
           <Space>
             <Button onClick={() => detailFile && handleCopyUrl(detailFile)}>复制链接</Button>
@@ -900,7 +913,7 @@ export default function FilesPage() {
                   onPreview={handlePreview}
                   onDownload={handleDownload}
                   onDelete={handleDelete}
-                  onDetail={setDetailFile}
+                  onDetail={handleOpenDetail}
                   onCopyUrl={handleCopyUrl}
                   canDelete={hasPermission('system:file:delete')}
                   previewLoading={previewLoadingId === file.id}
