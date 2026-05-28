@@ -58,29 +58,30 @@ async function seed() {
 
 async function seedRest() {
   // ─── 2. 菜单数据（数据来源：@zenith/shared SEED_MENUS）─────────────────────
-  // 只在数据库为空时插入种子菜单，避免覆盖用户通过 UI 修改的数据
-  const existingMenus = await db.select({ id: menus.id }).from(menus).limit(1);
-  if (existingMenus.length === 0) {
-    const menuRows = SEED_MENUS.map((row) => ({
-      id: row.id,
-      parentId: row.parentId,
-      title: row.title,
-      name: row.name ?? null,
-      path: row.path ?? null,
-      component: row.component ?? null,
-      icon: row.icon ?? null,
-      type: row.type,
-      permission: row.permission ?? null,
-      sort: row.sort,
-      status: row.status,
-      visible: row.visible,
-    }));
-    if (menuRows.length > 0) {
-      await db.insert(menus).values(menuRows).onConflictDoNothing({ target: menus.id });
-    }
-    logger.info('  ✔ Menus seeded (first-time init)');
+  // 只插入数据库中不存在的种子菜单，不覆盖用户通过 UI 修改的数据
+  const existingMenuIds = new Set(
+    (await db.select({ id: menus.id }).from(menus)).map((r) => r.id),
+  );
+  const newMenuRows = SEED_MENUS.filter((row) => !existingMenuIds.has(row.id)).map((row) => ({
+    id: row.id,
+    parentId: row.parentId,
+    title: row.title,
+    name: row.name ?? null,
+    path: row.path ?? null,
+    component: row.component ?? null,
+    icon: row.icon ?? null,
+    type: row.type,
+    permission: row.permission ?? null,
+    sort: row.sort,
+    status: row.status,
+    visible: row.visible,
+  }));
+  if (newMenuRows.length > 0) {
+    await db.insert(menus).values(newMenuRows).onConflictDoNothing({ target: menus.id });
+    await db.execute(sql`SELECT setval('menus_id_seq', GREATEST((SELECT MAX(id) FROM menus), 1))`);
+    logger.info(`  ✔ Menus seeded — ${newMenuRows.length} new entries`);
   } else {
-    logger.info('  ✔ Menus skipped (already exist)');
+    logger.info('  ✔ Menus up-to-date (no new entries)');
   }
 
   // ─── 3. 角色数据（数据来源：@zenith/shared SEED_ROLES）────────────────────
