@@ -19,7 +19,7 @@ const listRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/', tags: ['InAppMessages'], summary: '我的站内信列表',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:in-app-message:list' })] as const,
+    middleware: [authMiddleware] as const,
     request: {
       query: PaginationQuery.extend({
         keyword: z.string().optional(),

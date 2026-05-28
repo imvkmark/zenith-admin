@@ -47,7 +47,7 @@ const listRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/', tags: ['SystemConfigs'], summary: '配置分页列表',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:config:list' })] as const,
+    middleware: [authMiddleware] as const,
     request: { query: PaginationQuery.extend({ keyword: z.string().optional(), configType: z.enum(configTypeValues).optional() }) },
     responses: { ...commonErrorResponses, ...okPaginated(SystemConfigDTO, '配置列表') },
   }),
