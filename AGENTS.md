@@ -135,7 +135,8 @@ ALLOWED_ORIGINS=
 - `timeout` 仅作用于 `/api/*`，使用 `hono/combine` 的 `except()` 自动排除长耗时路径：`/api/ws`、`/api/files`、`/api/db-backups` 及所有以 `/export` 结尾的导出接口。超时返回 `{ code: 408, message: '请求处理超时（Xms）' }`。
 - `hono/csrf` 校验请求的 `Origin` 头。`ALLOWED_ORIGINS` 为空时（开发模式）不限制；无 `Origin` 头的请求（curl/Postman/服务端）直接放行；Origin 不在白名单中返回 403。
 - **接口级限流**（`hono-rate-limiter` + Redis）对高危认证接口限制请求频率，超限返回 `{ code: 429, message: '...' }`，计数器存储于 Redis，key 格式：`{prefix}rl:{ip}`。限流配置见 `packages/server/src/middleware/rate-limit.ts`。
-- 实现位置：`packages/server/src/index.ts`（全局），`packages/server/src/middleware/rate-limit.ts`（限流）。
+- **幂等控制**（`idempotencyGuard`）防止重复提交。支持两种模式：① 客户端在请求头携带 `X-Idempotency-Key`（显式 Token 模式，适合支付/创单）；② 服务端自动根据 `userId+method+path+bodyHash` 计算指纹（自动兜底，适合普通表单）。基于 Redis `SET NX EX` 原子操作，超限返回 `{ code: 429, message: '...' }`，Redis key 格式：`{prefix}idempotency:{key}`。在 `createRoute` 的 `middleware` 数组中按路由声明，用法：`middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 })] as const`。实现位置：`packages/server/src/middleware/idempotency.ts`。
+- 实现位置：`packages/server/src/index.ts`（全局），`packages/server/src/middleware/rate-limit.ts`（限流），`packages/server/src/middleware/idempotency.ts`（幂等）。
 
 ---
 
