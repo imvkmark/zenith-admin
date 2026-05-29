@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Input, Empty, Typography, List as SemiList } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
 import { request } from '@/utils/request';
-import { UserAvatar } from './UserAvatar';
+import { UserAvatar } from './ChatAvatar';
 import type { ChatUser } from '../types';
 
 const { Text } = Typography;
