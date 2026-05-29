@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Card, Form, Button, Typography, Toast, Avatar, Tag, Space, Spin,
+  Card, Form, Button, Typography, Toast, Tag, Space, Spin,
   Modal, Cropper, Input, Tabs, DatePicker, List as SemiList,
 } from '@douyinfe/semi-ui';
 import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle } from 'lucide-react';
@@ -11,6 +11,7 @@ import type {
   UserSession, UserApiToken, UserApiTokenCreated,
 } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordPolicy } from '@/utils/password-policy';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -344,15 +345,13 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                             <div className="avatar-loading-wrapper" style={{ width: 80, height: 80 }}><Spin /></div>
                           ) : (
                             <>
-                              <Avatar
-                                size="extra-large"
-                                alt={user.nickname || '用户头像'}
-                                color="blue"
-                                style={{ fontSize: 28, width: 80, height: 80 }}
-                                src={user.avatar || undefined}
-                              >
-                                {!user.avatar && (user.nickname?.charAt(0)?.toUpperCase() || 'U')}
-                              </Avatar>
+                              <UserAvatar
+                                name={user.nickname || '用户'}
+                                avatar={user.avatar}
+                                semiSize="extra-large"
+                                size={80}
+                                style={{ fontSize: 28 }}
+                              />
                               <div className="avatar-upload-mask">更换头像</div>
                             </>
                           )}
