@@ -152,9 +152,8 @@ export default function InboxPage() {
 
   return (
     <div className="page-container">
-      <div className="search-area">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Tabs activeKey={activeTab} onChange={handleTabChange} style={{ marginBottom: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Tabs activeKey={activeTab} onChange={handleTabChange} style={{ marginBottom: 0, flex: 1 }}>
             <TabPane tab="全部" itemKey="all" />
             <TabPane
               tab={
@@ -179,7 +178,6 @@ export default function InboxPage() {
             全部标记为已读
           </Button>
         </div>
-      </div>
 
       {list.length === 0 && !loading ? (
         <Empty
