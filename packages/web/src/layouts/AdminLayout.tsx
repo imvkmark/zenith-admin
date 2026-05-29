@@ -290,6 +290,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
   // ─── Tabs 滚动 ─────────────────────────────────────────────────────────────
   const activeTabRef = useRef<HTMLDivElement>(null);
+  const tabsBarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // 延迟以确保 DOM 已完成渲染
     const timer = setTimeout(() => {
@@ -299,6 +300,19 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     }, 100);
     return () => clearTimeout(timer);
   }, [activeKey, tabs.length]);
+
+  // 滚轮横向滚动（需要非 passive 监听以阻止页面纵向滚动）
+  useEffect(() => {
+    const el = tabsBarRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   // ─── 租户切换（仅平台管理员） ─────────────────────────────────────────────
   const isPlatformAdmin = config.multiTenantMode && !user.tenantId && user.roles?.some((r) => r.code === 'super_admin');
@@ -1037,7 +1051,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
           )}
           {/* Tabs bar — shown above breadcrumb for all layouts */}
           {preferences.enableTabs && tabs.length > 0 && (
-            <div className={`admin-tabs-bar${preferences.showBreadcrumb ? ' admin-tabs-bar--with-breadcrumb' : ''}`} data-tab-animation={preferences.tabAnimation}>
+            <div ref={tabsBarRef} className={`admin-tabs-bar${preferences.showBreadcrumb ? ' admin-tabs-bar--with-breadcrumb' : ''}`} data-tab-animation={preferences.tabAnimation}>
               {tabs.map((tab) => {
                   const isEntering = enteringTabKeys.has(tab.key);
                   const isExiting = exitingTabKeys.has(tab.key);
@@ -1063,6 +1077,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     onDragEnd={handleDragEnd}
                     onDragLeave={() => setDragOverKey(null)}
                     onClick={() => handleTabChange(tab.key)}
+                    onMouseDown={(e) => { if (e.button === 1 && tab.closable) { e.preventDefault(); handleTabClose(tab.key); } }}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleTabChange(tab.key); }}
                     onContextMenu={(e) => {
                       e.preventDefault();
