@@ -4,6 +4,58 @@
 
 ---
 
+## v0.29.0 - 2026-05-29
+
+### Added
+
+#### 文件预览
+
+- 新增 `FilePreviewModal` 组件，支持图片、音频、视频、PDF 文件的在线预览
+- 文件管理页集成 AudioPlayer / VideoPlayer / PDFPreviewPanel，可直接预览媒体文件
+
+#### 聊天
+
+- 聊天页支持上传并发送 PDF 文件，消息气泡渲染 PDF 卡片
+- 新增 `GroupGridAvatar` 组件，展示群组成员九宫格头像
+
+#### 响应式布局
+
+- 移动端侧边栏自动折叠（基于 `matchMedia` 监听屏幕宽度变化）
+- `MasterDetailLayout` 新增单栏模式（`showDetail` / `onBack` 属性），适配移动端主-从切换
+
+#### 用户头像
+
+- 新增全局 `UserAvatar` 组件，统一头像展示逻辑，支持头像图片与背景色生成
+
+#### 错误处理
+
+- 新增页面级 `PageErrorBoundary` 错误边界，捕获运行时错误并给出友好提示
+- 新增 `useGlobalErrorHandler` 钩子，统一捕获未处理的 Promise 拒绝与运行时异常，带去重和限流机制
+
+#### 管理员布局
+
+- Tab 标签栏支持鼠标滚轮横向滚动
+
+### Changed
+
+- Tab 标签栏右键菜单由手写 DOM 实现改为 Semi Design `Dropdown` 组件（自动处理边界溢出）
+- 主题切换按钮去掉外层 Tooltip，当前模式名称移至下拉菜单标题行展示
+- 全屏按钮改用浏览器原生 `title` tooltip，移除 Semi Tooltip 包裹
+- 公告中心、我的消息页去掉 `search-area` 容器包裹，Tabs 组件加 `flex: 1` 撑满全宽
+- IP 访问控制页加 `page-container` 类，与其他页面布局统一
+- 接口限流页加 `page-container` 类，修复卡片横向溢出（`minmax(min(360px, 100%), 1fr)`）
+- 全局样式暗色模式颜色方案改用 Semi 设计变量
+- Vite 将 `decimal.js` 加入 `optimizeDeps.include`，消除 HMR 热更新时偶发的 "not a constructor" 报错
+
+### Fixed
+
+- 修复公告页面标题渲染逻辑（空值合并运算符）
+- 修复群组信息编辑中公告更新的默认值处理
+- 修复角色管理中角色名称、编码、邮箱字段的渲染空值问题
+- 修复全局错误处理重复 Toast 通知问题，忽略浏览器扩展与 ResizeObserver 警告
+
+---
+
 ## v0.28.0 - 2026-05-29
 
 ### Added
