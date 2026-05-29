@@ -148,7 +148,7 @@ export default function RateLimitPage() {
   const statsByName = new Map(stats.items.map((s) => [s.name, s]));
 
   return (
-    <div>
+    <div className="page-container">
       <SearchToolbar>
         <Text type="tertiary" style={{ fontSize: 13 }}>
           管理 API 接口限流规则，保存后立即热更新到运行中的服务，无需重启。
@@ -158,7 +158,7 @@ export default function RateLimitPage() {
         </Button>
       </SearchToolbar>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 16, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))', gap: 16, marginTop: 16 }}>
         {rules.map((rule) => {
           const stat = statsByName.get(rule.name);
           const hit = stat?.hitCount ?? 0;
@@ -209,7 +209,7 @@ export default function RateLimitPage() {
       </div>
 
       <Title heading={5} style={{ marginTop: 32, marginBottom: 12 }}>近 24 小时拦截趋势</Title>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))', gap: 16 }}>
         {stats.items.map((item) => {
           const totalHits = item.hourlySeries.reduce((acc, p) => acc + p.hits, 0);
           const totalBlocked = item.hourlySeries.reduce((acc, p) => acc + p.blocked, 0);
