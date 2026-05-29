@@ -9,9 +9,11 @@ import {
   Toast,
   Typography,
   Popconfirm,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Plus, RotateCcw, EyeOff } from 'lucide-react';
+import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { DataMaskConfig, MaskType, Role } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -39,7 +41,10 @@ const MASK_TYPE_PREVIEWS: Record<MaskType, string> = {
   custom:    '—',
 };
 
-const MASK_TYPE_OPTIONS = Object.entries(MASK_TYPE_LABELS).map(([v, l]) => ({ value: v as MaskType, label: l }));
+const MASK_TYPE_OPTIONS = Object.entries(MASK_TYPE_LABELS).map(([v, l]) => ({
+  value: v as MaskType,
+  label: `${l}（${MASK_TYPE_PREVIEWS[v as MaskType]}）`,
+}));
 
 type FormValues = {
   entity: string;
@@ -194,7 +199,7 @@ export default function DataMaskPage() {
     },
     { title: '备注', dataIndex: 'remark', ellipsis: true },
     {
-      title: '操作', fixed: 'right', width: 120,
+      title: '操作', fixed: 'right' as const, width: 130,
       render: (_: unknown, record: DataMaskConfig) => (
         <Space>
           {hasPermission('system:data-mask:update') && (
@@ -211,17 +216,17 @@ export default function DataMaskPage() {
   ];
 
   return (
-    <div>
+    <div className="page-container">
       <SearchToolbar>
         <Input
-          prefix={<EyeOff size={14} />}
+          prefix={<Search size={14} />}
           placeholder="搜索实体 / 字段"
           value={keyword}
           onChange={setKeyword}
           onEnterPress={handleSearch}
           showClear
         />
-        <Button type="primary" icon={<EyeOff size={14} />} onClick={handleSearch}>查询</Button>
+        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         {hasPermission('system:data-mask:create') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>
@@ -235,6 +240,7 @@ export default function DataMaskPage() {
         loading={loading}
         rowKey="id"
         pagination={false}
+        scroll={{ x: 'max-content' }}
       />
 
       <Modal
@@ -244,66 +250,105 @@ export default function DataMaskPage() {
         onOk={handleSubmit}
         okText={editing ? '保存' : '创建'}
         okButtonProps={{ loading: submitting }}
-        width={520}
+        width={660}
         destroyOnClose
       >
         <Form<FormValues>
           getFormApi={(api) => { formRef.current = api; }}
           initValues={getInitValues()}
           labelPosition="left"
-          labelWidth={80}
+          labelWidth={90}
           onValueChange={(vals) => {
             if (vals.maskType) setMaskTypePreview(vals.maskType as unknown as MaskType);
           }}
         >
-          <Form.Input field="entity" label="实体" placeholder="如 user" rules={[{ required: true, message: '请填写实体名称' }]} />
-          <Form.Input field="field" label="字段名" placeholder="如 phone" rules={[{ required: true, message: '请填写字段名' }]} />
-          <Form.Input field="label" label="字段标签" placeholder="如 手机号" rules={[{ required: true, message: '请填写字段标签' }]} />
-          <Form.Select
-            field="maskType"
-            label="脱敏类型"
-            style={{ width: '100%' }}
-            rules={[{ required: true }]}
-            optionList={MASK_TYPE_OPTIONS}
-            renderOptionItem={(item) => (
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                <span>{item.label}</span>
-                <span style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>
-                  {MASK_TYPE_PREVIEWS[item.value as MaskType]}
-                </span>
-              </div>
-            )}
-          />
+          {/* 第一行：实体 + 字段名 */}
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="entity" label="实体" placeholder="如 user" rules={[{ required: true, message: '请填写实体名称' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Input field="field" label="字段名" placeholder="如 phone" rules={[{ required: true, message: '请填写字段名' }]} />
+            </Col>
+          </Row>
 
-          {/* 脱敏效果预览 */}
-          <Form.Slot label="效果预览">
-            <Tag color="orange" size="large" style={{ fontFamily: 'monospace' }}>
-              {MASK_TYPE_PREVIEWS[maskTypePreview]}
-            </Tag>
-          </Form.Slot>
+          {/* 第二行：字段标签 + 脱敏类型 */}
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Input field="label" label="字段标签" placeholder="如 手机号" rules={[{ required: true, message: '请填写字段标签' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="maskType"
+                label="脱敏类型"
+                style={{ width: '100%' }}
+                rules={[{ required: true }]}
+                optionList={MASK_TYPE_OPTIONS}
+              />
+            </Col>
+          </Row>
 
-          {/* 自定义规则字段 */}
-          <Form.Slot label=" " noLabel>
-            <Typography.Text type="secondary" size="small">自定义规则</Typography.Text>
-          </Form.Slot>
+          {/* 效果预览 — 整行 */}
+          <Row>
+            <Col span={24}>
+              <Form.Slot label="效果预览">
+                <Tag color="orange" size="large" style={{ fontFamily: 'monospace' }}>
+                  {MASK_TYPE_PREVIEWS[maskTypePreview]}
+                </Tag>
+              </Form.Slot>
+            </Col>
+          </Row>
+
+          {/* 自定义规则 — 仅 custom 时显示 */}
           {maskTypePreview === 'custom' && (
-            <>
-              <Form.InputNumber field="prefixKeep" label="保留前N位" min={0} max={20} style={{ width: '100%' }} />
-              <Form.InputNumber field="suffixKeep" label="保留后N位" min={0} max={20} style={{ width: '100%' }} />
-              <Form.Input field="maskChar" label="掩码字符" maxLength={1} placeholder="默认 *" />
-            </>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.InputNumber field="prefixKeep" label="保留前N位" min={0} max={20} style={{ width: '100%' }} />
+              </Col>
+              <Col span={12}>
+                <Form.InputNumber field="suffixKeep" label="保留后N位" min={0} max={20} style={{ width: '100%' }} />
+              </Col>
+            </Row>
+          )}
+          {maskTypePreview === 'custom' && (
+            <Row>
+              <Col span={12}>
+                <Form.Input field="maskChar" label="掩码字符" maxLength={1} placeholder="默认 *" />
+              </Col>
+            </Row>
           )}
 
-          <Form.Select
-            field="exemptRoleCodes"
-            label="豁免角色"
-            multiple
-            style={{ width: '100%' }}
-            optionList={roleOptions}
-            placeholder="拥有此角色的用户将看到原始数据"
-          />
-          <Form.Switch field="enabled" label="启用" />
-          <Form.TextArea field="remark" label="备注" maxCount={256} />
+          {/* 豁免角色 + 启用 — 同一行，各占一半 */}
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select
+                field="exemptRoleCodes"
+                label="豁免角色"
+                multiple
+                style={{ width: '100%' }}
+                optionList={roleOptions}
+                placeholder="拥有此角色的用户将看到原始数据"
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Select
+                field="enabled"
+                label="是否启用"
+                style={{ width: '100%' }}
+                optionList={[
+                  { value: true, label: '启用' },
+                  { value: false, label: '禁用' },
+                ]}
+              />
+            </Col>
+          </Row>
+
+          {/* 备注 — 单独整行 */}
+          <Row>
+            <Col span={24}>
+              <Form.TextArea field="remark" label="备注" maxCount={256} rows={1} />
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>
