@@ -17,18 +17,18 @@ hero:
       text: GitHub
       link: https://github.com/iwangbowen/zenith-admin
 features:
-  - title: 角色权限与菜单治理
-    details: 支持 RBAC、动态菜单、按钮级鉴权，权限边界清晰，适合中后台长期演进。
-  - title: API + 类型 + 校验一体化
-    details: 共享 TypeScript 类型与 Zod Schema，前后端约束统一，减少联调与回归成本。
-  - title: 文件存储可插拔
-    details: 支持 local / OSS / S3 / COS 四种模式，后台一键切换默认存储，满足不同部署环境。
-  - title: 多租户与系统配置
-    details: 内置租户隔离与平台视角，支持逐租户配置扩展，默认关闭不影响单租户部署。
-  - title: 安全与可观测能力
-    details: JWT 双 Token、会话黑名单、请求防护、操作日志与登录日志，覆盖后台核心安全链路。
+  - title: 权限与组织管理
+    details: RBAC 角色模型、动态菜单、按钮级鉴权；部门树、岗位、用户组全覆盖，权限边界清晰。
+  - title: 工作流引擎
+    details: 可视化流程设计器（审批/抄送/条件分支）、表单字段设计、流程自动化与事件订阅，开箱即用的审批流底座。
+  - title: 即时通讯与多渠道通知
+    details: 内置 WebSocket 单聊/群聊、站内信、公告推送，邮件/短信多服务商可插拔，消息模板统一维护。
+  - title: 安全防护全链路
+    details: JWT 双 Token、IP 访问控制、登录锁定、数据脱敏、幂等防重提交、接口限流，覆盖后台核心安全场景。
+  - title: 运维与可观测
+    details: 仪表盘、服务监控（SSE 实时）、在线会话、缓存管理、定时任务、数据库管理与备份、日志文件查看。
   - title: AI 友好工程结构
-    details: 明确分层与规范化目录，支持通过 AI 指令快速生成 CRUD，并保持代码可读可维护。
+    details: 内置 AI 对话与服务商管理；分层规范目录配合 Zenith Skill，可通过 AI 指令快速生成 CRUD 模块。
 ---
 
 <section class="zn-section">
