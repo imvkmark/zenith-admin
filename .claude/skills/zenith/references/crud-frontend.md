@@ -409,7 +409,7 @@ export default function XxxPage() {
 **Modal 宽度与表单列数：**
 
 - 有 **3 对及以上可并排的普通字段**（Input / Select / InputNumber 等）→ 使用双列布局，`width={660}`
-- 字段较少，或主要是 TreeSelect / TextArea 等不适合并排的字段 → 使用单列布局，`width` 在 420–520 之间酌情选取
+- 字段较少，或主要是 TreeSelect / TextArea 等不适合并排的字段 → 使用单列布局，`width` 在 480–520 之间酌情选取
 
 所有 Modal 必须加 `closeOnEsc`。
 
@@ -442,7 +442,8 @@ import { Row, Col } from '@douyinfe/semi-ui';
 **labelWidth 选取原则：**
 
 - 标签文字 ≤3 字（名称、状态、邮箱）→ `labelWidth={72}`
-- 标签文字 ≥4 字（部门名称、联系电话、上级部门）→ `labelWidth={90}`
+- 标签文字 4–5 字（部门名称、联系电话）→ `labelWidth={90}`
+- 标签文字 ≥6 字（上级部门名称、所属租户等）→ `labelWidth={110}` 或 120
 - 同一个 Form 内保持统一
 
 ### 状态字段显示
@@ -669,6 +670,7 @@ export default function XxxPage() {
 Semi Design 的 `semi-tabs-pane-motion-overlay` 会打断高度继承链，必须采用以下完整写法：
 
 **高度链约束**（缺一不可）：
+
 1. 页面根 div：`height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden'`
 2. `<Tabs>` 加 `className="tabs-fill-height"`（已在 `global.css` 定义）、`style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}`、`contentStyle={{ flex: 1, minHeight: 0, overflow: 'hidden' }}`
 3. 需要全高的 `<TabPane>` 加 `style={{ height: '100%' }}`
@@ -717,6 +719,7 @@ export default function XxxPage() {
 ### 主侧在右时（`side="right"`）
 
 某些页面左侧为主内容区，右侧为可收起的辅助面板（如 AI 侧边栏）：
+
 - 将宽的内容放在 `detail`（左侧，`flex:1`）
 - 将窄的可调整面板放在 `master`（右侧，`flexShrink:0`）
 - 设置 `side="right"` 使 master 渲染在右边
