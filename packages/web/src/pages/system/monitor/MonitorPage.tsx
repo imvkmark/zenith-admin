@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table } from '@douyinfe/semi-ui';
+import { Button, Progress, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table } from '@douyinfe/semi-ui';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -360,25 +360,23 @@ export default function MonitorPage() {
 
   function renderSkeleton() {
     return (
-      <Card className="monitor-tab-card">
-        <Skeleton active loading placeholder={
-          <div>
-            <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
-              {['a', 'b', 'c', 'd', 'e', 'f'].map((k) => (
-                <Skeleton.Button key={k} style={{ width: 64, height: 32, borderRadius: 4 }} />
-              ))}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
-              {SKELETON_ROW_KEYS.map((k) => (
-                <div key={k} style={{ padding: '10px 12px 10px 0', borderBottom: '1px solid var(--color-border)' }}>
-                  <Skeleton.Title style={{ width: '40%', height: 12, margin: '0 0 8px' }} />
-                  <Skeleton.Title style={{ width: '70%', height: 14, margin: 0 }} />
-                </div>
-              ))}
-            </div>
+      <Skeleton active loading placeholder={
+        <div>
+          <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+            {['a', 'b', 'c', 'd', 'e', 'f'].map((k) => (
+              <Skeleton.Button key={k} style={{ width: 64, height: 32, borderRadius: 4 }} />
+            ))}
           </div>
-        } />
-      </Card>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+            {SKELETON_ROW_KEYS.map((k) => (
+              <div key={k} style={{ padding: '10px 12px 10px 0', borderBottom: '1px solid var(--color-border)' }}>
+                <Skeleton.Title style={{ width: '40%', height: 12, margin: '0 0 8px' }} />
+                <Skeleton.Title style={{ width: '70%', height: 14, margin: 0 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      } />
     );
   }
 
@@ -536,8 +534,7 @@ export default function MonitorPage() {
       : 0;
 
     return (
-      <Card className="monitor-tab-card">
-        <Tabs type="line">
+      <Tabs type="line">
           {/* ===== 总览 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />总览</span>} itemKey="overview">
             <div className="monitor-overview-grid">
@@ -929,8 +926,7 @@ export default function MonitorPage() {
               />
             </>) : <Text type="tertiary">WebSocket 监控数据不可用</Text>}
           </TabPane>
-        </Tabs>
-      </Card>
+      </Tabs>
     );
   }
 
