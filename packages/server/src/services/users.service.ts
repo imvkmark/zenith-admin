@@ -179,7 +179,7 @@ export async function ensurePositionIdsExist(positionIds: number[], user?: JwtPa
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
 
 function viewerRoleCodes(): string[] {
-  try { return currentUser().roles?.map((r: { code: string }) => r.code) ?? []; } catch { return []; }
+  try { return currentUser().roles ?? []; } catch { return []; }
 }
 
 export async function listAllUsers() {

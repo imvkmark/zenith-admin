@@ -179,7 +179,7 @@ export default function DataMaskPage() {
     { title: '字段名', dataIndex: 'field', width: 110 },
     { title: '字段标签', dataIndex: 'label', width: 100 },
     {
-      title: '脱敏类型', dataIndex: 'maskType', width: 120,
+      title: '脱敏类型', dataIndex: 'maskType', width: 200,
       render: (v: MaskType) => (
         <Space>
           <Text>{MASK_TYPE_LABELS[v]}</Text>
@@ -225,6 +225,7 @@ export default function DataMaskPage() {
           onChange={setKeyword}
           onEnterPress={handleSearch}
           showClear
+          style={{ width: 240 }}
         />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
