@@ -20,7 +20,7 @@ import {
   Spin,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, MoreHorizontal } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, MoreHorizontal, Building2, ArrowLeft } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -33,6 +33,7 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import './UsersPage.css';
 
 interface SearchParams {
@@ -508,47 +509,65 @@ export default function UsersPage() {
     },
   ];
 
+  const [showDeptTree, setShowDeptTree] = useState(false);
+  const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
+
+  const masterContent = (
+    <div className="users-dept-sidebar">
+      {showDeptTree && (
+        <button type="button" className="users-dept-back" onClick={() => setShowDeptTree(false)}>
+          <ArrowLeft size={14} />
+          返回用户列表
+        </button>
+      )}
+      <div className="users-dept-sidebar-title">
+        <span className="users-dept-sidebar-title-text">组织架构</span>
+        <div className="users-dept-sidebar-actions">
+          <Button
+            className="users-dept-tree-action"
+            theme="borderless"
+            size="small"
+            icon={isAllDeptExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
+            onClick={toggleDeptExpandAll}
+          >
+            {isAllDeptExpanded ? '全部折叠' : '全部展开'}
+          </Button>
+        </div>
+      </div>
+      <Tree
+        treeData={deptTreeData}
+        expandedKeys={deptTreeExpandedKeys}
+        value={searchParams.departmentId == null ? '__all__' : String(searchParams.departmentId)}
+        filterTreeNode
+        showFilteredOnly
+        searchPlaceholder="搜索部门"
+        onExpand={(expandedKeys) => {
+          setDeptTreeExpandedKeys((expandedKeys as Array<string | number>).map(String));
+        }}
+        onSelect={(selectedKey) => {
+          const key = selectedKey;
+          const newDeptId = !key || key === '__all__' ? null : Number(key);
+          const newParams = { ...searchParams, departmentId: newDeptId };
+          setSearchParams(newParams);
+          setPage(1);
+          void fetchUsers(1, pageSize, newParams);
+          setShowDeptTree(false);
+        }}
+        style={{ width: '100%' }}
+      />
+    </div>
+  );
+
   return (
     <div className="page-container">
-      <div className="users-layout">
-        <div className="users-dept-sidebar">
-          <div className="users-dept-sidebar-title">
-            <span className="users-dept-sidebar-title-text">组织架构</span>
-            <div className="users-dept-sidebar-actions">
-              <Button
-                className="users-dept-tree-action"
-                theme="borderless"
-                size="small"
-                icon={isAllDeptExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
-                onClick={toggleDeptExpandAll}
-              >
-                {isAllDeptExpanded ? '全部折叠' : '全部展开'}
-              </Button>
-            </div>
-          </div>
-          <Tree
-            treeData={deptTreeData}
-            expandedKeys={deptTreeExpandedKeys}
-            value={searchParams.departmentId == null ? '__all__' : String(searchParams.departmentId)}
-            filterTreeNode
-            showFilteredOnly
-            searchPlaceholder="搜索部门"
-            onExpand={(expandedKeys) => {
-              setDeptTreeExpandedKeys((expandedKeys as Array<string | number>).map(String));
-            }}
-            onSelect={(selectedKey) => {
-              const key = selectedKey;
-              const newDeptId = !key || key === '__all__' ? null : Number(key);
-              const newParams = { ...searchParams, departmentId: newDeptId };
-              setSearchParams(newParams);
-              setPage(1);
-              void fetchUsers(1, pageSize, newParams);
-            }}
-            style={{ width: '100%' }}
-          />
-        </div>
+      <MasterDetailLayout
+        master={masterContent}
+        detail={
         <div className="users-content">
       <SearchToolbar>
+          <Button theme="borderless" icon={<Building2 size={14} />} onClick={() => setShowDeptTree(true)}
+            style={{ display: isLayoutNarrow ? undefined : 'none' }}
+          >按部门</Button>
           <Input
             prefix={<Search size={14} />}
             placeholder="搜索用户名/昵称/邮箱"
@@ -644,7 +663,15 @@ export default function UsersPage() {
         }}
       />
         </div>
-      </div>
+        }
+        defaultSize={220}
+        minSize={160}
+        maxSize={400}
+        showDetail={!showDeptTree}
+        onResponsiveChange={setIsLayoutNarrow}
+        persistKey="users"
+        style={{ flex: 1, overflow: 'hidden' }}
+      />
 
       <Modal
         title={editingUser ? '编辑用户' : '新增用户'}

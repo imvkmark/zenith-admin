@@ -43,6 +43,11 @@ interface MasterDetailLayoutProps {
    * 建议改用 showDetail。单栏模式下当前激活的面板（'master' | 'detail'），默认 'master'。
    */
   responsiveActive?: 'master' | 'detail';
+  /**
+   * 容器进入/退出响应式单栏模式时触发，参数为 isResponsive。
+   * 可用于父组件按需显示/隐藏与布局状态绑定的 UI。
+   */
+  onResponsiveChange?: (isResponsive: boolean) => void;
   className?: string;
   style?: CSSProperties;
 }
@@ -165,6 +170,15 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
 
   const isResponsive =
     responsiveBreakpoint > 0 && containerWidth > 0 && containerWidth < responsiveBreakpoint;
+
+  const { onResponsiveChange } = props;
+  const prevIsResponsiveRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (containerWidth === 0) return; // 初始化未完成，跳过
+    if (prevIsResponsiveRef.current === isResponsive) return;
+    prevIsResponsiveRef.current = isResponsive;
+    onResponsiveChange?.(isResponsive);
+  }, [isResponsive, containerWidth, onResponsiveChange]);
 
   const rootStyle: CSSProperties = {
     display: 'flex',
