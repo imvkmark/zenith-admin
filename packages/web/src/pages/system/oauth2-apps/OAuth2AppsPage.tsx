@@ -12,6 +12,8 @@ import {
   Checkbox,
   Spin,
   Banner,
+  Row,
+  Col,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -126,6 +128,17 @@ export default function OAuth2AppsPage() {
     setModalDetailLoading(false);
     if (res.code === 0 && res.data) {
       setEditing(res.data);
+      // initValues 仅在 Form 挂载时生效，主动 setValues 保证回填最新数据
+      formApi.current?.setValues({
+        name: res.data.name,
+        description: res.data.description ?? '',
+        logoUrl: res.data.logoUrl ?? '',
+        redirectUris: res.data.redirectUris,
+        allowedScopes: res.data.allowedScopes,
+        grantTypes: res.data.grantTypes,
+        isPublic: res.data.isPublic,
+        status: res.data.status,
+      });
     } else {
       Toast.error(res.message || '获取应用信息失败');
     }
@@ -146,17 +159,18 @@ export default function OAuth2AppsPage() {
         allowedScopes: editing.allowedScopes,
         grantTypes: editing.grantTypes,
         isPublic: editing.isPublic,
-        status: editing.status as 'enabled' | 'disabled',
+        status: editing.status,
       }
     : { isPublic: false, allowedScopes: ['openid', 'profile'], grantTypes: ['authorization_code', 'refresh_token'] };
 
   async function handleModalOk() {
     let values: FormValues;
     try {
-      values = await formApi.current!.validate();
+      values = await formApi.current?.validate();
     } catch {
       throw new Error('validation');
     }
+    if (!values) throw new Error('validation');
     setSubmitting(true);
     try {
       if (editing) {
@@ -242,17 +256,17 @@ export default function OAuth2AppsPage() {
       ),
     },
     {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      width: 170,
+      render: (t: string) => formatDateTime(t),
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       width: 80,
       fixed: 'right' as const,
       render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'}>{v === 'enabled' ? '启用' : '禁用'}</Tag>,
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 170,
-      render: (t: string) => formatDateTime(t),
     },
     {
       title: '操作',
@@ -327,8 +341,10 @@ export default function OAuth2AppsPage() {
         onOk={handleModalOk}
         onCancel={closeModal}
         okButtonProps={{ loading: submitting, disabled: modalDetailLoading }}
-        width={600}
+        width={660}
+        closeOnEsc
         maskClosable={false}
+        bodyStyle={{ paddingBottom: 24 }}
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
           <Form
@@ -339,54 +355,103 @@ export default function OAuth2AppsPage() {
             labelPosition="left"
             labelWidth={120}
           >
-            <Form.Input
-              field="name"
-              label="应用名称"
-              placeholder="请输入应用名称"
-              rules={[{ required: true, message: '应用名称不能为空' }]}
-            />
-            <Form.TextArea field="description" label="应用描述" placeholder="请输入描述（可选）" />
-            <Form.Input field="logoUrl" label="Logo URL" placeholder="https://example.com/logo.png" />
-            <Form.TagInput
-              field="redirectUris"
-              label="回调 URL"
-              placeholder="输入后回车添加"
-              rules={[{ required: true, message: '至少填写一个回调 URL' }]}
-            />
-            <Form.CheckboxGroup
-              field="allowedScopes"
-              label="允许的 scope"
-              rules={[{ required: true, message: '至少选择一个' }]}
-            >
-              {OAUTH2_SCOPES.map((s) => (
-                <Checkbox key={s} value={s}>{SCOPE_LABELS[s] ?? s}</Checkbox>
-              ))}
-            </Form.CheckboxGroup>
-            <Form.CheckboxGroup
-              field="grantTypes"
-              label="授权类型"
-              rules={[{ required: true, message: '至少选择一种' }]}
-            >
-              {OAUTH2_GRANT_TYPES.map((t) => (
-                <Checkbox key={t} value={t}>{GRANT_TYPE_LABELS[t] ?? t}</Checkbox>
-              ))}
-            </Form.CheckboxGroup>
-            <Form.Switch
-              field="isPublic"
-              label="公开客户端"
-              extraText="公开客户端不使用 client_secret（适用于原生应用，需配合 PKCE）"
-            />
-            {editing && (
-              <Form.Select
-                field="status"
-                label="状态"
-                optionList={[
-                  { value: 'enabled', label: '启用' },
-                  { value: 'disabled', label: '禁用' },
-                ]}
-                rules={[{ required: true, message: '请选择状态' }]}
-              />
-            )}
+            {/* 必填：应用名称（全宽） */}
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.Input
+                  field="name"
+                  label="应用名称"
+                  placeholder="请输入应用名称"
+                  rules={[{ required: true, message: '应用名称不能为空' }]}
+                />
+              </Col>
+            </Row>
+            {/* 必填：回调 URL（全宽） */}
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.TagInput
+                  field="redirectUris"
+                  label="回调 URL"
+                  placeholder="输入后回车添加"
+                  rules={[{ required: true, message: '至少填写一个回调 URL' }]}
+                />
+              </Col>
+            </Row>
+            {/* 必填：允许的 scope（全宽） */}
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.CheckboxGroup
+                  field="allowedScopes"
+                  label="允许的 scope"
+                  direction="horizontal"
+                  rules={[{ required: true, message: '至少选择一个' }]}
+                >
+                  {OAUTH2_SCOPES.map((s) => (
+                    <Checkbox key={s} value={s}>{SCOPE_LABELS[s] ?? s}</Checkbox>
+                  ))}
+                </Form.CheckboxGroup>
+              </Col>
+            </Row>
+            {/* 必填：授权类型（全宽） */}
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.CheckboxGroup
+                  field="grantTypes"
+                  label="授权类型"
+                  direction="horizontal"
+                  rules={[{ required: true, message: '至少选择一种' }]}
+                >
+                  {OAUTH2_GRANT_TYPES.map((t) => (
+                    <Checkbox key={t} value={t}>{GRANT_TYPE_LABELS[t] ?? t}</Checkbox>
+                  ))}
+                </Form.CheckboxGroup>
+              </Col>
+            </Row>
+            {/* 可选：Logo URL（全宽） */}
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.Input
+                  field="logoUrl"
+                  label="Logo URL"
+                  placeholder="https://example.com/logo.png"
+                />
+              </Col>
+            </Row>
+            {/* 可选：公开客户端 + 状态（编辑时） */}
+            <Row gutter={16}>
+              <Col span={editing ? 12 : 24}>
+                <Form.Switch
+                  field="isPublic"
+                  label="公开客户端"
+                  extraText="不使用 client_secret，需配合 PKCE"
+                />
+              </Col>
+              {editing && (
+                <Col span={12}>
+                  <Form.Select
+                    field="status"
+                    label="状态"
+                    style={{ width: '100%' }}
+                    optionList={[
+                      { value: 'enabled', label: '启用' },
+                      { value: 'disabled', label: '禁用' },
+                    ]}
+                    rules={[{ required: true, message: '请选择状态' }]}
+                  />
+                </Col>
+              )}
+            </Row>
+            {/* 可选：应用描述（全宽，放最后） */}
+            <Row gutter={16}>
+              <Col span={24}>
+                <Form.TextArea
+                  field="description"
+                  label="应用描述"
+                  placeholder="请输入描述（可选）"
+                  rows={2}
+                />
+              </Col>
+            </Row>
           </Form>
         </Spin>
       </Modal>
