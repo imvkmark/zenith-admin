@@ -1566,3 +1566,89 @@ export interface DataMaskConfig {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── OAuth2 服务端 ─────────────────────────────────────────────────────────
+
+export interface OAuth2Client {
+  id: number;
+  clientId: string;
+  clientSecretPrefix?: string | null;
+  name: string;
+  description?: string | null;
+  logoUrl?: string | null;
+  redirectUris: string[];
+  allowedScopes: string[];
+  grantTypes: string[];
+  isPublic: boolean;
+  status: 'enabled' | 'disabled';
+  ownerId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 创建应用时一次性返回，包含明文 secret */
+export interface OAuth2ClientCreated extends OAuth2Client {
+  clientSecret: string;
+}
+
+export interface OAuth2Token {
+  id: number;
+  tokenType: 'access' | 'refresh';
+  tokenPrefix?: string | null;
+  clientId: string;
+  userId?: number | null;
+  scopes: string[];
+  expiresAt?: string | null;
+  revoked: boolean;
+  createdAt: string;
+}
+
+export interface OAuth2UserGrant {
+  id: number;
+  userId: number;
+  clientId: string;
+  scopes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** /api/oauth2/token 响应体（标准 OAuth2 格式）*/
+export interface OAuth2TokenResponse {
+  access_token: string;
+  token_type: 'Bearer';
+  expires_in: number;
+  refresh_token?: string;
+  scope: string;
+}
+
+/** /api/oauth2/userinfo 响应体 */
+export interface OAuth2UserInfo {
+  sub: string;
+  name?: string;
+  nickname?: string;
+  picture?: string;
+  email?: string;
+  email_verified?: boolean;
+}
+
+/** /api/oauth2/token/introspect 响应体 */
+export interface OAuth2IntrospectResponse {
+  active: boolean;
+  scope?: string;
+  client_id?: string;
+  username?: string;
+  exp?: number;
+  iat?: number;
+  sub?: string;
+  token_type?: string;
+}
+
+/** 前端 /oauth2/authorize 页面所需的应用信息 */
+export interface OAuth2AuthorizeInfo {
+  clientId: string;
+  name: string;
+  logoUrl?: string | null;
+  description?: string | null;
+  requestedScopes: string[];
+  alreadyGranted: boolean;
+}

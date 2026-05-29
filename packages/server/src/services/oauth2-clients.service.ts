@@ -1,0 +1,212 @@
+import { randomBytes, createHash, randomUUID } from 'node:crypto';
+import { eq, desc, ilike } from 'drizzle-orm';
+import { db } from '../db';
+import { oauth2Clients, oauth2Tokens } from '../db/schema';
+import { currentUser } from '../lib/context';
+import { HTTPException } from 'hono/http-exception';
+import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { pageOffset } from '../lib/pagination';
+
+// ─── 辅助：生成 & 哈希 client_secret ────────────────────────────────────────
+
+function generateClientSecret(): { raw: string; hash: string; prefix: string } {
+  const raw = `oas_${randomBytes(24).toString('hex')}`;
+  const hash = createHash('sha256').update(raw).digest('hex');
+  const prefix = `${raw.slice(0, 10)}...`;
+  return { raw, hash, prefix };
+}
+
+function mapClientRow(row: typeof oauth2Clients.$inferSelect) {
+  return {
+    id: row.id,
+    clientId: row.clientId,
+    clientSecretPrefix: row.clientSecretPrefix,
+    name: row.name,
+    description: row.description,
+    logoUrl: row.logoUrl,
+    redirectUris: row.redirectUris ?? [],
+    allowedScopes: row.allowedScopes ?? [],
+    grantTypes: row.grantTypes ?? [],
+    isPublic: row.isPublic,
+    status: row.status,
+    ownerId: row.ownerId,
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
+    createdAt: formatDateTime(row.createdAt),
+    updatedAt: formatDateTime(row.updatedAt),
+  };
+}
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
+export async function listOAuth2Clients(opts: { page: number; pageSize: number; keyword?: string }) {
+  const { page, pageSize, keyword } = opts;
+  const where = keyword ? ilike(oauth2Clients.name, `%${keyword}%`) : undefined;
+  const [list, total] = await Promise.all([
+    db.select().from(oauth2Clients)
+      .where(where)
+      .orderBy(desc(oauth2Clients.createdAt))
+      .limit(pageSize)
+      .offset(pageOffset(page, pageSize)),
+    db.$count(oauth2Clients, where),
+  ]);
+  return { list: list.map(mapClientRow), total, page, pageSize };
+}
+
+export async function createOAuth2Client(input: {
+  name: string;
+  description?: string;
+  logoUrl?: string;
+  redirectUris: string[];
+  allowedScopes: string[];
+  grantTypes: string[];
+  isPublic: boolean;
+}) {
+  const user = currentUser();
+  if (!input.name?.trim()) throw new HTTPException(400, { message: '应用名称不能为空' });
+
+  const clientId = randomUUID();
+  let secretHash: string | null = null;
+  let secretPrefix: string | null = null;
+  let secretRaw: string | null = null;
+
+  if (!input.isPublic) {
+    const sec = generateClientSecret();
+    secretHash = sec.hash;
+    secretPrefix = sec.prefix;
+    secretRaw = sec.raw;
+  }
+
+  try {
+    const [row] = await db.insert(oauth2Clients).values({
+      clientId,
+      clientSecretHash: secretHash,
+      clientSecretPrefix: secretPrefix,
+      name: input.name.trim(),
+      description: input.description,
+      logoUrl: input.logoUrl,
+      redirectUris: input.redirectUris,
+      allowedScopes: input.allowedScopes,
+      grantTypes: input.grantTypes,
+      isPublic: input.isPublic,
+      ownerId: user.userId,
+    }).returning();
+
+    return {
+      id: row.id,
+      clientId: row.clientId,
+      clientSecret: secretRaw ?? '',
+      name: row.name,
+      redirectUris: row.redirectUris ?? [],
+      allowedScopes: row.allowedScopes ?? [],
+      grantTypes: row.grantTypes ?? [],
+      isPublic: row.isPublic,
+      status: row.status,
+      createdAt: formatDateTime(row.createdAt),
+    };
+  } catch (err) {
+    rethrowPgUniqueViolation(err, '应用名称已存在');
+    throw err;
+  }
+}
+
+export async function getOAuth2Client(id: number) {
+  const [row] = await db.select().from(oauth2Clients).where(eq(oauth2Clients.id, id));
+  if (!row) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+  return mapClientRow(row);
+}
+
+export async function getOAuth2ClientByClientId(clientId: string) {
+  const [row] = await db.select().from(oauth2Clients).where(eq(oauth2Clients.clientId, clientId));
+  return row ?? null;
+}
+
+export async function updateOAuth2Client(id: number, input: {
+  name?: string;
+  description?: string;
+  logoUrl?: string;
+  redirectUris?: string[];
+  allowedScopes?: string[];
+  grantTypes?: string[];
+  isPublic?: boolean;
+  status?: 'enabled' | 'disabled';
+}) {
+  const existing = await getOAuth2Client(id);
+  if (!existing) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+
+  try {
+    const [row] = await db.update(oauth2Clients)
+      .set({
+        name: input.name?.trim() ?? undefined,
+        description: input.description,
+        logoUrl: input.logoUrl,
+        redirectUris: input.redirectUris,
+        allowedScopes: input.allowedScopes,
+        grantTypes: input.grantTypes,
+        isPublic: input.isPublic,
+        status: input.status,
+      })
+      .where(eq(oauth2Clients.id, id))
+      .returning();
+    return mapClientRow(row);
+  } catch (err) {
+    rethrowPgUniqueViolation(err, '应用名称已存在');
+    throw err;
+  }
+}
+
+export async function deleteOAuth2Client(id: number) {
+  const result = await db.delete(oauth2Clients).where(eq(oauth2Clients.id, id)).returning();
+  if (result.length === 0) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+}
+
+export async function regenerateOAuth2ClientSecret(id: number) {
+  const existing = await getOAuth2Client(id);
+  if (!existing) throw new HTTPException(404, { message: 'OAuth2 应用不存在' });
+  if (existing.isPublic) throw new HTTPException(400, { message: '公开客户端不使用 secret' });
+
+  const sec = generateClientSecret();
+  await db.update(oauth2Clients).set({
+    clientSecretHash: sec.hash,
+    clientSecretPrefix: sec.prefix,
+  }).where(eq(oauth2Clients.id, id));
+
+  return { clientId: existing.clientId, clientSecret: sec.raw };
+}
+
+// ─── 令牌管理 ─────────────────────────────────────────────────────────────────
+
+export async function listClientTokens(clientId: string, opts: { page: number; pageSize: number }) {
+  const { page, pageSize } = opts;
+  const where = eq(oauth2Tokens.clientId, clientId);
+  const [list, total] = await Promise.all([
+    db.select().from(oauth2Tokens)
+      .where(where)
+      .orderBy(desc(oauth2Tokens.createdAt))
+      .limit(pageSize)
+      .offset(pageOffset(page, pageSize)),
+    db.$count(oauth2Tokens, where),
+  ]);
+  return {
+    list: list.map((r) => ({
+      id: r.id,
+      tokenType: r.tokenType as 'access' | 'refresh',
+      tokenPrefix: r.tokenPrefix,
+      clientId: r.clientId,
+      userId: r.userId,
+      scopes: r.scopes ?? [],
+      expiresAt: formatNullableDateTime(r.expiresAt),
+      revoked: r.revoked,
+      createdAt: formatDateTime(r.createdAt),
+    })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export async function revokeToken(id: number) {
+  const result = await db.update(oauth2Tokens).set({ revoked: true }).where(eq(oauth2Tokens.id, id)).returning();
+  if (result.length === 0) throw new HTTPException(404, { message: '令牌不存在' });
+}

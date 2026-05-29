@@ -36,6 +36,8 @@ import { smsSendLogsHandlers } from './sms-send-logs';
 import { aiProvidersHandlers } from './ai-providers';
 import { aiConversationsHandlers } from './ai-conversations';
 import { userAiConfigHandlers } from './user-ai-config';
+import { oauth2AppsHandlers } from './oauth2-apps';
+import { oauth2AuthHandlers } from './oauth2-auth';
 import { inAppTemplatesHandlers } from './in-app-templates';
 import { inAppMessagesHandlers } from './in-app-messages';
 import { ipAccessLogsHandlers } from './ip-access-logs';
@@ -84,4 +86,6 @@ export const handlers = [
   ...aiProvidersHandlers,
   ...aiConversationsHandlers,
   ...userAiConfigHandlers,
+  ...oauth2AppsHandlers,
+  ...oauth2AuthHandlers,
 ];

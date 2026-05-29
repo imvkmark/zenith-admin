@@ -1470,3 +1470,118 @@ export const dataMaskConfigs = pgTable('data_mask_configs', {
 
 export type DataMaskConfigRow = typeof dataMaskConfigs.$inferSelect;
 export type NewDataMaskConfig = typeof dataMaskConfigs.$inferInsert;
+
+// ─── OAuth2 服务端 ─────────────────────────────────────────────────────────
+
+/**
+ * OAuth2 应用（客户端）注册表
+ * 管理接入本系统的第三方应用（ClientID / Secret / 回调URL / 权限范围）
+ */
+export const oauth2Clients = pgTable('oauth2_clients', {
+  id: serial('id').primaryKey(),
+  /** UUID，即 client_id */
+  clientId: varchar('client_id', { length: 64 }).notNull().unique(),
+  /** client_secret sha256 哈希值（机密客户端），公开客户端为 null */
+  clientSecretHash: varchar('client_secret_hash', { length: 128 }),
+  /** secret 前缀，用于列表页展示（前 8 位 + ...）*/
+  clientSecretPrefix: varchar('client_secret_prefix', { length: 20 }),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  logoUrl: varchar('logo_url', { length: 500 }),
+  /** 允许的回调 URL 列表 */
+  redirectUris: text('redirect_uris').array().notNull().default([]),
+  /** 允许申请的 scope 子集，如 ['openid','profile','email'] */
+  allowedScopes: text('allowed_scopes').array().notNull().default([]),
+  /** 允许的授权流程，如 ['authorization_code','client_credentials'] */
+  grantTypes: text('grant_types').array().notNull().default([]),
+  /** 是否为公开客户端（无 secret，必须使用 PKCE）*/
+  isPublic: boolean('is_public').notNull().default(false),
+  status: statusEnum('status').notNull().default('enabled'),
+  /** 应用归属用户 */
+  ownerId: integer('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type OAuth2ClientRow = typeof oauth2Clients.$inferSelect;
+export type NewOAuth2Client = typeof oauth2Clients.$inferInsert;
+
+/**
+ * OAuth2 授权码表
+ * 短期有效（10 分钟），用于 authorization_code 流程
+ */
+export const oauth2AuthorizationCodes = pgTable('oauth2_authorization_codes', {
+  id: serial('id').primaryKey(),
+  /** 授权码原始值（带前缀 oc_ 的随机串，存明文，单次使用后标记 used）*/
+  code: varchar('code', { length: 128 }).notNull().unique(),
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  redirectUri: text('redirect_uri').notNull(),
+  scopes: text('scopes').array().notNull().default([]),
+  /** PKCE code_challenge */
+  codeChallenge: varchar('code_challenge', { length: 256 }),
+  /** S256 | plain */
+  codeChallengeMethod: varchar('code_challenge_method', { length: 10 }),
+  expiresAt: timestamp('expires_at').notNull(),
+  used: boolean('used').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type OAuth2AuthorizationCodeRow = typeof oauth2AuthorizationCodes.$inferSelect;
+export type NewOAuth2AuthorizationCode = typeof oauth2AuthorizationCodes.$inferInsert;
+
+/**
+ * OAuth2 令牌表（access_token + refresh_token 共用）
+ */
+export const oauth2Tokens = pgTable('oauth2_tokens', {
+  id: serial('id').primaryKey(),
+  /** access | refresh */
+  tokenType: varchar('token_type', { length: 20 }).notNull(),
+  /** sha256 哈希后存储 */
+  tokenHash: varchar('token_hash', { length: 128 }).notNull().unique(),
+  /** token 前缀（oa_ / or_），用于列表页展示 */
+  tokenPrefix: varchar('token_prefix', { length: 20 }),
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  /** client_credentials 流程时为 null */
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  scopes: text('scopes').array().notNull().default([]),
+  expiresAt: timestamp('expires_at'),
+  revoked: boolean('revoked').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type OAuth2TokenRow = typeof oauth2Tokens.$inferSelect;
+export type NewOAuth2Token = typeof oauth2Tokens.$inferInsert;
+
+/**
+ * OAuth2 用户授权记录表
+ * 记录用户对某应用授权的 scope 集合，避免重复弹同意页
+ */
+export const oauth2UserGrants = pgTable('oauth2_user_grants', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  scopes: text('scopes').array().notNull().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('oauth2_user_grants_user_client_unique').on(t.userId, t.clientId)]);
+
+export type OAuth2UserGrantRow = typeof oauth2UserGrants.$inferSelect;
+export type NewOAuth2UserGrant = typeof oauth2UserGrants.$inferInsert;
+
+export const oauth2ClientsRelations = relations(oauth2Clients, ({ one }) => ({
+  owner: one(users, { fields: [oauth2Clients.ownerId], references: [users.id] }),
+}));
+
+export const oauth2AuthorizationCodesRelations = relations(oauth2AuthorizationCodes, ({ one }) => ({
+  user: one(users, { fields: [oauth2AuthorizationCodes.userId], references: [users.id] }),
+}));
+
+export const oauth2TokensRelations = relations(oauth2Tokens, ({ one }) => ({
+  user: one(users, { fields: [oauth2Tokens.userId], references: [users.id] }),
+}));
+
+export const oauth2UserGrantsRelations = relations(oauth2UserGrants, ({ one }) => ({
+  user: one(users, { fields: [oauth2UserGrants.userId], references: [users.id] }),
+}));

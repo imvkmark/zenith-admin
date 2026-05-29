@@ -23,6 +23,7 @@ const InboxPage = React.lazy(() => import('@/pages/inbox/InboxPage'));
 const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
 const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage'));
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
+const OAuth2AuthorizePage = React.lazy(() => import('@/pages/oauth2/OAuth2AuthorizePage'));
 const WorkflowDesignerPage = React.lazy(() => import('@/pages/workflow/designer/WorkflowDesignerPage'));
 
 const routeFallback = <div style={{ padding: 24 }}><Spin /></div>;
@@ -84,6 +85,8 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
   return (
     <PermissionContext.Provider value={permissions}>
       <Routes>
+        {/* OAuth2 同意授权页（独立页面，不在 AdminLayout 内）*/}
+        <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
         <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
         {/* 固定路由 */}
         <Route index element={<Suspense fallback={<DashboardSkeleton />}><DashboardPage /></Suspense>} />
@@ -158,6 +161,7 @@ export default function App() {
               <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onRegister={register} /></Suspense>} />
               <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
               <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
+              <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
               <Route path="*" element={<RedirectToLogin />} />
             </Routes>
           </PageErrorBoundary>
