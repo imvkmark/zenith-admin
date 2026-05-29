@@ -113,6 +113,7 @@ export default function ApprovalTimeline({ tasks }: Readonly<{ tasks: WorkflowTa
                 return (
                   <Avatar
                     size="extra-extra-small"
+                    alt={task.assigneeName ?? '成员'}
                     style={{ backgroundColor: avatarBg, color: '#fff', flexShrink: 0 }}
                     src={task.assigneeAvatar ?? undefined}
                   >

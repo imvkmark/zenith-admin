@@ -346,6 +346,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                             <>
                               <Avatar
                                 size="extra-large"
+                                alt={user.nickname || '用户头像'}
                                 color="blue"
                                 style={{ fontSize: 28, width: 80, height: 80 }}
                                 src={user.avatar || undefined}

@@ -365,7 +365,7 @@ export default function AnnouncementsPage() {
         dataIndex: 'username',
         render: (_: unknown, u: AnnouncementReadStats['list'][number]) => (
           <Space>
-            <Avatar size="extra-extra-small" src={u.avatar ?? undefined} style={{ backgroundColor: u.avatar ? undefined : 'var(--semi-color-primary)', color: '#fff' }}>
+            <Avatar size="extra-extra-small" alt={u.nickname?.[0] ?? 'U'} src={u.avatar ?? undefined} style={{ backgroundColor: u.avatar ? undefined : 'var(--semi-color-primary)', color: '#fff' }}>
               {u.nickname?.[0] ?? 'U'}
             </Avatar>
             <span>

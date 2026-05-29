@@ -2,9 +2,9 @@ import { Avatar } from '@douyinfe/semi-ui';
 import { getAvatarColor } from '../utils';
 
 export function UserAvatar({ name, avatar, size = 36 }: Readonly<{ name: string; avatar?: string | null; size?: number }>) {
-  if (avatar) return <Avatar src={avatar} size="small" style={{ width: size, height: size, flexShrink: 0 }} />;
+  if (avatar) return <Avatar src={avatar} alt={name} size="small" style={{ width: size, height: size, flexShrink: 0 }} />;
   return (
-    <Avatar size="small" style={{ width: size, height: size, flexShrink: 0, backgroundColor: getAvatarColor(name) }}>
+    <Avatar size="small" alt={name} style={{ width: size, height: size, flexShrink: 0, backgroundColor: getAvatarColor(name) }}>
       {name.slice(0, 1).toUpperCase()}
     </Avatar>
   );

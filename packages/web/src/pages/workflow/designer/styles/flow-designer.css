@@ -444,7 +444,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 .fd-branch-title:hover {
-  border-color: #3296fa;
+  border-color: var(--semi-color-primary);
 }
 
 .fd-branch-title__header {

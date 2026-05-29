@@ -202,7 +202,7 @@ export default function WorkflowMonitorPage() {
       width: 120,
       render: (v: string | null, record: WorkflowInstance) => (
         <Space spacing={6}>
-          <Avatar size="extra-extra-small" src={record.initiatorAvatar ?? undefined} style={{ backgroundColor: record.initiatorAvatar ? undefined : 'var(--semi-color-primary)', color: '#fff' }}>
+          <Avatar size="extra-extra-small" alt={v ?? '发起人'} src={record.initiatorAvatar ?? undefined} style={{ backgroundColor: record.initiatorAvatar ? undefined : 'var(--semi-color-primary)', color: '#fff' }}>
             {(v ?? '?').charAt(0)}
           </Avatar>
           <span>{v ?? '—'}</span>
