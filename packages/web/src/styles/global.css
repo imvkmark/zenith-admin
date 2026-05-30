@@ -127,6 +127,10 @@ body {
     margin: 0 auto;
   }
 }
+/* 面包屑链接悬浮时使用主题色 */
+.semi-breadcrumb-item-link:hover .semi-breadcrumb-item-title {
+  color: var(--semi-color-primary);
+}
 .semi-modal-header,
 .semi-modal-body,
 .semi-modal-footer {
