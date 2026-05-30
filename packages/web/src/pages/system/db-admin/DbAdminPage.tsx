@@ -526,6 +526,33 @@ export default function DbAdminPage() {
     }
   };
 
+  const handleExportTableSql = async (t: TableItem, mode: 'ddl' | 'data' | 'full') => {
+    if (!canExport) return;
+    const token = localStorage.getItem(TOKEN_KEY);
+    try {
+      const res = await fetch(
+        `${config.apiBaseUrl}/api/db-admin/tables/${encodeURIComponent(t.schema)}/${encodeURIComponent(t.name)}/export.sql?mode=${mode}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        Toast.error((err as { message?: string })?.message ?? '导出失败');
+        return;
+      }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const suffixMap: Record<string, string> = { ddl: 'ddl', data: 'data', full: 'full' };
+      const suffix = suffixMap[mode] ?? 'full';
+      a.download = `${t.schema}_${t.name}_${suffix}_${Date.now()}.sql`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      Toast.success(`${fullName(t)} SQL 导出成功`);
+    } catch (err) {
+      Toast.error('导出失败：' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   const handleCopyDdl = async (t: TableItem) => {
     let str: TableStructure | null =
       (selected?.schema === t.schema && selected?.name === t.name) ? structure : null;
@@ -571,6 +598,15 @@ export default function DbAdminPage() {
             <Dropdown.Divider />
             <Dropdown.Item icon={<Download size={14} />} onClick={() => void handleExportTableCsv(t)}>
               导出数据 CSV
+            </Dropdown.Item>
+            <Dropdown.Item icon={<Download size={14} />} onClick={() => void handleExportTableSql(t, 'ddl')}>
+              导出表结构 SQL
+            </Dropdown.Item>
+            <Dropdown.Item icon={<Download size={14} />} onClick={() => void handleExportTableSql(t, 'data')}>
+              导出数据 SQL (INSERT)
+            </Dropdown.Item>
+            <Dropdown.Item icon={<Download size={14} />} onClick={() => void handleExportTableSql(t, 'full')}>
+              导出完整 SQL (结构 + 数据)
             </Dropdown.Item>
           </>
         )}

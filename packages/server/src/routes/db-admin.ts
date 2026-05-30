@@ -32,6 +32,7 @@ import {
   explainQuery,
   exportQueryCsv,
   exportTableDataCsv,
+  exportTableSql,
   truncateTable,
   listQueryHistory,
   clearQueryHistory,
@@ -326,6 +327,31 @@ router.openapiRoutes([
   erDiagramRoute,
   erSchemaRoute,
 ] as const);
+
+// 表 SQL 导出（DDL / INSERT / 完整）：流式响应
+router.get('/tables/:schema/:name/export.sql', authMiddleware, guard({
+  permission: 'system:db-admin:export',
+  audit: { description: '导出表 SQL', module: '数据库管理' },
+}), async (c) => {
+  const { schema, name } = c.req.param();
+  const mode = (c.req.query('mode') ?? 'full') as 'ddl' | 'data' | 'full';
+  if (!['ddl', 'data', 'full'].includes(mode)) {
+    return c.json({ code: 400, message: '无效的 mode 参数', data: null }, 400);
+  }
+  const stream = await exportTableSql(schema, name, mode);
+  const suffixMap: Record<string, string> = { ddl: 'ddl', data: 'data', full: 'full' };
+  const suffix = suffixMap[mode] ?? 'full';
+  const filename = `${schema}_${name}_${suffix}_${Date.now()}.sql`;
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+});
 
 // 表数据 CSV 导出：流式响应
 router.get('/tables/:schema/:name/export.csv', authMiddleware, guard({

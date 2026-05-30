@@ -747,7 +747,157 @@ export async function exportTableDataCsv(
   return exportQueryCsv(`SELECT * FROM ${quoteIdent(schema)}.${quoteIdent(name)}`);
 }
 
-// ─── 6c. 截断表 ──────────────────────────────────────────────────────────────────
+// ─── 6c. 导出表 SQL (DDL / INSERT / 完整) ────────────────────────────────────────
+
+/** 将值转换为 PostgreSQL SQL 字面量，用于生成 INSERT 语句 */
+function toSqlLiteral(value: unknown, dataType: string): string {
+  if (value === null || value === undefined) return 'NULL';
+
+  const dt = dataType.toLowerCase();
+
+  // 数值型：直接输出，不加引号
+  if (
+    typeof value === 'number' ||
+    dt === 'integer' || dt === 'int' || dt === 'int2' || dt === 'int4' || dt === 'int8' ||
+    dt === 'bigint' || dt === 'smallint' || dt === 'serial' || dt === 'bigserial' ||
+    dt === 'real' || dt === 'double precision' || dt === 'float4' || dt === 'float8' ||
+    dt.startsWith('numeric') || dt.startsWith('decimal')
+  ) {
+    return typeof value === 'number' ? String(value) : JSON.stringify(value);
+  }
+
+  // 布尔型
+  if (typeof value === 'boolean' || dt === 'boolean' || dt === 'bool') {
+    return value ? 'TRUE' : 'FALSE';
+  }
+
+  // 字符串型：转义单引号
+  const str = typeof value === 'object' ? JSON.stringify(value) : `${value as string | number | boolean}`;
+  const escaped = str.replaceAll("'", "''");
+
+  // jsonb / json：加类型转换
+  if (dt === 'jsonb' || dt === 'json') {
+    return `'${escaped}'::${dt}`;
+  }
+
+  return `'${escaped}'`;
+}
+
+/** 生成 CREATE TABLE DDL（含索引和外键） */
+function buildTableDdl(schema: string, name: string, structure: TableStructure): string {
+  const fullName = `${quoteIdent(schema)}.${quoteIdent(name)}`;
+  const parts: string[] = [`-- DDL: ${schema}.${name}`];
+
+  const colDefs: string[] = structure.columns.map((col) => {
+    let line = `  ${quoteIdent(col.name)} ${col.dataType}`;
+    if (!col.isNullable) line += ' NOT NULL';
+    if (col.defaultValue !== null) line += ` DEFAULT ${col.defaultValue}`;
+    if (col.comment) line += ` -- ${col.comment.replaceAll('\n', ' ')}`;
+    return line;
+  });
+
+  if (structure.primaryKey.length > 0) {
+    colDefs.push(`  PRIMARY KEY (${structure.primaryKey.map(quoteIdent).join(', ')})`);
+  }
+
+  const tableDef = [
+    `CREATE TABLE IF NOT EXISTS ${fullName} (`,
+    colDefs.join(',\n'),
+    ');',
+  ].join('\n');
+  parts.push(tableDef);
+
+  // 非主键索引
+  for (const idx of structure.indexes) {
+    if (!idx.isPrimary) {
+      parts.push(`${idx.definition};`);
+    }
+  }
+
+  // 外键
+  for (const fk of structure.foreignKeys) {
+    const cols = fk.columns.map(quoteIdent).join(', ');
+    const refCols = fk.referencedColumns.map(quoteIdent).join(', ');
+    const refTable = `${quoteIdent(fk.referencedSchema)}.${quoteIdent(fk.referencedTable)}`;
+    parts.push(
+      `ALTER TABLE ${fullName} ADD CONSTRAINT ${quoteIdent(fk.name)} ` +
+      `FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ` +
+      `ON UPDATE ${fk.onUpdate} ON DELETE ${fk.onDelete};`,
+    );
+  }
+
+  return parts.join('\n\n');
+}
+
+export type SqlExportMode = 'ddl' | 'data' | 'full';
+
+/**
+ * 以流式方式导出表的 SQL 文件。
+ * - mode=ddl  : CREATE TABLE + 索引 + 外键
+ * - mode=data : INSERT INTO 语句
+ * - mode=full : DDL + 数据
+ */
+export async function exportTableSql(
+  schema: string,
+  name: string,
+  mode: SqlExportMode,
+): Promise<ReadableStream<Uint8Array>> {
+  assertIdent(schema, 'schema');
+  assertIdent(name, 'table');
+
+  const structure = await getTableStructure(schema, name);
+  const colNames = structure.columns.map((c) => c.name);
+  const colTypes = new Map(structure.columns.map((c) => [c.name, c.dataType]));
+  const fullName = `${quoteIdent(schema)}.${quoteIdent(name)}`;
+  const encoder = new TextEncoder();
+  const BATCH_SIZE = 500;
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const emit = (s: string) => controller.enqueue(encoder.encode(s));
+
+      try {
+        emit(`-- SQL export: ${schema}.${name}\n`);
+        emit(`-- Generated: ${new Date().toISOString()}\n\n`);
+
+        // ── DDL 部分 ────────────────────────────────────────────────────────
+        if (mode === 'ddl' || mode === 'full') {
+          emit(buildTableDdl(schema, name, structure));
+          emit('\n');
+        }
+
+        // ── INSERT 数据部分 ──────────────────────────────────────────────────
+        if (mode === 'data' || mode === 'full') {
+          if (mode === 'full') emit('\n');
+
+          await pgClient.begin(async (tx) => {
+            await tx.unsafe(`SET LOCAL TRANSACTION READ ONLY`);
+            await tx.unsafe(`SET LOCAL statement_timeout = '${QUERY_TIMEOUT}'`);
+            const cursor = tx.unsafe(`SELECT * FROM ${fullName}`).cursor(BATCH_SIZE);
+            const colHeader = colNames.map(quoteIdent).join(', ');
+
+            for await (const rows of cursor) {
+              if (!Array.isArray(rows) || rows.length === 0) continue;
+              for (const row of rows as Array<Record<string, unknown>>) {
+                const vals = colNames.map((c) =>
+                  toSqlLiteral(row[c], colTypes.get(c) ?? 'text'),
+                ).join(', ');
+                emit(`INSERT INTO ${fullName} (${colHeader}) VALUES (${vals});\n`);
+              }
+            }
+          });
+        }
+
+        controller.close();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        controller.error(new HTTPException(400, { message: `导出 SQL 失败：${msg}` }));
+      }
+    },
+  });
+}
+
+// ─── 6d. 截断表 ──────────────────────────────────────────────────────────────────
 const FORBIDDEN_TRUNCATE_SCHEMAS = new Set(['pg_catalog', 'information_schema', 'pg_toast', 'drizzle']);
 const FORBIDDEN_TRUNCATE_TABLES = new Set([
   'public.db_admin_query_history',
