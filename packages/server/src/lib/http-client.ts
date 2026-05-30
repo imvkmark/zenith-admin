@@ -1,6 +1,17 @@
 import { ProxyAgent, type Dispatcher } from 'undici';
+import { formatDateTime } from './datetime';
+import { config } from '../config';
 import logger from './logger';
-
+import {
+  resolveLevel,
+  redactHeaders,
+  headersToRecord,
+  truncateBody,
+  tryParseJson,
+  safeRedactBody,
+  writeHttpLogEntry,
+  type HttpLogEntry,
+} from './http-logger';import type { HttpLogLevel, HttpLogFormat } from '../config';
 export interface HttpRequestOptions extends Omit<RequestInit, 'signal' | 'body'> {
   /** Base URL prefix; only applied when `url` is not absolute */
   baseURL?: string;
@@ -18,6 +29,26 @@ export interface HttpRequestOptions extends Omit<RequestInit, 'signal' | 'body'>
   signal?: AbortSignal;
   /** Log truncation length for body in pino logs. Default 2048; set 0 to disable body logging */
   logBodyLimit?: number;
+  /**
+   * 覆盖本次请求的出站 HTTP 日志配置，优先级高于全局 config.httpLog.outgoing。
+   *
+   * @example
+   * ```typescript
+   * // 对这个单次调用开启全量日志（包含请求/响应 body）
+   * await httpRequest('/api/webhook', { method: 'POST', body: payload, httpLog: { level: 'full' } });
+   *
+   * // 对包含敏感数据的调用完全禁用日志
+   * await httpRequest('/api/payment', { method: 'POST', body: card, httpLog: { level: 'off' } });
+   * ```
+   */
+  httpLog?: {
+    /** 覆盖日志级别 */
+    level?: HttpLogLevel;
+    /** 覆盖输出格式 */
+    format?: HttpLogFormat;
+    /** 覆盖是否记录响应体 */
+    logResponseBody?: boolean;
+  };
 }
 
 export interface HttpResponse {
@@ -106,9 +137,7 @@ export function resetHttpCircuitBreakers(): void {
 }
 
 // ── Header redaction ──────────────────────────────────────────────────────────
-
-const REDACT_KEYS = /^(authorization|cookie|set-cookie|proxy-authorization|x-auth-token)$/i;
-const REDACT_VALUE_KEYS = /(token|secret|password|api[_-]?key)/i;
+// redactHeaders 已统一在 http-logger.ts 中实现，此处提供兼容包装
 
 function headerEntries(h: HeadersInit): Iterable<[string, string]> {
   if (h instanceof Headers) return h.entries();
@@ -116,17 +145,12 @@ function headerEntries(h: HeadersInit): Iterable<[string, string]> {
   return Object.entries(h) as Iterable<[string, string]>;
 }
 
-function redactHeaders(h: HeadersInit | undefined): Record<string, string> {
+function redactHeadersInit(h: HeadersInit | undefined): Record<string, string> {
   if (!h) return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of headerEntries(h)) {
-    if (REDACT_KEYS.test(k) || REDACT_VALUE_KEYS.test(k)) {
-      out[k] = '***';
-    } else {
-      out[k] = String(v);
-    }
-  }
-  return out;
+  const tmp: Record<string, string> = {};
+  for (const [k, v] of headerEntries(h)) tmp[k] = String(v);
+  // 复用 http-logger.ts 中统一的脱敏逻辑
+  return redactHeaders(tmp);
 }
 
 function truncate(s: string, max: number): string {
@@ -143,7 +167,7 @@ function resolveUrl(url: string, baseURL?: string): string {
 }
 
 function normalizeBody(body: HttpRequestOptions['body'], headers: Headers): BodyInit | null | undefined {
-  if (body === undefined || body === null) return body as null | undefined;
+  if (body === undefined || body === null) return body;
   if (typeof body === 'string') return body;
   if (
     body instanceof URLSearchParams
@@ -187,6 +211,7 @@ export async function httpRequest(
     proxy,
     signal: callerSignal,
     logBodyLimit = 2048,
+    httpLog: callHttpLog,
     headers: headersInit,
     method = 'GET',
     ...rest
@@ -216,11 +241,38 @@ export async function httpRequest(
     const logCtx = {
       method,
       url: finalUrl,
-      headers: redactHeaders(headersInit),
+      headers: redactHeadersInit(headersInit),
       attempt,
       proxy: proxy ? new URL(proxy).host : undefined,
     };
     logger.debug('[http] request', logCtx);
+
+    // ── 出站日志：请求阶段 ────────────────────────────────────────────────
+    const outCfg = config.httpLog.outgoing;
+    // 优先级：per-call 覆盖 > 方法级覆盖 > 全局默认
+    const outLevel = callHttpLog?.level ?? resolveLevel(method, outCfg.level, outCfg.methods);
+    const outFormat = callHttpLog?.format ?? outCfg.format;
+    const outLogResponseBody = callHttpLog?.logResponseBody ?? outCfg.logResponseBody;
+    const shouldLogOut = outCfg.enabled && outLevel !== 'off';
+
+    if (shouldLogOut && outLevel !== 'access') {
+      const reqEntry: HttpLogEntry = {
+        correlation: `out-${Date.now()}-${attempt}`,
+        direction: 'outgoing',
+        phase: 'request',
+        method,
+        url: finalUrl,
+        requestHeaders: (outLevel === 'headers' || outLevel === 'full')
+          ? redactHeaders(logCtx.headers)
+          : undefined,
+        requestBody: (outLevel === 'body' || outLevel === 'full') && body !== undefined && body !== null
+          ? truncateBody(safeRedactBody(body), outCfg.maxBodyBytes)
+          : undefined,
+        attempt: attempt > 1 ? attempt : undefined,
+        timestamp: formatDateTime(new Date()),
+      };
+      writeHttpLogEntry(reqEntry, outFormat, false);
+    }
 
     try {
       const resp = await performOnce(finalUrl, {
@@ -244,11 +296,58 @@ export async function httpRequest(
       if (resp.ok) breakerOnSuccess(host);
       else breakerOnFailure(host);
 
+      // ── 出站日志：响应阶段 ──────────────────────────────────────────────
+      if (shouldLogOut) {
+        let responseBody: unknown;
+        if (outLogResponseBody && (outLevel === 'body' || outLevel === 'full')) {
+          const ct = resp.headers.get('content-type') ?? '';
+          if (ct.includes('application/json') || ct.includes('text/')) {
+            try {
+              const text = await resp.clone().text();
+              responseBody = truncateBody(tryParseJson(text), outCfg.maxBodyBytes);
+            } catch {
+              // 读取失败，跳过
+            }
+          }
+        }
+        const resEntry: HttpLogEntry = {
+          correlation: `out-${startedAt}-${attempt}`,
+          direction: 'outgoing',
+          phase: 'response',
+          method,
+          url: finalUrl,
+          statusCode: resp.status,
+          durationMs: elapsed,
+          responseHeaders: (outLevel === 'headers' || outLevel === 'full')
+            ? redactHeaders(headersToRecord(resp.headers))
+            : undefined,
+          responseBody,
+          attempt: attempt > 1 ? attempt : undefined,
+          timestamp: formatDateTime(new Date()),
+        };
+        writeHttpLogEntry(resEntry, outFormat, false);
+      }
+
       return wrapResponse(resp, finalUrl);
     } catch (err) {
       const elapsed = Date.now() - startedAt;
       lastErr = err;
       logger.warn('[http] error', { ...logCtx, ms: elapsed, err: (err as Error).message });
+      // ── 出站日志：错误阶段 ──────────────────────────────────────────────
+      if (shouldLogOut) {
+        const errEntry: HttpLogEntry = {
+          correlation: `out-${startedAt}-${attempt}`,
+          direction: 'outgoing',
+          phase: 'response',
+          method,
+          url: finalUrl,
+          durationMs: elapsed,
+          attempt: attempt > 1 ? attempt : undefined,
+          error: (err as Error).message,
+          timestamp: formatDateTime(new Date()),
+        };
+        writeHttpLogEntry(errEntry, outFormat, false);
+      }
       breakerOnFailure(host);
       const aborted = (err as Error).name === 'AbortError' || callerSignal?.aborted;
       if (aborted || attempt >= maxAttempts) break;

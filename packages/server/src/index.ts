@@ -22,6 +22,7 @@ import { closeRedis } from './lib/redis';
 import logger from './lib/logger';
 import { errBody } from './lib/openapi-schemas';
 import { ipAccessMiddleware } from './middleware/ip-access';
+import { httpLoggerMiddleware } from './middleware/http-logger';
 import { authRateLimit, captchaRateLimit, sensitiveRateLimit, bootstrapRateLimitRules } from './middleware/rate-limit';
 import rateLimitRoutes from './routes/rate-limit';
 import authRoutes from './routes/auth';
@@ -141,6 +142,8 @@ app.use(
   }),
 );
 app.use('*', honoLogger((msg) => logger.info(stripAnsi(msg))));
+// HTTP 流量详细日志（对标 Logbook），默认关闭，通过 HTTP_LOG_INCOMING_ENABLED=true 启用
+app.use('*', httpLoggerMiddleware);
 if (config.serverTimingEnabled) {
   app.use('*', timing());
 }

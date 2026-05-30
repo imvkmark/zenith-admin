@@ -97,6 +97,7 @@ export default defineConfig({
           { text: '安全体系', link: '/backend/security' },
           { text: 'OAuth 第三方登录', link: '/backend/oauth' },
           { text: '外呼 HTTP 客户端', link: '/backend/http-client' },
+          { text: 'HTTP 流量日志', link: '/backend/http-logging' },
           { text: '定时任务', link: '/backend/cron-jobs' },
           { text: 'WebSocket 事件清单', link: '/backend/websocket-events' },
           {
