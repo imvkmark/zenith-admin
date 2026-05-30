@@ -41,7 +41,8 @@ export default function DictsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [submittedStatus, setSubmittedStatus] = useState('');
   const [timeRange, setTimeRange] = useState<[Date, Date] | null>(null);
-  const [submittedTimeRange, setSubmittedTimeRange] = useState<[Date, Date] | null>(null);  const [page, setPage] = useState(1);
+  const [submittedTimeRange, setSubmittedTimeRange] = useState<[Date, Date] | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);  const [dictModalVisible, setDictModalVisible] = useState(false);
   const [editingDict, setEditingDict] = useState<Dict | null>(null);
@@ -83,7 +84,7 @@ export default function DictsPage() {
     } finally {
       setDictsLoading(false);
     }
-  }, [submittedKeyword, submittedStatus, submittedTimeRange, selectedDict, page, pageSize]);
+  }, [submittedKeyword, submittedStatus, submittedTimeRange, selectedDict, page, pageSize, refreshKey]);
 
   const fetchItems = useCallback(async (dictId: number) => {
     setItemsLoading(true);
@@ -102,6 +103,7 @@ export default function DictsPage() {
     setSubmittedKeyword(keyword);
     setSubmittedStatus(statusFilter);
     setSubmittedTimeRange(timeRange);
+    setRefreshKey((k) => k + 1);
   }
 
   function handleReset() {
@@ -112,6 +114,7 @@ export default function DictsPage() {
     setSubmittedStatus('');
     setTimeRange(null);
     setSubmittedTimeRange(null);
+    setRefreshKey((k) => k + 1);
   }
 
   const selectDict = (dict: Dict) => {
