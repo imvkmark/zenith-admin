@@ -118,6 +118,15 @@ body {
   border: 1px solid var(--color-border);
   border-radius: 8px;
 }
+
+/* 窄屏 Modal 宽度自适应，防止溢出屏幕 */
+@media (max-width: 540px) {
+  .semi-modal-wrap .semi-modal {
+    max-width: 95vw !important;
+    width: 95vw !important;
+    margin: 0 auto;
+  }
+}
 .semi-modal-header,
 .semi-modal-body,
 .semi-modal-footer {
