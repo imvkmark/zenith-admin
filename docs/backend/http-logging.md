@@ -90,7 +90,7 @@ curl -X POST 'http://localhost:3300/api/users' \
 
 ## 配置参考
 
-所有配置通过环境变量控制，参见 [`packages/server/.env.example`](../../packages/server/.env.example) 中的 HTTP 日志配置节。
+所有配置通过环境变量控制，参见 `packages/server/.env.example` 中的 HTTP 日志配置节。
 
 ### 快速场景配置
 
