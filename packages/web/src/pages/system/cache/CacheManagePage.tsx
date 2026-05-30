@@ -129,11 +129,13 @@ export default function CacheManagePage() {
 
   const handleSearch = () => {
     setKeyword(searchInput);
+    void fetchData();
   };
 
   const handleReset = () => {
     setSearchInput('');
     setKeyword('');
+    void fetchData();
   };
 
   const handleDeleteKey = (item: CacheItem) => {
