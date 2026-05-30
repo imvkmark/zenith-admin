@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import {
   Button, Card, Switch, TextArea, Toast, Spin, Typography,
   Tabs, TabPane, Table, Tag, Input, Select,
@@ -38,7 +38,7 @@ function toJsonArray(text: string): string {
 // ─── 拦截日志子页面 ─────────────────────────────────────────────
 
 function IpAccessLogsTab() {
-  const [tableLoading, setTableLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [logList, setLogList] = useState<IpAccessLog[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -49,9 +49,8 @@ function IpAccessLogsTab() {
   const searchIpRef = useRef('');
   const searchBlockTypeRef = useRef<string | undefined>(undefined);
 
-  const fetchLogs = useCallback(async (p = 1, ip?: string, blockType?: string) => {
-    setTableLoading(true);
-    try {
+  const fetchLogs = useCallback((p = 1, ip?: string, blockType?: string) => {
+    startTransition(async () => {
       const params = new URLSearchParams({ page: String(p), pageSize: String(pageSize) });
       if (ip) params.set('ip', ip);
       if (blockType) params.set('blockType', blockType);
@@ -61,9 +60,7 @@ function IpAccessLogsTab() {
         setTotal(res.data.total);
         setPage(p);
       }
-    } finally {
-      setTableLoading(false);
-    }
+    });
   }, []);
 
   useEffect(() => { fetchLogs(1); }, [fetchLogs]);
@@ -129,7 +126,7 @@ function IpAccessLogsTab() {
         bordered
         columns={columns}
         dataSource={logList}
-        loading={tableLoading}
+        style={{ opacity: isPending ? 0.6 : 1, transition: 'opacity 0.2s' }}
         rowKey="id"
         pagination={{
           total,
