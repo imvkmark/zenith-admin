@@ -24,6 +24,7 @@
   align-items: center;
   gap: 8px;
   padding: 0 16px;
+  margin-left: 8px;
   flex-shrink: 0;
   border-radius: var(--radius);
   transition: background 0.15s;
@@ -804,14 +805,10 @@
   height: 6px !important;
   min-width: 6px !important;
   background-color: #ff6b6b !important;
-  box-shadow: 0 0 0 1.5px #ffffff !important;
+  box-shadow: 0 0 0 1.5px var(--color-layout-bg) !important;
   border-radius: 50% !important;
   top: 2px !important;
   right: 2px !important;
-}
-
-body[theme-mode='dark'] .admin-notify-badge .semi-badge-dot {
-  box-shadow: 0 0 0 1.5px var(--color-sidebar-bg) !important;
 }
 
 /* 解决各种菜单模式（侧边栏折叠、顶部水平导航）弹出的子菜单无法滚动的问题 */
