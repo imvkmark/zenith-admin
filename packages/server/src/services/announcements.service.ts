@@ -337,6 +337,11 @@ export async function createAnnouncement(data: CreateAnnouncementInput) {
   if (data.publishTime) publishTime = parseDateTimeInput(data.publishTime);
   else if (data.publishStatus === 'published') publishTime = now;
 
+  if (data.publishStatus === 'scheduled') {
+    if (!publishTime) throw new HTTPException(400, { message: '定时发布时间不能为空' });
+    if (publishTime <= now) throw new HTTPException(400, { message: '定时发布时间必须是未来时间' });
+  }
+
   const row = await db.transaction(async (tx) => {
     const [inserted] = await tx.insert(announcements).values({
       title: data.title,
@@ -387,6 +392,19 @@ export async function updateAnnouncement(id: number, data: Partial<CreateAnnounc
   } else if (data.publishStatus === 'published') {
     const existing = await db.select().from(announcements).where(eq(announcements.id, id));
     if (existing[0] && !existing[0].publishTime) publishTime = now;
+  }
+
+  if (data.publishStatus === 'scheduled') {
+    const timeProvided = data.publishTime !== undefined;
+    if (timeProvided) {
+      if (!publishTime) throw new HTTPException(400, { message: '定时发布时间不能为空' });
+      if (publishTime <= now) throw new HTTPException(400, { message: '定时发布时间必须是未来时间' });
+    } else {
+      // publishTime not provided in this update — check existing record
+      const [existing] = await db.select({ publishTime: announcements.publishTime }).from(announcements).where(eq(announcements.id, id)).limit(1);
+      if (!existing?.publishTime) throw new HTTPException(400, { message: '定时发布时间不能为空' });
+      if (existing.publishTime <= now) throw new HTTPException(400, { message: '定时发布时间必须是未来时间' });
+    }
   }
   const updateData: Record<string, unknown> = { ...data };
   delete updateData.recipients;
