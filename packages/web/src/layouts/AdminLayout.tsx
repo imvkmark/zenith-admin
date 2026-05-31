@@ -99,15 +99,15 @@ function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] {
   return traverse(menuTree, []) ?? [];
 }
 
-function findBreadcrumbs(menuTree: Menu[], targetPath: string): { title: string; path?: string }[] {
-  function traverse(nodes: Menu[], ancestors: { title: string; path?: string }[]): { title: string; path?: string }[] | null {
+function findBreadcrumbs(menuTree: Menu[], targetPath: string): { title: string; path?: string; icon?: string }[] {
+  function traverse(nodes: Menu[], ancestors: { title: string; path?: string; icon?: string }[]): { title: string; path?: string; icon?: string }[] | null {
     for (const node of nodes) {
       if (!node.visible || node.type === 'button') continue;
       if (node.type === 'directory') {
-        const found = traverse(node.children ?? [], [...ancestors, { title: node.title }]);
+        const found = traverse(node.children ?? [], [...ancestors, { title: node.title, icon: node.icon ?? undefined }]);
         if (found !== null) return found;
       } else if (node.path === targetPath) {
-        return [...ancestors, { title: node.title, path: node.path ?? undefined }];
+        return [...ancestors, { title: node.title, path: node.path ?? undefined, icon: node.icon ?? undefined }];
       }
     }
     return null;
@@ -1157,10 +1157,16 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                         type="button"
                         onClick={navigateHome}
                         onKeyDown={handleNavigateHomeKey}
-                        style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit' }}
-                      >首页</button>
+                        style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}
+                      >
+                        {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
+                        首页
+                      </button>
                     ) : (
-                      crumb.title
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
+                        {crumb.title}
+                      </span>
                     )}
                   </Breadcrumb.Item>
                 ))}
@@ -1297,6 +1303,12 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 </span>
                 <Switch checked={preferences.showBreadcrumb} onChange={(v) => setPreferences({ showBreadcrumb: v })} />
               </div>
+              {preferences.showBreadcrumb && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>面包屑显示图标</span>
+                  <Switch checked={preferences.breadcrumbIcon ?? false} onChange={(v) => setPreferences({ breadcrumbIcon: v })} />
+                </div>
+              )}
 
               {/* ── 菜单搜索 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

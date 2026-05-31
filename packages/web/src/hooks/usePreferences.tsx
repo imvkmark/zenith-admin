@@ -11,6 +11,8 @@ export interface UserPreferences {
   showTabIcon: boolean;
   navLayout: NavLayout;
   showBreadcrumb: boolean;
+  /** 面包屑是否显示图标 */
+  breadcrumbIcon: boolean;
   tabAnimation: TabAnimation;
   colorMode: ThemeMode;
   themeColor: string;
@@ -31,6 +33,7 @@ export const defaultPreferences: UserPreferences = {
   showTabIcon: true,
   navLayout: 'vertical',
   showBreadcrumb: false,
+  breadcrumbIcon: false,
   tabAnimation: 'fade',
   colorMode: 'light',
   themeColor: 'blue',
