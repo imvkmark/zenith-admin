@@ -6,7 +6,7 @@ export default function NotFoundPage() {
   const navigate = useNavigate();
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
       <Empty
         image={<IllustrationNotFound style={{ width: 200, height: 200 }} />}
         darkModeImage={<IllustrationNotFoundDark style={{ width: 200, height: 200 }} />}
