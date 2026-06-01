@@ -1340,12 +1340,6 @@
 }
 
 /* ===== 分区深色模式（浅色主题下单独启用的深色区域） ===== */
-.prefs-section-divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: 0 -24px;
-}
-
 /* ===== 偏好重置按钮 ===== */
 .prefs-reset-btn {
   margin-top: 4px;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
-import { Badge, Breadcrumb, Button, ColorPicker, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
+import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Bell, Building2, Check, Info, Maximize2, Minimize2, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
@@ -1450,9 +1450,11 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 <Switch checked={preferences.sidebarStickyScroll ?? true} onChange={(v) => setPreferences({ sidebarStickyScroll: v })} />
               </div>
 
-              {/* ── 表格列设置 ── */}
+              <Divider style={{ margin: '0 -24px' }} />
+
+              {/* ── 表格设置 ── */}
               <div>
-                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>表格样式</div>
+                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>表格设置</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>显示表格边框</span>
@@ -1474,15 +1476,14 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       <Radio value="middle">宽松</Radio>
                     </RadioGroup>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>显示表格列设置按钮</span>
+                    <Switch checked={preferences.showTableColumnSettings ?? true} onChange={(v) => setPreferences({ showTableColumnSettings: v })} />
+                  </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>显示表格列设置按钮</span>
-                <Switch checked={preferences.showTableColumnSettings ?? true} onChange={(v) => setPreferences({ showTableColumnSettings: v })} />
-              </div>
-
-              <div className="prefs-section-divider" />
+              <Divider style={{ margin: '0 -24px' }} />
 
               {/* ── 多标签页 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1564,8 +1565,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   </div>
                 </>
               )}
-
-              <div className="prefs-section-divider" />
 
               {/* ── 重置 ── */}
               <div>
