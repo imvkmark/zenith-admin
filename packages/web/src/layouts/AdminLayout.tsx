@@ -1454,7 +1454,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               {/* ── 表格设置 ── */}
               <div>
-                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>表格设置</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>显示表格边框</span>
