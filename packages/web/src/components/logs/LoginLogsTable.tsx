@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Modal, Tag } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Modal, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps, TableProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { LoginLog } from '@zenith/shared';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -90,34 +90,26 @@ export function LoginLogsTable({
         style={{ top: 40 }}
       >
         {detailLog && (
-          <div style={{ padding: '4px 0' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-              {([
-                ['ID', String(detailLog.id)],
-                ['用户名', detailLog.username],
-                ['状态', null],
-                ['登录信息', detailLog.message ?? '-'],
-                ['IP 地址', detailLog.ip ?? '-'],
-                ['登录地点', detailLog.location ?? '-'],
-                ['浏览器', detailLog.browser ?? '-'],
-                ['操作系统', detailLog.os ?? '-'],
-                ['登录时间', formatDateTime(detailLog.createdAt)],
-              ] as const).map(([label, value]) => (
-                <div key={label} style={{ padding: '8px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
-                  <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12, marginBottom: 2 }}>{label}</div>
-                  <div style={{ fontSize: 13, wordBreak: 'break-all' }}>
-                    {label === '状态'
-                      ? <LoginStatusTag status={detailLog.status} size="small" />
-                      : value}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ padding: '8px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
-              <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12, marginBottom: 2 }}>User-Agent</div>
-              <div style={{ fontSize: 13, wordBreak: 'break-all' }}>{detailLog.userAgent ?? '-'}</div>
-            </div>
-          </div>
+          <Descriptions
+            data={[
+              { key: 'ID', value: String(detailLog.id) },
+              { key: '用户名', value: detailLog.username },
+              {
+                key: '状态',
+                value: <LoginStatusTag status={detailLog.status} size="small" />,
+              },
+              { key: '登录信息', value: detailLog.message ?? '-' },
+              { key: 'IP 地址', value: detailLog.ip ?? '-' },
+              { key: '登录地点', value: detailLog.location ?? '-' },
+              { key: '浏览器', value: detailLog.browser ?? '-' },
+              { key: '操作系统', value: detailLog.os ?? '-' },
+              { key: '登录时间', value: formatDateTime(detailLog.createdAt) },
+              { key: 'User-Agent', value: detailLog.userAgent ?? '-', span: 3 },
+            ]}
+            column={3}
+            layout="horizontal"
+            align="left"
+          />
         )}
       </Modal>
     </>
