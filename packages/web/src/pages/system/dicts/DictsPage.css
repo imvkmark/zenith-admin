@@ -1,28 +1,151 @@
-/* 字典名称单元格 */
-.dict-name-cell {
+.dict-master,
+.dict-detail {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dict-master {
+  background: var(--semi-color-bg-1);
+}
+
+.dict-master-header,
+.dict-detail-header {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--semi-color-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dict-master-header {
+  justify-content: space-between;
+}
+
+.dict-master-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.dict-master-list {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dict-list {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dict-list .semi-list-header {
+  flex-shrink: 0;
+  padding: 10px 12px;
+}
+
+.dict-list .semi-list-footer {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+}
+
+.dict-list-pagination {
+  min-width: max-content;
+  display: flex;
+  justify-content: center;
+}
+
+.dict-list > .semi-spin {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dict-list .semi-list-items {
+  padding: 8px;
+}
+
+.dict-list-item {
+  padding: 8px 8px !important;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dict-list-item:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.dict-list-item--active {
+  background: var(--semi-color-primary-light-default);
+}
+
+.dict-list-item-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dict-list-item-title,
+.dict-list-item-code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dict-list-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.dict-list-item-code {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.dict-empty {
+  padding: 28px 0;
+  text-align: center;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
+
+.dict-detail {
+  gap: 12px;
+}
+
+.dict-detail-header {
+  background: var(--semi-color-bg-1);
+}
+
+.dict-detail-title {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
-  color: var(--semi-color-text-0);
-  cursor: pointer;
-  border: none;
-  background: none;
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-size: inherit;
-  font-family: inherit;
-  transition: color 0.15s;
-}
-
-.dict-name-cell:hover {
-  color: var(--semi-color-primary);
-}
-
-.dict-name-cell--active {
-  color: var(--semi-color-primary);
+  gap: 6px;
+  font-size: 14px;
   font-weight: 600;
+  color: var(--semi-color-text-0);
 }
 
-/* 选中行高亮 */
-.dict-row--selected td {
-  background: var(--semi-color-primary-light-default) !important;
+.dict-detail-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dict-detail-placeholder {
+  color: var(--semi-color-text-2);
+  font-size: 13px;
 }

@@ -1,25 +1,25 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  Table,
   Button,
+  Dropdown,
+  List as SemiList,
   Input,
   Select,
-  DatePicker,
   Tag,
   Space,
   Modal,
   Form,
+  Pagination,
   Spin,
   Toast,
-  SideSheet,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, List, RotateCcw, Download } from 'lucide-react';
+import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen } from 'lucide-react';
 import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { formatDateForApi } from '@/utils/date';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -38,19 +38,15 @@ export default function DictsPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [submittedStatus, setSubmittedStatus] = useState('');
-  const [timeRange, setTimeRange] = useState<[Date, Date] | null>(null);
-  const [submittedTimeRange, setSubmittedTimeRange] = useState<[Date, Date] | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);  const [dictModalVisible, setDictModalVisible] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [dictModalVisible, setDictModalVisible] = useState(false);
   const [editingDict, setEditingDict] = useState<Dict | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
 
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   const [selectedDict, setSelectedDict] = useState<Dict | null>(null);
-  const [sideSheetVisible, setSideSheetVisible] = useState(false);
   const [items, setItems] = useState<DictItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemModalVisible, setItemModalVisible] = useState(false);
@@ -62,32 +58,6 @@ export default function DictsPage() {
   const { items: statusItems } = useDictItems('common_status');
 
   // ─── 数据获取 ──────────────────────────────────────────────────────────────
-  const fetchDicts = useCallback(async () => {
-    setDictsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (submittedKeyword) params.set('keyword', submittedKeyword);
-      if (submittedStatus) params.set('status', submittedStatus);
-      if (submittedTimeRange) {
-        params.set('startDate', formatDateForApi(submittedTimeRange[0]));
-        params.set('endDate', formatDateForApi(submittedTimeRange[1]));
-      }
-      params.set('page', String(page));
-      params.set('pageSize', String(pageSize));
-      const res = await request.get<PaginatedResponse<Dict>>(`/api/dicts?${params.toString()}`);
-      if (res.code === 0) {
-        setDicts(res.data.list);
-        setTotal(res.data.total);
-        if (selectedDict && !res.data.list.some((d) => d.id === selectedDict.id)) {
-          setSelectedDict(null);
-          setItems([]);
-        }
-      }
-    } finally {
-      setDictsLoading(false);
-    }
-  }, [submittedKeyword, submittedStatus, submittedTimeRange, selectedDict, page, pageSize, refreshKey]);
-
   const fetchItems = useCallback(async (dictId: number) => {
     setItemsLoading(true);
     try {
@@ -98,12 +68,75 @@ export default function DictsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchDicts(); }, [fetchDicts]);
+  const fetchDicts = useCallback(async () => {
+    setDictsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (submittedKeyword) params.set('keyword', submittedKeyword);
+      params.set('page', String(page));
+      params.set('pageSize', String(pageSize));
+      const res = await request.get<PaginatedResponse<Dict>>(`/api/dicts?${params.toString()}`);
+      if (res.code === 0) {
+        const nextList = res.data.list;
+        setDicts(nextList);
+        setTotal(res.data.total);
+        setSelectedDict((prev) => {
+          if (nextList.length === 0) {
+            setItems([]);
+            return null;
+          }
+          const current = prev ? nextList.find((d) => d.id === prev.id) : null;
+          if (current) return current;
+          void fetchItems(nextList[0].id);
+          return nextList[0];
+        });
+      }
+    } finally {
+      setDictsLoading(false);
+    }
+  }, [submittedKeyword, page, pageSize, fetchItems]);
+
+  const refreshCurrentItems = useCallback(() => {
+    if (selectedDict) {
+      void fetchItems(selectedDict.id);
+    } else {
+      setItems([]);
+    }
+  }, [fetchItems, selectedDict]);
+
+  const handleExport = async () => {
+    setExportLoading(true);
+    try {
+      await request.download('/api/dicts/export', '字典列表.xlsx');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleDictPageChange = (nextPage: number) => {
+    setPage(nextPage);
+  };
+
+  const handleDictPageSizeChange = (nextPageSize: number) => {
+    setPage(1);
+    setPageSize(nextPageSize);
+  };
+
+  const selectDict = useCallback((dict: Dict) => {
+    setSelectedDict(dict);
+    void fetchItems(dict.id);
+    setPendingItemKeyword('');
+    setPendingItemStatus('');
+    setItemKeyword('');
+    setItemStatusFilter('');
+  }, [fetchItems]);
+
+  useEffect(() => { void fetchDicts(); }, [fetchDicts]);
 
   function handleItemSearch() {
     setItemKeyword(pendingItemKeyword);
     setItemStatusFilter(pendingItemStatus);
-    if (selectedDict) fetchItems(selectedDict.id);
+    refreshCurrentItems();
   }
 
   function handleItemReset() {
@@ -111,37 +144,13 @@ export default function DictsPage() {
     setPendingItemStatus('');
     setItemKeyword('');
     setItemStatusFilter('');
-    if (selectedDict) fetchItems(selectedDict.id);
+    refreshCurrentItems();
   }
 
   function handleSearch() {
     setPage(1);
     setSubmittedKeyword(keyword);
-    setSubmittedStatus(statusFilter);
-    setSubmittedTimeRange(timeRange);
-    setRefreshKey((k) => k + 1);
   }
-
-  function handleReset() {
-    setPage(1);
-    setKeyword('');
-    setSubmittedKeyword('');
-    setStatusFilter('');
-    setSubmittedStatus('');
-    setTimeRange(null);
-    setSubmittedTimeRange(null);
-    setRefreshKey((k) => k + 1);
-  }
-
-  const selectDict = (dict: Dict) => {
-    setSelectedDict(dict);
-    fetchItems(dict.id);
-    setPendingItemKeyword('');
-    setPendingItemStatus('');
-    setItemKeyword('');
-    setItemStatusFilter('');
-    setSideSheetVisible(true);
-  };
 
   const filteredItems = useMemo(() => items.filter((item) => {
     if (itemKeyword && !item.label.includes(itemKeyword) && !item.value.includes(itemKeyword)) return false;
@@ -163,7 +172,7 @@ export default function DictsPage() {
     if (res.code === 0) {
       Toast.success(editingDict ? '更新成功' : '创建成功');
       setDictModalVisible(false);
-      fetchDicts();
+      void fetchDicts();
     } else {
       throw new Error(res.message);
     }
@@ -190,7 +199,7 @@ export default function DictsPage() {
         setSelectedDict(null);
         setItems([]);
       }
-      fetchDicts();
+      void fetchDicts();
     }
   };
 
@@ -209,7 +218,7 @@ export default function DictsPage() {
     if (res.code === 0) {
       Toast.success(editingItem ? '更新成功' : '创建成功');
       setItemModalVisible(false);
-      fetchItems(selectedDict.id);
+      void fetchItems(selectedDict.id);
     } else {
       throw new Error(res.message);
     }
@@ -220,69 +229,129 @@ export default function DictsPage() {
     const res = await request.delete(`/api/dicts/${selectedDict.id}/items/${id}`);
     if (res.code === 0) {
       Toast.success('删除成功');
-      fetchItems(selectedDict.id);
+      void fetchItems(selectedDict.id);
     }
   };
 
-  // ─── 表格列定义 ────────────────────────────────────────────────────────────
-  const dictColumns: ColumnProps<Dict>[] = [
-    {
-      title: '字典名称',
-      dataIndex: 'name',
-      width: 220,
-      ellipsis: { showTitle: false },
-      render: (v, row) => (
-        <button
-          type="button"
-          className={`dict-name-cell${selectedDict?.id === row.id ? ' dict-name-cell--active' : ''}`}
-          onClick={() => selectDict(row)}
+  const renderDictListItem = (dict: Dict) => {
+    const active = selectedDict?.id === dict.id;
+    return (
+      <SemiList.Item
+        className={`dict-list-item${active ? ' dict-list-item--active' : ''}`}
+        onClick={() => selectDict(dict)}
+        main={
+          <div className="dict-list-item-main">
+            <div className="dict-list-item-title" title={dict.name}>{dict.name}</div>
+            <div className="dict-list-item-code" title={dict.code}>{dict.code}</div>
+          </div>
+        }
+        extra={
+          <Dropdown
+            trigger="click"
+            position="bottomRight"
+            clickToHide
+            render={
+              <Dropdown.Menu>
+                {hasPermission('system:dict:update') && (
+                  <Dropdown.Item onClick={() => void openEditDict(dict)}>编辑</Dropdown.Item>
+                )}
+                {hasPermission('system:dict:delete') && (
+                  <Dropdown.Item
+                    type="danger"
+                    onClick={() => {
+                      Modal.confirm({
+                        title: '确认删除此字典？',
+                        content: '字典下的所有字典项也将一并删除',
+                        okButtonProps: { type: 'danger', theme: 'solid' },
+                        onOk: () => handleDictDelete(dict.id),
+                      });
+                    }}
+                  >
+                    删除
+                  </Dropdown.Item>
+                )}
+              </Dropdown.Menu>
+            }
+          >
+            <Button
+              theme="borderless"
+              size="small"
+              icon={<MoreHorizontal size={14} />}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Dropdown>
+        }
+      />
+    );
+  };
+
+  const dictMaster = (
+    <div className="dict-master">
+      <div className="dict-master-header">
+        <span className="dict-master-title">字典列表</span>
+        <Dropdown
+          trigger="click"
+          position="bottomRight"
+          clickToHide
+          render={
+            <Dropdown.Menu>
+              {hasPermission('system:dict:create') && (
+                <Dropdown.Item onClick={() => { setEditingDict(null); setDictModalVisible(true); }}>新增字典</Dropdown.Item>
+              )}
+              <Dropdown.Item onClick={() => void handleExport()}>导出字典</Dropdown.Item>
+            </Dropdown.Menu>
+          }
         >
-          <List style={{ marginRight: 6, flexShrink: 0 }} />
-          <span className="table-cell-ellipsis" title={String(v)}>{v}</span>
-        </button>
-      ),
-    },
-    { title: '字典编码', dataIndex: 'code', width: 160, render: renderEllipsis },
-    { title: '描述', dataIndex: 'description', render: renderEllipsis },
-    createdAtColumn,
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 80,
-      align: 'center',
-      fixed: 'right',
-      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
-    },
-    {
-      title: '操作',
-      fixed: 'right',
-      width: 220,
-      align: 'center',
-      render: (_v, row) => (
-        <Space>
-          {hasPermission('system:dict:item') && <Button
+          <Button
             theme="borderless"
             size="small"
-            onClick={(e) => { e.stopPropagation(); selectDict(row); }}
-          >
-            字典项
-          </Button>}
-          {hasPermission('system:dict:update') && <Button
-            theme="borderless"
-            size="small"
-            onClick={(e) => { e.stopPropagation(); void openEditDict(row); }}
-          >
-            编辑
-          </Button>}
-          {hasPermission('system:dict:delete') && <Button theme="borderless" size="small" type="danger" onClick={(e) => { e.stopPropagation(); Modal.confirm({ title: '确认删除此字典？', content: '字典下的所有字典项也将一并删除', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDictDelete(row.id) }); }}>删除</Button>}
-        </Space>
-      ),
-    },
-  ];
+            icon={<MoreHorizontal size={14} />}
+            loading={exportLoading}
+          />
+        </Dropdown>
+      </div>
+      <div className="dict-master-list">
+        <SemiList<Dict>
+          className="dict-list"
+          size="small"
+          split={false}
+          loading={dictsLoading}
+          dataSource={dicts}
+          emptyContent={<div className="dict-empty">暂无字典</div>}
+          header={
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="名称/编码"
+              value={keyword}
+              onChange={(v) => setKeyword(v)}
+              onEnterPress={handleSearch}
+              showClear
+            />
+          }
+          footer={
+            <div className="dict-list-pagination">
+              <Pagination
+                size="small"
+                total={total}
+                currentPage={page}
+                pageSize={pageSize}
+                pageSizeOpts={[10, 20, 50]}
+                showSizeChanger
+                showTotal
+                onPageChange={handleDictPageChange}
+                onPageSizeChange={handleDictPageSizeChange}
+              />
+            </div>
+          }
+          renderItem={renderDictListItem}
+        />
+      </div>
+    </div>
+  );
 
   const itemColumns: ColumnProps<DictItem>[] = [
     { title: '标签', dataIndex: 'label', width: 160, render: renderEllipsis },
-    { title: '键値', dataIndex: 'value', width: 160, render: renderEllipsis },
+    { title: '键值', dataIndex: 'value', width: 160, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 70, align: 'center' },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
     createdAtColumn,
@@ -320,131 +389,84 @@ export default function DictsPage() {
     },
   ];
 
-  return (
-    <div className="page-container">
+  const dictDetail = (
+    <div className="dict-detail">
+      <div className="dict-detail-header">
+        {selectedDict ? (
+          <>
+            <div className="dict-detail-title">
+              <BookOpen size={16} />
+              <span title={selectedDict.name}>{selectedDict.name}</span>
+            </div>
+            <Tag size="small" color="blue">{selectedDict.code}</Tag>
+            <DictTag dictCode="common_status" value={selectedDict.status} />
+          </>
+        ) : (
+          <span className="dict-detail-placeholder">请选择字典</span>
+        )}
+      </div>
       <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索字典名称/编码"
-            value={keyword}
-            onChange={(v) => setKeyword(v)}
-            onEnterPress={handleSearch}
-            showClear
-            style={{ width: 220 }}
-          />
-          <Select
-            placeholder="状态"
-            showClear
-            value={statusFilter || undefined}
-            onChange={(val) => setStatusFilter((val as string) ?? '')}
-            style={{ width: 120 }}
-          >
-            {statusItems.map((i) => (
-              <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
-            ))}
-          </Select>
-          <DatePicker
-            type="dateRange"
-            placeholder={['开始日期', '结束日期']}
-            value={timeRange ?? undefined}
-            onChange={(val) => setTimeRange(val as [Date, Date] | null)}
-            style={{ width: 240 }}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/dicts/export', '字典列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-          {hasPermission('system:dict:create') && <Button
+        <Input
+          prefix={<Search size={14} />}
+          placeholder="标签/键值"
+          showClear
+          value={pendingItemKeyword}
+          onChange={(v) => setPendingItemKeyword(v)}
+          onEnterPress={handleItemSearch}
+          style={{ width: 180 }}
+          disabled={!selectedDict}
+        />
+        <Select
+          placeholder="状态"
+          showClear
+          value={pendingItemStatus || undefined}
+          onChange={(val) => setPendingItemStatus((val as string) ?? '')}
+          style={{ width: 120 }}
+          disabled={!selectedDict}
+        >
+          {statusItems.map((i) => (
+            <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
+          ))}
+        </Select>
+        <Button type="primary" icon={<Search size={14} />} onClick={handleItemSearch} disabled={!selectedDict}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleItemReset} disabled={!selectedDict}>重置</Button>
+        {hasPermission('system:dict:item') && (
+          <Button
             type="primary"
             icon={<Plus size={14} />}
-            onClick={() => { setEditingDict(null); setDictModalVisible(true); }}
+            onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
+            disabled={!selectedDict}
           >
             新增
-          </Button>}
+          </Button>
+        )}
       </SearchToolbar>
       <ConfigurableTable
         bordered
-        columns={dictColumns}
-        dataSource={dicts}
+        columns={itemColumns}
+        dataSource={filteredItems}
         rowKey="id"
-        loading={dictsLoading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (p) => setPage(p),
-          onPageSizeChange: (s) => { setPage(1); setPageSize(s); },
-          showSizeChanger: true,
-        }}
+        loading={itemsLoading}
+        pagination={{ pageSize: 10, showSizeChanger: true }}
         size="small"
-        onRow={(row) => ({
-          onClick: () => row && selectDict(row),
-          style: { cursor: 'pointer' },
-        })}
+        empty={selectedDict ? '暂无数据' : '请选择字典'}
       />
+    </div>
+  );
 
-      {/* 字典项 SideSheet */}
-      <SideSheet
-        title={
-          selectedDict ? (
-            <span>
-              字典项：{selectedDict.name}
-              <Tag size="small" color="blue" style={{ marginLeft: 8 }}>{selectedDict.code}</Tag>
-            </span>
-          ) : '字典项'
-        }
-        visible={sideSheetVisible}
-        onCancel={() => setSideSheetVisible(false)}
-        width={900}
-        bodyStyle={{ padding: '16px 24px' }}
-        headerStyle={{ borderBottom: '1px solid var(--semi-color-border)' }}
-        footer={
-          hasPermission('system:dict:item') ? (
-            <div style={{ textAlign: 'right' }}>
-              <Button
-                type="primary"
-                icon={<Plus size={14} />}
-                onClick={() => { setEditingItem(null); setItemModalVisible(true); }}
-              >
-                新增字典项
-              </Button>
-            </div>
-          ) : null
-        }
-      >
-        <Space style={{ marginBottom: 12 }} wrap>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="标签/键值"
-            showClear
-            value={pendingItemKeyword}
-            onChange={(v) => setPendingItemKeyword(v)}
-            onEnterPress={handleItemSearch}
-            style={{ width: 180 }}
-          />
-          <Select
-            placeholder="状态"
-            showClear
-            value={pendingItemStatus || undefined}
-            onChange={(val) => setPendingItemStatus((val as string) ?? '')}
-            style={{ width: 120 }}
-          >
-            {statusItems.map((i) => (
-              <Select.Option key={i.value} value={i.value}>{i.label}</Select.Option>
-            ))}
-          </Select>
-          <Button type="primary" icon={<Search size={14} />} onClick={handleItemSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleItemReset}>重置</Button>
-        </Space>
-        <Table
-          bordered
-          columns={itemColumns}
-          dataSource={filteredItems}
-          rowKey="id"
-          loading={itemsLoading}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
-          size="small"
-        />
-      </SideSheet>
+  return (
+    <div className="page-container">
+      <MasterDetailLayout
+        master={dictMaster}
+        detail={dictDetail}
+        defaultSize={300}
+        minSize={260}
+        maxSize={420}
+        persistKey="dicts"
+        showDetail={!!selectedDict}
+        onBack={() => setSelectedDict(null)}
+        style={{ flex: 1, overflow: 'hidden' }}
+      />
 
       {/* 字典创建/编辑 Modal */}
       <Modal
