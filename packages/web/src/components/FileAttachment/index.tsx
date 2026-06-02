@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Upload,
   Button,
@@ -6,12 +6,14 @@ import {
   Typography,
   ImagePreview,
   Toast,
+  Progress,
 } from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
-import type { FileItem } from '@douyinfe/semi-ui/lib/es/upload';
+import type { FileItem, RenderFileItemProps } from '@douyinfe/semi-ui/lib/es/upload';
 import { Plus, Download, X, Eye } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
+import { formatDateTime } from '@/utils/date';
 import {
   getFileTypeIcon,
   canPreviewFile,
@@ -68,6 +70,16 @@ interface FileAttachmentProps {
   disabled?: boolean;
 }
 
+type ManagedFileResponse = {
+  id: number;
+  url: string;
+  originalName: string;
+  size: number;
+  mimeType?: string | null;
+  extension?: string | null;
+  createdAt?: string;
+};
+
 /** 将 AttachmentItem 转换为 Semi Upload FileItem */
 function toUploadFileItem(item: AttachmentItem): FileItem {
   return {
@@ -79,6 +91,33 @@ function toUploadFileItem(item: AttachmentItem): FileItem {
     // 自定义字段：保留原始附件数据
     ...(item as unknown as Record<string, unknown>),
   };
+}
+
+function isAttachmentFileItem(item: FileItem | RenderFileItemProps): item is FileItem & AttachmentItem {
+  const maybeAttachment = item as Partial<AttachmentItem>;
+  return typeof maybeAttachment.fileId === 'number' && maybeAttachment.file?.originalName != null;
+}
+
+function toAttachmentFromManagedFile(file: ManagedFileResponse, sortOrder: number): AttachmentItem {
+  return {
+    id: -file.id,
+    fileId: file.id,
+    file: {
+      id: file.id,
+      originalName: file.originalName,
+      size: file.size,
+      mimeType: file.mimeType ?? null,
+      extension: file.extension ?? null,
+      url: file.url,
+    },
+    sortOrder,
+    createdAt: file.createdAt ?? formatDateTime(new Date()),
+  };
+}
+
+function toManagedFileResponse(res: unknown): ManagedFileResponse | null {
+  const r = res as { code?: number; data?: ManagedFileResponse } | undefined;
+  return r?.code === 0 && r.data ? r.data : null;
 }
 
 // ─── 组件实现 ────────────────────────────────────────────────────────────────
@@ -115,11 +154,23 @@ export default function FileAttachment({
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, []);
 
-  /** Semi Upload fileList */
+  /** Semi Upload fileList (view 模式使用 defaultFileList，edit 模式使用受控 fileList) */
   const uploadFileList = useMemo(
-    () => value.map(toUploadFileItem),
+    () => value.filter((item) => item?.file != null).map(toUploadFileItem),
     [value],
   );
+  const [fileList, setFileList] = useState<FileItem[]>(uploadFileList);
+  const attachmentsRef = useRef<AttachmentItem[]>(value);
+
+  useEffect(() => {
+    attachmentsRef.current = value;
+    setFileList((prev) => {
+      const activeUploadingFiles = isEditMode
+        ? prev.filter((item) => !isAttachmentFileItem(item) && ['wait', 'validating', 'uploading'].includes(item.status))
+        : [];
+      return [...uploadFileList, ...activeUploadingFiles];
+    });
+  }, [value, uploadFileList, isEditMode]);
 
   /** 从 FileItem 恢复 AttachmentItem */
   const toAttachmentItem = useCallback((fileItem: FileItem): AttachmentItem => {
@@ -183,8 +234,73 @@ export default function FileAttachment({
 
   /** renderFileItem：自定义整行渲染（包含缩略图、文件名、大小、操作区） */
   const renderFileItem = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (props: any) => {
+    (props: RenderFileItemProps) => {
+      // 检查是否是完整的 AttachmentItem（有 file 属性）
+      if (!isAttachmentFileItem(props)) {
+        // 上传中的临时文件，只显示基本信息
+        const percent = Math.max(0, Math.min(100, Math.round(props.percent ?? 0)));
+        const isUploading = props.status === 'uploading' || props.status === 'wait' || props.status === 'validating';
+        const isFailed = props.status === 'uploadFail';
+        const rawSize = props.fileInstance?.size ?? Number(props.size);
+        const fileSize = Number.isFinite(rawSize) && rawSize > 0 ? formatFileSize(rawSize) : '';
+        return (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 0',
+              borderBottom: '1px solid var(--semi-color-border-light)',
+              width: '100%',
+            }}
+          >
+            {getFileTypeIcon(props.fileInstance?.type || null, 18)}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                size="small"
+                style={{
+                  display: 'block',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {props.name || '上传中...'}
+              </Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                {fileSize && (
+                  <Text type="tertiary" size="small">
+                    {fileSize}
+                  </Text>
+                )}
+                {isUploading && (
+                  <div style={{ flex: 1, minWidth: 80 }}>
+                    <Progress percent={percent} size="small" showInfo={false} />
+                  </div>
+                )}
+                <Text type={isFailed ? 'danger' : 'tertiary'} size="small">
+                  {isFailed ? '上传失败' : isUploading ? `${percent}%` : ''}
+                </Text>
+              </div>
+            </div>
+            <Space>
+              {isEditMode && (
+                <Button
+                  theme="borderless"
+                  type="danger"
+                  icon={<X size={12} />}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onRemove();
+                  }}
+                />
+              )}
+            </Space>
+          </div>
+        );
+      }
+
       const item = toAttachmentItem(props);
       const fileSize = item.file.size ? formatFileSize(item.file.size) : '';
       return (
@@ -260,39 +376,52 @@ export default function FileAttachment({
 
   /** 上传成功 */
   const handleSuccess = useCallback(
-    (res: unknown) => {
+    (res: unknown, _file: File, nextFileList: FileItem[]) => {
       const r = res as {
         code?: number;
-        data?: {
-          id: number;
-          url: string;
-          originalName?: string;
-          size?: number;
-          mimeType?: string;
-          extension?: string;
-        };
+        message?: string;
+        data?: ManagedFileResponse;
       };
-      if (r?.code === 0 && r.data) {
-        const d = r.data;
-        const newItem: AttachmentItem = {
-          id: Date.now(),
-          fileId: d.id,
-          file: {
-            id: d.id,
-            originalName: d.originalName ?? '未命名文件',
-            size: d.size ?? 0,
-            mimeType: d.mimeType ?? null,
-            extension: d.extension ?? null,
-            url: d.url,
-          },
-          sortOrder: value.length,
-          createdAt: new Date().toISOString(),
-        };
-        onChange?.([...value, newItem]);
-        Toast.success('上传成功');
+      if (r?.code !== 0 || !r.data) {
+        Toast.error(r?.message || '上传失败');
+        return;
       }
+
+      const attachment = toAttachmentFromManagedFile(r.data, attachmentsRef.current.length);
+      const uploadedFileItem = toUploadFileItem(attachment);
+      const nextAttachments = [
+        ...attachmentsRef.current.filter((item) => item.fileId !== attachment.fileId),
+        attachment,
+      ];
+
+      attachmentsRef.current = nextAttachments;
+      setFileList(
+        nextFileList.map((item) =>
+          item.response === res || item.uid === (_file as File & { uid?: string }).uid ? uploadedFileItem : item,
+        ),
+      );
+      onChange?.(nextAttachments);
+      Toast.success('上传成功');
     },
-    [value, onChange],
+    [onChange],
+  );
+
+  /** onChange（文件列表变化时同步到父组件） */
+  const handleFileListChange = useCallback(
+    ({ fileList: newFileList }: { fileList: FileItem[] }) => {
+      let nextSortOrder = attachmentsRef.current.length;
+      setFileList(
+        newFileList.map((item) => {
+          if (isAttachmentFileItem(item)) return item;
+          const uploadedFile = toManagedFileResponse(item.response);
+          if (!uploadedFile) return item;
+          const existingAttachment = attachmentsRef.current.find((attachment) => attachment.fileId === uploadedFile.id);
+          const attachment = existingAttachment ?? toAttachmentFromManagedFile(uploadedFile, nextSortOrder++);
+          return toUploadFileItem(attachment);
+        }),
+      );
+    },
+    [],
   );
 
   /** 上传前校验 */
@@ -303,31 +432,44 @@ export default function FileAttachment({
         Toast.warning(`${file.name} 超过 ${maxSizeMB}MB，已跳过`);
         return false;
       }
-      if (limit > 0 && value.length >= limit) {
+      if (limit > 0 && fileList.length >= limit) {
         Toast.warning(`最多上传 ${limit} 个文件`);
         return false;
       }
       return true;
     },
-    [maxSizeMB, limit, value.length],
+    [maxSizeMB, limit, fileList.length],
+  );
+
+  /** 上传进度 */
+  const handleProgress = useCallback(
+    (_percent: number, _file: File, nextFileList: FileItem[]) => {
+      setFileList(nextFileList);
+    },
+    [],
+  );
+
+  /** 上传失败 */
+  const handleError = useCallback(
+    (_error: unknown, _file: File, nextFileList: FileItem[]) => {
+      setFileList(nextFileList);
+      Toast.error('上传失败，请重试');
+    },
+    [],
   );
 
   /** 移除文件（通过 onChange 受控） */
   const handleRemove = useCallback(
     (fileItem: FileItem) => {
+      if (!isAttachmentFileItem(fileItem)) {
+        setFileList((prev) => prev.filter((file) => file.uid !== fileItem.uid));
+        return;
+      }
       const item = toAttachmentItem(fileItem);
-      const next = value.filter((a) => a.id !== item.id);
+      const next = attachmentsRef.current.filter((a) => a.id !== item.id);
+      attachmentsRef.current = next;
+      setFileList((prev) => prev.filter((file) => file.uid !== fileItem.uid));
       onChange?.(next);
-    },
-    [value, onChange, toAttachmentItem],
-  );
-
-  /** onChange（受控 fileList） */
-  const handleFileListChange = useCallback(
-    ({ fileList: newFileList }: { fileList: FileItem[] }) => {
-      // 将 FileItem 转回 AttachmentItem
-      const newItems = newFileList.map(toAttachmentItem);
-      onChange?.(newItems);
     },
     [onChange, toAttachmentItem],
   );
@@ -351,22 +493,21 @@ export default function FileAttachment({
         action={uploadAction}
         headers={uploadHeaders}
         name="file"
-        fileList={uploadFileList}
+        fileList={fileList}
         listType="list"
         accept={accept}
         limit={limit > 0 ? limit : undefined}
         beforeUpload={isEditMode ? handleBeforeUpload : undefined}
+        onProgress={isEditMode ? handleProgress : undefined}
         onSuccess={isEditMode ? handleSuccess : undefined}
-        onError={() => {
-          Toast.error('上传失败，请重试');
-        }}
-        onRemove={isEditMode ? (fileItem) => handleRemove(fileItem as unknown as FileItem) : undefined}
         onChange={isEditMode ? handleFileListChange : undefined}
+        onError={isEditMode ? handleError : undefined}
+        onRemove={isEditMode ? (fileItem) => handleRemove(fileItem as unknown as FileItem) : undefined}
         renderFileItem={renderFileItem}
         disabled={!isEditMode}
         showClear={false}
       >
-        {isEditMode && (limit === 0 || value.length < limit) && (
+        {isEditMode && (limit === 0 || fileList.length < limit) && (
           <Button theme="light" icon={<Plus size={14} />}>
             {uploadTip || '上传文件'}
           </Button>
