@@ -80,6 +80,7 @@ export default function AnnouncementsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNotice, setEditingNotice] = useState<Announcement | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const [formApi, setFormApi] = useState<FormApi | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [contentHtml, setContentHtml] = useState('');
@@ -226,6 +227,7 @@ export default function AnnouncementsPage() {
   const openCreateModal = () => {
     setViewOnly(false);
     setEditingNotice(null);
+    setModalDetailLoading(false);
     setContentHtml('');
     setEditorKey((k) => k + 1);
     setTargetType('all');
@@ -254,34 +256,41 @@ export default function AnnouncementsPage() {
     setModalVisible(true);
 
     // 异步加载选项和详情（详情包含收件人和附件）
-    const [, detailRes] = await Promise.all([
-      loadRecipientOptions(),
-      request.get<Announcement & { recipients: AnnouncementRecipient[]; attachments: AnnouncementAttachment[] }>(`/api/announcements/${record.id}`),
-    ]);
+    setModalDetailLoading(true);
+    try {
+      const [, detailRes] = await Promise.all([
+        loadRecipientOptions(),
+        request.get<Announcement & { recipients: AnnouncementRecipient[]; attachments: AnnouncementAttachment[] }>(`/api/announcements/${record.id}`),
+      ]);
 
-    if (detailRes.code === 0 && detailRes.data) {
-      const { targetType: t, recipients = [], attachments = [] } = detailRes.data;
+      if (detailRes.code === 0 && detailRes.data) {
+        const { targetType: t, recipients = [], attachments = [] } = detailRes.data;
 
-      // 设置附件
-      setUploadedAttachments(attachments);
-      setAttachmentFileIds(attachments.map(a => a.fileId));
+        // 设置附件
+        setUploadedAttachments(attachments);
+        setAttachmentFileIds(attachments.map(a => a.fileId));
 
-      // 设置收件人
-      setTargetType(t ?? 'all');
-      setSelectedUserIds(recipients.filter((r) => r.recipientType === 'user').map((r) => r.recipientId));
-      setSelectedRoleIds(recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId));
-      setSelectedDeptIds(recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId));
-      // 预填用户选项（含 label）
-      const userRecipients = recipients.filter((r) => r.recipientType === 'user');
-      if (userRecipients.length > 0) {
-        setUserOptions((prev) => {
-          const existingIds = new Set(prev.map((o) => o.value));
-          const newOpts = userRecipients
-            .filter((r) => !existingIds.has(r.recipientId))
-            .map((r) => ({ value: r.recipientId, label: r.recipientLabel ?? String(r.recipientId) }));
-          return [...prev, ...newOpts];
-        });
+        // 设置收件人
+        setTargetType(t ?? 'all');
+        setSelectedUserIds(recipients.filter((r) => r.recipientType === 'user').map((r) => r.recipientId));
+        setSelectedRoleIds(recipients.filter((r) => r.recipientType === 'role').map((r) => r.recipientId));
+        setSelectedDeptIds(recipients.filter((r) => r.recipientType === 'dept').map((r) => r.recipientId));
+        // 预填用户选项（含 label）
+        const userRecipients = recipients.filter((r) => r.recipientType === 'user');
+        if (userRecipients.length > 0) {
+          setUserOptions((prev) => {
+            const existingIds = new Set(prev.map((o) => o.value));
+            const newOpts = userRecipients
+              .filter((r) => !existingIds.has(r.recipientId))
+              .map((r) => ({ value: r.recipientId, label: r.recipientLabel ?? String(r.recipientId) }));
+            return [...prev, ...newOpts];
+          });
+        }
+      } else {
+        Toast.error(detailRes.message || '获取公告详情失败');
       }
+    } finally {
+      setModalDetailLoading(false);
     }
   };
 
@@ -767,7 +776,7 @@ export default function AnnouncementsPage() {
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}
         width={860}
-        afterVisibleChange={(visible) => { if (!visible) formApi?.reset(); }}
+        afterVisibleChange={(visible) => { if (!visible) { formApi?.reset(); setModalDetailLoading(false); } }}
         footer={
           viewOnly ? (
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -776,13 +785,14 @@ export default function AnnouncementsPage() {
           ) : (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <Button onClick={() => setModalVisible(false)}>取消</Button>
-              <Button type="primary" loading={submitting} onClick={handleSubmit}>
+              <Button type="primary" loading={submitting} disabled={modalDetailLoading} onClick={handleSubmit}>
                 {editingNotice ? '保存' : '创建'}
               </Button>
             </div>
           )
         }
       >
+        <Spin spinning={modalDetailLoading} tip="加载中..." size="small">
         <Form
           getFormApi={(api) => setFormApi(api)}
           layout="vertical"
@@ -935,6 +945,7 @@ export default function AnnouncementsPage() {
             uploadTip="点击或拖拽上传附件"
           />
         </Form>
+        </Spin>
       </SideSheet>
 
       {/* 已读统计 SideSheet */}

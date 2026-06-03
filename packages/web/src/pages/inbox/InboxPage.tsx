@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Modal, Popconfirm,
+  Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Modal, Popconfirm, Spin,
 } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
@@ -33,6 +33,7 @@ export default function InboxPage() {
   const [markAllLoading, setMarkAllLoading] = useState(false);
 
   const [selected, setSelected] = useState<InAppMessage | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const fetchList = useCallback(async (p = 1, tab = activeTab) => {
     setLoading(true);
@@ -61,6 +62,17 @@ export default function InboxPage() {
       setList((prev) => prev.map((n) => n.id === item.id ? { ...n, isRead: true } : n));
     }
     setSelected({ ...item, isRead: true });
+    setDetailLoading(true);
+    try {
+      const res = await request.get<InAppMessage>(`/api/in-app-messages/${item.id}`);
+      if (res.code === 0 && res.data) {
+        setSelected({ ...res.data, isRead: true });
+      } else {
+        Toast.error(res.message || '获取消息详情失败');
+      }
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -214,21 +226,23 @@ export default function InboxPage() {
       <Modal
         title={selected?.title ?? ''}
         visible={selected !== null}
-        onCancel={() => setSelected(null)}
+        onCancel={() => { setSelected(null); setDetailLoading(false); }}
         footer={null}
         width={640}
         closeOnEsc
       >
-        {selected && (
-          <div>
-            <div style={{ marginBottom: 12, color: 'var(--semi-color-text-3)', fontSize: 12 }}>
-              {selected.senderName ?? '系统'} · {formatDateTime(selected.createdAt)}
+        <Spin spinning={detailLoading} tip="加载中..." size="small">
+          {selected && (
+            <div>
+              <div style={{ marginBottom: 12, color: 'var(--semi-color-text-3)', fontSize: 12 }}>
+                {selected.senderName ?? '系统'} · {formatDateTime(selected.createdAt)}
+              </div>
+              <div style={{ lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                {selected.content}
+              </div>
             </div>
-            <div style={{ lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-              {selected.content}
-            </div>
-          </div>
-        )}
+          )}
+        </Spin>
       </Modal>
     </div>
   );

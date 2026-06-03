@@ -87,6 +87,13 @@ export const filesHandlers = [
     return HttpResponse.json({ code: 0, message: '上传成功', data: uploaded });
   }),
 
+  // 获取单个文件详情
+  http.get('/api/files/:id', ({ params }) => {
+    const file = mockManagedFiles.find((f) => f.id === Number(params.id));
+    if (!file) return HttpResponse.json({ code: 404, message: '文件不存在', data: null });
+    return HttpResponse.json({ code: 0, message: 'ok', data: file });
+  }),
+
   // 删除文件
   http.delete('/api/files/:id', ({ params }) => {
     const index = mockManagedFiles.findIndex((f) => f.id === Number(params.id));

@@ -238,6 +238,7 @@ export default function FilesPage() {
   const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
   const [batchDownloadLoading, setBatchDownloadLoading] = useState(false);
   const [detailFile, setDetailFile] = useState<ManagedFile | null>(null);
+  const [detailFileLoading, setDetailFileLoading] = useState(false);
 
   const viewMode = preferences.filesViewMode ?? 'list';
 
@@ -272,11 +273,16 @@ export default function FilesPage() {
 
   const handleOpenDetail = async (file: ManagedFile) => {
     setDetailFile(file);
-    const res = await request.get<ManagedFile>(`/api/files/${file.id}`);
-    if (res.code === 0 && res.data) {
-      setDetailFile(res.data);
-    } else {
-      Toast.error(res.message || '获取文件信息失败');
+    setDetailFileLoading(true);
+    try {
+      const res = await request.get<ManagedFile>(`/api/files/${file.id}`);
+      if (res.code === 0 && res.data) {
+        setDetailFile(res.data);
+      } else {
+        Toast.error(res.message || '获取文件信息失败');
+      }
+    } finally {
+      setDetailFileLoading(false);
     }
   };
 
@@ -829,7 +835,7 @@ export default function FilesPage() {
       <Modal
         title="文件详情"
         visible={!!detailFile}
-        onCancel={() => { setDetailFile(null); }}
+        onCancel={() => { setDetailFile(null); setDetailFileLoading(false); }}
         footer={
           <Space>
             <Button onClick={() => detailFile && handleCopyUrl(detailFile)}>复制链接</Button>
@@ -838,21 +844,23 @@ export default function FilesPage() {
         }
         width={560}
       >
-        {detailFile && (
-          <Descriptions
-            align="left"
-            size="medium"
-            data={[
-              { key: '文件名', value: detailFile.originalName },
-              { key: '存储服务', value: detailFile.storageName },
-              { key: 'MIME 类型', value: detailFile.mimeType || '—' },
-              { key: '文件大小', value: formatFileSize(detailFile.size) },
-              { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{detailFile.objectKey}</Text> },
-              { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(detailFile.url)}</Text> },
-              { key: '上传时间', value: formatDateTime(detailFile.createdAt) },
-            ]}
-          />
-        )}
+        <Spin spinning={detailFileLoading} tip="加载中..." size="small">
+          {detailFile && (
+            <Descriptions
+              align="left"
+              size="medium"
+              data={[
+                { key: '文件名', value: detailFile.originalName },
+                { key: '存储服务', value: detailFile.storageName },
+                { key: 'MIME 类型', value: detailFile.mimeType || '—' },
+                { key: '文件大小', value: formatFileSize(detailFile.size) },
+                { key: '对象键', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{detailFile.objectKey}</Text> },
+                { key: '访问链接', value: <Text copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>{getFileFullUrl(detailFile.url)}</Text> },
+                { key: '上传时间', value: formatDateTime(detailFile.createdAt) },
+              ]}
+            />
+          )}
+        </Spin>
       </Modal>
 
       <FilePreviewModal

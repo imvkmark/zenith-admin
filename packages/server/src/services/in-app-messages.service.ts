@@ -75,6 +75,38 @@ export async function listMyInAppMessages(q: ListInAppMessagesQuery) {
   };
 }
 
+/** 当前用户的站内信详情 */
+export async function getMyInAppMessage(id: number) {
+  const me = currentUser();
+  const [row] = await db.select({
+    msg: inAppMessages,
+    templateName: inAppTemplates.name,
+    senderName: users.username,
+  })
+    .from(inAppMessages)
+    .leftJoin(inAppTemplates, eq(inAppMessages.templateId, inAppTemplates.id))
+    .leftJoin(users, eq(inAppMessages.senderId, users.id))
+    .where(and(eq(inAppMessages.id, id), eq(inAppMessages.userId, me.userId), tenantScope(inAppMessages)))
+    .limit(1);
+  if (!row) throw new HTTPException(404, { message: '消息不存在' });
+  return {
+    id: row.msg.id,
+    templateId: row.msg.templateId,
+    templateName: row.templateName ?? null,
+    senderId: row.msg.senderId,
+    senderName: row.senderName ?? null,
+    userId: row.msg.userId,
+    username: null,
+    source: row.msg.source,
+    title: row.msg.title,
+    content: row.msg.content,
+    type: row.msg.type,
+    isRead: row.msg.isRead,
+    readAt: row.msg.readAt ? formatDateTime(row.msg.readAt) : null,
+    createdAt: formatDateTime(row.msg.createdAt),
+  };
+}
+
 /** 管理员视角：列出全租户的站内信（不限收件人） */
 export async function listAllInAppMessages(q: Omit<ListInAppMessagesQuery, 'recipientId'> & { recipientId?: number; senderId?: number }) {
   const conditions: SQL[] = [];

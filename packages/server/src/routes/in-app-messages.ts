@@ -8,7 +8,7 @@ import {
 import { sendInAppSchema, IN_APP_MESSAGE_TYPES } from '@zenith/shared';
 import { InAppMessageDTO, InAppSendResultDTO, UnreadCountDTO } from '../lib/openapi-dtos';
 import {
-  listMyInAppMessages, markAsRead, markAllAsRead, unreadCount,
+  listMyInAppMessages, getMyInAppMessage, markAsRead, markAllAsRead, unreadCount,
   deleteInAppMessage, sendInApp,
   listAllInAppMessages, adminDeleteInAppMessage, adminMarkAsRead,
 } from '../services/in-app-messages.service';
@@ -40,6 +40,17 @@ const unreadCountRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...ok(UnreadCountDTO, '未读消息数') },
   }),
   handler: async (c) => c.json(okBody(await unreadCount()), 200),
+});
+
+const detailRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}', tags: ['InAppMessages'], summary: '我的站内信详情',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(InAppMessageDTO, '站内信详情') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyInAppMessage(c.req.valid('param').id)), 200),
 });
 
 const sendRoute = defineOpenAPIRoute({
@@ -141,6 +152,6 @@ const adminDeleteRoute = defineOpenAPIRoute({
   },
 });
 
-inAppMessagesRouter.openapiRoutes([listRoute, adminListRoute, unreadCountRoute, sendRoute, markAllReadRoute, markReadRoute, adminMarkReadRoute, deleteRoute, adminDeleteRoute] as const);
+inAppMessagesRouter.openapiRoutes([listRoute, adminListRoute, unreadCountRoute, detailRoute, sendRoute, markAllReadRoute, markReadRoute, adminMarkReadRoute, deleteRoute, adminDeleteRoute] as const);
 
 export default inAppMessagesRouter;
