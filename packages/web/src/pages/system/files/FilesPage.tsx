@@ -118,16 +118,10 @@ function FileGridCard({
           className="files-grid-card__media"
           onClick={() => onPreview(file)}
         >
-          {isImage ? (
-            <img src={`${config.apiBaseUrl}${file.url}`} alt={file.originalName} loading="lazy" />
-          ) : (
-            <>
-              <span className="files-grid-card__icon">
-                {getFileTypeIcon(file.mimeType, 28)}
-              </span>
-              {ext && <span className="files-grid-card__type-badge">{ext}</span>}
-            </>
-          )}
+          <span className="files-grid-card__icon">
+            {getFileTypeIcon(file.mimeType, 28)}
+          </span>
+          {ext && <span className="files-grid-card__type-badge">{ext}</span>}
           {previewLoading && (
             <div className="files-grid-card__media-overlay">
               <Spin />
