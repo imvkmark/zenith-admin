@@ -1317,33 +1317,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               })}
             </div>
           )}
-          {/* Breadcrumb bar — below tabs for all layouts */}
-          {preferences.showBreadcrumb && breadcrumbs.length > 0 && navLayout !== 'vertical' && navLayout !== 'double' && (
-            <div className="admin-breadcrumb-bar">
-              <Breadcrumb>
-                {breadcrumbs.map((crumb, index) => (
-                  <Breadcrumb.Item key={crumb.title}>
-                    {index === 0 && crumb.path === '/' ? (
-                      <button
-                        type="button"
-                        onClick={navigateHome}
-                        onKeyDown={handleNavigateHomeKey}
-                        style={{ cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', color: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}
-                      >
-                        {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
-                        首页
-                      </button>
-                    ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {preferences.breadcrumbIcon && crumb.icon && <span style={{ display: 'flex', alignItems: 'center' }}>{renderLucideIcon(crumb.icon, 13)}</span>}
-                        {crumb.title}
-                      </span>
-                    )}
-                  </Breadcrumb.Item>
-                ))}
-              </Breadcrumb>
-            </div>
-          )}
           <div className="admin-content" style={{ background: 'var(--color-layout-bg)', overflow: 'auto', position: 'relative' }}>
             <RouteErrorBoundary>
               <Outlet key={outletRefreshKey} />
