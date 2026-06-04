@@ -13,6 +13,7 @@ import {
   Spin,
   Switch,
   Table,
+  Tabs,
   Tag,
   Toast,
   Tooltip,
@@ -28,6 +29,7 @@ import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { renderEllipsis } from '../../../utils/table-columns';
+import CronJobDashboard from './CronJobDashboard';
 
 interface SearchParams {
   keyword: string;
@@ -390,7 +392,10 @@ export default function CronJobsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
+      <Tabs type="line" lazyRender>
+        <Tabs.TabPane tab="任务管理" itemKey="jobs">
+          <div style={{ paddingTop: 12 }}>
+          <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
             placeholder="搜索任务名称/处理器"
@@ -436,6 +441,14 @@ export default function CronJobsPage() {
         }}
         empty="暂无数据"
       />
+          </div>
+        </Tabs.TabPane>
+        <Tabs.TabPane tab="执行概览" itemKey="dashboard">
+          <div style={{ paddingTop: 12 }}>
+            <CronJobDashboard jobs={data} />
+          </div>
+        </Tabs.TabPane>
+      </Tabs>
 
       <Modal
         title={editingJob ? '编辑定时任务' : '新增定时任务'}

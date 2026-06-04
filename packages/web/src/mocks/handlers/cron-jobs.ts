@@ -61,6 +61,28 @@ export const cronJobsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
   }),
 
+  // 任务执行统计
+  http.get('/api/cron-jobs/stats', () => {
+    const perJob = mockCronJobs.map((job, i) => {
+      const totalRuns = 20 + (i * 7 % 80);
+      const successCount = Math.floor(totalRuns * (0.7 + (i * 3 % 30) / 100));
+      const failCount = totalRuns - successCount;
+      return {
+        jobId: job.id, jobName: job.name, totalRuns, successCount, failCount,
+        successRate: Math.round((successCount / totalRuns) * 100),
+      };
+    });
+    return HttpResponse.json({
+      code: 0, message: 'ok',
+      data: {
+        totalJobs: mockCronJobs.length,
+        enabledJobs: mockCronJobs.filter(j => j.status === 'enabled').length,
+        todayRuns: 24, todaySuccesses: 21, todayFails: 3,
+        perJob,
+      },
+    });
+  }),
+
   // 定时任务列表（分页）
   http.get('/api/cron-jobs', ({ request }) => {
     const url = new URL(request.url);

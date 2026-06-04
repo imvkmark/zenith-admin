@@ -39,3 +39,21 @@ export const CronJobLogDTO = z
     output: z.string().nullable(),
   })
   .openapi('CronJobLog');
+
+export const CronJobStatsPerJobDTO = z.object({
+  jobId: z.number().int(),
+  jobName: z.string(),
+  totalRuns: z.number().int(),
+  successCount: z.number().int(),
+  failCount: z.number().int(),
+  successRate: z.number(),
+}).openapi('CronJobStatsPerJob');
+
+export const CronJobStatsDTO = z.object({
+  totalJobs: z.number().int(),
+  enabledJobs: z.number().int(),
+  todayRuns: z.number().int(),
+  todaySuccesses: z.number().int(),
+  todayFails: z.number().int(),
+  perJob: z.array(CronJobStatsPerJobDTO),
+}).openapi('CronJobStats');

@@ -1,4 +1,4 @@
-import { eq, like, and, desc, lt } from 'drizzle-orm';
+import { eq, like, and, desc, lt, sql } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
@@ -138,4 +138,42 @@ export async function clearCronJobLogs(months: number, jobId?: number) {
   if (jobId) conditions.push(eq(cronJobLogs.jobId, jobId));
   const deleted = await db.delete(cronJobLogs).where(and(...conditions)).returning({ id: cronJobLogs.id });
   return deleted.length;
+}
+
+export async function getCronJobStats() {
+  const [allJobs, [summaryRow], perJobRows] = await Promise.all([
+    db.select({ id: cronJobs.id, status: cronJobs.status }).from(cronJobs),
+    db.select({
+      todayRuns: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE) AS int)`,
+      todaySuccesses: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE AND ${cronJobLogs.status} = 'success') AS int)`,
+      todayFails: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.startedAt} >= CURRENT_DATE AND ${cronJobLogs.status} = 'fail') AS int)`,
+    }).from(cronJobLogs),
+    db.select({
+      jobId: cronJobLogs.jobId,
+      jobName: cronJobLogs.jobName,
+      totalRuns: sql<number>`CAST(COUNT(*) AS int)`,
+      successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'success') AS int)`,
+      failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${cronJobLogs.status} = 'fail') AS int)`,
+    }).from(cronJobLogs).groupBy(cronJobLogs.jobId, cronJobLogs.jobName).orderBy(sql`COUNT(*) DESC`),
+  ]);
+
+  return {
+    totalJobs: allJobs.length,
+    enabledJobs: allJobs.filter(j => j.status === 'enabled').length,
+    todayRuns: Number(summaryRow?.todayRuns ?? 0),
+    todaySuccesses: Number(summaryRow?.todaySuccesses ?? 0),
+    todayFails: Number(summaryRow?.todayFails ?? 0),
+    perJob: perJobRows.map(row => {
+      const total = Number(row.totalRuns);
+      const success = Number(row.successCount);
+      return {
+        jobId: row.jobId,
+        jobName: row.jobName,
+        totalRuns: total,
+        successCount: success,
+        failCount: Number(row.failCount),
+        successRate: total > 0 ? Math.round((success / total) * 100) : 0,
+      };
+    }),
+  };
 }

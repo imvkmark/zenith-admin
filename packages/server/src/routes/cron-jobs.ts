@@ -4,7 +4,7 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 import { validateCronExpression, getRegisteredHandlers } from '../lib/cron-scheduler';
 import { createCronJobSchema, updateCronJobSchema } from '@zenith/shared';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
-import { CronJobDTO, CronJobLogDTO } from '../lib/openapi-dtos';
+import { CronJobDTO, CronJobLogDTO, CronJobStatsDTO } from '../lib/openapi-dtos';
 import {
   listCronJobs,
   createCronJob,
@@ -18,6 +18,7 @@ import {
   clearCronJobLogs,
   getCronJobBeforeAudit,
   getCronJob,
+  getCronJobStats,
 } from '../services/cron-jobs.service';
 
 const cronJobsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -218,6 +219,16 @@ const clearJobLogsRoute = defineOpenAPIRoute({
   },
 });
 
-cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, exportRouteDef, logsRoute, clearAllLogsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, clearJobLogsRoute] as const);
+const statsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/stats', tags: ['CronJobs'], summary: '任务统计',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:cronjob:list' })] as const,
+    responses: { ...commonErrorResponses, ...ok(CronJobStatsDTO, '统计数据') },
+  }),
+  handler: async (c) => c.json(okBody(await getCronJobStats()), 200),
+});
+
+cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, exportRouteDef, logsRoute, clearAllLogsRoute, statsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute, clearJobLogsRoute] as const);
 
 export default cronJobsRoute;
