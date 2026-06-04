@@ -1214,7 +1214,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               {/* Left: breadcrumb (vertical / double layouts only) */}
               {preferences.showBreadcrumb && displayBreadcrumbs.length > 0 ? (
                 <div className="admin-header__breadcrumb">
-                  <Breadcrumb>
+                  <Breadcrumb maxItemCount={10}>
                     {displayBreadcrumbs.map((crumb, index) => {
                       const isLast = index === displayBreadcrumbs.length - 1;
                       const isHome = crumb.path === '/';
