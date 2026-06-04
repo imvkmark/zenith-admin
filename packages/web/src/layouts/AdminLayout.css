@@ -1516,6 +1516,33 @@
   justify-content: center;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0c1a2e 100%);
   backdrop-filter: blur(10px);
+  animation: lockFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.lock-screen--leaving {
+  animation: lockFadeOut 0.38s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes lockFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(10px);
+  }
+}
+
+@keyframes lockFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.04);
+  }
 }
 
 .lock-screen__content {
@@ -1524,6 +1551,18 @@
   align-items: center;
   gap: 16px;
   width: 320px;
+  animation: lockContentIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+}
+
+@keyframes lockContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .lock-screen__time {

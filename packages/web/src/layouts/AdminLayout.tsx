@@ -257,7 +257,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [lockPasswordModalMode, setLockPasswordModalMode] = useState<'set' | 'change'>('set');
   const [newLockPassword, setNewLockPassword] = useState('');
   const [confirmLockPassword, setConfirmLockPassword] = useState('');
-  const { isLocked, lock, unlock, setLockPassword, clearLockPassword, hasPassword } = useLockScreen();
+  const { isLocked, lock, verifyLockPassword, doUnlock, setLockPassword, clearLockPassword, hasPassword } = useLockScreen();
   const dragSrcKey = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [exitingTabKeys, setExitingTabKeys] = useState<Set<string>>(new Set());
@@ -1803,7 +1803,8 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       {isLocked && (
         <LockScreen
           user={user}
-          onUnlock={unlock}
+          onVerify={verifyLockPassword}
+          onUnlocked={doUnlock}
           onReLogin={() => { clearLockPassword(); disconnectWs(); onLogout(); }}
         />
       )}

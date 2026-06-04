@@ -47,5 +47,22 @@ export function useLockScreen() {
     }
   }, []);
 
-  return { isLocked, lock, unlock, setLockPassword, clearLockPassword, hasPassword };
+  /** 仅校验密码正确性，不改变锁屏状态（供动画过渡使用） */
+  const verifyLockPassword = useCallback((password: string): boolean => {
+    const stored = localStorage.getItem(LOCK_CREDENTIAL_KEY);
+    if (!stored) return true;
+    try {
+      return decodeURIComponent(atob(stored)) === password;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  /** 直接解除锁屏状态（在退出动画结束后调用） */
+  const doUnlock = useCallback(() => {
+    localStorage.removeItem(LOCK_STATE_KEY);
+    setIsLocked(false);
+  }, []);
+
+  return { isLocked, lock, unlock, verifyLockPassword, doUnlock, setLockPassword, clearLockPassword, hasPassword };
 }

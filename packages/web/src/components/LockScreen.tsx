@@ -6,14 +6,18 @@ import { UserAvatar } from './UserAvatar';
 
 interface LockScreenProps {
   user: { nickname?: string; avatar?: string | null };
-  onUnlock: (password: string) => boolean;
+  /** 仅校验密码是否正确，不改变锁屏状态 */
+  onVerify: (password: string) => boolean;
+  /** 动画结束后调用，真正解锁 */
+  onUnlocked: () => void;
   onReLogin: () => void;
 }
 
-export function LockScreen({ user, onUnlock, onReLogin }: Readonly<LockScreenProps>) {
+export function LockScreen({ user, onVerify, onUnlocked, onReLogin }: Readonly<LockScreenProps>) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   const [shaking, setShaking] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [time, setTime] = useState(new Date());
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -32,8 +36,12 @@ export function LockScreen({ user, onUnlock, onReLogin }: Readonly<LockScreenPro
 
   const handleUnlock = () => {
     if (!password) return;
-    const success = onUnlock(password);
-    if (!success) {
+    const success = onVerify(password);
+    if (success) {
+      setLeaving(true);
+      // 退出动画结束后解锁
+      setTimeout(() => onUnlocked(), 380);
+    } else {
       setError(true);
       setShaking(true);
       setPassword('');
@@ -60,7 +68,7 @@ export function LockScreen({ user, onUnlock, onReLogin }: Readonly<LockScreenPro
   const solarTerm = lunar.getJieQi();
 
   return (
-    <div className="lock-screen">
+    <div className={`lock-screen${leaving ? ' lock-screen--leaving' : ''}`}>
       <div className="lock-screen__content">
         <div className="lock-screen__time">
           {h}<span className="lock-screen__colon">:</span>{m}<span className="lock-screen__colon">:</span>{s}
