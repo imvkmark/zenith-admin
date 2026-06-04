@@ -107,7 +107,35 @@ export async function listUserGroups(q: ListUserGroupsQuery) {
     ),
   ]);
 
-  return { list: list.map(mapGroup), total, page, pageSize };
+  // Fetch member previews (first 5 per group) for the current page
+  const groupIds = list.map((g) => g.id);
+  const previewMap = new Map<number, Array<{ id: number; nickname: string; avatar: string | null }>>();
+  if (groupIds.length > 0) {
+    const previews = await db
+      .select({
+        groupId: userGroupMembers.groupId,
+        id: users.id,
+        nickname: users.nickname,
+        avatar: users.avatar,
+      })
+      .from(userGroupMembers)
+      .innerJoin(users, eq(users.id, userGroupMembers.userId))
+      .where(inArray(userGroupMembers.groupId, groupIds))
+      .orderBy(asc(userGroupMembers.groupId), asc(userGroupMembers.userId));
+
+    for (const row of previews) {
+      if (!previewMap.has(row.groupId)) previewMap.set(row.groupId, []);
+      const arr = previewMap.get(row.groupId)!;
+      if (arr.length < 5) arr.push({ id: row.id, nickname: row.nickname, avatar: row.avatar ?? null });
+    }
+  }
+
+  const mappedList = list.map((row) => ({
+    ...mapGroup(row),
+    memberPreview: previewMap.get(row.id) ?? [],
+  }));
+
+  return { list: mappedList, total, page, pageSize };
 }
 
 export async function getUserGroup(id: number) {

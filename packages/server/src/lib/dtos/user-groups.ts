@@ -4,6 +4,13 @@
 import { z } from '@hono/zod-openapi';
 import { auditFields } from './_audit';
 
+export const UserGroupMemberPreviewDTO = z
+  .object({
+    id: z.number().int(),
+    nickname: z.string(),
+    avatar: z.string().nullable().optional(),
+  });
+
 export const UserGroupDTO = z
   .object({
     id: z.number().int(),
@@ -15,6 +22,7 @@ export const UserGroupDTO = z
     departmentId: z.number().int().nullable().optional(),
     departmentName: z.string().nullable().optional(),
     memberCount: z.number().int().openapi({ example: 5 }),
+    memberPreview: z.array(UserGroupMemberPreviewDTO).optional(),
     status: z.enum(['enabled', 'disabled']),
     ...auditFields,
     createdAt: z.string(),

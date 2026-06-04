@@ -14,6 +14,9 @@ import {
   Row,
   Col,
   Spin,
+  Avatar,
+  AvatarGroup,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
@@ -246,8 +249,31 @@ export default function UserGroupsPage() {
       render: (v: string | null | undefined) => v || '—',
     },
     {
-      title: '成员数', dataIndex: 'memberCount', width: 90,
-      render: (v: number) => <Tag color="blue">{v ?? 0}</Tag>,
+      title: '成员', dataIndex: 'memberPreview', width: 160,
+      render: (_: unknown, record: UserGroup) => {
+        const preview = record.memberPreview ?? [];
+        const count = record.memberCount ?? 0;
+        if (count === 0) return <Tag color="blue">0</Tag>;
+        return (
+          <Space spacing={6}>
+            <AvatarGroup maxCount={4} size="extra-small" overlapFrom="end">
+              {preview.map((m) => (
+                <Tooltip key={m.id} content={m.nickname}>
+                  <Avatar
+                    src={m.avatar ?? undefined}
+                    alt={m.nickname}
+                    color="light-blue"
+                    style={{ cursor: 'default' }}
+                  >
+                    {m.nickname?.[0]}
+                  </Avatar>
+                </Tooltip>
+              ))}
+            </AvatarGroup>
+            <Tag color="blue" style={{ flexShrink: 0 }}>{count}</Tag>
+          </Space>
+        );
+      },
     },
     createdAtColumn,
     {

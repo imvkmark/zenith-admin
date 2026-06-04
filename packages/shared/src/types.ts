@@ -156,6 +156,7 @@ export interface UserGroup {
   departmentId?: number | null;
   departmentName?: string | null;
   memberCount?: number;
+  memberPreview?: Array<{ id: number; nickname: string; avatar?: string | null }>;
   status: EntityStatus;
   createdAt: string;
   updatedAt: string;

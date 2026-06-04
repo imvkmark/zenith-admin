@@ -15,7 +15,11 @@ interface CreateBody {
 
 function publicView(g: typeof mockUserGroups[number]): UserGroup {
   const { memberIds: _memberIds, ...rest } = g;
-  return { ...rest, memberCount: g.memberIds.length };
+  const memberPreview = g.memberIds.slice(0, 5).map((uid) => {
+    const u = mockUsers.find((mu) => mu.id === uid);
+    return u ? { id: u.id, nickname: u.nickname, avatar: u.avatar ?? null } : null;
+  }).filter((x): x is NonNullable<typeof x> => x !== null);
+  return { ...rest, memberCount: g.memberIds.length, memberPreview };
 }
 
 export const userGroupsHandlers = [
