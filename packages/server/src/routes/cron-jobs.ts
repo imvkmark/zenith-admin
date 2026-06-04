@@ -182,6 +182,6 @@ const idLogsRoute = defineOpenAPIRoute({
   },
 });
 
-cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, getOneRoute, createRouteDef, updateRouteDef, deleteRouteDef, runRoute, statusRoute, exportRouteDef, logsRoute, idLogsRoute] as const);
+cronJobsRoute.openapiRoutes([handlersRoute, validateRoute, listRoute, exportRouteDef, logsRoute, createRouteDef, getOneRoute, updateRouteDef, deleteRouteDef, runRoute, statusRoute, idLogsRoute] as const);
 
 export default cronJobsRoute;
