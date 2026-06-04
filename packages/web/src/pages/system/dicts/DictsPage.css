@@ -81,6 +81,12 @@
   transition: background 0.15s, color 0.15s;
 }
 
+/* Prevent long name/code from pushing the extra button to next line */
+.dict-list-item .semi-list-item-main {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .dict-list-item:hover {
   background: var(--semi-color-fill-0);
 }
@@ -96,18 +102,27 @@
   gap: 2px;
 }
 
-.dict-list-item-title,
-.dict-list-item-code,
+.dict-list-item-row1,
 .dict-list-item-date {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.dict-list-item-row1 {
+  line-height: 1.4;
+}
+
 .dict-list-item-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--semi-color-text-0);
+}
+
+.dict-list-item-sep {
+  margin: 0 4px;
+  font-size: 11px;
+  color: var(--semi-color-text-3);
 }
 
 .dict-list-item-code {

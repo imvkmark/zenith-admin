@@ -309,8 +309,11 @@ export default function DictsPage() {
         onClick={() => selectDict(dict)}
         main={
           <div className="dict-list-item-main">
-            <div className="dict-list-item-title" title={dict.name}>{dict.name}</div>
-            <div className="dict-list-item-code" title={dict.code}>{dict.code}</div>
+            <div className="dict-list-item-row1" title={`${dict.name} · ${dict.code}`}>
+              <span className="dict-list-item-title">{dict.name}</span>
+              <span className="dict-list-item-sep">·</span>
+              <span className="dict-list-item-code">{dict.code}</span>
+            </div>
             <div className="dict-list-item-date">{formatDateTime(dict.createdAt)}</div>
           </div>
         }
