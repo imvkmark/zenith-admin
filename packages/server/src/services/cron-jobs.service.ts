@@ -134,8 +134,8 @@ export async function listCronJobLogs(jobId: number, q: { page: number; pageSize
 export async function clearCronJobLogs(months: number, jobId?: number) {
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - months);
-  const conditions: ReturnType<typeof eq>[] = [lt(cronJobLogs.startedAt, cutoff)];
+  const conditions = [lt(cronJobLogs.startedAt, cutoff)];
   if (jobId) conditions.push(eq(cronJobLogs.jobId, jobId));
-  const result = await db.delete(cronJobLogs).where(and(...conditions));
-  return result.rowCount ?? 0;
+  const deleted = await db.delete(cronJobLogs).where(and(...conditions)).returning({ id: cronJobLogs.id });
+  return deleted.length;
 }
