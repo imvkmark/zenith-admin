@@ -1,4 +1,4 @@
-import { managedFiles, fileStorageConfigs } from '../db/schema';
+import { managedFiles, fileStorageConfigs, users } from '../db/schema';
 import { buildManagedFileUrl, deleteStoredFile, readStoredFile, uploadFileByConfig } from '../lib/file-storage';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
@@ -88,7 +88,21 @@ export async function listManagedFiles(query: {
     db.$count(managedFiles, finalWhere),
     withPagination(db.select().from(managedFiles).where(finalWhere).orderBy(desc(managedFiles.id)).$dynamic(), page, pageSize),
   ]);
-  return { list: paginated.map(mapManagedFile), total: count, page, pageSize };
+  const uploaderIds = [...new Set(paginated.map((f) => f.createdBy).filter((id): id is number => id != null))];
+  const uploaderMap = new Map<number, string>();
+  if (uploaderIds.length > 0) {
+    const uploaders = await db
+      .select({ id: users.id, nickname: users.nickname, username: users.username })
+      .from(users)
+      .where(inArray(users.id, uploaderIds));
+    for (const u of uploaders) uploaderMap.set(u.id, u.nickname || u.username);
+  }
+  return {
+    list: paginated.map((f) => ({ ...mapManagedFile(f), uploaderName: f.createdBy ? (uploaderMap.get(f.createdBy) ?? null) : null })),
+    total: count,
+    page,
+    pageSize,
+  };
 }
 
 function normalizeUploadFile(value: unknown): File {

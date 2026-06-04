@@ -584,6 +584,13 @@ export default function FilesPage() {
       render: (value: string) => renderEllipsis(formatDateTime(value)),
     },
     {
+      title: '上传人',
+      dataIndex: 'uploaderName',
+      width: 100,
+      ellipsis: true,
+      render: (value: string) => renderEllipsis(value || '—'),
+    },
+    {
       title: '操作',
       fixed: 'right',
       width: 180,
