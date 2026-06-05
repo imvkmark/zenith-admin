@@ -175,6 +175,7 @@ export default function OperationLogsPage() {
           <OperationLogsTable
             dataSource={data}
             loading={loading}
+            onRefresh={() => void fetchData()}
             scroll={{ x: 1600 }}
             pagination={{
               currentPage: page,

@@ -9,6 +9,7 @@ interface LoginLogsTableProps {
   readonly dataSource: LoginLog[];
   readonly loading?: boolean;
   readonly pagination?: TableProps<LoginLog>['pagination'];
+  readonly onRefresh?: () => void;
   readonly columnSettings?: boolean;
   readonly columnSettingsKey?: string;
 }
@@ -25,6 +26,7 @@ export function LoginLogsTable({
   dataSource,
   loading,
   pagination,
+  onRefresh,
   columnSettings,
   columnSettingsKey,
 }: LoginLogsTableProps) {
@@ -77,6 +79,7 @@ export function LoginLogsTable({
         loading={loading}
         pagination={pagination}
         rowKey="id"
+        onRefresh={onRefresh}
         columnSettings={columnSettings}
         columnSettingsKey={columnSettingsKey}
       />

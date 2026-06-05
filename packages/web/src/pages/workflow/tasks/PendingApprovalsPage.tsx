@@ -403,6 +403,8 @@ export default function PendingApprovalsPage() {
         dataSource={data?.list ?? []}
         rowKey="id"
         loading={loading}
+        onRefresh={() => void fetchList()}
+        refreshLoading={loading}
         pagination={{
           currentPage: page,
           pageSize,

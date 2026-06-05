@@ -207,6 +207,8 @@ export default function InboxPage() {
         <ConfigurableTable
           bordered
           loading={loading}
+          onRefresh={() => void fetchList(page)}
+          refreshLoading={loading}
           dataSource={list}
           rowKey="id"
           columns={columns}

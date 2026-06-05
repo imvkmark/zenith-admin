@@ -11,6 +11,7 @@ interface OperationLogsTableProps {
   readonly loading?: boolean;
   readonly pagination?: TableProps<OperationLog>['pagination'];
   readonly scroll?: TableProps<OperationLog>['scroll'];
+  readonly onRefresh?: () => void;
   readonly columnSettings?: boolean;
   readonly columnSettingsKey?: string;
 }
@@ -94,6 +95,7 @@ export function OperationLogsTable({
   loading,
   pagination,
   scroll = { x: 1600 },
+  onRefresh,
   columnSettings,
   columnSettingsKey,
 }: OperationLogsTableProps) {
@@ -160,6 +162,7 @@ export function OperationLogsTable({
         pagination={pagination}
         rowKey="id"
         scroll={scroll}
+        onRefresh={onRefresh}
         columnSettings={columnSettings}
         columnSettingsKey={columnSettingsKey}
       />

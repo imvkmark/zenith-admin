@@ -343,6 +343,8 @@ export default function WorkflowAutomationsPage() {
       <ConfigurableTable<WorkflowAutomation>
         bordered
         loading={loading}
+        onRefresh={fetchData}
+        refreshLoading={loading}
         rowKey="id"
         dataSource={list}
         columns={columns}

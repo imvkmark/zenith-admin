@@ -298,6 +298,8 @@ export default function WorkflowMonitorPage() {
         dataSource={data?.list ?? []}
         rowKey="id"
         loading={loading}
+        onRefresh={() => void fetchList()}
+        refreshLoading={loading}
         scroll={{ x: 1100 }}
         pagination={{
           currentPage: page,

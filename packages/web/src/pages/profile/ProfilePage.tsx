@@ -657,6 +657,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     <LoginLogsTable
                       loading={loginLogsLoading}
                       dataSource={loginLogs}
+                      onRefresh={() => void fetchLoginLogs(loginLogsPage)}
                       columnSettingsKey="profile-login-logs"
                       pagination={{
                         total: loginLogsTotal,
@@ -671,6 +672,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                     <OperationLogsTable
                       loading={operationLogsLoading}
                       dataSource={operationLogs}
+                      onRefresh={() => void fetchOperationLogs(operationLogsPage)}
                       columnSettingsKey="profile-operation-logs"
                       pagination={{
                         total: operationLogsTotal,
@@ -707,6 +709,8 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
                       bordered
                       dataSource={apiTokens}
                       rowKey="id"
+                      onRefresh={fetchApiTokens}
+                      refreshLoading={apiTokensLoading}
                       pagination={false}
                       columns={[
                         { title: '名称', dataIndex: 'name', width: 150, render: (v: string) => <Text strong>{v}</Text> },

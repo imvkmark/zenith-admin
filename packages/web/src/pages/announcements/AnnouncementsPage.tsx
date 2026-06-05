@@ -235,6 +235,8 @@ export default function AnnouncementsPage() {
         <ConfigurableTable
           bordered
           loading={loading}
+          onRefresh={() => void fetchList(page)}
+          refreshLoading={loading}
           dataSource={list}
           rowKey="id"
           columns={columns}

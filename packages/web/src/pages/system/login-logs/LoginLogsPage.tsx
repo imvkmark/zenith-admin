@@ -105,6 +105,7 @@ export default function LoginLogsPage() {
       <LoginLogsTable
         dataSource={data}
         loading={loading}
+        onRefresh={() => void fetchData()}
         pagination={{
           currentPage: page,
           pageSize,
