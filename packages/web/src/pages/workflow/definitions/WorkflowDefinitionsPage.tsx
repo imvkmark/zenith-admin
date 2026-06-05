@@ -30,7 +30,7 @@ export default function WorkflowDefinitionsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowDefinition> | null>(null);
-  const { page, setPage, pageSize } = usePagination();
+  const { page, setPage, pageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -243,7 +243,7 @@ export default function WorkflowDefinitionsPage() {
         />
       }
       detail={
-        <div>
+        <MasterDetailLayout.Body>
           <SearchToolbar>
             <Input
               prefix={<Search size={14} />}
@@ -283,12 +283,7 @@ export default function WorkflowDefinitionsPage() {
             loading={loading}
             onRefresh={() => void fetchList()}
             refreshLoading={loading}
-            pagination={{
-              currentPage: page,
-              pageSize,
-              total: data?.total ?? 0,
-              onPageChange: (p) => { void fetchList(p); },
-            }}
+            pagination={buildPagination(data?.total ?? 0, (p) => void fetchList(p))}
           />
           {historyTarget && (
             <WorkflowVersionsModal
@@ -300,7 +295,7 @@ export default function WorkflowDefinitionsPage() {
               onRestored={() => { void fetchList(); }}
             />
           )}
-        </div>
+        </MasterDetailLayout.Body>
       }
     />
   );
