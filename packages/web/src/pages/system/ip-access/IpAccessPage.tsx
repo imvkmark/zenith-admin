@@ -43,7 +43,7 @@ function IpAccessLogsTab() {
   const [tableLoading, setTableLoading] = useState(false);
   const [logList, setLogList] = useState<IpAccessLog[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, setPage, pageSize } = usePagination(20);
+  const { page, setPage, pageSize } = usePagination();
 
   const [filterIp, setFilterIp] = useState('');
   const [filterBlockType, setFilterBlockType] = useState<string | undefined>(undefined);

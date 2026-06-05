@@ -59,7 +59,7 @@ export default function PendingApprovalsPage() {
   const returnFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
-  const { page, pageSize, setPage, buildPagination } = usePagination(20);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
   const [approveVisible, setApproveVisible] = useState(false);
   const [rejectVisible, setRejectVisible] = useState(false);

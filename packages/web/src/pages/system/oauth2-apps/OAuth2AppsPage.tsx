@@ -62,7 +62,7 @@ export default function OAuth2AppsPage() {
   // ─── 状态 ──────────────────────────────────────────────────────────────
   const [data, setData] = useState<PaginatedResponse<OAuth2Client> | null>(null);
   const [loading, setLoading] = useState(false);
-  const { page, pageSize, setPage, buildPagination } = usePagination(20);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
 
   // 弹窗状态

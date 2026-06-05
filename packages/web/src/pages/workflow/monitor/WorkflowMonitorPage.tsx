@@ -94,7 +94,7 @@ function StatCard({
 export default function WorkflowMonitorPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<MonitorResponse | null>(null);
-  const { page, pageSize, setPage, buildPagination } = usePagination(20);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');

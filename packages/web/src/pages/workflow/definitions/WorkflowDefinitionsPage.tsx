@@ -30,7 +30,7 @@ export default function WorkflowDefinitionsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowDefinition> | null>(null);
-  const { page, setPage, pageSize } = usePagination(20);
+  const { page, setPage, pageSize } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');

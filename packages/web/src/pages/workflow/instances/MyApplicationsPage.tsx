@@ -231,7 +231,7 @@ export default function MyApplicationsPage() {
   const dynamicFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<WorkflowInstance> | null>(null);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination(20);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [statusFilter, setStatusFilter] = useState('');
   const [searchStatus, setSearchStatus] = useState('');
   const [detailVisible, setDetailVisible] = useState(false);

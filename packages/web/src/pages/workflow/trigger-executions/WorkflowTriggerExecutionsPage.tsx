@@ -52,7 +52,7 @@ const STATUS_OPTIONS = [
 export default function WorkflowTriggerExecutionsPage() {
   const [list, setList] = useState<WorkflowTriggerExecution[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize } = usePagination(20);
+  const { page, pageSize, setPage, setPageSize } = usePagination();
   const [loading, setLoading] = useState(false);
 
   const [statusInput, setStatusInput] = useState<WorkflowTriggerExecutionStatus | ''>('');
