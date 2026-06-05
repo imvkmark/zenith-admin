@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge,
 } from '@douyinfe/semi-ui';
+import { usePagination } from '@/hooks/usePagination';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { CheckCheck } from 'lucide-react';
@@ -35,7 +36,7 @@ export default function AnnouncementsPage() {
   const [list, setList] = useState<AnnouncementWithRead[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const { page, setPage } = usePagination();
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'read'>('all');
   const [markAllLoading, setMarkAllLoading] = useState(false);
 
