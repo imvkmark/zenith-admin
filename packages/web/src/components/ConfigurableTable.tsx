@@ -212,7 +212,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
 
   const effectivePagination = useMemo(() => {
     if (!pagination || typeof pagination === 'boolean') return pagination;
-    return { showTotal: true, showSizeChanger: true, ...pagination };
+    return { showTotal: true, showSizeChanger: true, pageSizeOpts: [10, 20, 50, 100], ...pagination };
   }, [pagination]);
   const effectiveColumnSettings = (preferences.showTableColumnSettings ?? true) && columnSettings;
   const rawColumns = useMemo(() => (columns ?? []) as ConfigurableColumn<RecordType>[], [columns]);
