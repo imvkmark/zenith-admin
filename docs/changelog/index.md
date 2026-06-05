@@ -4,6 +4,43 @@
 
 ---
 
+## v0.38.0 - 2026-06-05
+
+### Added
+
+#### usePagination Hook
+
+- 新增 `packages/web/src/hooks/usePagination.ts`，封装分页状态（`page`/`pageSize`）及 `buildPagination(total, onFetch)` 构造器
+- 自动从用户偏好设置读取默认每页条数，全站一键生效
+- 全站约 30 个列表页迁移使用，每处 pagination 样板代码从 8 行缩减为 1 行
+
+#### ConfigurableTable 分页默认值注入
+
+- 自动注入 `showTotal: true`、`showSizeChanger: true`、`pageSizeOpts: [10, 20, 50, 100]`
+- 调用方无需重复声明，仍可按需覆盖
+
+#### 偏好设置新增「默认分页大小」
+
+- 偏好面板增加 10 / 20 / 50 / 100 下拉选项，对全站所有列表页生效
+- 页面刷新后即时应用新设置
+
+#### MasterDetailLayout 新增 Body 子组件
+
+- `MasterDetailLayout.Body`：`flex: 1 + overflow: auto`，配合 `Header` 子组件实现固定标题 + 可滚动内容区
+- `CacheManagePage`、`DictsPage`、`WorkflowDefinitionsPage` 统一改用 `Header + Body` 模式，移除手写 flex/overflow CSS 类
+
+### Changed
+
+- 字典右侧字典项表格改为 `pagination={false}`，支持完整树形结构展示（后端本已全量返回）
+- `DbAdminPage` 表浏览数据 Tab 和查询历史 Tab 均改为 `ConfigurableTable` 内置分页，移除外置 `<Pagination>` 组件
+- 查询历史 Tab 修复竖向无法滚动问题，时间列宽从 170 调整为 180
+
+### Fixed
+
+- 修复 8 个页面 `fetchList(ps = 10)` 硬编码绕过偏好设置的问题
+
+---
+
 ## v0.37.0 - 2026-06-05
 
 ### Added
