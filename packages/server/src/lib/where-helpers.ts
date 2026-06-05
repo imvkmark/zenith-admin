@@ -10,7 +10,7 @@ export function mergeWhere(base?: SQL, extra?: SQL): SQL | undefined {
 
 /** 转义 PostgreSQL LIKE / ILIKE 元字符（%, _, \），防止用户输入被解释为通配符 */
 export function escapeLike(s: string): string {
-  return s.replaceAll(String.raw`%`, String.raw`\%`).replaceAll('_', String.raw`\_`).replaceAll('\\', String.raw`\\`);
+  return s.replaceAll('\\', String.raw`\\`).replaceAll(String.raw`%`, String.raw`\%`).replaceAll('_', String.raw`\_`);
 }
 
 /**
