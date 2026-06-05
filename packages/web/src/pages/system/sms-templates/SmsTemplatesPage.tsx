@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Typography,
+import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin,
   Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -56,7 +56,7 @@ export default function SmsTemplatesPage() {
     [pageSize, setPage, setPageSize],
   );
 
-  useEffect(() => { void fetchList(1, '', undefined, undefined, pageSize); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void fetchList(1, '', undefined, undefined, pageSize); }, [fetchList, pageSize]);
 
   const handleSearch = () => { void fetchList(1, keyword, filterProvider, filterStatus, pageSize); };
   const handleReset = () => {
