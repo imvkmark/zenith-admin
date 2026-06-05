@@ -132,6 +132,7 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '描述',
       dataIndex: 'description',
+      width: 200,
       render: renderEllipsis,
     },
     {
