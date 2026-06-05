@@ -28,6 +28,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import { DataScopePanel } from '@/components/permissions/DataScopePanel';
+import { usePagination } from '@/hooks/usePagination';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
@@ -44,8 +45,7 @@ export default function RolesPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [total, setTotal] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -367,14 +367,7 @@ export default function RolesPage() {
         loading={loading}
         onRefresh={fetchRoles}
         refreshLoading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (p) => { setPage(p); void fetchRoles(searchParams, p, pageSize); },
-          onPageSizeChange: (s) => { setPage(1); setPageSize(s); void fetchRoles(searchParams, 1, s); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchRoles(searchParams, p, ps))}
       />
 
       {/* 创建/编辑 Modal */}
