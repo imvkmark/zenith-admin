@@ -411,13 +411,6 @@ export default function UsersPage() {
       ellipsis: { showTitle: false },
       render: (_: unknown, record: User) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <UserAvatar name={record.nickname || record.username} avatar={record.avatar} semiSize="extra-small" size={24} />
-          <span className="table-cell-ellipsis" title={`${record.nickname}（${record.username}）`}>
-            {record.nickname}（{record.username}）
-          </span>
-          {record.isLocked && (
-            <Tag size="small" color="red" style={{ flexShrink: 0 }}>已锁定</Tag>
-          )}
           <span
             title={record.isOnline ? '在线' : '离线'}
             style={{
@@ -430,6 +423,13 @@ export default function UsersPage() {
               boxShadow: record.isOnline ? '0 0 0 2px #d1fae5' : undefined,
             }}
           />
+          <UserAvatar name={record.nickname || record.username} avatar={record.avatar} semiSize="extra-small" size={24} />
+          <span className="table-cell-ellipsis" title={`${record.nickname}（${record.username}）`}>
+            {record.nickname}（{record.username}）
+          </span>
+          {record.isLocked && (
+            <Tag size="small" color="red" style={{ flexShrink: 0 }}>已锁定</Tag>
+          )}
         </div>
       ),
     },
