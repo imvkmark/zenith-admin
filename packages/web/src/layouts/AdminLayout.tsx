@@ -4,7 +4,7 @@ import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route } from 'lucide-react';
+import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard } from 'lucide-react';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
 import type { ThemeMode } from '@/hooks/useTheme';
@@ -264,6 +264,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     preferences.enableTabs && (preferences.keepTabs ?? true),
   );
   const [prefsVisible, setPrefsVisible] = useState(false);
+  const [shortcutsVisible, setShortcutsVisible] = useState(false);
   const [lockPasswordModalVisible, setLockPasswordModalVisible] = useState(false);
   const [lockPasswordModalMode, setLockPasswordModalMode] = useState<'set' | 'change'>('set');
   const [newLockPassword, setNewLockPassword] = useState('');
@@ -1068,6 +1069,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
             </Dropdown.Item>
             <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={() => navigate('/announcements')}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}</Dropdown.Item>
             <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
+            <Dropdown.Item icon={<Keyboard size={14} strokeWidth={1.5} />} onClick={() => setShortcutsVisible(true)}>快捷键</Dropdown.Item>
             {(preferences.enableLockScreen ?? false) && hasPassword() && (
               <Dropdown.Item icon={<Lock size={14} strokeWidth={1.5} />} onClick={() => lock()}>锁屏</Dropdown.Item>
             )}
@@ -1809,6 +1811,69 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
             </div>
           </SideSheet>
+
+          {/* ─── 快捷键 Modal ─── */}
+          <Modal
+            title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Keyboard size={16} />快捷键</span>}
+            visible={shortcutsVisible}
+            onCancel={() => setShortcutsVisible(false)}
+            footer={null}
+            width={520}
+          >
+            {([
+              {
+                group: '全局',
+                items: [
+                  { keys: ['Ctrl / ⌘', 'K'], desc: '打开命令面板' },
+                  { keys: ['Alt', 'L'], desc: '锁定屏幕（需开启锁屏功能）' },
+                ],
+              },
+              {
+                group: '多标签页',
+                items: [
+                  { keys: ['中键单击'], desc: '关闭当前标签页' },
+                  { keys: ['右键'], desc: '打开标签页上下文菜单' },
+                ],
+              },
+              {
+                group: '表格',
+                items: [
+                  { keys: ['Esc'], desc: '退出全屏模式' },
+                ],
+              },
+              {
+                group: '工作流设计器',
+                items: [
+                  { keys: ['Ctrl / ⌘', 'Z'], desc: '撤销' },
+                  { keys: ['Ctrl / ⌘', 'Shift', 'Z'], desc: '重做' },
+                  { keys: ['Ctrl / ⌘', 'Y'], desc: '重做（备用）' },
+                ],
+              },
+              {
+                group: 'AI 聊天',
+                items: [
+                  { keys: ['Enter'], desc: '发送消息' },
+                  { keys: ['Shift', 'Enter'], desc: '换行' },
+                ],
+              },
+            ] as { group: string; items: { keys: string[]; desc: string }[] }[]).map(({ group, items }) => (
+              <div key={group} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--semi-color-text-2)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {items.map(({ keys, desc }) => (
+                    <div key={desc} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--semi-color-text-1)', fontSize: 13 }}>{desc}</span>
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        {keys.map((k) => (
+                          <kbd key={k} style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', background: 'var(--semi-color-fill-1)', border: '1px solid var(--semi-color-border)', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', color: 'var(--semi-color-text-0)', boxShadow: '0 1px 0 var(--semi-color-border)', whiteSpace: 'nowrap' }}>{k}</kbd>
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </Modal>
 
           {/* ─── 锁屏密码设置 Modal ─── */}
           <Modal
