@@ -426,7 +426,7 @@ export default function DictsPage() {
                 total={total}
                 currentPage={page}
                 pageSize={pageSize}
-                pageSizeOpts={[10, 20, 50]}
+                pageSizeOpts={[10, 20, 50, 100]}
                 showSizeChanger
                 showTotal
                 onPageChange={handleDictPageChange}
