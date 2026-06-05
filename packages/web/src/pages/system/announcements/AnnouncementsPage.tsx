@@ -32,6 +32,7 @@ import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { useDictItems } from '@/hooks/useDictItems';
 import DictTag from '@/components/DictTag';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
@@ -71,7 +72,7 @@ export default function AnnouncementsPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const defaultSearchParams: SearchParams = { title: '', type: '', publishStatus: '', timeRange: null };
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
@@ -140,6 +141,7 @@ export default function AnnouncementsPage() {
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, submittedParams]);
 
   useEffect(() => {
