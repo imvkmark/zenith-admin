@@ -35,6 +35,8 @@ export interface UserPreferences {
   tableStriped: boolean;
   tableSize: TableSizePreference;
   enableLockScreen: boolean;
+  /** 侧边栏手风琴展开：同级只允许展开一个子菜单 */
+  sidebarAccordion: boolean;
 }
 
 export const defaultPreferences: UserPreferences = {
@@ -64,6 +66,7 @@ export const defaultPreferences: UserPreferences = {
   tableStriped: false,
   tableSize: 'small',
   enableLockScreen: false,
+  sidebarAccordion: false,
 };
 
 export interface PreferencesContextValue {

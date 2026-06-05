@@ -84,6 +84,17 @@ function menuToNavItem(menu: Menu): NavItem | null {
   return { itemKey: menu.path ?? `menu-${menu.id}`, text: menu.title, icon, isExternal: menu.isExternal ?? false };
 }
 
+function findNavItemAncestorKeys(items: NavItem[], targetKey: string): string[] | null {
+  for (const item of items) {
+    if (item.itemKey === targetKey) return [];
+    if (item.items?.length) {
+      const found = findNavItemAncestorKeys(item.items, targetKey);
+      if (found !== null) return [item.itemKey, ...found];
+    }
+  }
+  return null;
+}
+
 function findAncestorKeys(menuTree: Menu[], targetPath: string): string[] {
   function traverse(nodes: Menu[], ancestors: string[]): string[] | null {
     for (const node of nodes) {
@@ -558,6 +569,29 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       return item;
     }),
     [menuTree, chatUnreadCount]
+  );
+
+  const handleSidebarOpenChange = useCallback(
+    ({ openKeys: nextOpenKeys }: { openKeys?: (string | number)[] }) => {
+      const next = (nextOpenKeys ?? []).map(String);
+      if (!(preferences.sidebarAccordion ?? false)) {
+        setOpenKeys(next);
+        return;
+      }
+      // 手风琴模式：找出新增的 key
+      const newlyAdded = next.filter((k) => !openKeys.includes(k));
+      if (newlyAdded.length === 0) {
+        // 折叠操作，直接使用
+        setOpenKeys(next);
+        return;
+      }
+      // 取最深层新增的 key，保留其祖先链 + 自身，关闭兄弟分组
+      const target = newlyAdded.at(-1)!;
+      const ancestors = findNavItemAncestorKeys(navItems, target) ?? [];
+      const validSet = new Set([...ancestors, target]);
+      setOpenKeys(next.filter((k) => validSet.has(k)));
+    },
+    [openKeys, preferences.sidebarAccordion, navItems],
   );
 
   const pathTitleMap = useMemo(() => {
@@ -1173,7 +1207,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       isCollapsed={false}
                       selectedKeys={currentSelectedKeys}
                       openKeys={openKeys}
-                      onOpenChange={({ openKeys: nextOpenKeys }) => setOpenKeys((nextOpenKeys ?? []).map(String))}
+                      onOpenChange={handleSidebarOpenChange}
                       renderWrapper={renderWrapper}
                     />
                   </>
@@ -1191,7 +1225,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 isCollapsed={collapsed}
                 selectedKeys={currentSelectedKeys}
                 openKeys={collapsed ? [] : openKeys}
-                onOpenChange={({ openKeys: nextOpenKeys }) => setOpenKeys((nextOpenKeys ?? []).map(String))}
+                onOpenChange={handleSidebarOpenChange}
                 onCollapseChange={handleCollapseChange}
                 header={
                   navLayout === 'vertical' && (preferences.showLogo ?? true)
@@ -1558,6 +1592,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   </Tooltip>
                 </span>
                 <Switch checked={preferences.sidebarStickyScroll ?? true} onChange={(v) => setPreferences({ sidebarStickyScroll: v })} />
+              </div>
+
+              {/* ── 侧栏手风琴展开 ── */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  侧栏排他展开
+                  <Tooltip content="开启后侧边栏同级菜单同时只允许展开一项，点击其他分组时自动收起之前展开的分组" position="right">
+                    <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  </Tooltip>
+                </span>
+                <Switch checked={preferences.sidebarAccordion ?? false} onChange={(v) => setPreferences({ sidebarAccordion: v })} />
               </div>
 
               {/* ── 锁屏 ── */}
