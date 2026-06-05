@@ -13,16 +13,8 @@ import path from 'node:path';
 import type { FileStorageConfigRow, ManagedFileRow } from '../db/schema';
 import { formatDate } from './datetime';
 
-// esdk-obs-nodejs 是 CJS 模块，运行时动态加载
+// esdk-obs-nodejs 是 CJS 模块，无官方类型声明，运行时通过 require 加载
 type ObsClientConstructor = new (opts: Record<string, string>) => ObsClientType;
-let _ObsClientClass: ObsClientConstructor | null = null;
-async function getObsClientClass(): Promise<ObsClientConstructor> {
-  if (!_ObsClientClass) {
-    const mod = await import('esdk-obs-nodejs');
-    _ObsClientClass = (mod.default ?? mod) as ObsClientConstructor;
-  }
-  return _ObsClientClass;
-}
 
 // esdk-obs-nodejs 缺少官方类型声明，定义最小接口
 interface ObsClientType {
@@ -93,7 +85,9 @@ function createObsClient(config: FileStorageConfigRow): ObsClientType {
   if (!config.obsEndpoint || !config.obsBucket || !config.obsAccessKeyId || !config.obsSecretAccessKey) {
     throw new Error('华为云 OBS 配置不完整');
   }
-  return new ObsClient({
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ObsClientCtor = require('esdk-obs-nodejs') as ObsClientConstructor;
+  return new ObsClientCtor({
     access_key_id: config.obsAccessKeyId,
     secret_access_key: config.obsSecretAccessKey,
     server: config.obsEndpoint,
@@ -319,14 +313,14 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
     const bucketManager = new qiniu.rs.BucketManager(mac, conf);
     const privateUrl = bucketManager.privateDownloadUrl(domain, file.objectKey, Math.floor(Date.now() / 1000) + 3600);
     const response = await fetch(privateUrl);
-    const stream = response.body as ReadableStream<Uint8Array>;
+    const stream = response.body!;
     return { stream, contentType, fileName };
   }
 
   if (config.provider === 'bos') {
     const bosClient = createBosClient(config);
     const result = await bosClient.getObject(config.bosBucket!, file.objectKey);
-    const buffer = Buffer.from((result as { body: string }).body, 'binary');
+    const buffer = Buffer.from(result.body, 'binary');
     const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new Uint8Array(buffer)); controller.close(); } });
     return { stream, contentType, fileName };
   }
