@@ -225,6 +225,8 @@ export default function AIProvidersPage() {
         columns={columns}
         dataSource={treeData}
         loading={loading}
+        onRefresh={loadData}
+        refreshLoading={loading}
         rowKey="key"
         pagination={false}
         expandedRowKeys={expandedRowKeys}
