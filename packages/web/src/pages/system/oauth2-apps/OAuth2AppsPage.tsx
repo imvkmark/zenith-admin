@@ -24,6 +24,7 @@ import { request } from '@/utils/request';
 import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 
 const { Text, Paragraph } = Typography;
@@ -61,8 +62,7 @@ export default function OAuth2AppsPage() {
   // ─── 状态 ──────────────────────────────────────────────────────────────
   const [data, setData] = useState<PaginatedResponse<OAuth2Client> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const { page, pageSize, setPage, buildPagination } = usePagination(20);
   const [keyword, setKeyword] = useState('');
 
   // 弹窗状态
@@ -314,21 +314,7 @@ export default function OAuth2AppsPage() {
         rowKey="id"
         size="small"
         empty="暂无数据"
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data?.total ?? 0,
-          onPageChange: (p: number) => {
-            setPage(p);
-            void fetchData(p, pageSize);
-          },
-          onPageSizeChange: (s: number) => {
-            setPageSize(s);
-            void fetchData(1, s);
-          },
-          showTotal: true,
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(data?.total ?? 0, fetchData)}
       />
 
       {/* 新增 / 编辑弹窗 */}

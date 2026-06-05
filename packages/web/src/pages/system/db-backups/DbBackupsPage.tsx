@@ -6,14 +6,14 @@ import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn } from '../../../utils/table-columns';
 
 export default function DbBackupsPage() {
   const [list, setList] = useState<DbBackup[]>([]);
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [createVisible, setCreateVisible] = useState(false);
@@ -173,14 +173,7 @@ export default function DbBackupsPage() {
         dataSource={list}
         columns={columns}
         rowKey="id"
-        pagination={{
-          total,
-          currentPage: page,
-          pageSize,
-          onPageChange: (p) => fetchList(p, pageSize),
-          onPageSizeChange: (size) => { setPageSize(size); fetchList(1, size); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, fetchList)}
       />
 
       <Modal

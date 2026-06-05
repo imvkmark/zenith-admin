@@ -5,6 +5,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { EmailTemplate, PaginatedResponse } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import DictTag from '@/components/DictTag';
@@ -19,8 +20,7 @@ export default function EmailTemplatesPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<EmailTemplate[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
 
@@ -146,11 +146,7 @@ export default function EmailTemplatesPage() {
       </SearchToolbar>
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, filterStatus, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={{
-          total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, filterStatus, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, filterStatus, s); },
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterStatus, ps))}
         scroll={{ x: 1200 }} />
 
       <Modal title={editingRecord ? '编辑邮件模板' : '新增邮件模板'} visible={modalVisible}

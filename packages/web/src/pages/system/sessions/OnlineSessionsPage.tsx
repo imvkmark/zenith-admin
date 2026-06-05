@@ -19,6 +19,7 @@ import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
 
 export default function OnlineSessionsPage() {
@@ -26,8 +27,7 @@ export default function OnlineSessionsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<OnlineUser[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
 
   // 从本地 JWT 解码当前会话 tokenId（jti），无需额外请求
@@ -161,14 +161,7 @@ export default function OnlineSessionsPage() {
         onRefresh={fetchData}
         refreshLoading={loading}
         rowKey="tokenId"
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (p) => { setPage(p); void fetchData(p, pageSize, keyword); },
-          onPageSizeChange: (size) => { setPageSize(size); void fetchData(1, size, keyword); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, fetchData)}
         empty="暂无在线用户"
       />
     </div>

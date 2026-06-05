@@ -5,6 +5,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { CheckCheck, Plus, RotateCcw, Search } from 'lucide-react';
 import type { InAppMessage, InAppMessageType, InAppTemplate, PaginatedResponse, User } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -28,8 +29,7 @@ export default function InAppMessagesPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<InAppMessage[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [filterType, setFilterType] = useState<InAppMessageType | undefined>();
   const [filterRead, setFilterRead] = useState<string | undefined>();
@@ -204,11 +204,7 @@ export default function InAppMessagesPage() {
       </SearchToolbar>
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, filterType, filterRead, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={{
-          total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, filterType, filterRead, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, filterType, filterRead, s); },
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterType, filterRead, ps))}
         scroll={{ x: 1400 }} />
 
       <Modal title="发送站内信" visible={sendVisible} onOk={handleSend}

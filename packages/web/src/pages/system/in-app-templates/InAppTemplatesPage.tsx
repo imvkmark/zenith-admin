@@ -5,6 +5,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { InAppMessageType, InAppTemplate, PaginatedResponse } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import DictTag from '@/components/DictTag';
@@ -26,8 +27,7 @@ export default function InAppTemplatesPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<InAppTemplate[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [filterType, setFilterType] = useState<InAppMessageType | undefined>();
   const [filterStatus, setFilterStatus] = useState<string | undefined>();
@@ -159,11 +159,7 @@ export default function InAppTemplatesPage() {
       </SearchToolbar>
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, filterType, filterStatus, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={{
-          total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, filterType, filterStatus, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, filterType, filterStatus, s); },
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, filterType, filterStatus, ps))}
         scroll={{ x: 1100 }} />
 
       <Modal title={editingRecord ? '编辑站内信模板' : '新增站内信模板'} visible={modalVisible}

@@ -30,6 +30,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import StorageFileBrowser from './StorageFileBrowser';
 import './FileStorageConfigsPage.css';
 
@@ -123,8 +124,7 @@ export default function FileStorageConfigsPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [total, setTotal] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<FileStorageConfig | null>(null);
@@ -406,14 +406,7 @@ export default function FileStorageConfigsPage() {
         loading={loading}
         onRefresh={fetchConfigs}
         refreshLoading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (p) => { setPage(p); void fetchConfigs(searchParams, p, pageSize); },
-          onPageSizeChange: (s) => { setPage(1); setPageSize(s); void fetchConfigs(searchParams, 1, s); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchConfigs(searchParams, p, ps))}
         size="small"
       />
 

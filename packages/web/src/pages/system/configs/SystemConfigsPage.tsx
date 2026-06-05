@@ -20,6 +20,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
 
 interface SearchParams {
@@ -37,8 +38,7 @@ export default function SystemConfigsPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<SystemConfig[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
@@ -73,8 +73,6 @@ export default function SystemConfigsPage() {
 
   const handleSearch = () => { setPage(1); void fetchData(1); };
   const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
-
-  const handlePageChange = (p: number) => { setPage(p); void fetchData(p, pageSize); };
 
   const handleExport = async () => {
     setExportLoading(true);
@@ -212,14 +210,7 @@ export default function SystemConfigsPage() {
         onRefresh={fetchData}
         refreshLoading={loading}
         rowKey="id"
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: handlePageChange,
-          onPageSizeChange: (size) => { setPageSize(size); void fetchData(1, size); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, fetchData)}
         empty="暂无数据"
       />
 

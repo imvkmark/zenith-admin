@@ -4,6 +4,7 @@ import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
+import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
 import type { LoginLog, PaginatedResponse } from '@zenith/shared';
 
@@ -19,8 +20,7 @@ export default function LoginLogsPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
 
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
   const searchParamsRef = useRef<SearchParams>(defaultParams);
@@ -110,14 +110,7 @@ export default function LoginLogsPage() {
         dataSource={data}
         loading={loading}
         onRefresh={() => void fetchData()}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (c) => { void fetchData(c, pageSize); },
-          onPageSizeChange: (s) => { void fetchData(1, s); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, fetchData)}
       />
     </div>
   );

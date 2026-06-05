@@ -208,7 +208,12 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   ...tableProps
 }: Readonly<ConfigurableTableProps<RecordType>>) {
   const { preferences } = usePreferences();
-  const { bordered, className, onRow, size, ...restTableProps } = tableProps;
+  const { bordered, className, onRow, size, pagination, ...restTableProps } = tableProps;
+
+  const effectivePagination = useMemo(() => {
+    if (!pagination || typeof pagination === 'boolean') return pagination;
+    return { showTotal: true, showSizeChanger: true, ...pagination };
+  }, [pagination]);
   const effectiveColumnSettings = (preferences.showTableColumnSettings ?? true) && columnSettings;
   const rawColumns = useMemo(() => (columns ?? []) as ConfigurableColumn<RecordType>[], [columns]);
   const alwaysVisibleKeys = useMemo(
@@ -430,6 +435,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
         className={tableClassName}
         columns={effectiveColumns}
         onRow={effectiveOnRow}
+        pagination={effectivePagination}
         size={effectiveSize}
       />
     </div>

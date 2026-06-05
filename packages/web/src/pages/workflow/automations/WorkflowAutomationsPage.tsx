@@ -34,6 +34,7 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 
 const TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string; color: 'green' | 'red' | 'orange' }> = [
   { value: 'approved',  label: '流程通过', color: 'green' },
@@ -132,8 +133,7 @@ export default function WorkflowAutomationsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<WorkflowAutomation[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
 
   const [definitionId, setDefinitionId] = useState<number | ''>('');
   const [triggerFilter, setTriggerFilter] = useState<WorkflowAutomationTrigger | ''>('');
@@ -348,13 +348,7 @@ export default function WorkflowAutomationsPage() {
         rowKey="id"
         dataSource={list}
         columns={columns}
-        pagination={{
-          currentPage: page, pageSize, total,
-          pageSizeOpts: [10, 20, 50],
-          showSizeChanger: true,
-          onPageChange: (p) => setPage(p),
-          onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); },
-        }}
+        pagination={{...buildPagination(total, fetchData), pageSizeOpts: [10, 20, 50]}}
       />
 
       <Modal

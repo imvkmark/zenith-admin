@@ -19,6 +19,7 @@ import { formatDateTime } from '@/utils/date';
 import { createdAtColumn } from '@/utils/table-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import type {
   PaginatedResponse,
   WorkflowTriggerExecution,
@@ -51,8 +52,7 @@ const STATUS_OPTIONS = [
 export default function WorkflowTriggerExecutionsPage() {
   const [list, setList] = useState<WorkflowTriggerExecution[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const { page, pageSize, setPage, setPageSize } = usePagination(20);
   const [loading, setLoading] = useState(false);
 
   const [statusInput, setStatusInput] = useState<WorkflowTriggerExecutionStatus | ''>('');
@@ -211,8 +211,6 @@ export default function WorkflowTriggerExecutionsPage() {
           total,
           onPageChange: setPage,
           onPageSizeChange: (s: number) => { setPageSize(s); setPage(1); },
-          showSizeChanger: true,
-          showTotal: true,
         }}
         onRefresh={fetchData}
         refreshLoading={loading}

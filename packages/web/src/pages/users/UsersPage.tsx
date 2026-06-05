@@ -31,6 +31,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
@@ -60,8 +61,7 @@ export default function UsersPage() {
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
@@ -669,15 +669,7 @@ export default function UsersPage() {
         loading={loading}
         onRefresh={() => void fetchUsers()}
         refreshLoading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data?.total || 0,
-          onPageChange: (currentPage) => { void fetchUsers(currentPage, pageSize); },
-          onPageSizeChange: (size) => { void fetchUsers(1, size); },
-          showTotal: true,
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(data?.total ?? 0, fetchUsers)}
         rowKey="id"
         size="small"
         empty="暂无数据"

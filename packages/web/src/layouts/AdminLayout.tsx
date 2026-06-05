@@ -1677,6 +1677,15 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     </RadioGroup>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>默认分页大小</span>
+                    <Select
+                      value={preferences.tablePageSize ?? 10}
+                      onChange={(v) => setPreferences({ tablePageSize: v as number })}
+                      style={{ width: 100 }}
+                      optionList={[10, 20, 50, 100].map((v) => ({ value: v, label: `${v} 条` }))}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>显示表格列设置按钮</span>
                     <Switch checked={preferences.showTableColumnSettings ?? true} onChange={(v) => setPreferences({ showTableColumnSettings: v })} />
                   </div>

@@ -28,6 +28,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
 import CronJobDashboard from './CronJobDashboard';
 
@@ -57,8 +58,7 @@ export default function CronJobsPage() {
   const [exportLoading, setExportLoading] = useState(false);
   const [data, setData] = useState<CronJob[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
@@ -115,7 +115,6 @@ export default function CronJobsPage() {
 
   const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
   const handleReset = () => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); };
-  const handlePageChange = (p: number) => { setPage(p); void fetchData(p, pageSize); };
 
   const handleExport = async () => {
     setExportLoading(true);
@@ -437,14 +436,7 @@ export default function CronJobsPage() {
         onRefresh={fetchData}
         refreshLoading={loading}
         rowKey="id"
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: handlePageChange,
-          onPageSizeChange: (size) => { setPageSize(size); void fetchData(1, size); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(total, fetchData)}
         empty="暂无数据"
       />
           </div>

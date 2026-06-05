@@ -33,6 +33,7 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 
 const EVENT_OPTIONS: Array<{ value: WorkflowEventType; label: string }> = [
   { value: 'instance.created',   label: '实例创建' },
@@ -74,8 +75,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<WorkflowEventSubscription[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
   const [definitionId, setDefinitionId] = useState<number | ''>('');
@@ -95,9 +95,8 @@ export default function WorkflowEventSubscriptionsPage() {
   const [deliverySubId, setDeliverySubId] = useState<number | null>(null);
   const [deliveries, setDeliveries] = useState<WorkflowEventDelivery[]>([]);
   const [deliveriesTotal, setDeliveriesTotal] = useState(0);
-  const [deliveryPage, setDeliveryPage] = useState(1);
+  const { page: deliveryPage, setPage: setDeliveryPage, buildPagination: buildDeliveryPagination } = usePagination(20);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
-  const deliveryPageSize = 20;
 
   const fetchData = useCallback(async (p = page, ps = pageSize) => {
     setLoading(true);
@@ -358,13 +357,7 @@ export default function WorkflowEventSubscriptionsPage() {
         rowKey="id"
         dataSource={list}
         columns={columns}
-        pagination={{
-          currentPage: page, pageSize, total,
-          pageSizeOpts: [10, 20, 50],
-          showSizeChanger: true,
-          onPageChange: (p) => setPage(p),
-          onPageSizeChange: (ps) => { setPageSize(ps); setPage(1); },
-        }}
+        pagination={{...buildPagination(total, fetchData), pageSizeOpts: [10, 20, 50]}}
         onRefresh={() => void fetchData()}
         refreshLoading={loading}
       />
@@ -418,10 +411,7 @@ export default function WorkflowEventSubscriptionsPage() {
           rowKey="id"
           dataSource={deliveries}
           columns={deliveryColumns}
-          pagination={{
-            currentPage: deliveryPage, pageSize: deliveryPageSize, total: deliveriesTotal,
-            onPageChange: (p) => setDeliveryPage(p),
-          }}
+          pagination={{...buildDeliveryPagination(deliveriesTotal, (p) => void fetchDeliveries(p)), showSizeChanger: false}}
           onRefresh={() => void fetchDeliveries(deliveryPage)}
           refreshLoading={deliveryLoading}
         />

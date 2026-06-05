@@ -71,8 +71,7 @@ export default function AnnouncementsPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const defaultSearchParams: SearchParams = { title: '', type: '', publishStatus: '', timeRange: null };
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const [submittedParams, setSubmittedParams] = useState<SearchParams>(defaultSearchParams);
@@ -756,20 +755,8 @@ export default function AnnouncementsPage() {
           onChange: (keys) => setSelectedRowKeys(keys as number[]),
         }}
         pagination={{
-          total,
-          currentPage: page,
-          pageSize,
-          showSizeChanger: true,
+          ...buildPagination(total, fetchData),
           pageSizeOpts: [10, 20, 50],
-          onPageChange: (p: number) => {
-            setPage(p);
-            void fetchData(p, pageSize, submittedParams);
-          },
-          onPageSizeChange: (ps: number) => {
-            setPageSize(ps);
-            setPage(1);
-            void fetchData(1, ps, submittedParams);
-          },
         }}
       />
 

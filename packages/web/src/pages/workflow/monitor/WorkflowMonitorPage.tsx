@@ -18,6 +18,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
@@ -93,8 +94,7 @@ function StatCard({
 export default function WorkflowMonitorPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<MonitorResponse | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const { page, pageSize, setPage, buildPagination } = usePagination(20);
   const [keyword, setKeyword] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -301,14 +301,7 @@ export default function WorkflowMonitorPage() {
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
         scroll={{ x: 1100 }}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data?.total ?? 0,
-          onPageChange: (p) => { void fetchList(p); },
-          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, keyword, statusFilter, ps); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(data?.total ?? 0, (p, ps) => void fetchList(p, keyword, statusFilter, ps, categoryFilter, initiatorFilter))}
       />
 
       {/* 详情弹窗 */}

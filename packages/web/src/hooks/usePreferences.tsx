@@ -34,6 +34,8 @@ export interface UserPreferences {
   tableBordered: boolean;
   tableStriped: boolean;
   tableSize: TableSizePreference;
+  /** 列表默认分页大小 */
+  tablePageSize: number;
   enableLockScreen: boolean;
   /** 侧边栏手风琴展开：同级只允许展开一个子菜单 */
   sidebarAccordion: boolean;
@@ -65,6 +67,7 @@ export const defaultPreferences: UserPreferences = {
   tableBordered: true,
   tableStriped: false,
   tableSize: 'small',
+  tablePageSize: 10,
   enableLockScreen: false,
   sidebarAccordion: true,
 };

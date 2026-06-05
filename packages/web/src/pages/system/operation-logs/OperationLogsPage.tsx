@@ -4,6 +4,7 @@ import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
+import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeForApi } from '@/utils/date';
 import type { OperationLog, PaginatedResponse } from '@zenith/shared';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
@@ -27,8 +28,7 @@ export default function OperationLogsPage() {
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
@@ -177,14 +177,7 @@ export default function OperationLogsPage() {
             loading={loading}
             onRefresh={() => void fetchData()}
             scroll={{ x: 1600 }}
-            pagination={{
-              currentPage: page,
-              pageSize,
-              total,
-              onPageChange: (c) => { void fetchData(c, pageSize); },
-              onPageSizeChange: (s) => { void fetchData(1, s); },
-              showSizeChanger: true,
-            }}
+            pagination={buildPagination(total, fetchData)}
           />
         </>
       )}

@@ -5,6 +5,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Download, Plus, RotateCcw, Search } from 'lucide-react';
 import type { EmailSendLog, EmailTemplate, PaginatedResponse, SendStatus } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
+import { usePagination } from '@/hooks/usePagination';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -34,8 +35,7 @@ export default function EmailSendLogsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<EmailSendLog[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [toEmail, setToEmail] = useState('');
   const [filterStatus, setFilterStatus] = useState<SendStatus | undefined>();
@@ -163,11 +163,7 @@ export default function EmailSendLogsPage() {
       </SearchToolbar>
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList(page, keyword, toEmail, filterStatus, filterSource, pageSize)} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
-        pagination={{
-          total, currentPage: page, pageSize, showTotal: true, showSizeChanger: true,
-          onPageChange: (p: number) => { void fetchList(p, keyword, toEmail, filterStatus, filterSource, pageSize); },
-          onPageSizeChange: (s: number) => { void fetchList(1, keyword, toEmail, filterStatus, filterSource, s); },
-        }}
+        pagination={buildPagination(total, (p, ps) => void fetchList(p, keyword, toEmail, filterStatus, filterSource, ps))}
         scroll={{ x: 1400 }} />
 
       <Modal title="测试发送邮件" visible={testVisible} onOk={handleTest}

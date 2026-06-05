@@ -22,6 +22,7 @@ import { formatDateTime } from '@/utils/date';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { usePagination } from '@/hooks/usePagination';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import { renderEllipsis } from '../../../utils/table-columns';
 
@@ -58,8 +59,7 @@ export default function PendingApprovalsPage() {
   const returnFormApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PaginatedResponse<PendingItem> | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const { page, pageSize, setPage, buildPagination } = usePagination(20);
   const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
   const [approveVisible, setApproveVisible] = useState(false);
   const [rejectVisible, setRejectVisible] = useState(false);
@@ -405,14 +405,7 @@ export default function PendingApprovalsPage() {
         loading={loading}
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data?.total ?? 0,
-          onPageChange: (p) => { void fetchList(p); },
-          onPageSizeChange: (ps) => { setPageSize(ps); void fetchList(1, ps); },
-          showSizeChanger: true,
-        }}
+        pagination={buildPagination(data?.total ?? 0, fetchList)}
       />
 
       {/* 申请详情弹窗 */}
