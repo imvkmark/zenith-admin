@@ -55,7 +55,7 @@ export default function UserGroupsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<UserGroup[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;

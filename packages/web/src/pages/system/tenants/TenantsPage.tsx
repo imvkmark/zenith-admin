@@ -36,7 +36,7 @@ export default function TenantsPage() {
   const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<Tenant[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
@@ -64,7 +64,6 @@ export default function TenantsPage() {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);

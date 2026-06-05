@@ -75,7 +75,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<WorkflowEventSubscription[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
   const [definitionId, setDefinitionId] = useState<number | ''>('');

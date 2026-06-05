@@ -133,7 +133,7 @@ export default function WorkflowAutomationsPage() {
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<WorkflowAutomation[]>([]);
   const [total, setTotal] = useState(0);
-  const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
+  const { page, pageSize, setPage, buildPagination } = usePagination();
 
   const [definitionId, setDefinitionId] = useState<number | ''>('');
   const [triggerFilter, setTriggerFilter] = useState<WorkflowAutomationTrigger | ''>('');
