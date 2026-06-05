@@ -143,7 +143,7 @@ export default function TagsPage() {
   }, []);
 
   const fetchList = useCallback(
-    async (p: number, kw: string, st: string | undefined, gn: string | undefined, ps = 10) => {
+    async (p: number, kw: string, st: string | undefined, gn: string | undefined, ps = pageSize) => {
       setLoading(true);
       try {
         const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
@@ -159,11 +159,11 @@ export default function TagsPage() {
         setLoading(false);
       }
     },
-    [],
+    [pageSize, setPage, setPageSize],
   );
 
   useEffect(() => {
-    void fetchList(1, '', undefined, undefined, 10);
+    void fetchList(1, '', undefined, undefined, pageSize);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
