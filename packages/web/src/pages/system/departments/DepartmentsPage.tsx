@@ -107,6 +107,8 @@ export default function DepartmentsPage() {
   const [data, setData] = useState<Department[]>([]);
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
+  searchParamsRef.current = searchParams;
   const [modalVisible, setModalVisible] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
@@ -155,12 +157,13 @@ export default function DepartmentsPage() {
     setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
 
-  const fetchDepartments = useCallback(async (params = searchParams) => {
+  const fetchDepartments = useCallback(async (params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
-        ...(params.keyword ? { keyword: params.keyword } : {}),
-        ...(params.status ? { status: params.status } : {}),
+        ...(activeParams.keyword ? { keyword: activeParams.keyword } : {}),
+        ...(activeParams.status ? { status: activeParams.status } : {}),
       }).toString();
       const [treeRes, flatRes] = await Promise.all([
         request.get<Department[]>(query ? `/api/departments?${query}` : '/api/departments'),
@@ -171,7 +174,8 @@ export default function DepartmentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     void fetchDepartments();
