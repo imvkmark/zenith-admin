@@ -123,6 +123,7 @@ export interface Department {
   parentId: number;
   name: string;
   code: string;
+  category?: string;
   leaderId?: number | null;
   leaderName?: string | null;
   phone?: string;

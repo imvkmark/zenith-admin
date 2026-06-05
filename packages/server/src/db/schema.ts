@@ -44,6 +44,7 @@ export const departments = pgTable('departments', {
   parentId: integer('parent_id').notNull().default(0),
   name: varchar('name', { length: 64 }).notNull(),
   code: varchar('code', { length: 64 }).notNull(),
+  category: varchar('category', { length: 32 }).notNull().default('department'),
   leaderId: integer('leader_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   phone: varchar('phone', { length: 32 }),
   email: varchar('email', { length: 128 }),

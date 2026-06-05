@@ -49,6 +49,7 @@ export const departmentsHandlers = [
       name: body.name ?? '',
       code: body.code ?? '',
       parentId: body.parentId ?? 0,
+      category: body.category ?? 'department',
       leaderId: body.leaderId ?? null,
       sort: body.sort ?? 0,
       status: body.status ?? 'enabled',

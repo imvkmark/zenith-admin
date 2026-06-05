@@ -112,6 +112,8 @@ async function seedRest() {
     parentId: row.parentId,
     name: row.name,
     code: row.code,
+    category: row.category ?? 'department',
+    leaderId: row.leaderId ?? null,
     phone: row.phone ?? null,
     email: row.email ?? null,
     sort: row.sort,

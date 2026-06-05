@@ -10,6 +10,7 @@ export const DepartmentDTO: z.ZodType = z
     parentId: z.number().int().openapi({ example: 0 }),
     name: z.string().openapi({ example: '技术部' }),
     code: z.string(),
+    category: z.string().openapi({ example: 'department' }),
     leaderId: z.number().int().nullable().optional(),
     leaderName: z.string().nullable().optional(),
     phone: z.string().optional(),

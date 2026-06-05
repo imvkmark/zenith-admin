@@ -111,6 +111,7 @@ export default function DepartmentsPage() {
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
   const { items: statusItems } = useDictItems('common_status');
+  const { items: categoryItems } = useDictItems('department_category');
 
   const [leaderOptions, setLeaderOptions] = useState<Array<{ value: number; label: string }>>([]);
   const [leaderSearchLoading, setLeaderSearchLoading] = useState(false);
@@ -196,6 +197,7 @@ export default function DepartmentsPage() {
         parentId: editingDepartment.parentId,
         name: editingDepartment.name,
         code: editingDepartment.code,
+        category: editingDepartment.category ?? 'department',
         leaderId: editingDepartment.leaderId ?? undefined,
         phone: editingDepartment.phone,
         email: editingDepartment.email,
@@ -204,6 +206,7 @@ export default function DepartmentsPage() {
       }
     : {
         parentId: 0,
+        category: 'department',
         sort: 0,
         status: 'enabled',
       };
@@ -260,6 +263,7 @@ export default function DepartmentsPage() {
   const columns: ColumnProps<Department>[] = [
     { title: '部门名称', dataIndex: 'name', width: 220 },
     { title: '部门编码', dataIndex: 'code', width: 180, render: renderEllipsis },
+    { title: '类别', dataIndex: 'category', width: 90, render: (value: string) => <DictTag dictCode="department_category" value={value} /> },
     { title: '负责人', dataIndex: 'leaderName', width: 120, render: (value) => value || '—' },
     { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || '—' },
     { title: '邮箱', dataIndex: 'email', width: 200, render: renderEllipsis },
@@ -393,6 +397,16 @@ export default function DepartmentsPage() {
             </Col>
           </Row>
           <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select
+                field="category"
+                label="类别"
+                optionList={categoryItems.map((item) => ({ value: item.value, label: item.label }))}
+                style={{ width: '100%' }}
+                placeholder="请选择类别"
+                rules={[{ required: true, message: '请选择类别' }]}
+              />
+            </Col>
             <Col span={12}>
               <Form.Select
                 field="leaderId"

@@ -1,0 +1,1 @@
+ALTER TABLE "departments" ADD COLUMN "category" varchar(32) DEFAULT 'department' NOT NULL;
