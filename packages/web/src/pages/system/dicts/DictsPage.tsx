@@ -557,7 +557,7 @@ export default function DictsPage() {
           childrenRecordName="children"
           expandedRowKeys={expandedRowKeys}
           onExpandedRowsChange={(rows) =>
-            setExpandedRowKeys((rows ?? []).filter((r): r is DictItem => 'id' in (r as object)).map((r) => (r as DictItem).id))
+            setExpandedRowKeys((rows ?? []).filter((r): r is DictItem => 'id' in (r as object)).map((r) => r.id))
           }
         />
       </MasterDetailLayout.Body>
