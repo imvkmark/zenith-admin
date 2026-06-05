@@ -385,6 +385,8 @@ export default function RegionsPage() {
           columns={columns}
           dataSource={data}
           loading={loading}
+          onRefresh={() => void fetchRegions()}
+          refreshLoading={loading}
           rowKey="id"
           size="small"
         expandedRowKeys={expandedRowKeys}

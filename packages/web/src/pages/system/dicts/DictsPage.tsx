@@ -548,6 +548,8 @@ export default function DictsPage() {
         dataSource={treeItems}
         rowKey="id"
         loading={itemsLoading}
+        onRefresh={selectedDict ? () => void fetchItems(selectedDict.id) : undefined}
+        refreshLoading={itemsLoading}
         pagination={{ pageSize: 10, showSizeChanger: true }}
         size="small"
         empty={selectedDict ? '暂无数据' : '请选择字典'}
