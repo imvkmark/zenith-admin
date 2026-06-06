@@ -20,7 +20,7 @@ import {
   Spin,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, MoreHorizontal, Building2, ArrowLeft, KeyRound } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, MoreHorizontal, Building2, ArrowLeft, KeyRound, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -115,6 +115,26 @@ export default function UsersPage() {
     const selectedSet = new Set(selectedRowKeys);
     return data.list.filter((item) => selectedSet.has(item.id) && !isAdminUser(item)).map((item) => item.id);
   }, [data?.list, selectedRowKeys]);
+
+  const handleBatchStatus = (status: 'enabled' | 'disabled') => {
+    if (selectedNonAdminIds.length === 0) return;
+    const label = status === 'enabled' ? '启用' : '停用';
+    Modal.confirm({
+      title: `确认批量${label}选中的 ${selectedNonAdminIds.length} 个用户？`,
+      content: status === 'disabled' ? '停用后该用户将无法登录。' : '启用后该用户可正常登录。',
+      okButtonProps: { type: status === 'disabled' ? 'danger' : 'primary', theme: 'solid' },
+      onOk: async () => {
+        const res = await request.put<null>('/api/users/batch-status', { ids: selectedNonAdminIds, status });
+        if (res.code === 0) {
+          Toast.success(`批量${label}成功`);
+          setSelectedRowKeys([]);
+          void fetchUsers();
+        } else {
+          Toast.error(res.message || '操作失败');
+        }
+      },
+    });
+  };
 
   const handleBatchDelete = () => {
     const deletableIds = (data?.list ?? [])
@@ -686,9 +706,17 @@ export default function UsersPage() {
             </Button>
           )}
           {selectedNonAdminIds.length > 0 && hasPermission('system:user:update') && (
-            <Button theme="light" icon={<KeyRound size={14} />} onClick={() => setBatchPasswordModalVisible(true)}>
-              批量修改密码 ({selectedNonAdminIds.length})
-            </Button>
+            <>
+              <Button theme="light" icon={<ToggleRight size={14} />} onClick={() => handleBatchStatus('enabled')}>
+                批量启用 ({selectedNonAdminIds.length})
+              </Button>
+              <Button theme="light" type="danger" icon={<ToggleLeft size={14} />} onClick={() => handleBatchStatus('disabled')}>
+                批量停用 ({selectedNonAdminIds.length})
+              </Button>
+              <Button theme="light" icon={<KeyRound size={14} />} onClick={() => setBatchPasswordModalVisible(true)}>
+                批量修改密码 ({selectedNonAdminIds.length})
+              </Button>
+            </>
           )}
           <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/users/export', '用户列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
           {hasPermission('system:user:import') && (
