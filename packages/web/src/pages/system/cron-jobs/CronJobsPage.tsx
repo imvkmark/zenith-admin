@@ -297,14 +297,14 @@ export default function CronJobsPage() {
   const columns: ColumnProps<CronJob>[] = [
     { title: '任务名称', dataIndex: 'name', width: 180, render: renderEllipsis },
     {
-      title: 'Cron 表达式', dataIndex: 'cronExpression', width: 150,
+      title: 'Cron 表达式', dataIndex: 'cronExpression', width: 180,
       render: (v: string) => (
         <Tooltip content={v} position="top">
           <span style={{ fontFamily: 'monospace', cursor: 'default' }}>{v}</span>
         </Tooltip>
       ),
     },
-    { title: '处理器', dataIndex: 'handler', width: 180, render: renderEllipsis },
+    { title: '处理器', dataIndex: 'handler', width: 220, render: renderEllipsis },
     {
       title: '上次执行',
       width: 175,
