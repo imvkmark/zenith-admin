@@ -898,29 +898,48 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   const menu = flatMenus.find((m) => m.id === menuId);
                   if (!menu) return null;
                   return (
-                    <button
+                    <div
                       key={menuId}
-                      type="button"
-                      onClick={() => { navigate(menu.path); }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-                        padding: '8px 14px', border: 0, background: 'transparent',
-                        cursor: 'pointer', textAlign: 'left', color: 'var(--semi-color-text-0)',
-                        fontSize: 13, transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--semi-color-fill-0)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      style={{ display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'var(--semi-color-fill-0)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
                     >
-                      <span style={{ color: 'var(--semi-color-warning)', flexShrink: 0, display: 'flex' }}>
-                        <Star size={13} fill="currentColor" strokeWidth={0} />
-                      </span>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {menu.title}
-                      </span>
-                      <span style={{ fontSize: 11, color: 'var(--semi-color-text-3)', flexShrink: 0 }}>
-                        {menu.breadcrumb.at(-1) ?? ''}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => { navigate(menu.path); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, flex: 1,
+                          padding: '8px 0 8px 14px', border: 0, background: 'transparent',
+                          cursor: 'pointer', textAlign: 'left', color: 'var(--semi-color-text-0)',
+                          fontSize: 13, minWidth: 0,
+                        }}
+                      >
+                        <span style={{ color: 'var(--semi-color-warning)', flexShrink: 0, display: 'flex' }}>
+                          <Star size={13} fill="currentColor" strokeWidth={0} />
+                        </span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {menu.title}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--semi-color-text-3)', flexShrink: 0, paddingRight: 4 }}>
+                          {menu.breadcrumb.at(-1) ?? ''}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        title="移除收藏"
+                        onClick={(e) => { e.stopPropagation(); toggleFavorite(menu.id); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: 28, height: 28, border: 0, background: 'transparent',
+                          cursor: 'pointer', flexShrink: 0, color: 'var(--semi-color-text-2)',
+                          marginRight: 4,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--semi-color-danger)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--semi-color-text-2)'; }}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
