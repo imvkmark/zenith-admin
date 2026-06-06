@@ -18,6 +18,7 @@ interface CronJobStatsPerJob {
 interface CronJobStats {
   totalJobs: number;
   enabledJobs: number;
+  runningJobs: number;
   todayRuns: number;
   todaySuccesses: number;
   todayFails: number;
@@ -92,6 +93,7 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
 
   const statItems = [
     { label: '任务总数', value: stats?.totalJobs ?? '—', sub: `启用中 ${stats?.enabledJobs ?? 0}`, color: undefined },
+    { label: '当前运行中', value: stats?.runningJobs ?? '—', sub: null as string | null, color: (stats?.runningJobs ?? 0) > 0 ? 'var(--semi-color-primary)' : undefined },
     { label: '今日执行', value: stats?.todayRuns ?? '—', sub: null as string | null, color: undefined },
     { label: '今日成功', value: stats?.todaySuccesses ?? '—', sub: null as string | null, color: 'var(--semi-color-success)' },
     { label: '今日成功率', value: rateValue, sub: null as string | null, color: rateColor },
@@ -136,9 +138,9 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
 
   return (
     <Spin spinning={loading}>
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
         {statItems.map((s) => (
-          <Col span={6} key={s.label}>
+          <div key={s.label} style={{ flex: 1, minWidth: 0 }}>
             <Card bodyStyle={{ textAlign: 'center', padding: '16px 12px 12px' }}>
               <Typography.Text type="tertiary" size="small">{s.label}</Typography.Text>
               <div style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.3, marginTop: 6, color: s.color }}>
@@ -146,9 +148,9 @@ export default function CronJobDashboard({ jobs }: Readonly<Props>) {
               </div>
               <Typography.Text type="tertiary" size="small">{s.sub ?? '\u00A0'}</Typography.Text>
             </Card>
-          </Col>
+          </div>
         ))}
-      </Row>
+      </div>
 
       <Row gutter={16}>
         <Col span={14}>

@@ -280,6 +280,12 @@ export async function stopAllJobs(): Promise<void> {
   }
 }
 
+/** 获取当前正在运行中的 job 数（基于 pg-boss worker WIP 数据） */
+export function getRunningJobCount(): number {
+  if (!boss) return 0;
+  return boss.getWipData().filter(w => w.count > 0).reduce((sum, w) => sum + w.count, 0);
+}
+
 /** 校验 cron 表达式（兼容 5 段标准格式和带秒的 6 段格式） */
 export function validateCronExpression(expression: string): boolean {
   try {

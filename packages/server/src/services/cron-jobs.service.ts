@@ -2,7 +2,7 @@ import { eq, like, and, desc, lt, sql } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
-import { scheduleJob, stopJob, runJobOnce, validateCronExpression } from '../lib/pg-boss-scheduler';
+import { scheduleJob, stopJob, runJobOnce, validateCronExpression, getRunningJobCount } from '../lib/pg-boss-scheduler';
 import { streamToExcel, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
@@ -160,6 +160,7 @@ export async function getCronJobStats() {
   return {
     totalJobs: allJobs.length,
     enabledJobs: allJobs.filter(j => j.status === 'enabled').length,
+    runningJobs: getRunningJobCount(),
     todayRuns: Number(summaryRow?.todayRuns ?? 0),
     todaySuccesses: Number(summaryRow?.todaySuccesses ?? 0),
     todayFails: Number(summaryRow?.todayFails ?? 0),

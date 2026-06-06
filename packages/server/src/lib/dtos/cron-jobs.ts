@@ -53,6 +53,7 @@ export const CronJobStatsPerJobDTO = z.object({
 export const CronJobStatsDTO = z.object({
   totalJobs: z.number().int(),
   enabledJobs: z.number().int(),
+  runningJobs: z.number().int(),
   todayRuns: z.number().int(),
   todaySuccesses: z.number().int(),
   todayFails: z.number().int(),
