@@ -4,7 +4,7 @@ import { RouteErrorBoundary } from '@/components/PageErrorBoundary';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge, Breadcrumb, Button, ColorPicker, Divider, Dropdown, Empty, Input, List, Notification, Popover, Select, Tooltip, Modal, Nav, Typography, SideSheet, Switch, InputNumber, RadioGroup, Radio, Toast } from '@douyinfe/semi-ui';
 import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
-import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star } from 'lucide-react';
+import { Bell, Building2, Check, Info, Expand, Shrink, Megaphone, Sun, Moon, Monitor, MoreHorizontal, User as UserIcon, Settings, LogOut, X, Palette, Pin, RotateCcw, PinOff, XCircle, ChevronLeft, ChevronRight, Trash2, Lock, Copy, Route, Keyboard, Search, Star, Clock } from 'lucide-react';
 import { match as pinyinMatch } from 'pinyin-pro';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
 import type { User, Menu, InAppMessage, Announcement, Tenant, WsMessage, SystemConfig } from '@zenith/shared';
@@ -27,6 +27,7 @@ import { TopNavWithOverflow } from './TopNavWithOverflow';
 import { LockScreen } from '@/components/LockScreen';
 import { useLockScreen } from '@/hooks/useLockScreen';
 import { useFavoriteMenus } from '@/hooks/useFavoriteMenus';
+import { useRecentMenus } from '@/hooks/useRecentMenus';
 import './AdminLayout.css';
 
 // 主题图标
@@ -300,6 +301,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const [tabRefreshVersion, setTabRefreshVersion] = useState<Record<string, number>>({});
   const navigate = useNavigate();
   const location = useLocation();
+  const { recents, clear: clearRecents, remove: removeRecent } = useRecentMenus(flatMenus, location.pathname);
 
   // ─── Tabs 拖拽排序 ──────────────────────────────────────────────────────────
   const handleDragStart = useCallback((key: string) => {
@@ -876,6 +878,85 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   const headerActions = (
     <div className="admin-header__actions">
       {(preferences.showMenuSearch ?? true) && <div className="admin-menu-search"><MenuSearchInput menus={flatMenus} /></div>}
+      {/* 最近访问 */}
+      <Popover
+        position="bottomRight"
+        trigger="hover"
+        mouseEnterDelay={200}
+        mouseLeaveDelay={300}
+        showArrow
+        content={
+          <div style={{ width: 260, maxHeight: 400, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '10px 14px 8px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--semi-color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>最近访问</span>
+              {recents.length > 0 && (
+                <button type="button" onClick={clearRecents} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--semi-color-text-2)', padding: 0 }}>
+                  清空
+                </button>
+              )}
+            </div>
+            {recents.length === 0 ? (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+                暂无记录
+              </div>
+            ) : (
+              <div style={{ overflow: 'auto', maxHeight: 340 }}>
+                {recents.map((menuId) => {
+                  const menu = flatMenus.find((m) => m.id === menuId);
+                  if (!menu) return null;
+                  return (
+                    <div key={menuId} style={{ display: 'flex', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(menu.path)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, flex: 1,
+                          padding: '8px 0 8px 14px', border: 0, background: 'transparent',
+                          cursor: 'pointer', textAlign: 'left', color: 'var(--semi-color-text-0)',
+                          fontSize: 13, minWidth: 0, borderRadius: 0,
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget.parentElement as HTMLDivElement).style.background = 'var(--semi-color-fill-0)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget.parentElement as HTMLDivElement).style.background = 'transparent'; }}
+                      >
+                        <span style={{ color: 'var(--semi-color-text-2)', flexShrink: 0, display: 'flex' }}>
+                          <Clock size={13} />
+                        </span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {menu.title}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--semi-color-text-3)', flexShrink: 0, paddingRight: 4 }}>
+                          {menu.breadcrumb.at(-1) ?? ''}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        title="移除记录"
+                        onClick={(e) => { e.stopPropagation(); removeRecent(menu.id); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: 28, height: 28, border: 0, background: 'transparent',
+                          cursor: 'pointer', flexShrink: 0, color: 'var(--semi-color-text-2)',
+                          marginRight: 4,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--semi-color-danger)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--semi-color-text-2)'; }}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        }
+      >
+        <div className="admin-header-action" style={{ display: 'inline-flex', cursor: 'pointer' }}>
+          <button type="button" className="admin-theme-btn" title="最近访问">
+            <Clock size={16} strokeWidth={1.5} />
+          </button>
+        </div>
+      </Popover>
       {/* 收藏菜单快捷入口 */}
       {(preferences.showFavorites ?? false) && (
       <Popover
