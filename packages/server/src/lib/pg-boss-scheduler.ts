@@ -1,6 +1,6 @@
 /**
  * pg-boss 调度器
- * 替代 node-cron，基于 PostgreSQL SKIP LOCKED 实现精确一次执行和多进程安全。
+ * 基于 PostgreSQL SKIP LOCKED 实现精确一次执行和多进程安全。
  *
  * 对外 API 与原 cron-scheduler.ts 保持一致，以最小化调用方改动。
  */
