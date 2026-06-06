@@ -132,11 +132,16 @@ export async function listCronJobLogs(jobId: number, q: { page: number; pageSize
 }
 
 export async function clearCronJobLogs(months: number, jobId?: number) {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - months);
-  const conditions = [lt(cronJobLogs.startedAt, cutoff)];
+  // months=0 表示清除全部
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (months > 0) {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    conditions.push(lt(cronJobLogs.startedAt, cutoff));
+  }
   if (jobId) conditions.push(eq(cronJobLogs.jobId, jobId));
-  const deleted = await db.delete(cronJobLogs).where(and(...conditions)).returning({ id: cronJobLogs.id });
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+  const deleted = await db.delete(cronJobLogs).where(where).returning({ id: cronJobLogs.id });
   return deleted.length;
 }
 

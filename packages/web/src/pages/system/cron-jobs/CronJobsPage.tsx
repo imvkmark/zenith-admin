@@ -239,12 +239,13 @@ export default function CronJobsPage() {
     void fetchJobLogs(record.id, 1);
   };
 
-  const clearLogsLabels: Record<number, string> = { 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
+  const clearLogsLabels: Record<number, string> = { 0: '全部', 1: '一个月', 3: '三个月', 6: '六个月', 12: '一年' };
 
   const handleClearLogs = (months: number, jobId?: number | null) => {
+    const label = months === 0 ? '全部' : `${clearLogsLabels[months]}前`;
     Modal.confirm({
       title: '确认清除日志',
-      content: `将删除 ${clearLogsLabels[months]} 前的执行日志，此操作不可恢复，确认继续吗？`,
+      content: `将删除${label}的执行日志，此操作不可恢复，确认继续吗？`,
       okButtonProps: { type: 'danger', theme: 'solid' },
       onOk: async () => {
         setClearLogsLoading(true);
@@ -583,6 +584,8 @@ export default function CronJobsPage() {
                       清除{clearLogsLabels[m]}前的日志
                     </Dropdown.Item>
                   ))}
+                  <Dropdown.Divider />
+                  <Dropdown.Item type="danger" onClick={() => handleClearLogs(0, null)}>清除全部日志</Dropdown.Item>
                 </Dropdown.Menu>
               }
             >
@@ -674,6 +677,8 @@ export default function CronJobsPage() {
                       清除{clearLogsLabels[m]}前的日志
                     </Dropdown.Item>
                   ))}
+                  <Dropdown.Divider />
+                  <Dropdown.Item type="danger" onClick={() => handleClearLogs(0, logsJobId)}>清除全部日志</Dropdown.Item>
                 </Dropdown.Menu>
               }
             >
