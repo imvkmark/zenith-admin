@@ -1783,7 +1783,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
               )}
 
               {/* ── 收藏 ── */}
-              {matchesPref(['收藏', '收藏菜单', '收藏按钮', '显示收藏']) && (
+              {matchesPref(['收藏', '收藏菜单', '收藏按钮', '显示收藏', '收藏入口', '快捷收藏']) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>显示收藏入口</span>
                 <Switch checked={preferences.showFavorites ?? false} onChange={(v) => setPreferences({ showFavorites: v })} />
