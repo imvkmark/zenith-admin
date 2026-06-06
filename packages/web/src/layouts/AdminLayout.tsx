@@ -267,6 +267,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     },
     preferences.enableTabs && (preferences.keepTabs ?? true),
     preferences.tabEvictPolicy ?? 'fifo',
+    preferences.openTabBehavior ?? 'append',
   );
   const [prefsVisible, setPrefsVisible] = useState(false);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
@@ -1803,6 +1804,22 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     >
                       <Radio value="fifo">FIFO</Radio>
                       <Radio value="lru">LRU</Radio>
+                    </RadioGroup>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      新标签插入位置
+                      <Tooltip content="末尾：新标签始终排在最右侧；当前后方：新标签紧跟在当前标签之后插入" position="right">
+                        <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                      </Tooltip>
+                    </span>
+                    <RadioGroup
+                      type="button"
+                      value={preferences.openTabBehavior ?? 'append'}
+                      onChange={(e) => setPreferences({ openTabBehavior: e.target.value as 'append' | 'insert-next' })}
+                    >
+                      <Radio value="append">末尾</Radio>
+                      <Radio value="insert-next">当前后方</Radio>
                     </RadioGroup>
                   </div>
 

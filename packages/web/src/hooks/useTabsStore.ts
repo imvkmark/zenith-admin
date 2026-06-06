@@ -39,6 +39,7 @@ export function useTabsStore(
   onEvict?: (evicted: TabItem[]) => void,
   keepTabs: boolean = false,
   evictPolicy: 'fifo' | 'lru' = 'fifo',
+  insertPolicy: 'append' | 'insert-next' = 'append',
 ) {
   const [tabs, setTabs] = useState<TabItem[]>(() => {
     if (!keepTabs) return [HOME_TAB];
@@ -70,8 +71,9 @@ export function useTabsStore(
 
   // 用 ref 存 evictPolicy，避免加入 useCallback 依赖
   const evictPolicyRef = useRef(evictPolicy);
-  useEffect(() => { evictPolicyRef.current = evictPolicy; }, [evictPolicy]);
-
+  useEffect(() => { evictPolicyRef.current = evictPolicy; }, [evictPolicy]);  // 用 ref 存 insertPolicy
+  const insertPolicyRef = useRef(insertPolicy);
+  useEffect(() => { insertPolicyRef.current = insertPolicy; }, [insertPolicy]);
   // 选出要驱逐的标签页索引
   function pickEvictIdx(arr: TabItem[]): number {
     const closables = arr.map((t, i) => ({ i, t })).filter(({ t }) => t.closable);
@@ -92,7 +94,16 @@ export function useTabsStore(
       setActiveKey(key);
       return;
     }
-    const next = [...prev, { key, title, closable: true, lastUsedAt: Date.now() }];
+    const newTab = { key, title, closable: true, lastUsedAt: Date.now() };
+    let next: TabItem[];
+    if (insertPolicyRef.current === 'insert-next') {
+      const currentKey = stateRef.current.activeKey;
+      const currentIdx = prev.findIndex((t) => t.key === currentKey);
+      next = [...prev];
+      next.splice(currentIdx + 1, 0, newTab);
+    } else {
+      next = [...prev, newTab];
+    }
     // Evict tab based on policy if exceeding max
     if (next.length > maxCount) {
       const idx = pickEvictIdx(next);

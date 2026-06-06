@@ -44,6 +44,8 @@ export interface UserPreferences {
   sidebarHoverTrigger: boolean;
   /** 面包屑可点击跳转：false 时仅展示文字路径，防止误触导致表单中断 */
   breadcrumbClickable: boolean;
+  /** 新开标签页插入行为：append 数尾 / insert-next 现当前标签页后插入 */
+  openTabBehavior: 'append' | 'insert-next';
   /** 路由切换动画 */
   routeAnimation: RouteAnimation;
   /** 最大标签页超限后的关闭策略: fifo 最早打开，lru 最近最少使用 */
@@ -85,6 +87,7 @@ export const defaultPreferences: UserPreferences = {
   sidebarAccordion: true,
   sidebarHoverTrigger: false,
   breadcrumbClickable: true,
+  openTabBehavior: 'append',
   tabEvictPolicy: 'fifo',
   routeAnimation: 'fade',
   grayscale: false,
