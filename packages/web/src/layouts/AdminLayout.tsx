@@ -1505,7 +1505,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                         }}>复制面包屑路径</Dropdown.Item>
                         {/* 收藏 */}
                         {/* eslint-disable-next-line react/no-unstable-nested-components */}
-                        {(() => {
+                        {(preferences.showFavorites ?? false) && (() => {
                           const menu = flatMenus.find((m) => m.path === tab.key);
                           if (!menu) return null;
                           const faved = isFavorite(menu.id);
