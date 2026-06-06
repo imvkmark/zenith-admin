@@ -1725,36 +1725,6 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
 
               <Divider style={{ margin: '0 -24px' }} />
 
-              {/* ── 无障碍 ── */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    灰色模式
-                    <Tooltip content="适用于国家公祭日等场景，全局去除色彩" position="right">
-                      <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                    </Tooltip>
-                  </span>
-                  <Switch
-                    checked={preferences.grayscale ?? false}
-                    onChange={(v) => setPreferences({ grayscale: v, ...(v ? { colorBlind: false } : {}) })}
-                  />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    色弱模式
-                    <Tooltip content="提高界面对比度，辅助色觉障碍用户" position="right">
-                      <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
-                    </Tooltip>
-                  </span>
-                  <Switch
-                    checked={preferences.colorBlind ?? false}
-                    onChange={(v) => setPreferences({ colorBlind: v, ...(v ? { grayscale: false } : {}) })}
-                  />
-                </div>
-              </div>
-
-              <Divider style={{ margin: '0 -24px' }} />
-
               {/* ── 多标签页 ── */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>启用多标签页</span>
@@ -1835,6 +1805,34 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                   </div>
                 </>
               )}
+
+              {/* ── 无障碍 ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    灰色模式
+                    <Tooltip content="适用于国家公祭日等场景，全局去除色彩" position="right">
+                      <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                    </Tooltip>
+                  </span>
+                  <Switch
+                    checked={preferences.grayscale ?? false}
+                    onChange={(v) => setPreferences({ grayscale: v, ...(v ? { colorBlind: false } : {}) })}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    色弱模式
+                    <Tooltip content="提高界面对比度，辅助色觉障碍用户" position="right">
+                      <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                    </Tooltip>
+                  </span>
+                  <Switch
+                    checked={preferences.colorBlind ?? false}
+                    onChange={(v) => setPreferences({ colorBlind: v, ...(v ? { grayscale: false } : {}) })}
+                  />
+                </div>
+              </div>
 
               {/* ── 重置 ── */}
               <div>
