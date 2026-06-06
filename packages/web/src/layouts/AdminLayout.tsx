@@ -265,6 +265,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
   );
   const [prefsVisible, setPrefsVisible] = useState(false);
   const [shortcutsVisible, setShortcutsVisible] = useState(false);
+  const [isContentFullscreen, setIsContentFullscreen] = useState(false);
   const [lockPasswordModalVisible, setLockPasswordModalVisible] = useState(false);
   const [lockPasswordModalMode, setLockPasswordModalMode] = useState<'set' | 'change'>('set');
   const [newLockPassword, setNewLockPassword] = useState('');
@@ -568,10 +569,17 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
         e.preventDefault();
         handleCollapseChange(!collapsed);
       }
+      if (e.altKey && e.key === 'c') {
+        e.preventDefault();
+        setIsContentFullscreen((v) => !v);
+      }
+      if (e.key === 'Escape' && isContentFullscreen) {
+        setIsContentFullscreen(false);
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [preferences.enableLockScreen, hasPassword, lock, collapsed, handleCollapseChange]);
+  }, [preferences.enableLockScreen, hasPassword, lock, collapsed, handleCollapseChange, isContentFullscreen]);
 
   const navItems = useMemo(
     () => menuTree.map(menuToNavItem).filter((item): item is NavItem => item !== null).map((item) => {
@@ -1120,6 +1128,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     'admin-layout',
     preferences.sidebarDarkMode ? 'admin-layout--sidebar-dark' : '',
     preferences.headerDarkMode ? 'admin-layout--header-dark' : '',
+    isContentFullscreen ? 'admin-layout--content-fullscreen' : '',
   ].filter(Boolean).join(' ');
   const sectionDarkThemeStyle = useMemo<CSSProperties>(() => {
     if (!preferences.sidebarDarkMode && !preferences.headerDarkMode) return {};
@@ -1345,6 +1354,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                     render={
                       <Dropdown.Menu>
                         <Dropdown.Item icon={<RotateCcw size={14} />} onClick={() => handleTabRefresh(tab.key)}>刷新页面</Dropdown.Item>
+                        <Dropdown.Item icon={isContentFullscreen ? <Shrink size={14} /> : <Expand size={14} />} onClick={() => setIsContentFullscreen((v) => !v)}>{isContentFullscreen ? '退出内容全屏' : '内容全屏'}</Dropdown.Item>
                         <Dropdown.Item icon={<Copy size={14} />} onClick={() => void navigator.clipboard.writeText(tab.title)}>复制名称</Dropdown.Item>
                         <Dropdown.Item icon={<Route size={14} />} onClick={() => {
                           const crumbs = findBreadcrumbs(menuTree, tab.key);
@@ -1832,6 +1842,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                 items: [
                   { keys: ['Ctrl / ⌘', 'K'], desc: '打开命令面板' },
                   { keys: ['Alt', 'S'], desc: '展开/折叠侧边栏' },
+                  { keys: ['Alt', 'C'], desc: '内容全屏/退出' },
                   { keys: ['Alt', 'L'], desc: '锁定屏幕（需开启锁屏功能）' },
                 ],
               },
@@ -1976,13 +1987,23 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
       </Modal>
 
       {/* ===== 公告详情 Modal ===== */}
+      {/* ===== 公告详情 Modal ===== */}
       <AnnouncementDetailModal
         announcement={selectedAnnouncement}
         visible={selectedAnnouncement !== null}
         onClose={() => setSelectedAnnouncement(null)}
       />
+
+      {/* ===== 内容全屏退出按钮 ===== */}
+      {isContentFullscreen && (
+        <button type="button" className="admin-content-fullscreen-exit" onClick={() => setIsContentFullscreen(false)}>
+          <Shrink size={13} />
+          退出内容全屏
+        </button>
+      )}
     </div>
   );
+
 
   if (!watermarkConfig.enabled) return adminLayoutEl;
   return (

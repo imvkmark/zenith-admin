@@ -7,6 +7,7 @@
   overflow: hidden;
 }
 
+
 /* ===== Top bar (horizontal / mixed modes) ===== */
 .admin-topbar {
   height: var(--header-height);
@@ -1678,4 +1679,38 @@
   color: var(--semi-color-danger);
   margin-top: 4px;
   text-align: center;
+}
+
+/* ===== 内容全屏模式：隐藏侧边栏、顶部导航、标签栏，仅展示内容区 ===== */
+.admin-layout--content-fullscreen .admin-sidebar,
+.admin-layout--content-fullscreen .admin-topbar,
+.admin-layout--content-fullscreen .admin-header,
+.admin-layout--content-fullscreen .admin-tabs-bar {
+  display: none !important;
+}
+.admin-layout--content-fullscreen .admin-content {
+  border-radius: 0;
+}
+/* 退出内容全屏的悬浮按钮 */
+.admin-content-fullscreen-exit {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: opacity 0.2s;
+  opacity: 0.6;
+}
+.admin-content-fullscreen-exit:hover {
+  opacity: 1;
 }
