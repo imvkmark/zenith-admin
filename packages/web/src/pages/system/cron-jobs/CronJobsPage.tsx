@@ -190,21 +190,35 @@ export default function CronJobsPage() {
     }
   };
 
-  const handleToggleStatus = async (id: number, currentStatus: string) => {
+  const handleToggleStatus = (id: number, currentStatus: string, name: string) => {
     const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
-    setSwitchLoadingIds((prev) => new Set([...prev, id]));
-    try {
-      const res = await request.put(`/api/cron-jobs/${id}/status`, { status: newStatus });
-      if (res.code === 0) {
-        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
-        void fetchData();
+    const doToggle = async () => {
+      setSwitchLoadingIds((prev) => new Set([...prev, id]));
+      try {
+        const res = await request.put(`/api/cron-jobs/${id}/status`, { status: newStatus });
+        if (res.code === 0) {
+          Toast.success(newStatus === 'enabled' ? '已启用' : '已暂停');
+          void fetchData();
+        }
+      } finally {
+        setSwitchLoadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
-    } finally {
-      setSwitchLoadingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
+    };
+    if (newStatus === 'disabled') {
+      Modal.confirm({
+        title: '暂停定时任务',
+        content: `确定要暂停「${name}」吗？暂停后该任务将不再自动执行。`,
+        okText: '暂停',
+        okButtonProps: { type: 'warning' },
+        cancelText: '取消',
+        onOk: doToggle,
       });
+    } else {
+      void doToggle();
     }
   };
 
@@ -345,7 +359,7 @@ export default function CronJobsPage() {
           checked={v === 'enabled'}
           loading={switchLoadingIds.has(record.id)}
           size="small"
-          onChange={() => { void handleToggleStatus(record.id, v); }}
+          onChange={() => { handleToggleStatus(record.id, v, record.name); }}
           disabled={!hasPermission('system:cronjob:update')}
         />
       ),
