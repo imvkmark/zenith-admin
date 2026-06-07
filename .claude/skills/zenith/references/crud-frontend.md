@@ -20,7 +20,7 @@ packages/web/src/pages/xxx/XxxPage.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button, Form, Input, Select, Space, Spin, SplitButtonGroup, Dropdown,
-  Modal, Toast, Popconfirm,
+  Modal, Toast, Popconfirm, Switch,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -71,6 +71,9 @@ export default function XxxPage() {
   const [editingXxx, setEditingXxx] = useState<Xxx | null>(null);  // null=新增，有值=编辑
   const [submitting, setSubmitting] = useState(false);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
+
+  // 状态切换 loading（per-row）
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
   // 字典数据（使用 useDictItems 加载）
   const { items: statusItems } = useDictItems('common_status');
@@ -229,6 +232,33 @@ export default function XxxPage() {
     }
   }
 
+  // ─── 状态切换（Switch 直接修改）────────────────────────────────────────
+  // status 字段为 'enabled'|'disabled' 时使用此模式
+  // boolean 字段时改为 { isEnabled: checked }
+  function handleToggleStatus(record: Xxx, checked: boolean) {
+    const doToggle = async () => {
+      setTogglingIds((prev) => new Set(prev).add(record.id));
+      try {
+        await request.put(`/api/xxxs/${record.id}`, { status: checked ? 'enabled' : 'disabled' });
+        Toast.success(checked ? '已启用' : '已停用');
+        void fetchXxxs();
+      } catch (err: unknown) {
+        Toast.error((err as { message?: string })?.message || '操作失败');
+      } finally {
+        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
+      }
+    };
+    if (checked) {
+      void doToggle();
+    } else {
+      Modal.confirm({
+        title: '确认停用',
+        content: `停用后「${record.name}」将不再可用，确认停用？`,
+        onOk: () => void doToggle(),
+      });
+    }
+  }
+
   // ─── 表格列定义 ────────────────────────────────────────────────────────
   const columns: ColumnProps<Xxx>[] = [
     {
@@ -250,15 +280,20 @@ export default function XxxPage() {
     },
     {
       // 状态列：放在操作列左侧紧靠操作列，必须 fixed: 'right'
+      // 使用 Switch 直接切换，停用时弹二次确认
       title: '状态',
       dataIndex: 'status',
-      width: 100,
+      width: 80,
       fixed: 'right',
-      render: (status) => {
-        const item = statusItems.find((i) => i.value === status);
-        return item?.label ?? status;
-        // 若使用 DictTag 组件：<DictTag dictCode="common_status" value={status} />
-      },
+      render: (_: unknown, record: Xxx) => (
+        <Switch
+          checked={record.status === 'enabled'}
+          loading={togglingIds.has(record.id)}
+          disabled={!hasPermission('system:xxx:update')}
+          onChange={(checked) => handleToggleStatus(record, checked)}
+          size="small"
+        />
+      ),
     },
     {
       // 操作列：必须 fixed: 'right'；纯文字按钮，无图标
