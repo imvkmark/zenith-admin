@@ -64,6 +64,8 @@ export default function OAuth2AppsPage() {
   const [loading, setLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
+  const keywordRef = useRef('');
+  keywordRef.current = keyword;
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
@@ -78,11 +80,12 @@ export default function OAuth2AppsPage() {
 
   // ─── 数据加载 ──────────────────────────────────────────────────────────
   const fetchData = useCallback(
-    async (p = page, ps = pageSize, kw = keyword) => {
+    async (p = page, ps = pageSize, kw?: string) => {
+      const activeKw = kw ?? keywordRef.current;
       setLoading(true);
       try {
         const queryObj: Record<string, string> = { page: String(p), pageSize: String(ps) };
-        if (kw) queryObj.keyword = kw;
+        if (activeKw) queryObj.keyword = activeKw;
         const qs = new URLSearchParams(queryObj).toString();
         const res = await request.get<PaginatedResponse<OAuth2Client>>(`/api/oauth2/clients?${qs}`);
         if (res.code === 0) {
@@ -93,7 +96,7 @@ export default function OAuth2AppsPage() {
         setLoading(false);
       }
     },
-    [page, pageSize, keyword],
+    [page, pageSize],
   );
 
   useEffect(() => {
@@ -104,7 +107,7 @@ export default function OAuth2AppsPage() {
   // ─── 搜索 / 重置 ────────────────────────────────────────────────────────
   function handleSearch() {
     setPage(1);
-    void fetchData(1, pageSize, keyword);
+    void fetchData(1, pageSize);
   }
 
   function handleReset() {
