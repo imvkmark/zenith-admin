@@ -12,6 +12,7 @@ import {
   Row,
   Col,
   Spin,
+  Switch,
   Tooltip,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -224,6 +225,37 @@ export default function MenusPage() {
     }
   };
 
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+
+  const handleToggleStatus = useCallback(async (menu: Menu, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用菜单「${menu.title}」？`,
+          content: '禁用后该菜单将不可访问。',
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(menu.id);
+    try {
+      const res = await request.put(`/api/menus/${menu.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        fetchMenus();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchMenus]);
+
   const columns: ColumnProps<Menu>[] = [
     {
       title: '菜单名称',
@@ -284,7 +316,15 @@ export default function MenusPage() {
       width: 80,
       align: 'center',
       fixed: 'right',
-      render: (val: string) => <DictTag dictCode="common_status" value={val} />,
+      render: (val: string, row: Menu) => row.type === 'button' ? '—' : (
+        <Switch
+          size="small"
+          checked={val === 'enabled'}
+          loading={togglingStatusId === row.id}
+          disabled={!hasPermission('system:menu:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(row, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '显示',
