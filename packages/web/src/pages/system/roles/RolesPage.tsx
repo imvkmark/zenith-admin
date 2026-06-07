@@ -11,6 +11,7 @@ import {
   Form,
   Toast,
   Spin,
+  Switch,
   DatePicker,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -241,6 +242,37 @@ export default function RolesPage() {
     }
   };
 
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+
+  const handleToggleStatus = useCallback(async (role: Role, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用角色「${role.name}」？`,
+          content: '禁用后持有该角色的用户将不能登录。',
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(role.id);
+    try {
+      const res = await request.put(`/api/roles/${role.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        void fetchRoles();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchRoles]);
+
   const columns: ColumnProps<Role>[] = [
     { title: '角色名称', dataIndex: 'name', width: 160, render: renderEllipsis },
     { title: '角色编码', dataIndex: 'code', width: 160, render: renderEllipsis },
@@ -262,7 +294,15 @@ export default function RolesPage() {
       width: 90,
       align: 'center',
       fixed: 'right',
-      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
+      render: (v: string, record: Role) => (
+        <Switch
+          size="small"
+          checked={v === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={record.code === 'super_admin' || !hasPermission('system:role:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作',
