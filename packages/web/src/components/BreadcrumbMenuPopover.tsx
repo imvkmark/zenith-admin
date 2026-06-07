@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback, createContext, useContext } from 'react';
 import { Popover } from '@douyinfe/semi-ui';
 import { ChevronRight } from 'lucide-react';
 import type { Menu } from '@zenith/shared';
 import { renderLucideIcon } from '@/utils/icons';
+
+/** 用于向子菜单传递"关闭整棵树"的回调 */
+const CloseAllContext = createContext<(() => void) | null>(null);
 
 interface MenuItemProps {
   item: Menu;
@@ -13,6 +16,8 @@ interface MenuItemProps {
 /** 单个菜单项：叶子菜单直接导航，目录节点展示嵌套 Popover */
 function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
   const [hovered, setHovered] = useState(false);
+  const [subVisible, setSubVisible] = useState(false);
+  const closeAll = useContext(CloseAllContext);
 
   const visibleChildren = (item.children ?? []).filter(
     (c) => c.visible && c.status === 'enabled' && c.type !== 'button',
@@ -23,13 +28,19 @@ function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
     <div
       role="menuitem"
       tabIndex={0}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => { setHovered(true); if (isDirectory) setSubVisible(true); }}
+      onMouseLeave={() => { setHovered(false); if (isDirectory) setSubVisible(false); }}
       onClick={() => {
-        if (!isDirectory && item.path) onNavigate(item.path);
+        if (!isDirectory && item.path) {
+          closeAll?.();
+          onNavigate(item.path);
+        }
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' && !isDirectory && item.path) onNavigate(item.path);
+        if (e.key === 'Enter' && !isDirectory && item.path) {
+          closeAll?.();
+          onNavigate(item.path);
+        }
       }}
       style={{
         display: 'flex',
@@ -65,10 +76,9 @@ function MenuItem({ item, onNavigate, depth = 0 }: Readonly<MenuItemProps>) {
 
   return (
     <Popover
-      trigger="hover"
+      trigger="custom"
+      visible={subVisible}
       position="rightTop"
-      mouseEnterDelay={80}
-      mouseLeaveDelay={150}
       showArrow={false}
       content={
         <MenuList items={visibleChildren} onNavigate={onNavigate} depth={depth + 1} />
@@ -114,28 +124,36 @@ interface BreadcrumbMenuPopoverProps {
 
 /**
  * 面包屑目录节点的子菜单 Popover
- * 悬停目录节点时弹出，支持多级嵌套展开
+ * 悬停目录节点时弹出，支持多级嵌套展开；点击叶子菜单后自动关闭整棵树
  */
 export default function BreadcrumbMenuPopover({
   children,
   onNavigate,
   trigger,
 }: BreadcrumbMenuPopoverProps) {
+  const [visible, setVisible] = useState(false);
+
+  const closeAll = useCallback(() => setVisible(false), []);
+
   if (!children.length) return <>{trigger}</>;
 
   return (
-    <Popover
-      trigger="hover"
-      position="bottomLeft"
-      mouseEnterDelay={100}
-      mouseLeaveDelay={200}
-      showArrow={false}
-      content={<MenuList items={children} onNavigate={onNavigate} />}
-    >
-      {/* Popover 需要包裹单个元素，用 span 承接 */}
-      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-        {trigger}
-      </span>
-    </Popover>
+    <CloseAllContext.Provider value={closeAll}>
+      <Popover
+        trigger="hover"
+        visible={visible}
+        onVisibleChange={setVisible}
+        position="bottomLeft"
+        mouseEnterDelay={100}
+        mouseLeaveDelay={200}
+        showArrow={false}
+        content={<MenuList items={children} onNavigate={onNavigate} />}
+      >
+        {/* Popover 需要包裹单个元素，用 span 承接 */}
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          {trigger}
+        </span>
+      </Popover>
+    </CloseAllContext.Provider>
   );
 }
