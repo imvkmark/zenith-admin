@@ -14,6 +14,7 @@ import {
   Banner,
   Row,
   Col,
+  Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -57,6 +58,32 @@ type FormValues = {
 export default function OAuth2AppsPage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:oauth2-apps:manage');
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
+
+  const handleToggleStatus = (record: OAuth2Client, checked: boolean) => {
+    const newStatus = checked ? 'enabled' : 'disabled';
+    const doToggle = async () => {
+      setTogglingIds((prev) => new Set(prev).add(record.id));
+      try {
+        await request.put(`/api/oauth2/clients/${record.id}`, { status: newStatus });
+        Toast.success(checked ? '已启用' : '已禁用');
+        void fetchData();
+      } catch (err: unknown) {
+        Toast.error((err as { message?: string })?.message || '操作失败');
+      } finally {
+        setTogglingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; });
+      }
+    };
+    if (checked) {
+      void doToggle();
+    } else {
+      Modal.confirm({
+        title: '确认禁用',
+        content: `禁用后「${record.name}」将无法进行 OAuth2 授权，确认禁用？`,
+        onOk: () => void doToggle(),
+      });
+    }
+  };
   const formApi = useRef<FormApi | null>(null);
 
   // ─── 状态 ──────────────────────────────────────────────────────────────
@@ -266,7 +293,15 @@ export default function OAuth2AppsPage() {
       dataIndex: 'status',
       width: 80,
       fixed: 'right' as const,
-      render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'}>{v === 'enabled' ? '启用' : '禁用'}</Tag>,
+      render: (v: string, record: OAuth2Client) => (
+        <Switch
+          checked={v === 'enabled'}
+          loading={togglingIds.has(record.id)}
+          disabled={!canManage}
+          onChange={(checked) => handleToggleStatus(record, checked)}
+          size="small"
+        />
+      ),
     },
     {
       title: '操作',
