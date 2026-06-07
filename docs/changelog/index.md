@@ -9,11 +9,13 @@
 ### Added
 
 #### 面包屑子菜单
+
 - 新增偏好设置「面包屑子菜单」（默认关闭），开启后悬停面包屑的目录节点弹出子菜单 Popover
 - 支持无限级嵌套展开，点击叶子菜单直接跳转并关闭 Popover
 - 新建 `BreadcrumbMenuPopover` 组件，通过 Context 传递关闭回调，确保跳转后立即关闭
 
 #### Electron 标题栏改进
+
 - `ElectronTitleBar` 移至 `App.tsx` 顶层，登录页也能显示标题栏
 - 修复按钮点击报 `An object could not be cloned`：改为内联按钮 `() => api.xxx()` 包装，避免 contextBridge Proxy 函数放入对象字面量触发序列化检查
 - 最大化状态改为事件驱动（主进程 `maximize/unmaximize` 事件推送）
@@ -31,6 +33,7 @@
 ### Added
 
 #### Electron 桌面客户端
+
 - 新增 `packages/electron/` 子包，基于 Electron 42 构建 Windows/macOS/Linux 桌面安装包
 - 自定义无边框标题栏（Windows/Linux），拖拽区 + 最小/最大/关闭按钮，macOS 保留系统红绿灯
 - 安全机制：`contextIsolation: true`、`nodeIntegration: false`，通过 preload 仅暴露受限窗口控制 API
@@ -38,6 +41,7 @@
 - 开发脚本：`dev:electron`（并发启动 web dev server + electron）
 
 #### PWA 支持
+
 - 通过 `VITE_PWA_ENABLED=true` 开启，生成 `sw.js` 和 `manifest.webmanifest`
 - 静态资源预缓存（Cache First），API 请求 Network Only，支持"添加到主屏幕"
 - 内置 192×192 和 512×512 PWA 图标（由 `favicon.svg` 生成）
