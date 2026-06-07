@@ -10,10 +10,8 @@ import {
   LineChart,
   Line,
   CartesianGrid,
-  PieChart,
-  Pie,
-  Legend,
 } from 'recharts';
+import { FileImage, Video, Music, FileText, File } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatFileSize } from '@/utils/file-utils';
 import type { FileStats } from '@zenith/shared';
@@ -24,18 +22,18 @@ const PROVIDER_LABELS: Record<string, string> = {
   bos: '百度云 BOS', azure: 'Azure Blob', sftp: 'SFTP',
 };
 
-const TYPE_COLORS: Record<string, string> = {
-  image: '#3b82f6',
-  video: '#8b5cf6',
-  audio: '#f59e0b',
-  document: '#10b981',
-  other: '#6b7280',
-};
-
 const PROVIDER_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
   '#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#ec4899',
 ];
+
+const FILE_TYPE_CONFIG = [
+  { type: 'image',    label: '图片', Icon: FileImage, color: '#3b82f6', bgColor: 'rgba(59,130,246,0.12)' },
+  { type: 'video',    label: '视频', Icon: Video,     color: '#8b5cf6', bgColor: 'rgba(139,92,246,0.12)' },
+  { type: 'audio',    label: '音频', Icon: Music,     color: '#f59e0b', bgColor: 'rgba(245,158,11,0.12)' },
+  { type: 'document', label: '文档', Icon: FileText,  color: '#10b981', bgColor: 'rgba(16,185,129,0.12)' },
+  { type: 'other',    label: '其他', Icon: File,      color: '#6b7280', bgColor: 'rgba(107,114,128,0.12)' },
+] as const;
 
 const sectionStyle: React.CSSProperties = {
   background: 'var(--semi-color-bg-1)',
@@ -95,10 +93,7 @@ export default function FileStatsPanel() {
   }, [fetchStats]);
 
   const summary = stats?.summary;
-
-  // PieChart 自定义 label
-  const renderPieLabel = ({ name, percent }: { name?: string; percent?: number }) =>
-    (percent ?? 0) > 0.03 ? `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%` : '';
+  const totalFiles = summary?.totalFiles ?? 0;
 
   return (
     <Spin spinning={loading}>
@@ -106,45 +101,60 @@ export default function FileStatsPanel() {
 
         {/* 汇总卡片 */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-          <StatCard title="文件总数" value={summary?.totalFiles ?? '—'} />
+          <StatCard title="文件总数" value={totalFiles > 0 ? totalFiles.toLocaleString() : '—'} />
           <StatCard title="占用空间" value={summary ? formatFileSize(summary.totalSize) : '—'} />
           <StatCard
             title="图片数量"
-            value={summary?.imageCount ?? '—'}
-            sub={summary && summary.totalFiles > 0 ? `占 ${((summary.imageCount / summary.totalFiles) * 100).toFixed(0)}%` : undefined}
+            value={summary?.imageCount != null ? summary.imageCount.toLocaleString() : '—'}
+            sub={totalFiles > 0 && summary ? `占 ${((summary.imageCount / totalFiles) * 100).toFixed(1)}%` : undefined}
           />
           <StatCard
             title="文档数量"
-            value={summary?.docCount ?? '—'}
-            sub={summary && summary.totalFiles > 0 ? `占 ${((summary.docCount / summary.totalFiles) * 100).toFixed(0)}%` : undefined}
+            value={summary?.docCount != null ? summary.docCount.toLocaleString() : '—'}
+            sub={totalFiles > 0 && summary ? `占 ${((summary.docCount / totalFiles) * 100).toFixed(1)}%` : undefined}
           />
         </div>
 
-        {/* 文件类型 + 存储类型分布 */}
-        <div style={{ display: 'flex', gap: 16 }}>
-          {/* 文件类型环形图 */}
-          <div style={{ ...sectionStyle, flex: 1, minWidth: 0 }}>
-            <div style={sectionTitleStyle}>文件类型分布</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={stats?.typeStats.filter(t => t.count > 0).map(t => ({ ...t, fill: TYPE_COLORS[t.type] ?? '#6b7280' }))}
-                  dataKey="count"
-                  nameKey="label"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={85}
-                  label={renderPieLabel}
-                  labelLine={false}
-                />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend iconType="circle" iconSize={8} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+        {/* 文件类型卡片 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+          {FILE_TYPE_CONFIG.map(({ type, label, Icon, color, bgColor }) => {
+            const stat = stats?.typeStats.find(t => t.type === type);
+            const count = stat?.count ?? 0;
+            const size = stat?.size ?? 0;
+            const percent = totalFiles > 0 ? (count / totalFiles) * 100 : 0;
+            return (
+              <div key={type} style={{ ...sectionStyle, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* 图标 + 右侧内容 */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 9, background: bgColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Icon size={19} color={color} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* 类型名 + 数量同行 */}
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--semi-color-text-0)' }}>{label}</span>
+                      <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--semi-color-text-0)', flexShrink: 0 }}>{count.toLocaleString()}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)', marginTop: 3 }}>{formatFileSize(size)}</div>
+                  </div>
+                </div>
+                {/* 进度条 */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>占比</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color }}>{percent.toFixed(1)}%</span>
+                  </div>
+                  <div style={{ height: 5, background: 'var(--semi-color-fill-1)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(percent, 100)}%`, background: color, borderRadius: 3, transition: 'width 0.6s ease' }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-          {/* 存储类型横向柱状图 */}
+        {/* 存储类型分布 + 月度上传趋势 */}
+        <div style={{ display: 'flex', gap: 16 }}>
           <div style={{ ...sectionStyle, flex: 1, minWidth: 0 }}>
             <div style={sectionTitleStyle}>存储类型分布</div>
             <ResponsiveContainer width="100%" height={220}>
@@ -160,22 +170,15 @@ export default function FileStatsPanel() {
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--semi-color-border)" />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="providerLabel" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v) => [`${v} 个文件`, '文件数']}
-                />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} 个文件`, '文件数']} />
                 <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#3b82f6" />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
 
-        {/* 月度上传趋势 + 文件大小分布 */}
-        <div style={{ display: 'flex', gap: 16 }}>
-          {/* 月度折线图 */}
           <div style={{ ...sectionStyle, flex: 1, minWidth: 0 }}>
             <div style={sectionTitleStyle}>月度上传趋势（近 12 个月）</div>
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={220}>
               <LineChart data={stats?.monthlyStats} margin={{ left: -8, right: 16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
@@ -185,11 +188,13 @@ export default function FileStatsPanel() {
               </LineChart>
             </ResponsiveContainer>
           </div>
+        </div>
 
-          {/* 大小分布柱状图 */}
+        {/* 文件大小分布 + Top 上传人 */}
+        <div style={{ display: 'flex', gap: 16 }}>
           <div style={{ ...sectionStyle, flex: 1, minWidth: 0 }}>
             <div style={sectionTitleStyle}>文件大小分布</div>
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={220}>
               <BarChart data={stats?.sizeRangeStats} margin={{ left: -8, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--semi-color-border)" />
                 <XAxis dataKey="range" tick={{ fontSize: 11 }} />
@@ -199,30 +204,29 @@ export default function FileStatsPanel() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          {stats && stats.uploaderStats.length > 0 ? (
+            <div style={{ ...sectionStyle, flex: 1, minWidth: 0 }}>
+              <div style={sectionTitleStyle}>Top 上传人（按文件数）</div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart
+                  layout="vertical"
+                  data={stats.uploaderStats.map((u) => ({ ...u, sizeLabel: formatFileSize(u.size) }))}
+                  margin={{ left: 8, right: 24 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--semi-color-border)" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="username" tick={{ fontSize: 11 }} width={80} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`${v} 个文件`, n === 'count' ? '文件数' : n]} />
+                  <Bar dataKey="count" fill="#8b5cf6" radius={[0, 3, 3, 0]} name="count" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div style={{ flex: 1 }} />
+          )}
         </div>
 
-        {/* Top 上传人 */}
-        {stats && stats.uploaderStats.length > 0 && (
-          <div style={sectionStyle}>
-            <div style={sectionTitleStyle}>Top 上传人（按文件数）</div>
-            <ResponsiveContainer width="100%" height={Math.min(stats.uploaderStats.length * 36 + 16, 280)}>
-              <BarChart
-                layout="vertical"
-                data={stats.uploaderStats.map((u) => ({ ...u, sizeLabel: formatFileSize(u.size) }))}
-                margin={{ left: 8, right: 24 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--semi-color-border)" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="username" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v, n) => [`${v} 个文件`, n === 'count' ? '文件数' : n]}
-                />
-                <Bar dataKey="count" fill="#8b5cf6" radius={[0, 3, 3, 0]} name="count" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
       </div>
     </Spin>
   );
