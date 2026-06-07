@@ -298,8 +298,8 @@ export default function OperationLogStatsPanel() {
                 labelFormatter={(l) => `日期：${l}`}
               />
               <Legend formatter={(value) => (value === 'successCount' ? '成功' : '失败')} wrapperStyle={{ fontSize: 12 }} />
-              <Area type="monotone" dataKey="successCount" stackId="a" stroke={SUCCESS_COLOR} fill="url(#areaSuccess)" strokeWidth={2} dot={false} />
-              <Area type="monotone" dataKey="failCount" stackId="a" stroke={FAIL_COLOR} fill="url(#areaFail)" strokeWidth={2} dot={false} />
+              <Area type="monotone" dataKey="successCount" stroke={SUCCESS_COLOR} fill="url(#areaSuccess)" strokeWidth={2} dot={false} />
+              <Area type="monotone" dataKey="failCount" stroke={FAIL_COLOR} fill="url(#areaFail)" strokeWidth={2} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
