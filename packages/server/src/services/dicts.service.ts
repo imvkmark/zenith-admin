@@ -131,7 +131,7 @@ export async function updateDictItem(itemId: number, data: Partial<typeof dictIt
     // 循环引用检测：新父级不能是当前项的子孙节点
     const isDescendant = async (checkId: number): Promise<boolean> => {
       const [row] = await db.select({ parentId: dictItems.parentId }).from(dictItems).where(eq(dictItems.id, checkId)).limit(1);
-      if (!row || row.parentId === null) return false;
+      if (row?.parentId == null) return false;
       if (row.parentId === itemId) return true;
       return isDescendant(row.parentId);
     };

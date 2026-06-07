@@ -323,7 +323,7 @@ export async function saveMyPreferences(prefs: Record<string, unknown>) {
 export async function getMyFavoriteMenus(): Promise<number[]> {
   const userId = currentUser().userId;
   const [row] = await db.select({ favoriteMenus: users.favoriteMenus }).from(users).where(eq(users.id, userId)).limit(1);
-  return (row?.favoriteMenus ?? []) as number[];
+  return row?.favoriteMenus ?? [];
 }
 
 export async function saveMyFavoriteMenus(menuIds: number[]): Promise<number[]> {
