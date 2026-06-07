@@ -14,22 +14,20 @@ export default function DbBackupsPage() {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [filterStatus, setFilterStatus] = useState<string>('');
-  const [filterType, setFilterType] = useState<string>('');
-  const filterRef = useRef({ status: '', type: '' });
-  filterRef.current.status = filterStatus;
-  filterRef.current.type = filterType;
+  const [searchParams, setSearchParams] = useState<{ status: string; type: string }>({ status: '', type: '' });
+  const searchParamsRef = useRef<{ status: string; type: string }>({ status: '', type: '' });
+  searchParamsRef.current = searchParams;
   const [createVisible, setCreateVisible] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const { hasPermission } = usePermission();
 
-  const fetchList = useCallback(async (p = page, ps = pageSize) => {
-    const { status: fs, type: ft } = filterRef.current;
+  const fetchList = useCallback(async (p = page, ps = pageSize, overrideParams?: { status: string; type: string }) => {
+    const { status: fs, type: ft } = overrideParams ?? searchParamsRef.current;
     setLoading(true);
-    const params = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-    if (fs) params.set('status', fs);
-    if (ft) params.set('type', ft);
-    const res = await request.get<{ list: DbBackup[]; total: number }>(`/api/db-backups?${params}`);
+    const query = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+    if (fs) query.set('status', fs);
+    if (ft) query.set('type', ft);
+    const res = await request.get<{ list: DbBackup[]; total: number }>(`/api/db-backups?${query}`);
     setLoading(false);
     if (res.code === 0 && res.data) {
       setList(res.data.list);
@@ -42,11 +40,9 @@ export default function DbBackupsPage() {
 
   const handleSearch = () => { setPage(1); void fetchList(1); };
   const handleReset = () => {
-    setFilterStatus('');
-    setFilterType('');
-    filterRef.current = { status: '', type: '' };
+    setSearchParams({ status: '', type: '' });
     setPage(1);
-    void fetchList(1);
+    void fetchList(1, pageSize, { status: '', type: '' });
   };
 
   const handleCreate = async (values: { type: BackupType; name?: string }) => {
@@ -144,8 +140,8 @@ export default function DbBackupsPage() {
       <SearchToolbar>
           <Select
             placeholder="备份类型"
-            value={filterType}
-            onChange={(v) => setFilterType(v as string)}
+            value={searchParams.type}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, type: v as string }))}
             optionList={[
               { label: '全部类型', value: '' },
               { label: 'pg_dump', value: 'pg_dump' },
@@ -156,8 +152,8 @@ export default function DbBackupsPage() {
           />
           <Select
             placeholder="状态"
-            value={filterStatus}
-            onChange={(v) => setFilterStatus(v as string)}
+            value={searchParams.status}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, status: v as string }))}
             optionList={[
               { label: '全部状态', value: '' },
               { label: '等待中', value: 'pending' },
