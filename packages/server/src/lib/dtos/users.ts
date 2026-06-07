@@ -24,6 +24,7 @@ export const UserDTO = z
     roles: z.array(RoleDTO).optional(),
     status: z.enum(['enabled', 'disabled']).openapi({ example: 'enabled' }),
     passwordUpdatedAt: z.string().optional(),
+    lastLoginAt: z.string().nullable().optional(),
     requirePasswordChange: z.boolean().optional(),
     isLocked: z.boolean().optional().openapi({ description: '账号是否被锁定（登录失败次数过多）' }),
     isOnline: z.boolean().optional().openapi({ description: '用户是否在线' }),

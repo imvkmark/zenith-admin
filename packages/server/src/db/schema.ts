@@ -93,6 +93,7 @@ export const users = pgTable('users', {
   favoriteMenus: jsonb('favorite_menus').$type<number[]>(),
   userDataScope: dataScopeEnum('user_data_scope'),
   passwordUpdatedAt: timestamp('password_updated_at').defaultNow().notNull(),
+  lastLoginAt: timestamp('last_login_at'),
   ...auditColumns(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),

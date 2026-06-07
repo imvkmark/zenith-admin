@@ -208,6 +208,7 @@ export async function login(input: LoginInput) {
       loginAt: new Date(),
     }),
     recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'success', message: '登录成功', userId: user.id, tenantId, deviceInfo: input.deviceInfo }),
+    db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id)),
   ]);
   const { password: _pw, ...userInfo } = user;
   return {

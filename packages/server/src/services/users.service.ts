@@ -17,7 +17,7 @@ import type { JwtPayload } from '../middleware/auth';
 import type { User } from '@zenith/shared';
 import { currentUser } from '../lib/context';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
-import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
+import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 import { applyEntityMasking } from './data-mask.service';
 
 // ─── 关联查询配置 ─────────────────────────────────────────────────────────────
@@ -101,6 +101,7 @@ export function mapUser(row: UserWithRelations): User {
     roles: roleList,
     status: row.status,
     passwordUpdatedAt: formatDateTime(row.passwordUpdatedAt),
+    lastLoginAt: formatNullableDateTime(row.lastLoginAt),
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   } satisfies User;

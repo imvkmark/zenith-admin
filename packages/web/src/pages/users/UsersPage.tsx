@@ -515,6 +515,12 @@ export default function UsersPage() {
     },
     createdAtColumn,
     {
+      title: '最近登录',
+      dataIndex: 'lastLoginAt',
+      width: 160,
+      render: (v: string | null | undefined) => v ?? '—',
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       width: 100,
