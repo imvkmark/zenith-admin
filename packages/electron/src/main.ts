@@ -49,14 +49,6 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // 窗口最大化状态变化通知渲染进程
-  mainWindow.on('maximize', () => {
-    mainWindow?.webContents.send('window:maximized', true);
-  });
-  mainWindow.on('unmaximize', () => {
-    mainWindow?.webContents.send('window:maximized', false);
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -73,6 +65,7 @@ ipcMain.on('window:maximize', () => {
   }
 });
 ipcMain.on('window:close', () => mainWindow?.close());
+ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false);
 
 // ─── 应用生命周期 ──────────────────────────────────────────────────────────
 
