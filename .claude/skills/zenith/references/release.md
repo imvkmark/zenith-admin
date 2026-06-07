@@ -46,6 +46,14 @@ npm run build
 
 构建成功（无错误输出，退出码 0）后再进行下一步。如有错误须先修复再继续。
 
+同时验证文档站构建：
+
+```bash
+npm run docs:build
+```
+
+文档站构建成功（`build complete`）后方可继续。如有错误须先修复。
+
 ---
 
 ## Step 5：更新 `docs/changelog/index.md`
