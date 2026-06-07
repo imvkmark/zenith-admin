@@ -16,6 +16,7 @@ import {
   Spin,
   Avatar,
   AvatarGroup,
+  Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Search, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
@@ -196,6 +197,37 @@ export default function UserGroupsPage() {
     }
   };
 
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+
+  const handleToggleStatus = useCallback(async (group: UserGroup, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用用户组「${group.name}」？`,
+          content: '禁用后该用户组将不可选择。',
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(group.id);
+    try {
+      const res = await request.put(`/api/user-groups/${group.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        void fetchList();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchList]);
+
   const handleBatchDelete = () => {
     Modal.confirm({
       title: `确认删除选中的 ${selectedRowKeys.length} 个用户组？`,
@@ -280,11 +312,16 @@ export default function UserGroupsPage() {
     },
     createdAtColumn,
     {
-      title: '状态', dataIndex: 'status', width: 100, fixed: 'right',
-      render: (v: string) =>
-        v === 'enabled'
-          ? <Tag color="green">启用</Tag>
-          : <Tag color="grey">禁用</Tag>,
+      title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
+      render: (v: string, record: UserGroup) => (
+        <Switch
+          size="small"
+          checked={v === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={!hasPermission('system:user-groups:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作', fixed: 'right', width: 220,
