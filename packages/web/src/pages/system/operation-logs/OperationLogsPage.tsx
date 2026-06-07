@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input, Button, DatePicker, Select, Tabs, TabPane, InputNumber } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Download } from 'lucide-react';
 import { request } from '@/utils/request';
@@ -32,23 +32,26 @@ export default function OperationLogsPage() {
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultParams);
+  const searchParamsRef = useRef<SearchParams>(defaultParams);
+  searchParamsRef.current = searchParams;
 
-  const fetchData = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
+    const activeParams = params ?? searchParamsRef.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({
         page: String(p),
         pageSize: String(ps),
-        ...(params.username ? { username: params.username } : {}),
-        ...(params.module ? { module: params.module } : {}),
-        ...(params.description ? { description: params.description } : {}),
-        ...(params.ip ? { ip: params.ip } : {}),
-        ...(params.method ? { method: params.method } : {}),
-        ...(params.path ? { path: params.path } : {}),
-        ...(params.status ? { status: params.status } : {}),
-        ...(params.timeRange ? { startTime: formatDateTimeForApi(params.timeRange[0]), endTime: formatDateTimeForApi(params.timeRange[1]) } : {}),
-        ...(params.minDurationMs === null ? {} : { minDurationMs: String(params.minDurationMs) }),
-        ...(params.maxDurationMs === null ? {} : { maxDurationMs: String(params.maxDurationMs) }),
+        ...(activeParams.username ? { username: activeParams.username } : {}),
+        ...(activeParams.module ? { module: activeParams.module } : {}),
+        ...(activeParams.description ? { description: activeParams.description } : {}),
+        ...(activeParams.ip ? { ip: activeParams.ip } : {}),
+        ...(activeParams.method ? { method: activeParams.method } : {}),
+        ...(activeParams.path ? { path: activeParams.path } : {}),
+        ...(activeParams.status ? { status: activeParams.status } : {}),
+        ...(activeParams.timeRange ? { startTime: formatDateTimeForApi(activeParams.timeRange[0]), endTime: formatDateTimeForApi(activeParams.timeRange[1]) } : {}),
+        ...(activeParams.minDurationMs === null ? {} : { minDurationMs: String(activeParams.minDurationMs) }),
+        ...(activeParams.maxDurationMs === null ? {} : { maxDurationMs: String(activeParams.maxDurationMs) }),
       }).toString();
       const res = await request.get<PaginatedResponse<OperationLog>>(`/api/operation-logs?${query}`);
       setData(res.data.list);
@@ -69,7 +72,7 @@ export default function OperationLogsPage() {
 
   const handleSearch = () => {
     setPage(1);
-    fetchData(1, pageSize, searchParams);
+    fetchData(1, pageSize);
   };
 
   const handleReset = () => {
