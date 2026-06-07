@@ -10,6 +10,7 @@ export const OnlineSessionDTO = z
     username: z.string(),
     nickname: z.string(),
     ip: z.string(),
+    location: z.string().nullable(),
     browser: z.string(),
     os: z.string(),
     loginAt: z.string(),
@@ -20,6 +21,7 @@ export const SessionDTO = z
   .object({
     tokenId: z.string().openapi({ example: 'abcdef123456' }),
     ip: z.string().openapi({ example: '127.0.0.1' }),
+    location: z.string().nullable().openapi({ example: '广东省 深圳市' }),
     browser: z.string().openapi({ example: 'Chrome 120.0' }),
     os: z.string().openapi({ example: 'macOS 14.0' }),
     loginAt: z.string(),

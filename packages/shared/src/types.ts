@@ -495,6 +495,7 @@ export interface OnlineUser {
   nickname: string;
   tenantId?: number | null;
   ip: string;
+  location?: string | null;
   browser: string;
   os: string;
   loginAt: string;
@@ -623,6 +624,7 @@ export interface DbBackup {
 export interface UserSession {
   tokenId: string;
   ip: string;
+  location?: string | null;
   browser: string;
   os: string;
   loginAt: string;

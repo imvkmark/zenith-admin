@@ -93,7 +93,7 @@ function SessionList({
                 {session.isCurrent && <Tag color="blue" size="small">当前设备</Tag>}
               </div>
               <Text type="tertiary" size="small" className="session-list-meta">
-                {session.os} · IP: {session.ip}
+                {session.os} · {session.location ? `${session.location}（${session.ip}）` : `IP: ${session.ip}`}
               </Text>
               <Text type="tertiary" size="small" className="session-list-meta">
                 登录于 {formatDateTime(session.loginAt)} · 最后活跃 {formatDateTime(session.lastActiveAt)}

@@ -9,6 +9,7 @@ export interface SessionInfo {
   nickname: string;
   tenantId?: number | null;
   ip: string;
+  location: string | null;
   browser: string;
   os: string;
   loginAt: Date;

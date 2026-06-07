@@ -112,7 +112,12 @@ export default function OnlineSessionsPage() {
       ),
     },
     { title: '昵称', dataIndex: 'nickname', width: 140 },
-    { title: 'IP', dataIndex: 'ip', width: 150 },
+    {
+      title: '登录地点', dataIndex: 'location', width: 180,
+      render: (location: string | null, record: OnlineUser) =>
+        location ? `${location}` : record.ip,
+    },
+    { title: 'IP', dataIndex: 'ip', width: 140 },
     { title: '浏览器', dataIndex: 'browser', width: 160, render: renderEllipsis },
     { title: '操作系统', dataIndex: 'os', width: 160, render: renderEllipsis },
     {
