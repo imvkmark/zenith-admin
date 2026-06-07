@@ -4,6 +4,28 @@
 
 ---
 
+## v0.43.0 - 2026-06-07
+
+### Added
+
+#### 面包屑子菜单
+- 新增偏好设置「面包屑子菜单」（默认关闭），开启后悬停面包屑的目录节点弹出子菜单 Popover
+- 支持无限级嵌套展开，点击叶子菜单直接跳转并关闭 Popover
+- 新建 `BreadcrumbMenuPopover` 组件，通过 Context 传递关闭回调，确保跳转后立即关闭
+
+#### Electron 标题栏改进
+- `ElectronTitleBar` 移至 `App.tsx` 顶层，登录页也能显示标题栏
+- 修复按钮点击报 `An object could not be cloned`：改为内联按钮 `() => api.xxx()` 包装，避免 contextBridge Proxy 函数放入对象字面量触发序列化检查
+- 最大化状态改为事件驱动（主进程 `maximize/unmaximize` 事件推送）
+
+### Changed
+
+- 标签页标题添加 `title` 属性，悬停时显示完整标题（标题过长时的 native tooltip）
+- 内容区宽度模式偏好：新增「固定宽度（1400px 居中）」选项
+- 修复 `AdminLayout` 三处 lint 警告：`clearLockPassword` 依赖缺失、`currentSelectedKeys` 每次重算、收藏按钮 IIFE 改为提前计算变量
+
+---
+
 ## v0.42.0 - 2026-06-07
 
 ### Added
