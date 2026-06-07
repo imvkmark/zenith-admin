@@ -1657,7 +1657,7 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
                       {preferences.showTabIcon && pathIconMap[tab.key] && (
                         <span className="admin-tab-item__icon">{renderLucideIcon(pathIconMap[tab.key], 14)}</span>
                       )}
-                      <span className="admin-tab-item__text">{tab.title}</span>
+                      <span className="admin-tab-item__text" title={tab.title}>{tab.title}</span>
                       {tab.pinned && (
                         <span className="admin-tab-item__pin"><Pin size={10} /></span>
                       )}
