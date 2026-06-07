@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag,
-  Toast } from '@douyinfe/semi-ui';
+  Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
 import type { InAppMessageType, InAppTemplate, PaginatedResponse } from '@zenith/shared';
@@ -8,7 +8,6 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
-import DictTag from '@/components/DictTag';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
@@ -115,6 +114,36 @@ export default function InAppTemplatesPage() {
     });
   };
 
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+
+  const handleToggleStatus = useCallback(async (tpl: InAppTemplate, newStatus: 'enabled' | 'disabled') => {
+    if (newStatus === 'disabled') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: `确认禁用模板「${tpl.name}」？`,
+          okButtonProps: { type: 'danger', theme: 'solid' },
+          okText: '确认禁用',
+          cancelText: '取消',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
+    setTogglingStatusId(tpl.id);
+    try {
+      const res = await request.put(`/api/in-app-templates/${tpl.id}`, { status: newStatus });
+      if (res.code === 0) {
+        Toast.success(newStatus === 'enabled' ? '已启用' : '已禁用');
+        void fetchList();
+      } else {
+        Toast.error(res.message || '操作失败');
+      }
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }, [fetchList]);
+
   const columns = [
     { title: '模板名称', dataIndex: 'name', width: 160 },
     { title: '模板编码', dataIndex: 'code', width: 180 },
@@ -128,8 +157,16 @@ export default function InAppTemplatesPage() {
     },
     createdAtColumn,
     {
-      title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
-      render: (v: string) => <DictTag dictCode="common_status" value={v} />,
+      title: '状态', dataIndex: 'status', width: 90, align: 'center' as const, fixed: 'right' as const,
+      render: (v: string, record: InAppTemplate) => (
+        <Switch
+          size="small"
+          checked={v === 'enabled'}
+          loading={togglingStatusId === record.id}
+          disabled={!can('system:in-app-template:update')}
+          onChange={(checked: boolean) => void handleToggleStatus(record, checked ? 'enabled' : 'disabled')}
+        />
+      ),
     },
     {
       title: '操作', key: 'actions', width: 130, fixed: 'right' as const,
