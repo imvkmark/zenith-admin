@@ -33,9 +33,11 @@ export default function WorkflowDefinitionsPage() {
   const { page, setPage, pageSize, buildPagination } = usePagination();
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [openMoreId, setOpenMoreId] = useState<number | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<WorkflowDefinition | null>(null);
   const searchRef = useRef({ keyword: '', status: '', selectedCategoryId: null as number | null });
   searchRef.current.selectedCategoryId = selectedCategoryId;
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const { categories, refetch: refetchCategories } = useWorkflowCategories();
 
   const fetchList = useCallback(async (p = page, params?: { keyword?: string; status?: string; selectedCategoryId?: number | null }) => {

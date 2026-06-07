@@ -344,7 +344,7 @@ export default function AnnouncementsPage() {
         if (res.code === 0) {
           Toast.success(res.message ?? '删除成功');
           setSelectedRowKeys([]);
-          fetchData(1, pageSize, submittedParams);
+          fetchData(1, pageSize, searchParamsRef.current);
         }
       },
     });
@@ -406,7 +406,7 @@ export default function AnnouncementsPage() {
       if (res.code === 0) {
         Toast.success(editingNotice ? '更新成功' : '创建成功');
         setModalVisible(false);
-        fetchData(editingNotice ? page : 1, pageSize, submittedParams);
+        fetchData(editingNotice ? page : 1, pageSize, searchParamsRef.current);
       }
     } finally {
       setSubmitting(false);
