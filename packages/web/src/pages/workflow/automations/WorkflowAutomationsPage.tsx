@@ -138,6 +138,10 @@ export default function WorkflowAutomationsPage() {
   const [definitionId, setDefinitionId] = useState<number | ''>('');
   const [triggerFilter, setTriggerFilter] = useState<WorkflowAutomationTrigger | ''>('');
   const [statusFilter, setStatusFilter] = useState<'enabled' | 'disabled' | ''>('');
+  const searchRef = useRef<{ definitionId: number | ''; trigger: WorkflowAutomationTrigger | ''; status: 'enabled' | 'disabled' | '' }>({ definitionId: '', trigger: '', status: '' });
+  searchRef.current.definitionId = definitionId;
+  searchRef.current.trigger = triggerFilter;
+  searchRef.current.status = statusFilter;
 
   const [defs, setDefs] = useState<WorkflowDefinition[]>([]);
 
@@ -148,12 +152,13 @@ export default function WorkflowAutomationsPage() {
   const [actions, setActions] = useState<Array<ActionDraft & { buttonsJson?: string }>>([]);
 
   const fetchData = useCallback(async (p = page, ps = pageSize) => {
+    const { definitionId: did, trigger: trg, status: sts } = searchRef.current;
     setLoading(true);
     try {
       const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (definitionId !== '') q.set('definitionId', String(definitionId));
-      if (triggerFilter) q.set('trigger', triggerFilter);
-      if (statusFilter) q.set('status', statusFilter);
+      if (did !== '') q.set('definitionId', String(did));
+      if (trg) q.set('trigger', trg);
+      if (sts) q.set('status', sts);
       const res = await request.get<PaginatedResponse<WorkflowAutomation>>(
         `/api/workflows/automations?${q.toString()}`,
       );
@@ -164,7 +169,7 @@ export default function WorkflowAutomationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, definitionId, triggerFilter, statusFilter]);
+  }, [page, pageSize]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -177,7 +182,9 @@ export default function WorkflowAutomationsPage() {
 
   const handleSearch = () => { setPage(1); void fetchData(1, pageSize); };
   const handleReset = () => {
-    setDefinitionId(''); setTriggerFilter(''); setStatusFilter(''); setPage(1);
+    setDefinitionId(''); setTriggerFilter(''); setStatusFilter('');
+    searchRef.current = { definitionId: '', trigger: '', status: '' };
+    setPage(1); void fetchData(1, pageSize);
   };
 
   const openCreate = () => {

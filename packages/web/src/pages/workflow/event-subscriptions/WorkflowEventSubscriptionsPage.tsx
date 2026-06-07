@@ -76,11 +76,12 @@ export default function WorkflowEventSubscriptionsPage() {
   const [list, setList] = useState<WorkflowEventSubscription[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
   const [definitionId, setDefinitionId] = useState<number | ''>('');
   const [enabledFilter, setEnabledFilter] = useState<'' | 'true' | 'false'>('');
-  const [refreshKey, setRefreshKey] = useState(0);
+  const searchRef = useRef<{ keyword: string; definitionId: number | ''; enabled: '' | 'true' | 'false' }>({ keyword: '', definitionId: '', enabled: '' });
+  searchRef.current.definitionId = definitionId;
+  searchRef.current.enabled = enabledFilter;
 
   const [defs, setDefs] = useState<WorkflowDefinition[]>([]);
 
@@ -99,12 +100,13 @@ export default function WorkflowEventSubscriptionsPage() {
   const [deliveryLoading, setDeliveryLoading] = useState(false);
 
   const fetchData = useCallback(async (p = page, ps = pageSize) => {
+    const { keyword: kw, definitionId: did, enabled: enb } = searchRef.current;
     setLoading(true);
     try {
       const q = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (keyword) q.set('keyword', keyword);
-      if (definitionId !== '') q.set('definitionId', String(definitionId));
-      if (enabledFilter) q.set('enabled', enabledFilter);
+      if (kw) q.set('keyword', kw);
+      if (did !== '') q.set('definitionId', String(did));
+      if (enb) q.set('enabled', enb);
       const res = await request.get<PaginatedResponse<WorkflowEventSubscription>>(
         `/api/workflows/event-subscriptions?${q.toString()}`,
       );
@@ -115,7 +117,7 @@ export default function WorkflowEventSubscriptionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, definitionId, enabledFilter, refreshKey]);
+  }, [page, pageSize]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -127,9 +129,18 @@ export default function WorkflowEventSubscriptionsPage() {
       .catch(() => { /* ignore */ });
   }, []);
 
-  const handleSearch = () => { setKeyword(keywordInput.trim()); setPage(1); setRefreshKey((k) => k + 1); };
+  const handleSearch = () => {
+    searchRef.current.keyword = keywordInput.trim();
+    setPage(1);
+    void fetchData(1, pageSize);
+  };
   const handleReset = () => {
-    setKeywordInput(''); setKeyword(''); setDefinitionId(''); setEnabledFilter(''); setPage(1); setRefreshKey((k) => k + 1);
+    setKeywordInput('');
+    setDefinitionId('');
+    setEnabledFilter('');
+    searchRef.current = { keyword: '', definitionId: '', enabled: '' };
+    setPage(1);
+    void fetchData(1, pageSize);
   };
 
   const openCreate = () => {
