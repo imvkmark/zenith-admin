@@ -51,6 +51,7 @@ export default function RegionsPage() {
 
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [data, setData] = useState<Region[]>([]);
   const [flatData, setFlatData] = useState<Region[]>([]);
   const [flatLoading, setFlatLoading] = useState(false);
@@ -365,18 +366,33 @@ export default function RegionsPage() {
             {isAllExpanded ? '全部折叠' : '全部展开'}
           </Button>
           {hasPermission('system:region:export') && (
-            <Button
-              type="primary"
-              icon={<Download size={14} />}
-              loading={exportLoading}
-              onClick={async () => {
-                setExportLoading(true);
-                try { await request.download('/api/regions/export', '地区列表.xlsx'); }
-                finally { setExportLoading(false); }
-              }}
-            >
-              导出
-            </Button>
+            <SplitButtonGroup>
+              <Button
+                type="primary"
+                icon={<Download size={14} />}
+                loading={exportLoading}
+                onClick={async () => {
+                  setExportLoading(true);
+                  try { await request.download('/api/regions/export', '地区列表.xlsx'); }
+                  finally { setExportLoading(false); }
+                }}
+              >
+                导出
+              </Button>
+              <Dropdown
+                trigger="click"
+                position="bottomRight"
+                clickToHide
+                render={(
+                  <Dropdown.Menu>
+                    <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/regions/export', '地区列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
+                    <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/regions/export/csv', '地区列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
+                  </Dropdown.Menu>
+                )}
+              >
+                <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+              </Dropdown>
+            </SplitButtonGroup>
           )}
           {hasPermission('system:region:create') && (
             <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>

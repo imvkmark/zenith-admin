@@ -20,6 +20,7 @@ export default function LoginLogsPage() {
   const [data, setData] = useState<LoginLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
 
@@ -107,7 +108,22 @@ export default function LoginLogsPage() {
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
             重置
           </Button>
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+          <SplitButtonGroup>
+            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              clickToHide
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
+                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/login-logs/export/csv', '登录日志.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+            </Dropdown>
+          </SplitButtonGroup>
       </SearchToolbar>
 
           <LoginLogsTable
