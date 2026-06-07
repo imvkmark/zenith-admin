@@ -75,6 +75,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
               ip,
               browser,
               os,
+              location: null,
               loginAt: new Date(),
             }).catch(() => { /* best-effort, ignore errors */ });
           }

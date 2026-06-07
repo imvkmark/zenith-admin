@@ -140,6 +140,7 @@ export async function handleOAuthCallback(provider: string, code: string, client
     ip: client.ip,
     browser,
     os,
+    location: null,
     loginAt: new Date(),
   });
 
