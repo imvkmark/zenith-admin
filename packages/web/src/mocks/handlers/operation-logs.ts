@@ -81,6 +81,16 @@ export const operationLogsHandlers = [
       count: Math.round(m.count * scale * (0.8 + Math.random() * 0.4)),
     })).sort((a, b) => b.count - a.count);
 
+    const moduleTimingStats = MOCK_MODULE_STATS.map((m) => {
+      const avgMs = Math.round(40 + Math.random() * 200);
+      return {
+        module: m.module,
+        avgMs,
+        maxMs: Math.round(avgMs * (1.5 + Math.random() * 2)),
+        count: Math.round(m.count * scale * (0.8 + Math.random() * 0.4)),
+      };
+    }).sort((a, b) => b.avgMs - a.avgMs).slice(0, 10);
+
     const userStats = MOCK_USER_STATS.map((u) => ({
       username: u.username,
       count: Math.round(u.count * scale * (0.8 + Math.random() * 0.4)),
@@ -113,6 +123,7 @@ export const operationLogsHandlers = [
           uniqueUsers: 5,
         },
         moduleStats,
+        moduleTimingStats,
         dailyStats,
         userStats,
         methodStats,

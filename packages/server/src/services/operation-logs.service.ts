@@ -69,7 +69,8 @@ export async function operationLogStats(daysRaw?: number) {
   const userCount = count();
   const methodCount = count();
   const hourlyCount = count();
-  const [summaryRows, moduleStats, dailyStats, userStats, methodStats, hourlyStats] = await Promise.all([
+  const moduleTimingCount = count();
+  const [summaryRows, moduleStats, moduleTimingStats, dailyStats, userStats, methodStats, hourlyStats] = await Promise.all([
     db.select({
       total: count(),
       successCount: sql<number>`(count(case when ${operationLogs.responseCode} >= 200 and ${operationLogs.responseCode} < 400 then 1 end))::integer`,
@@ -78,6 +79,12 @@ export async function operationLogStats(daysRaw?: number) {
       uniqueUsers: sql<number>`(count(distinct ${operationLogs.userId}))::integer`,
     }).from(operationLogs).where(baseWhere),
     db.select({ module: operationLogs.module, count: moduleCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.module).orderBy(desc(moduleCount)).limit(20),
+    db.select({
+      module: operationLogs.module,
+      avgMs: sql<number>`round(avg(${operationLogs.durationMs}))::integer`,
+      maxMs: sql<number>`max(${operationLogs.durationMs})::integer`,
+      count: moduleTimingCount,
+    }).from(operationLogs).where(and(baseWhere, sql`${operationLogs.durationMs} is not null`)).groupBy(operationLogs.module).orderBy(desc(sql<number>`round(avg(${operationLogs.durationMs}))`)).limit(15),
     db.select({
       date: sql<string>`to_char(date(${operationLogs.createdAt}), 'YYYY-MM-DD')`,
       count: count(),
@@ -102,6 +109,12 @@ export async function operationLogStats(daysRaw?: number) {
       uniqueUsers: Number(s.uniqueUsers),
     },
     moduleStats: moduleStats.map((r) => ({ module: r.module ?? '未知模块', count: r.count })),
+    moduleTimingStats: moduleTimingStats.map((r) => ({
+      module: r.module ?? '未知模块',
+      avgMs: Number(r.avgMs) || 0,
+      maxMs: Number(r.maxMs) || 0,
+      count: r.count,
+    })),
     dailyStats: dailyStats.map((r) => ({
       date: r.date || startDateLabel,
       count: r.count,

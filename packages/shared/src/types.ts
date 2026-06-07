@@ -361,6 +361,7 @@ export interface OperationLogStats {
     uniqueUsers: number;
   };
   moduleStats: { module: string; count: number }[];
+  moduleTimingStats: { module: string; avgMs: number; maxMs: number; count: number }[];
   dailyStats: { date: string; count: number; successCount: number; failCount: number }[];
   userStats: { username: string; count: number }[];
   methodStats: { method: string; count: number }[];

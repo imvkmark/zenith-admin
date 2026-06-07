@@ -83,6 +83,7 @@ export const OperationLogStatsDTO = z
       uniqueUsers: z.number(),
     }),
     moduleStats: z.array(z.object({ module: z.string(), count: z.number() })),
+    moduleTimingStats: z.array(z.object({ module: z.string(), avgMs: z.number(), maxMs: z.number(), count: z.number() })),
     dailyStats: z.array(z.object({ date: z.string(), count: z.number(), successCount: z.number(), failCount: z.number() })),
     userStats: z.array(z.object({ username: z.string(), count: z.number() })),
     methodStats: z.array(z.object({ method: z.string(), count: z.number() })),

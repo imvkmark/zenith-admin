@@ -161,6 +161,7 @@ export default function OperationLogStatsPanel() {
   );
   const moduleChartData = useMemo(() => [...(stats?.moduleStats ?? [])].slice(0, 10).reverse(), [stats]);
   const userChartData = useMemo(() => [...(stats?.userStats ?? [])].reverse(), [stats]);
+  const moduleTimingChartData = useMemo(() => [...(stats?.moduleTimingStats ?? [])].slice(0, 10).reverse(), [stats]);
   const methodChartData = useMemo(
     () => (stats?.methodStats ?? []).map((m) => ({ ...m, fill: METHOD_COLORS[m.method] ?? DEFAULT_METHOD_COLOR })),
     [stats],
@@ -238,6 +239,32 @@ export default function OperationLogStatsPanel() {
               </ResponsiveContainer>
             )}
           </div>
+        </div>
+
+        {/* ── 各模块接口耗时统计 ── */}
+        <div style={{ ...sectionStyle, marginBottom: 16 }}>
+          <div style={sectionTitleStyle}>各模块平均响应时间（取有耗时记录的请求，Top 10）</div>
+          {moduleTimingChartData.length === 0 ? (
+            <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)' }}>暂无耗时数据</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={moduleTimingChartData} layout="vertical" margin={{ left: 4, right: 60, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => `${v}ms`} />
+                <YAxis type="category" dataKey="module" width={88} tick={{ fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(v: unknown, name: string) => [
+                    `${v} ms`,
+                    name === 'avgMs' ? '平均耗时' : '最大耗时',
+                  ]}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value: string) => value === 'avgMs' ? '平均耗时 (ms)' : '最大耗时 (ms)'} />
+                <Bar dataKey="avgMs" name="avgMs" fill="#f59e0b" radius={[0, 3, 3, 0]} />
+                <Bar dataKey="maxMs" name="maxMs" fill="#ef444466" radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* ── HTTP 方法分布 + 小时分布 ── */}
