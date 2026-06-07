@@ -254,10 +254,7 @@ export default function OperationLogStatsPanel() {
                 <YAxis type="category" dataKey="module" width={88} tick={{ fontSize: 12 }} />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  formatter={(v: unknown, name: string) => [
-                    `${v} ms`,
-                    name === 'avgMs' ? '平均耗时' : '最大耗时',
-                  ]}
+                  formatter={(v, name) => [`${v} ms`, name === 'avgMs' ? '平均耗时' : '最大耗时']}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value: string) => value === 'avgMs' ? '平均耗时 (ms)' : '最大耗时 (ms)'} />
                 <Bar dataKey="avgMs" name="avgMs" fill="#f59e0b" radius={[0, 3, 3, 0]} />
