@@ -97,6 +97,7 @@ export default function MaintenancePage() {
       if (res.code === 0) {
         setStatus(res.data);
         Toast.success(enable ? '维护模式已开启' : '维护模式已关闭');
+        globalThis.dispatchEvent(new CustomEvent('maintenance:statusChanged', { detail: res.data }));
       }
     } finally {
       setSubmitting(false);

@@ -385,6 +385,31 @@ export default function AdminLayout({ user, onLogout, presetMenus }: AdminLayout
     return () => globalThis.removeEventListener('maintenance:enabled', handler);
   }, [isSuperAdmin]);
 
+  // 监听维护状态变更（由管理页面或横幅触发）
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ enabled?: boolean; message?: string } | null>).detail;
+      if (detail?.enabled === false) {
+        setMaintenanceBannerEnabled(false);
+      } else if (detail?.enabled === true) {
+        setMaintenanceBannerEnabled(true);
+        setMaintenanceBannerMsg(detail?.message ?? '系统维护中');
+      } else {
+        // no detail — re-fetch
+        request.get<{ enabled: boolean; message: string }>('/api/maintenance/status', { silent: true })
+          .then((res) => {
+            if (res.code === 0) {
+              setMaintenanceBannerEnabled(res.data?.enabled ?? false);
+              if (res.data?.message) setMaintenanceBannerMsg(res.data.message);
+            }
+          });
+      }
+    };
+    globalThis.addEventListener('maintenance:statusChanged', handler);
+    return () => globalThis.removeEventListener('maintenance:statusChanged', handler);
+  }, [isSuperAdmin]);
+
   const handleDisableMaintenance = useCallback(async () => {
     setDisablingMaintenance(true);
     try {
