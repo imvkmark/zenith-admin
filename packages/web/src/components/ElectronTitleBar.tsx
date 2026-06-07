@@ -66,51 +66,39 @@ export default function ElectronTitleBar() {
 
       {/* 窗口控制按钮 */}
       <div
-        style={{
-          display: 'flex',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        WebkitAppRegion: 'no-drag' as any,
-      } as React.CSSProperties}
+        style={{ display: 'flex', WebkitAppRegion: 'no-drag' as any } as React.CSSProperties}
       >
-        {[
-          { icon: <Minus size={12} />, action: api.minimize, label: '最小化', hoverBg: 'var(--semi-color-fill-1)' },
-          {
-            icon: isMaximized ? <Square size={10} /> : <Square size={12} />,
-            action: api.maximize,
-            label: isMaximized ? '还原' : '最大化',
-            hoverBg: 'var(--semi-color-fill-1)',
-          },
-          { icon: <X size={12} />, action: api.close, label: '关闭', hoverBg: '#e81123', hoverColor: '#fff' },
-        ].map(({ icon, action, label, hoverBg, hoverColor }) => (
-          <button
-            key={label}
-            type="button"
-            title={label}
-            onClick={action}
-            style={{
-              width: 46,
-              height: 32,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--semi-color-text-1)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background 0.15s, color 0.15s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = hoverBg;
-              if (hoverColor) e.currentTarget.style.color = hoverColor;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--semi-color-text-1)';
-            }}
-          >
-            {icon}
-          </button>
-        ))}
+        <button
+          type="button"
+          title="最小化"
+          onClick={() => api.minimize()}
+          style={{ width: 46, height: 32, border: 'none', background: 'transparent', color: 'var(--semi-color-text-1)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--semi-color-fill-1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <Minus size={12} />
+        </button>
+        <button
+          type="button"
+          title={isMaximized ? '还原' : '最大化'}
+          onClick={() => api.maximize()}
+          style={{ width: 46, height: 32, border: 'none', background: 'transparent', color: 'var(--semi-color-text-1)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--semi-color-fill-1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <Square size={isMaximized ? 10 : 12} />
+        </button>
+        <button
+          type="button"
+          title="关闭"
+          onClick={() => api.close()}
+          style={{ width: 46, height: 32, border: 'none', background: 'transparent', color: 'var(--semi-color-text-1)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s, color 0.15s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#e81123'; e.currentTarget.style.color = '#fff'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--semi-color-text-1)'; }}
+        >
+          <X size={12} />
+        </button>
       </div>
     </div>
   );
