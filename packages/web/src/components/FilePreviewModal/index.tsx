@@ -48,7 +48,17 @@ export default function FilePreviewModal({
   const [markdownText, setMarkdownText] = useState<string | null>(null);
   const [zipBlob, setZipBlob] = useState<Blob | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  const toggleFullscreen = useCallback(() => setFullscreen(f => !f), []);
+  // sheetKey 用于全屏切换时重建 Univer，sheetTransitioning 显示过渡 spinner
+  const [sheetKey, setSheetKey] = useState(0);
+  const [sheetTransitioning, setSheetTransitioning] = useState(false);
+  const toggleFullscreen = useCallback(() => {
+    setFullscreen(f => !f);
+    setSheetTransitioning(true);
+    setTimeout(() => {
+      setSheetKey(k => k + 1);
+      setSheetTransitioning(false);
+    }, 360);
+  }, []);
   const { isDark } = useThemeController();
   const abortRef = useRef<AbortController | null>(null);
 
@@ -74,6 +84,8 @@ export default function FilePreviewModal({
       setMarkdownText(null);
       setZipBlob(null);
       setFullscreen(false);
+      setSheetKey(0);
+      setSheetTransitioning(false);
       return;
     }
 
@@ -222,7 +234,7 @@ export default function FilePreviewModal({
         fullScreen={fullscreen}
         width="min(1100px, 92vw)"
         style={{ top: '4vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', overflow: 'hidden', height: fullscreen ? '100%' : '88vh' }}
+        bodyStyle={{ padding: 0, display: 'flex', overflow: 'hidden', height: fullscreen ? '100vh' : '88vh' }}
         closable={false}
         keepDOM={false}
       >
@@ -247,7 +259,7 @@ export default function FilePreviewModal({
         fullScreen={fullscreen}
         width="min(1200px, 94vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '90vh' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '90vh' }}
         closable={false}
         keepDOM={false}
       >
@@ -259,7 +271,13 @@ export default function FilePreviewModal({
             </div>
           }
         >
-          <ExcelPreviewPanel data={sheetData} style={{ flex: 1, minHeight: 0 }} />
+          {sheetTransitioning ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+              <Spin size="large" tip="切换中..." />
+            </div>
+          ) : (
+            <ExcelPreviewPanel key={sheetKey} data={sheetData} style={{ flex: 1, minHeight: 0 }} />
+          )}
         </Suspense>
       </Modal>
     );
@@ -275,7 +293,7 @@ export default function FilePreviewModal({
         fullScreen={fullscreen}
         width="min(960px, 92vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '90vh' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '90vh' }}
         closable={false}
         keepDOM={false}
       >
@@ -305,7 +323,7 @@ export default function FilePreviewModal({
         fullScreen={fullscreen}
         width="min(900px, 92vw)"
         style={{ top: '3vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '90vh' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '90vh' }}
         closable={false}
         keepDOM={false}
       >
@@ -337,7 +355,7 @@ export default function FilePreviewModal({
         fullScreen={fullscreen}
         width="min(700px, 92vw)"
         style={{ top: '5vh' }}
-        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100%' : '85vh' }}
+        bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: fullscreen ? '100vh' : '85vh' }}
         closable={false}
         keepDOM={false}
       >
