@@ -116,6 +116,8 @@ export interface Role {
   updatedAt: string;
   menuIds?: number[];
   deptScopeIds?: number[];
+  userCount?: number;
+  userPreview?: Array<{ id: number; nickname: string; avatar?: string | null }>;
 }
 
 // ─── 部门 ─────────────────────────────────────────────────────────────────────

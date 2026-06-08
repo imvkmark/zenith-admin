@@ -4,6 +4,13 @@
 import { z } from '@hono/zod-openapi';
 import { auditFields } from './_audit';
 
+export const RoleUserPreviewDTO = z
+  .object({
+    id: z.number().int(),
+    nickname: z.string(),
+    avatar: z.string().nullable().optional(),
+  });
+
 export const RoleDTO = z
   .object({
     id: z.number().int().openapi({ example: 1 }),
@@ -18,5 +25,7 @@ export const RoleDTO = z
     updatedAt: z.string().openapi({ example: '2026-01-01 00:00:00' }),
     menuIds: z.array(z.number().int()).optional(),
     deptScopeIds: z.array(z.number().int()).optional().openapi({ description: '角色管理范围（部门 id 列表），空表示全员' }),
+    userCount: z.number().int().optional().openapi({ example: 5 }),
+    userPreview: z.array(RoleUserPreviewDTO).optional(),
   })
   .openapi('Role');

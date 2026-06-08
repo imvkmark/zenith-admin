@@ -1,8 +1,8 @@
-import { eq, and, like, or, gte, lte } from 'drizzle-orm';
+import { eq, and, like, or, gte, lte, asc, inArray } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import type { DbTransaction } from '../db/types';
-import { roles, roleMenus, roleDeptScopes, userRoles } from '../db/schema';
+import { roles, roleMenus, roleDeptScopes, userRoles, users } from '../db/schema';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
@@ -54,7 +54,39 @@ export async function listRoles(q: ListRolesQuery) {
     db.$count(roles, finalWhere),
     withPagination(db.select().from(roles).where(finalWhere).orderBy(roles.id).$dynamic(), page, pageSize),
   ]);
-  return { list: list.map((r) => mapRole(r)), total, page, pageSize };
+
+  // Fetch user counts & previews (first 5 per role) for the current page
+  const roleIds = list.map((r) => r.id);
+  const countMap = new Map<number, number>();
+  const previewMap = new Map<number, Array<{ id: number; nickname: string; avatar: string | null }>>();
+  if (roleIds.length > 0) {
+    const rows = await db
+      .select({
+        roleId: userRoles.roleId,
+        id: users.id,
+        nickname: users.nickname,
+        avatar: users.avatar,
+      })
+      .from(userRoles)
+      .innerJoin(users, eq(users.id, userRoles.userId))
+      .where(inArray(userRoles.roleId, roleIds))
+      .orderBy(asc(userRoles.roleId), asc(userRoles.userId));
+
+    for (const row of rows) {
+      countMap.set(row.roleId, (countMap.get(row.roleId) ?? 0) + 1);
+      if (!previewMap.has(row.roleId)) previewMap.set(row.roleId, []);
+      const arr = previewMap.get(row.roleId)!;
+      if (arr.length < 5) arr.push({ id: row.id, nickname: row.nickname, avatar: row.avatar ?? null });
+    }
+  }
+
+  const mappedList = list.map((row) => ({
+    ...mapRole(row),
+    userCount: countMap.get(row.id) ?? 0,
+    userPreview: previewMap.get(row.id) ?? [],
+  }));
+
+  return { list: mappedList, total, page, pageSize };
 }
 
 export async function getRole(id: number) {
