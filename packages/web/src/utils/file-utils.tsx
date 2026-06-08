@@ -75,7 +75,8 @@ export function canPreviewFile(mimeType: string | null | undefined): boolean {
     isSpreadsheetFile(mimeType) ||
     isWordFile(mimeType) ||
     isMarkdownFile(mimeType) ||
-    isPlainTextFile(mimeType)
+    isPlainTextFile(mimeType) ||
+    isZipFile(mimeType)
   );
 }
 
@@ -100,7 +101,16 @@ export function isMarkdownFile(mimeType?: string | null): boolean {
 export function isPlainTextFile(mimeType?: string | null): boolean {
   return mimeType === 'text/plain';
 }
-
+/** 判断是否为可预览的 ZIP 压缩包 */
+export function isZipFile(mimeType?: string | null): boolean {
+  if (!mimeType) return false;
+  const mime = mimeType.toLowerCase();
+  return (
+    mime === 'application/zip' ||
+    mime === 'application/x-zip-compressed' ||
+    mime === 'application/x-zip'
+  );
+}
 /** 使用当前登录 token 获取受保护的文件内容，返回 Blob */
 export async function fetchProtectedFile(url: string): Promise<Blob> {
   const token = localStorage.getItem(TOKEN_KEY);

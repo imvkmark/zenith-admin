@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Modal, Spin, Toast, AudioPlayer, VideoPlayer } from '@douyinfe/semi-ui';
 import { useThemeController } from '@/providers/theme-controller';
-import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile } from '@/utils/file-utils';
+import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile, isZipFile } from '@/utils/file-utils';
 import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
 import { request } from '@/utils/request';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -13,6 +13,8 @@ const ExcelPreviewPanel = lazy(() => import('@/components/ExcelPreviewPanel'));
 const DocxPreviewPanel = lazy(() => import('@/components/DocxPreviewPanel'));
 // react-markdown 懒加载
 const MarkdownPreviewPanel = lazy(() => import('@/components/MarkdownPreviewPanel'));
+// jszip + Semi Tree 懒加载
+const ZipPreviewPanel = lazy(() => import('@/components/ZipPreviewPanel'));
 
 interface FilePreviewModalProps {
   fileUrl: string;
@@ -43,6 +45,7 @@ export default function FilePreviewModal({
   const [sheetData, setSheetData] = useState<IWorkbookData | null>(null);
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null);
   const [markdownText, setMarkdownText] = useState<string | null>(null);
+  const [zipBlob, setZipBlob] = useState<Blob | null>(null);
   const { isDark } = useThemeController();
   const abortRef = useRef<AbortController | null>(null);
 
@@ -66,6 +69,7 @@ export default function FilePreviewModal({
       setSheetData(null);
       setDocxBlob(null);
       setMarkdownText(null);
+      setZipBlob(null);
       return;
     }
 
@@ -82,8 +86,9 @@ export default function FilePreviewModal({
     const isWord = isWordFile(mimeType);
     const isMarkdown = isMarkdownFile(mimeType);
     const isPlainText = isPlainTextFile(mimeType);
+    const isZip = isZipFile(mimeType);
 
-    if (!isImage && !isPdf && !isAudio && !isVideo && !isSpreadsheet && !isWord && !isMarkdown && !isPlainText) {
+    if (!isImage && !isPdf && !isAudio && !isVideo && !isSpreadsheet && !isWord && !isMarkdown && !isPlainText && !isZip) {
       onFallback?.(fileUrl, fileName, mimeType);
       onClose();
       return;
@@ -121,6 +126,10 @@ export default function FilePreviewModal({
           const text = await blob.text();
           // 利用 markdownText 状态传递内容，将 mimeType 作为区分标识由 MarkdownPreviewPanel.rawText 处理
           setMarkdownText(`\u0000PLAINTEXT\u0000${text}`);
+          return;
+        }
+        if (isZip) {
+          setZipBlob(blob);
           return;
         }
         if (isPdf) {
@@ -272,6 +281,32 @@ export default function FilePreviewModal({
             onClose={handleClose}
             rawText={isRawText}
           />
+        </Suspense>
+      </Modal>
+    );
+  }
+
+  if (zipBlob) {
+    return (
+      <Modal
+        visible
+        onCancel={handleClose}
+        title={null}
+        footer={null}
+        width="min(700px, 92vw)"
+        style={{ top: '5vh' }}
+        bodyStyle={{ padding: 0, height: '85vh', display: 'flex', overflow: 'hidden' }}
+        closable={false}
+        keepDOM={false}
+      >
+        <Suspense
+          fallback={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+              <Spin size="large" tip="加载预览组件..." />
+            </div>
+          }
+        >
+          <ZipPreviewPanel blob={zipBlob} fileName={fileName} onClose={handleClose} />
         </Suspense>
       </Modal>
     );
