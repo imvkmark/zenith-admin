@@ -161,8 +161,8 @@ export function UserTransferSelect({
   const filter = (input: string, item: { _username?: string; label?: string; _departmentName?: string | null; [key: string]: unknown }) => {
     const q = input.toLowerCase();
     return (
-      item._username.toLowerCase().includes(q) ||
-      item.label.toLowerCase().includes(q) ||
+      (item._username ?? '').toLowerCase().includes(q) ||
+      (item.label ?? '').toLowerCase().includes(q) ||
       (item._departmentName ?? '').toLowerCase().includes(q)
     );
   };
@@ -290,7 +290,8 @@ export function UserTransferSelect({
         <Transfer
           {...sharedProps}
           dataSource={transferData}
-          filter={filter}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          filter={filter as any}
           renderSourceItem={renderSourceItem as (item: unknown) => React.ReactNode}
         />
       ) : (
