@@ -35,6 +35,7 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import './UsersPage.css';
@@ -844,7 +845,7 @@ export default function UsersPage() {
         style={{ flex: 1, overflow: 'hidden' }}
       />
 
-      <Modal
+      <AppModal
         title={editingUser ? '编辑用户' : '新增用户'}
         visible={modalVisible}
         onCancel={() => {
@@ -977,7 +978,7 @@ export default function UsersPage() {
           </Row>
           </Spin>
         </Form>
-      </Modal>
+      </AppModal>
 
       <Modal
         title={passwordUser ? `修改密码 - ${passwordUser.nickname}` : '修改密码'}

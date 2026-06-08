@@ -1,0 +1,58 @@
+/* AppModal — 带全屏切换的 Modal 封装 */
+
+.app-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.app-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--semi-color-text-0);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* 图标按钮：与 Semi 默认关闭按钮视觉对齐 */
+.app-modal-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--semi-border-radius-small, 3px);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+  padding: 0;
+  transition: background 100ms ease, color 100ms ease;
+  outline: none;
+}
+
+.app-modal-icon-btn:hover {
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-0);
+}
+
+.app-modal-icon-btn:active {
+  background: var(--semi-color-fill-1);
+}
+
+.app-modal-icon-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--semi-color-primary-light-default);
+}
