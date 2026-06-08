@@ -124,7 +124,7 @@ export async function uploadManagedFile(file: File) {
   // 基于 magic bytes 校验真实文件类型
   const validateEnabled = await getConfigBoolean('file_upload_validate_type', true);
   if (validateEnabled) {
-    const allowedTypesRaw = await getConfigValue('file_upload_allowed_types', 'image/*,video/*,audio/*,application/pdf,text/plain,application/zip,application/x-zip-compressed');
+    const allowedTypesRaw = await getConfigValue('file_upload_allowed_types', 'image/*,video/*,audio/*,application/pdf,text/plain,application/zip,application/x-zip-compressed,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/msword,application/vnd.ms-powerpoint');
     const allowedPatterns = allowedTypesRaw.split(',').map(s => s.trim()).filter(Boolean);
     // 只读前 4100 字节用于检测
     const { fileTypeFromBuffer } = await import('file-type');
