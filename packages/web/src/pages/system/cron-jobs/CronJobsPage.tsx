@@ -331,20 +331,20 @@ export default function CronJobsPage() {
     { title: '处理器', dataIndex: 'handler', width: 220, render: renderEllipsis },
     {
       title: '上次执行',
-      width: 175,
+      width: 200,
       render: (_: unknown, record: CronJob) => {
         if (!record.lastRunStatus) return '—';
         return (
-          <div>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
             <Tag color={runStatusColor[record.lastRunStatus] ?? 'grey'} size="small">
               {lastRunStatusLabel[record.lastRunStatus] ?? record.lastRunStatus}
             </Tag>
             {record.lastRunAt && (
-              <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)', marginTop: 2 }}>
+              <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', whiteSpace: 'nowrap' }}>
                 {formatDateTime(record.lastRunAt)}
-              </div>
+              </span>
             )}
-          </div>
+          </span>
         );
       },
     },
