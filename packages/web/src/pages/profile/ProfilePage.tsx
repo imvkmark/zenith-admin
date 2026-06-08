@@ -123,6 +123,11 @@ function SessionList({
 }
 
 export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
+  /** 更新当前用户：同步 App 状态 + dispatch 事件（让 AdminLayout 立即更新头像）*/
+  function applyUserUpdate(updated: Omit<UserType, 'password'>) {
+    onUserUpdate(updated);
+    globalThis.dispatchEvent(new CustomEvent('auth:user-updated', { detail: updated }));
+  }
   const [activeSection, setActiveSection] = useState<SectionKey>('profile');
 
   // ─── 基本信息 ────────────────────────────────────────────────────────────────
@@ -242,7 +247,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     const payload = { ...values, gender: values.gender ?? null };
     const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', payload);
     setProfileLoading(false);
-    if (res.code === 0) { Toast.success('资料已更新'); onUserUpdate(res.data); }
+    if (res.code === 0) { Toast.success('资料已更新'); applyUserUpdate(res.data); }
   }
 
   async function handleChangePassword(values: { oldPassword: string; newPassword: string; confirmPassword: string }) {
@@ -307,7 +312,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
       const uploadedUrl = uploadRes.data?.url;
       if (uploadRes.code === 0 && uploadedUrl) {
         const profileRes = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: uploadedUrl });
-        if (profileRes.code === 0) { onUserUpdate(profileRes.data); Toast.success('头像已更新'); closeCropper(); }
+        if (profileRes.code === 0) { applyUserUpdate(profileRes.data); Toast.success('头像已更新'); closeCropper(); }
         else Toast.error(profileRes.message ?? '头像更新失败');
       } else {
         Toast.error(uploadRes.message ?? '上传失败');
@@ -365,7 +370,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
         setAvatarLoading(true);
         const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: null });
         setAvatarLoading(false);
-        if (res.code === 0) { onUserUpdate(res.data); Toast.success('头像已移除'); }
+        if (res.code === 0) { applyUserUpdate(res.data); Toast.success('头像已移除'); }
         else Toast.error(res.message ?? '移除失败');
       },
     });
@@ -380,7 +385,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
     setPresetModalVisible(false);
     const res = await request.put<Omit<UserType, 'password'>>('/api/auth/profile', { avatar: url });
     setAvatarLoading(false);
-    if (res.code === 0) { onUserUpdate(res.data); Toast.success('头像已更新'); }
+    if (res.code === 0) { applyUserUpdate(res.data); Toast.success('头像已更新'); }
     else Toast.error(res.message ?? '更新失败');
   }
 
