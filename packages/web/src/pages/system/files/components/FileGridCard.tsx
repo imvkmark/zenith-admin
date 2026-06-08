@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Checkbox, Dropdown, Modal, Spin, Tooltip } from '@douyinfe/semi-ui';
 import type { ManagedFile } from '@zenith/shared';
 import { formatDateTime } from '@/utils/date';
-import { formatFileSize, getFileTypeIcon } from '@/utils/file-utils';
+import { formatFileSize, getFileTypeIcon, canPreviewFile } from '@/utils/file-utils';
 import '../FilesPage.css';
 
 export interface FileGridCardProps {
@@ -26,7 +26,7 @@ export function FileGridCard({
 }: Readonly<FileGridCardProps>) {
   const [ctxPos, setCtxPos] = useState<{ x: number; y: number } | null>(null);
   const isImage = file.mimeType?.startsWith('image/');
-  const isPreviewable = isImage || file.mimeType?.startsWith('audio/') || file.mimeType?.startsWith('video/') || file.mimeType === 'application/pdf';
+  const isPreviewable = canPreviewFile(file.mimeType);
   const ext = file.originalName.includes('.') ? file.originalName.split('.').pop()?.toUpperCase() : '';
   return (
     <>
