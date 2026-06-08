@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Modal, Spin, Toast, AudioPlayer, VideoPlayer } from '@douyinfe/semi-ui';
 import { useThemeController } from '@/providers/theme-controller';
-import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile } from '@/utils/file-utils';
+import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile } from '@/utils/file-utils';
 import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
 import { request } from '@/utils/request';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -81,8 +81,9 @@ export default function FilePreviewModal({
     const isSpreadsheet = isSpreadsheetFile(mimeType);
     const isWord = isWordFile(mimeType);
     const isMarkdown = isMarkdownFile(mimeType);
+    const isPlainText = isPlainTextFile(mimeType);
 
-    if (!isImage && !isPdf && !isAudio && !isVideo && !isSpreadsheet && !isWord && !isMarkdown) {
+    if (!isImage && !isPdf && !isAudio && !isVideo && !isSpreadsheet && !isWord && !isMarkdown && !isPlainText) {
       onFallback?.(fileUrl, fileName, mimeType);
       onClose();
       return;
@@ -114,6 +115,12 @@ export default function FilePreviewModal({
         if (isMarkdown) {
           const text = await blob.text();
           setMarkdownText(text);
+          return;
+        }
+        if (isPlainText) {
+          const text = await blob.text();
+          // 利用 markdownText 状态传递内容，将 mimeType 作为区分标识由 MarkdownPreviewPanel.rawText 处理
+          setMarkdownText(`\u0000PLAINTEXT\u0000${text}`);
           return;
         }
         if (isPdf) {
@@ -238,6 +245,8 @@ export default function FilePreviewModal({
   }
 
   if (markdownText !== null) {
+    const isRawText = markdownText.startsWith('\u0000PLAINTEXT\u0000');
+    const displayContent = isRawText ? markdownText.slice('\u0000PLAINTEXT\u0000'.length) : markdownText;
     return (
       <Modal
         visible
@@ -257,7 +266,12 @@ export default function FilePreviewModal({
             </div>
           }
         >
-          <MarkdownPreviewPanel content={markdownText} fileName={fileName} onClose={handleClose} />
+          <MarkdownPreviewPanel
+            content={displayContent}
+            fileName={fileName}
+            onClose={handleClose}
+            rawText={isRawText}
+          />
         </Suspense>
       </Modal>
     );

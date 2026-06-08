@@ -17,6 +17,7 @@
 | Excel | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | Univer 开源版只读渲染（`ExcelPreviewPanel`，懒加载） | **是** |
 | Word | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `docx-preview` 渲染为 HTML（`DocxPreviewPanel`，懒加载） | 否 |
 | Markdown | `text/markdown` / `text/x-markdown` | `react-markdown` 渲染（`MarkdownPreviewPanel`，懒加载） | 否 |
+| 纯文本 | `text/plain` | `<pre>` 原文本展示（复用 `MarkdownPreviewPanel`，`rawText=true`） | 否 |
 
 > **图片**不在 `FilePreviewModal` 内部渲染。遇到 `image/*` 时组件会立即调用 `onClose` 并回退，由调用方自行打开 `ImagePreview`。
 >
@@ -244,6 +245,9 @@ isWordFile(mimeType?: string | null): boolean
 
 /** 判断是否为 Markdown 文件（仅内部使用） */
 isMarkdownFile(mimeType?: string | null): boolean
+
+/** 判断是否为纯文本文件（仅内部使用） */
+isPlainTextFile(mimeType?: string | null): boolean
 ```
 
 ---

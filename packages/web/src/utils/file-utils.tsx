@@ -74,7 +74,8 @@ export function canPreviewFile(mimeType: string | null | undefined): boolean {
     mimeType === 'application/pdf' ||
     isSpreadsheetFile(mimeType) ||
     isWordFile(mimeType) ||
-    isMarkdownFile(mimeType)
+    isMarkdownFile(mimeType) ||
+    isPlainTextFile(mimeType)
   );
 }
 
@@ -91,6 +92,11 @@ export function isWordFile(mimeType?: string | null): boolean {
 /** 判断是否为可预览的 Markdown 文件 */
 export function isMarkdownFile(mimeType?: string | null): boolean {
   return mimeType === 'text/markdown' || mimeType === 'text/x-markdown';
+}
+
+/** 判断是否为可预览的纯文本文件（.txt） */
+export function isPlainTextFile(mimeType?: string | null): boolean {
+  return mimeType === 'text/plain';
 }
 
 /** 使用当前登录 token 获取受保护的文件内容，返回 Blob */
