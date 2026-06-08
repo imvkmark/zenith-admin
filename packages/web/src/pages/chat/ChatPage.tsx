@@ -198,7 +198,7 @@ export default function ChatPage({
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
-  const [filePreview, setFilePreview] = useState<{ url: string; name: string; mimeType: string } | null>(null);
+  const [filePreview, setFilePreview] = useState<{ fileId?: number; url: string; name: string; mimeType: string } | null>(null);
   const previewSessionRef = useRef(0);
   const previewBlobUrlsRef = useRef<string[]>([]);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -569,15 +569,16 @@ export default function ChatPage({
     if (!activeConvId) return false;
     const fd = new FormData();
     fd.append('file', file);
-    const uploadRes = await request.postForm<{ url: string; originalName: string; size: number }>('/api/files/upload-one', fd);
+    const uploadRes = await request.postForm<{ id: number; url: string; originalName: string; size: number }>('/api/files/upload-one', fd);
     if (uploadRes.code !== 0 || !uploadRes.data) return false;
-    const { url, originalName, size } = uploadRes.data;
+    const { id: fileId, url, originalName, size } = uploadRes.data;
     const asset: ChatAssetMeta = {
       kind: 'file',
       name: originalName,
       size,
       mimeType: file.type || null,
       extension: getFileExtension(originalName),
+      fileId,
     };
     const msgRes = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
       content: url,
@@ -2378,6 +2379,7 @@ export default function ChatPage({
                               url: fileMsg.content,
                               name: asset.name ?? '文件',
                               mimeType: asset.mimeType ?? 'application/octet-stream',
+                              fileId: asset.fileId ?? undefined,
                             });
                           }}
                         />
@@ -2644,6 +2646,7 @@ export default function ChatPage({
 
           <FilePreviewModal
             fileUrl={filePreview?.url ?? ''}
+            fileId={filePreview?.fileId}
             fileName={filePreview?.name}
             mimeType={filePreview?.mimeType}
             visible={!!filePreview}

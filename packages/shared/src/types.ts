@@ -1342,6 +1342,8 @@ export interface ChatAssetMeta {
   size: number;
   mimeType: string | null;
   extension: string | null;
+  /** 托管文件 ID，用于服务端预览接口认证（可选，虚拟消息不填） */
+  fileId?: number | null;
   width?: number | null;
   height?: number | null;
   thumbnailUrl?: string | null;
