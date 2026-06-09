@@ -306,26 +306,32 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
-        width: 16,
-        height: 24,
-        borderRadius: 8,
-        border: '1px solid var(--semi-color-border)',
-        background: 'var(--semi-color-bg-2)',
+        width: 20,
+        height: 20,
+        borderRadius: '50%',
+        border: '1px solid transparent',
+        background: 'transparent',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 0,
         zIndex: 10,
-        color: 'var(--semi-color-text-2)',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-        flexShrink: 0,
-        transition: 'background 0.15s, color 0.15s',
+        color: 'var(--semi-color-text-3)',
+        transition: 'background 0.15s, color 0.15s, border-color 0.15s',
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--semi-color-primary-light-default)'; e.currentTarget.style.color = 'var(--semi-color-primary)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--semi-color-bg-2)'; e.currentTarget.style.color = 'var(--semi-color-text-2)'; }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.color = 'var(--semi-color-text-1)';
+        e.currentTarget.style.borderColor = 'transparent';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.color = 'var(--semi-color-text-3)';
+        e.currentTarget.style.borderColor = 'transparent';
+      }}
     >
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {showLeftChevron
           ? <polyline points="15 18 9 12 15 6" />
           : <polyline points="9 18 15 12 9 6" />}
