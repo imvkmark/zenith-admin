@@ -387,8 +387,6 @@ export default function RateLimitPage() {
             allowCreate
             showClear
             searchPosition="dropdown"
-            maxTagCount={5}
-            showRestTagsPopover
             style={{ width: '100%' }}
             optionList={apiPaths}
             virtualize={{ height: 260, width: '100%', itemSize: 36 }}
@@ -439,8 +437,6 @@ export default function RateLimitPage() {
               allowCreate
               showClear
               searchPosition="dropdown"
-              maxTagCount={5}
-              showRestTagsPopover
               style={{ width: '100%' }}
               optionList={apiPaths}
               virtualize={{ height: 260, width: '100%', itemSize: 36 }}
