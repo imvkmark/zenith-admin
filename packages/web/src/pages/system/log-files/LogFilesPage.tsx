@@ -270,7 +270,17 @@ export default function LogFilesPage() {
                   primary={file.name}
                   meta={
                     <>
-                      <Tag color={file.isGzip ? 'grey' : 'blue'} size="small">{file.isGzip ? 'gz' : 'log'}</Tag>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: '1px 4px',
+                        borderRadius: 3,
+                        lineHeight: '14px',
+                        background: file.isGzip ? 'var(--semi-color-fill-2)' : 'var(--semi-color-primary-light-default)',
+                        color: file.isGzip ? 'var(--semi-color-text-2)' : 'var(--semi-color-primary)',
+                      }}>
+                        {file.isGzip ? 'gz' : 'log'}
+                      </span>
                       <span>{formatFileSize(file.size)}</span>
                       <span>{formatDateTime(file.modifiedAt)}</span>
                     </>
