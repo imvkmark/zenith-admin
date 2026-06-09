@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppModal } from '@/components/AppModal';
 import {
   Button,
   Checkbox,
@@ -686,7 +687,7 @@ export default function FilesPage() {
         </Space>
       </div>
 
-      <Modal
+      <AppModal
         title="上传进度"
         visible={uploadProgressVisible}
         onCancel={() => setUploadProgressVisible(false)}
@@ -736,7 +737,7 @@ export default function FilesPage() {
             </div>
           ))}
         </div>
-      </Modal>
+      </AppModal>
 
       <ImagePreview
         src={previewSrcList}
@@ -754,7 +755,7 @@ export default function FilesPage() {
         infinite
       />
 
-      <Modal
+      <AppModal
         title="文件详情"
         visible={!!detailFile}
         onCancel={() => { setDetailFile(null); setDetailFileLoading(false); setImageResolution(null); }}
@@ -785,7 +786,7 @@ export default function FilesPage() {
             />
           )}
         </Spin>
-      </Modal>
+      </AppModal>
 
       <FilePreviewModal
         fileUrl={filePreview?.url ?? ''}
