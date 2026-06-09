@@ -24,7 +24,6 @@ import {
   Button,
   Dropdown,
   Form,
-  Modal,
   Spin,
   Toast,
   Typography,
@@ -561,7 +560,7 @@ export default function WorkflowDesignerPage() {
         </Form>
       </AppModal>
 
-      {/* 节点属性编辑弹窗 */}}
+      {/* 节点属性编辑弹窗 */}
       <AppModal
         title="编辑节点属性"
         visible={nodeEditVisible}
