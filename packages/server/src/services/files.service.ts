@@ -213,6 +213,7 @@ export async function uploadManagedFile(file: File) {
       provider: defaultConfig.provider,
       originalName: file.name,
       objectKey: uploaded.objectKey,
+      bucketName: uploaded.bucketName,
       size: uploaded.size,
       mimeType: uploaded.mimeType,
       extension: uploaded.extension,

@@ -150,6 +150,42 @@ export function buildManagedFileUrl(fileId: number) {
   return `/api/files/${fileId}/content`;
 }
 
+/**
+ * 从存储配置中提取 bucket/容器 标识，上传时快照到 managed_files，
+ * 防止后续修改配置中的 bucket 导致旧文件无法访问。
+ * local / sftp 不使用 bucket 概念，返回 null。
+ */
+function extractBucketName(config: FileStorageConfigRow): string | null {
+  switch (config.provider) {
+    case 'oss': return config.ossBucket ?? null;
+    case 's3': return config.s3Bucket ?? null;
+    case 'cos': return config.cosBucket ?? null;
+    case 'obs': return config.obsBucket ?? null;
+    case 'kodo': return config.kodoBucket ?? null;
+    case 'bos': return config.bosBucket ?? null;
+    case 'azure': return config.azureContainerName ?? null;
+    default: return null;
+  }
+}
+
+/**
+ * 用文件记录中快照的 bucketName 覆盖 config 里对应 provider 的 bucket 字段，
+ * 返回一个不影响原 config 的浅拷贝。对 local / sftp 或无快照的旧记录直接返回原 config。
+ */
+function withFileBucket(file: { bucketName?: string | null; provider: string }, config: FileStorageConfigRow): FileStorageConfigRow {
+  if (!file.bucketName) return config;
+  switch (config.provider) {
+    case 'oss': return { ...config, ossBucket: file.bucketName };
+    case 's3': return { ...config, s3Bucket: file.bucketName };
+    case 'cos': return { ...config, cosBucket: file.bucketName };
+    case 'obs': return { ...config, obsBucket: file.bucketName };
+    case 'kodo': return { ...config, kodoBucket: file.bucketName };
+    case 'bos': return { ...config, bosBucket: file.bucketName };
+    case 'azure': return { ...config, azureContainerName: file.bucketName };
+    default: return config;
+  }
+}
+
 /** 将 Web API ReadableStream 转换为 Node.js Readable，绕过 DOM/Node 类型不兼容问题 */
 function toNodeReadable(stream: ReadableStream<Uint8Array>): Readable {
   return Readable.fromWeb(stream as unknown as Parameters<typeof Readable.fromWeb>[0]);
@@ -238,31 +274,33 @@ export async function uploadFileByConfig(config: FileStorageConfigRow, file: Fil
     throw new Error(`不支持的存储类型: ${config.provider}`);
   }
 
-  return { objectKey, size, mimeType, extension };
+  const bucketName = extractBucketName(config);
+  return { objectKey, size, mimeType, extension, bucketName };
 }
 
 export async function readStoredFile(file: ManagedFileRow, config: FileStorageConfigRow) {
+  const effectiveConfig = withFileBucket(file, config);
   const contentType = file.mimeType ?? 'application/octet-stream';
   const fileName = file.originalName;
 
-  if (config.provider === 'local') {
-    const filePath = path.join(resolveLocalRoot(config), ...file.objectKey.split('/'));
+  if (effectiveConfig.provider === 'local') {
+    const filePath = path.join(resolveLocalRoot(effectiveConfig), ...file.objectKey.split('/'));
     const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 'oss') {
-    const client = createOssClient(config);
+  if (effectiveConfig.provider === 'oss') {
+    const client = createOssClient(effectiveConfig);
     // ali-oss getStream 返回 Node.js Readable，直接转为 Web ReadableStream
     const { stream: nodeStream } = await client.getStream(file.objectKey);
     const stream = Readable.toWeb(nodeStream as import('node:stream').Readable) as ReadableStream<Uint8Array>;
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 's3') {
-    const client = createS3Client(config);
+  if (effectiveConfig.provider === 's3') {
+    const client = createS3Client(effectiveConfig);
     const response = await client.send(new GetObjectCommand({
-      Bucket: config.s3Bucket!,
+      Bucket: effectiveConfig.s3Bucket!,
       Key: file.objectKey,
     }));
     // AWS SDK v3 Body.transformToWebStream() 直接返回 Web ReadableStream
@@ -270,13 +308,13 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 'cos') {
+  if (effectiveConfig.provider === 'cos') {
     // COS SDK 不提供原生流式 API，将 buffer 包装为 ReadableStream 以统一接口
-    const cos = createCosClient(config);
+    const cos = createCosClient(effectiveConfig);
     const buffer = await new Promise<Buffer>((resolve, reject) => {
       cos.getObject({
-        Bucket: config.cosBucket!,
-        Region: config.cosRegion!,
+        Bucket: effectiveConfig.cosBucket!,
+        Region: effectiveConfig.cosRegion!,
         Key: file.objectKey,
       }, (err, data) => {
         if (err) reject(new Error(String(err.message ?? err)));
@@ -292,10 +330,10 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 'obs') {
-    const obs = createObsClient(config);
+  if (effectiveConfig.provider === 'obs') {
+    const obs = createObsClient(effectiveConfig);
     const buffer = await new Promise<Buffer>((resolve, reject) => {
-      obs.getObject({ Bucket: config.obsBucket!, Key: file.objectKey }, (err, result) => {
+      obs.getObject({ Bucket: effectiveConfig.obsBucket!, Key: file.objectKey }, (err, result) => {
         if (err) reject(new Error(String((err as { message?: string }).message ?? JSON.stringify(err))));
         else {
           const body = result?.Body?.Content;
@@ -307,9 +345,9 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 'kodo') {
-    const { mac, conf } = createKodoUploader(config);
-    const domain = config.kodoEndpoint ?? '';
+  if (effectiveConfig.provider === 'kodo') {
+    const { mac, conf } = createKodoUploader(effectiveConfig);
+    const domain = effectiveConfig.kodoEndpoint ?? '';
     const bucketManager = new qiniu.rs.BucketManager(mac, conf);
     const privateUrl = bucketManager.privateDownloadUrl(domain, file.objectKey, Math.floor(Date.now() / 1000) + 3600);
     const response = await fetch(privateUrl);
@@ -317,16 +355,16 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 'bos') {
-    const bosClient = createBosClient(config);
-    const result = await bosClient.getObject(config.bosBucket!, file.objectKey);
+  if (effectiveConfig.provider === 'bos') {
+    const bosClient = createBosClient(effectiveConfig);
+    const result = await bosClient.getObject(effectiveConfig.bosBucket!, file.objectKey);
     const buffer = Buffer.from(result.body, 'binary');
     const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new Uint8Array(buffer)); controller.close(); } });
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 'azure') {
-    const containerClient = createAzureBlobClient(config);
+  if (effectiveConfig.provider === 'azure') {
+    const containerClient = createAzureBlobClient(effectiveConfig);
     const blockBlobClient = containerClient.getBlockBlobClient(file.objectKey);
     const response = await blockBlobClient.download();
     const nodeStream = response.readableStreamBody as import('node:stream').Readable;
@@ -334,21 +372,22 @@ export async function readStoredFile(file: ManagedFileRow, config: FileStorageCo
     return { stream, contentType, fileName };
   }
 
-  if (config.provider === 'sftp') {
-    const buffer = await sftpOperation(config, async (client) => {
-      const remotePath = [config.sftpRootPath?.replace(/\/+$/, ''), ...file.objectKey.split('/')].filter(Boolean).join('/');
+  if (effectiveConfig.provider === 'sftp') {
+    const buffer = await sftpOperation(effectiveConfig, async (client) => {
+      const remotePath = [effectiveConfig.sftpRootPath?.replace(/\/+$/, ''), ...file.objectKey.split('/')].filter(Boolean).join('/');
       return client.get(remotePath) as Promise<Buffer>;
     });
     const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new Uint8Array(buffer)); controller.close(); } });
     return { stream, contentType, fileName };
   }
 
-  throw new Error(`不支持的存储类型: ${config.provider}`);
+  throw new Error(`不支持的存储类型: ${effectiveConfig.provider}`);
 }
 
 export async function deleteStoredFile(file: ManagedFileRow, config: FileStorageConfigRow) {
-  if (config.provider === 'local') {
-    const filePath = path.join(resolveLocalRoot(config), ...file.objectKey.split('/'));
+  const effectiveConfig = withFileBucket(file, config);
+  if (effectiveConfig.provider === 'local') {
+    const filePath = path.join(resolveLocalRoot(effectiveConfig), ...file.objectKey.split('/'));
     try {
       await fs.unlink(filePath);
     } catch (error: unknown) {
@@ -357,27 +396,27 @@ export async function deleteStoredFile(file: ManagedFileRow, config: FileStorage
     return;
   }
 
-  if (config.provider === 'oss') {
-    const client = createOssClient(config);
+  if (effectiveConfig.provider === 'oss') {
+    const client = createOssClient(effectiveConfig);
     await client.delete(file.objectKey);
     return;
   }
 
-  if (config.provider === 's3') {
-    const client = createS3Client(config);
+  if (effectiveConfig.provider === 's3') {
+    const client = createS3Client(effectiveConfig);
     await client.send(new DeleteObjectCommand({
-      Bucket: config.s3Bucket!,
+      Bucket: effectiveConfig.s3Bucket!,
       Key: file.objectKey,
     }));
     return;
   }
 
-  if (config.provider === 'cos') {
-    const cos = createCosClient(config);
+  if (effectiveConfig.provider === 'cos') {
+    const cos = createCosClient(effectiveConfig);
     await new Promise<void>((resolve, reject) => {
       cos.deleteObject({
-        Bucket: config.cosBucket!,
-        Region: config.cosRegion!,
+        Bucket: effectiveConfig.cosBucket!,
+        Region: effectiveConfig.cosRegion!,
         Key: file.objectKey,
       }, (err) => {
         if (err) reject(new Error(String(err.message ?? err)));
@@ -387,10 +426,10 @@ export async function deleteStoredFile(file: ManagedFileRow, config: FileStorage
     return;
   }
 
-  if (config.provider === 'obs') {
-    const obs = createObsClient(config);
+  if (effectiveConfig.provider === 'obs') {
+    const obs = createObsClient(effectiveConfig);
     await new Promise<void>((resolve, reject) => {
-      obs.deleteObject({ Bucket: config.obsBucket!, Key: file.objectKey }, (err) => {
+      obs.deleteObject({ Bucket: effectiveConfig.obsBucket!, Key: file.objectKey }, (err) => {
         if (err) reject(new Error(String((err as { message?: string }).message ?? JSON.stringify(err))));
         else resolve();
       });
@@ -398,11 +437,11 @@ export async function deleteStoredFile(file: ManagedFileRow, config: FileStorage
     return;
   }
 
-  if (config.provider === 'kodo') {
-    const { mac, conf } = createKodoUploader(config);
+  if (effectiveConfig.provider === 'kodo') {
+    const { mac, conf } = createKodoUploader(effectiveConfig);
     const bucketManager = new qiniu.rs.BucketManager(mac, conf);
     await new Promise<void>((resolve, reject) => {
-      bucketManager.delete(config.kodoBucket!, file.objectKey, (err) => {
+      bucketManager.delete(effectiveConfig.kodoBucket!, file.objectKey, (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -410,25 +449,25 @@ export async function deleteStoredFile(file: ManagedFileRow, config: FileStorage
     return;
   }
 
-  if (config.provider === 'bos') {
-    const bosClient = createBosClient(config);
-    await bosClient.deleteObject(config.bosBucket!, file.objectKey);
+  if (effectiveConfig.provider === 'bos') {
+    const bosClient = createBosClient(effectiveConfig);
+    await bosClient.deleteObject(effectiveConfig.bosBucket!, file.objectKey);
     return;
   }
 
-  if (config.provider === 'azure') {
-    const containerClient = createAzureBlobClient(config);
+  if (effectiveConfig.provider === 'azure') {
+    const containerClient = createAzureBlobClient(effectiveConfig);
     await containerClient.deleteBlob(file.objectKey);
     return;
   }
 
-  if (config.provider === 'sftp') {
-    await sftpOperation(config, async (client) => {
-      const remotePath = [config.sftpRootPath?.replace(/\/+$/, ''), ...file.objectKey.split('/')].filter(Boolean).join('/');
+  if (effectiveConfig.provider === 'sftp') {
+    await sftpOperation(effectiveConfig, async (client) => {
+      const remotePath = [effectiveConfig.sftpRootPath?.replace(/\/+$/, ''), ...file.objectKey.split('/')].filter(Boolean).join('/');
       await client.delete(remotePath, true);
     });
     return;
   }
 
-  throw new Error(`不支持的存储类型: ${config.provider}`);
+  throw new Error(`不支持的存储类型: ${effectiveConfig.provider}`);
 }

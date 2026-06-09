@@ -319,6 +319,7 @@ export const managedFiles = pgTable('managed_files', {
   provider: fileStorageProviderEnum('provider').notNull(),
   originalName: varchar('original_name', { length: 256 }).notNull(),
   objectKey: varchar('object_key', { length: 512 }).notNull(),
+  bucketName: varchar('bucket_name', { length: 256 }),
   size: integer('size').notNull().default(0),
   mimeType: varchar('mime_type', { length: 128 }),
   extension: varchar('extension', { length: 32 }),
