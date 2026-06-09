@@ -980,7 +980,7 @@ export default function UsersPage() {
         </Form>
       </AppModal>
 
-      <Modal
+      <AppModal
         title={passwordUser ? `修改密码 - ${passwordUser.nickname}` : '修改密码'}
         visible={passwordModalVisible}
         onCancel={() => {
@@ -1014,9 +1014,9 @@ export default function UsersPage() {
             rules={[{ required: true, message: '请确认新密码' }]}
           />
         </Form>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         title="批量导入用户"
         visible={importModalVisible}
         onCancel={() => setImportModalVisible(false)}
@@ -1074,10 +1074,10 @@ export default function UsersPage() {
             </Upload>
           </div>
         )}
-      </Modal>
+      </AppModal>
 
       {/* 批量修改密码 */}
-      <Modal
+      <AppModal
         title={`批量修改密码（共 ${selectedNonAdminIds.length} 个用户）`}
         visible={batchPasswordModalVisible}
         onCancel={() => { setBatchPasswordModalVisible(false); batchPasswordFormApi.current?.setValues({ password: '', confirmPassword: '' }); }}
@@ -1123,7 +1123,7 @@ export default function UsersPage() {
             rules={[{ required: true, message: '请确认密码' }]}
           />
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* 管理头像 */}
       {avatarUser && (
@@ -1161,7 +1161,7 @@ export default function UsersPage() {
       )}
 
       {/* 分配角色 */}
-      <Modal
+      <AppModal
         title={`分配角色——${roleAssignUser?.nickname || roleAssignUser?.username || ''}`}
         visible={roleAssignVisible}
         onCancel={() => setRoleAssignVisible(false)}
@@ -1196,7 +1196,7 @@ export default function UsersPage() {
           optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
           placeholder="请选择要分配的角色"
         />
-      </Modal>
+      </AppModal>
     </div>
   );
 }

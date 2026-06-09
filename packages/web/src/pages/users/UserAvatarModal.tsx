@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import {
   Modal, Button, Space, Spin, Cropper, Toast,
 } from '@douyinfe/semi-ui';
+import { AppModal } from '@/components/AppModal';
 import { RotateCcw, RotateCw } from 'lucide-react';
 import type { User } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -139,7 +140,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
   return (
     <>
       {/* 主弹窗 */}
-      <Modal
+      <AppModal
         title={`管理头像 — ${user.nickname || user.username}`}
         visible={visible}
         onCancel={onClose}
@@ -198,10 +199,10 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
             onChange={handleAvatarFileSelect}
           />
         </div>
-      </Modal>
+      </AppModal>
 
       {/* 预设头像 Modal */}
-      <Modal
+      <AppModal
         title="选择预设头像"
         visible={presetVisible}
         onCancel={() => setPresetVisible(false)}
@@ -228,10 +229,10 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
             </button>
           ))}
         </div>
-      </Modal>
+      </AppModal>
 
       {/* 裁剪 Modal */}
-      <Modal
+      <AppModal
         title="裁剪头像"
         visible={cropperVisible}
         onCancel={closeCropper}
@@ -260,7 +261,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
           <Button icon={<RotateCcw size={14} />} size="small" theme="borderless" onClick={() => void handleCropRotate(-90)}>向左旋转</Button>
           <Button icon={<RotateCw size={14} />} size="small" theme="borderless" onClick={() => void handleCropRotate(90)}>向右旋转</Button>
         </div>
-      </Modal>
+      </AppModal>
     </>
   );
 }
