@@ -11,6 +11,7 @@ import {
   listRuleConfigs,
   refreshRateLimitRules,
   unblockRateLimitKey,
+  PREDEFINED_NAMES,
   type RuleConfig,
 } from '../middleware/rate-limit';
 
@@ -63,6 +64,16 @@ export interface UpdateRateLimitRuleInput {
   blockedMessage?: string | null;
 }
 
+export interface CreateRateLimitRuleInput {
+  name: string;
+  description?: string | null;
+  windowMs: number;
+  limit: number;
+  keyType: 'ip' | 'user' | 'ip_path';
+  enabled: boolean;
+  blockedMessage?: string | null;
+}
+
 export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRuleInput) {
   const [row] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
   if (!row) throw new HTTPException(404, { message: '规则不存在' });
@@ -80,6 +91,34 @@ export async function updateRateLimitRule(id: number, patch: UpdateRateLimitRule
   await refreshRateLimitRules();
   const [updated] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
   return mapRule(updated);
+}
+
+export async function createRateLimitRule(input: CreateRateLimitRuleInput) {
+  const [existing] = await db.select({ id: rateLimitRules.id }).from(rateLimitRules).where(eq(rateLimitRules.name, input.name));
+  if (existing) throw new HTTPException(400, { message: `规则名称 "${input.name}" 已存在` });
+  const [row] = await db
+    .insert(rateLimitRules)
+    .values({
+      name: input.name,
+      description: input.description ?? null,
+      windowMs: input.windowMs,
+      limit: input.limit,
+      keyType: input.keyType,
+      enabled: input.enabled,
+      blockedMessage: input.blockedMessage ?? null,
+    })
+    .returning();
+  await refreshRateLimitRules();
+  return mapRule(row);
+}
+
+export async function deleteRateLimitRule(id: number) {
+  const [row] = await db.select().from(rateLimitRules).where(eq(rateLimitRules.id, id));
+  if (!row) throw new HTTPException(404, { message: '规则不存在' });
+  if (PREDEFINED_NAMES.has(row.name)) throw new HTTPException(400, { message: '内置规则不可删除' });
+  await db.delete(rateLimitRules).where(eq(rateLimitRules.id, id));
+  await refreshRateLimitRules();
+  return { deleted: true };
 }
 
 async function readNumber(key: string): Promise<number> {

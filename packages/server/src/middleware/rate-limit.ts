@@ -159,6 +159,14 @@ export const authRateLimit: MiddlewareHandler = makeNamed('auth');
 export const captchaRateLimit: MiddlewareHandler = makeNamed('captcha');
 export const sensitiveRateLimit: MiddlewareHandler = makeNamed('sensitive');
 
+/** 内置规则名称集合（不可删除） */
+export const PREDEFINED_NAMES = new Set(['auth', 'captcha', 'sensitive']);
+
+/** 通过规则名称动态应用限流（支持自定义规则） */
+export function namedRateLimit(name: string): MiddlewareHandler {
+  return makeNamed(name as RateLimitName);
+}
+
 /** 从数据库加载规则到内存缓存并重建限流器 */
 export async function refreshRateLimitRules(): Promise<void> {
   try {

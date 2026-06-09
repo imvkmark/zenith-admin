@@ -11,7 +11,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Gauge, Lock, RotateCcw, ShieldOff, Unlock, Zap } from 'lucide-react';
+import { Gauge, Lock, Plus, RotateCcw, ShieldOff, Unlock, Zap } from 'lucide-react';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -30,13 +30,15 @@ import {
 
 const { Title, Text } = Typography;
 
+type RateLimitKeyType = 'ip' | 'user' | 'ip_path';
+
 interface RateLimitRule {
   id: number;
   name: string;
   description: string | null;
   windowMs: number;
   limit: number;
-  keyType: 'ip' | 'user' | 'ip_path';
+  keyType: RateLimitKeyType;
   enabled: boolean;
   blockedMessage: string | null;
   createdAt: string;
@@ -48,7 +50,6 @@ interface RecentBlock {
   key: string;
   path: string;
 }
-
 interface RateLimitStatItem {
   name: string;
   description: string | null;
@@ -70,10 +71,22 @@ interface RateLimitStats {
 interface UpdateForm {
   windowMs: number;
   limit: number;
-  keyType: 'ip' | 'user' | 'ip_path';
+  keyType: RateLimitKeyType;
   enabled: boolean;
   blockedMessage: string | null;
 }
+
+interface CreateForm {
+  name: string;
+  description: string | null;
+  windowMs: number;
+  limit: number;
+  keyType: RateLimitKeyType;
+  enabled: boolean;
+  blockedMessage: string | null;
+}
+
+const PREDEFINED_NAMES = new Set(['auth', 'captcha', 'sensitive']);
 
 const KEY_TYPE_OPTIONS = [
   { label: 'IP 地址', value: 'ip' },
@@ -98,7 +111,9 @@ export default function RateLimitPage() {
   const [stats, setStats] = useState<RateLimitStats>({ items: [] });
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<RateLimitRule | null>(null);
+  const [creating, setCreating] = useState(false);
   const [formApi, setFormApi] = useState<FormApi<UpdateForm> | null>(null);
+  const [createFormApi, setCreateFormApi] = useState<FormApi<CreateForm> | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -116,6 +131,12 @@ export default function RateLimitPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // 自动刷新统计（30s）
+  useEffect(() => {
+    const timer = setInterval(() => { fetchData(); }, 30 * 1000);
+    return () => clearInterval(timer);
+  }, [fetchData]);
+
   const handleSave = async () => {
     if (!editing || !formApi) return;
     try {
@@ -127,6 +148,27 @@ export default function RateLimitPage() {
         await fetchData();
       }
     } catch { /* validation error */ }
+  };
+
+  const handleCreate = async () => {
+    if (!createFormApi) return;
+    try {
+      const values = await createFormApi.validate();
+      const res = await request.post<RateLimitRule>('/api/rate-limit/rules', values);
+      if (res.code === 0) {
+        Toast.success('规则已创建');
+        setCreating(false);
+        await fetchData();
+      }
+    } catch { /* validation error */ }
+  };
+
+  const handleDelete = async (id: number) => {
+    const res = await request.delete<null>(`/api/rate-limit/rules/${id}`);
+    if (res.code === 0) {
+      Toast.success('已删除');
+      await fetchData();
+    }
   };
 
   const handleUnblock = async (name: string, key: string) => {
@@ -151,8 +193,13 @@ export default function RateLimitPage() {
     <div className="page-container">
       <SearchToolbar>
         <Text type="tertiary" style={{ fontSize: 13 }}>
-          管理 API 接口限流规则，保存后立即热更新到运行中的服务，无需重启。
+          管理 API 接口限流规则，保存后立即热更新到运行中的服务，无需重启。统计每 30 秒自动刷新。
         </Text>
+        {canManage && (
+          <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreating(true)}>
+            新增规则
+          </Button>
+        )}
         <Button type="primary" icon={<RotateCcw size={14} />} onClick={fetchData} loading={loading}>
           刷新
         </Button>
@@ -181,6 +228,11 @@ export default function RateLimitPage() {
                 canManage && (
                   <Space>
                     <Button size="small" theme="borderless" onClick={() => setEditing(rule)}>编辑</Button>
+                    {!PREDEFINED_NAMES.has(rule.name) && (
+                      <Popconfirm title="确定删除该自定义规则？" onConfirm={() => handleDelete(rule.id)}>
+                        <Button size="small" theme="borderless" type="danger">删除</Button>
+                      </Popconfirm>
+                    )}
                     <Popconfirm title="确定清空该规则的统计计数器？" onConfirm={() => handleResetStats(rule.name)}>
                       <Button size="small" theme="borderless" type="danger">重置统计</Button>
                     </Popconfirm>
@@ -279,6 +331,40 @@ export default function RateLimitPage() {
           },
         ]}
       />
+
+      <AppModal
+        title="新增限流规则"
+        visible={creating}
+        onCancel={() => setCreating(false)}
+        onOk={handleCreate}
+        okText="创建（立即生效）"
+        cancelText="取消"
+        width={520}
+      >
+        <Form<CreateForm>
+          getFormApi={setCreateFormApi}
+          allowEmpty
+          initValues={{ name: '', description: null, keyType: 'ip', enabled: true, windowMs: 60000, limit: 30, blockedMessage: null }}
+          labelPosition="left"
+          labelWidth={110}
+        >
+          <Form.Input
+            field="name"
+            label="规则名称"
+            placeholder="小写字母/数字/下划线/连字符，如 upload"
+            rules={[
+              { required: true, message: '请输入规则名称' },
+              { pattern: /^[a-z][a-z0-9_-]*$/, message: '只能小写字母、数字、下划线、连字符，且以字母开头' },
+            ]}
+          />
+          <Form.Input field="description" label="描述" placeholder="可选" />
+          <Form.Switch field="enabled" label="启用" />
+          <Form.InputNumber field="windowMs" label="时间窗口(ms)" min={1000} step={1000} style={{ width: '100%' }} rules={[{ required: true }]} />
+          <Form.InputNumber field="limit" label="窗口内上限" min={1} style={{ width: '100%' }} rules={[{ required: true }]} />
+          <Form.Select field="keyType" label="计数维度" optionList={KEY_TYPE_OPTIONS} style={{ width: '100%' }} />
+          <Form.Input field="blockedMessage" label="拦截提示文案" placeholder="为空使用默认提示" />
+        </Form>
+      </AppModal>
 
       <AppModal
         title={editing ? `编辑限流规则：${editing.name}` : ''}

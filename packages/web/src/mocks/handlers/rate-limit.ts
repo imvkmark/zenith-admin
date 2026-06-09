@@ -45,6 +45,26 @@ export const rateLimitHandlers = [
     return HttpResponse.json({ code: 0, message: '规则已更新', data: rules[idx] });
   }),
 
+  http.post('/api/rate-limit/rules', async ({ request }) => {
+    const body = await request.json() as Omit<MockRule, 'id' | 'createdAt' | 'updatedAt'>;
+    const existing = rules.find((r) => r.name === body.name);
+    if (existing) return HttpResponse.json({ code: 400, message: `规则名称 "${body.name}" 已存在`, data: null }, { status: 400 });
+    const newRule: MockRule = { ...body, id: rules.length + 1, createdAt: mockDateTime(), updatedAt: mockDateTime() };
+    rules.push(newRule);
+    return HttpResponse.json({ code: 0, message: '规则已创建', data: newRule });
+  }),
+
+  http.delete('/api/rate-limit/rules/:id', ({ params }) => {
+    const id = Number(params.id);
+    const idx = rules.findIndex((r) => r.id === id);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '规则不存在', data: null }, { status: 404 });
+    if (['auth', 'captcha', 'sensitive'].includes(rules[idx].name)) {
+      return HttpResponse.json({ code: 400, message: '内置规则不可删除', data: null }, { status: 400 });
+    }
+    rules.splice(idx, 1);
+    return HttpResponse.json({ code: 0, message: '规则已删除', data: null });
+  }),
+
   http.get('/api/rate-limit/stats', () => {
     const items = rules.map((r) => {
       const s = stats[r.name as keyof typeof stats] ?? { hit: 0, blocked: 0, recent: [] };

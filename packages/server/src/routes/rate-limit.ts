@@ -14,6 +14,8 @@ import { RateLimitRuleDTO, RateLimitStatsDTO } from '../lib/openapi-dtos';
 import {
   listRateLimitRules,
   updateRateLimitRule,
+  createRateLimitRule,
+  deleteRateLimitRule,
   getRateLimitStats,
   unblockRateLimit,
   resetRateLimitStats,
@@ -28,6 +30,16 @@ const UpdateRuleBody = z.object({
   enabled: z.boolean().optional(),
   description: z.string().nullable().optional(),
   blockedMessage: z.string().nullable().optional(),
+});
+
+const CreateRuleBody = z.object({
+  name: z.string().min(1).max(64).regex(/^[a-z][a-z0-9_-]*$/, '规则名称只能包含小写字母、数字、下划线和连字符'),
+  description: z.string().max(255).nullable().optional(),
+  windowMs: z.number().int().min(1000),
+  limit: z.number().int().min(1),
+  keyType: z.enum(['ip', 'user', 'ip_path']),
+  enabled: z.boolean(),
+  blockedMessage: z.string().max(255).nullable().optional(),
 });
 
 const UnblockBody = z.object({
@@ -52,6 +64,23 @@ const listRules = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await listRateLimitRules()), 200),
 });
 
+const createRule = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/rules',
+    tags: ['RateLimit'],
+    summary: '新增自定义限流规则',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:rate-limit:manage' })] as const,
+    request: { body: { content: jsonContent(CreateRuleBody), required: true } },
+    responses: { ...commonErrorResponses, ...ok(RateLimitRuleDTO, '新增的规则') },
+  }),
+  handler: async (c) => {
+    const body = c.req.valid('json');
+    return c.json(okBody(await createRateLimitRule(body), '规则已创建'), 200);
+  },
+});
+
 const patchRule = defineOpenAPIRoute({
   route: createRoute({
     method: 'patch',
@@ -67,6 +96,24 @@ const patchRule = defineOpenAPIRoute({
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
     return c.json(okBody(await updateRateLimitRule(id, patch), '规则已更新'), 200);
+  },
+});
+
+const deleteRule = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete',
+    path: '/rules/{id}',
+    tags: ['RateLimit'],
+    summary: '删除自定义限流规则（内置规则不可删除）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:rate-limit:manage' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await deleteRateLimitRule(id);
+    return c.json(okBody(null, '规则已删除'), 200);
   },
 });
 
@@ -119,6 +166,6 @@ const resetStats = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRules, patchRule, getStats, unblock, resetStats] as const);
+router.openapiRoutes([listRules, createRule, patchRule, deleteRule, getStats, unblock, resetStats] as const);
 
 export default router;
