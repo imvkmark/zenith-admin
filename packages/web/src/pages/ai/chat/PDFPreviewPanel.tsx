@@ -2,11 +2,19 @@ import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { PDFViewer, ZoomMode } from '@embedpdf/react-pdf-viewer';
 import type { PDFViewerRef, PluginRegistry } from '@embedpdf/react-pdf-viewer';
+// 本地加载 PDFium WASM：经 npm 安装，dev 与生产构建均由 Vite 处理为本地资源，
+// 避免运行时从 jsDelivr CDN 拉取 pdfium.wasm。
+import pdfiumWasmUrl from '@embedpdf/pdfium/pdfium.wasm?url';
 import { Button, Select, Typography } from '@douyinfe/semi-ui';
 import { FileText, Maximize2, Minimize2, X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
 
 const { Text } = Typography;
+
+// Vite 的 `?url` 在 dev 下返回根相对路径（如 /@fs/...），生产构建下返回带 base 前缀的
+// 资源路径。EmbedPDF 会在一个 blob: URL 的 Web Worker 内 fetch 该地址，而 blob: 基址
+// 无法解析根相对/相对路径，因此必须转换为带 origin 的绝对 URL（dev 与生产均适用）。
+const pdfiumWasmAbsUrl = new URL(pdfiumWasmUrl, globalThis.location.origin).href;
 
 type ZoomLevel = ZoomMode | number;
 
@@ -204,10 +212,15 @@ export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen,
           onReady={handleReady}
           config={{
             theme: themeConfig,
+            // 本地 npm 资源（绝对 URL），替代默认的 jsDelivr CDN wasm
+            wasmUrl: pdfiumWasmAbsUrl,
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             i18n: { defaultLocale: 'zh-CN' },
             tabBar: 'never',
             disabledCategories: ['annotation', 'form', 'redaction', 'insert', 'signature'],
+            // 只读预览不使用印章/批注，禁用默认印章清单，避免从 jsDelivr CDN
+            // 拉取 default-stamps 的 manifest.json 与 stamps.pdf。
+            stamp: { manifests: [] },
           }}
           style={{ width: '100%', height: '100%' }}
         />

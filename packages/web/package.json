@@ -17,7 +17,8 @@
   "dependencies": {
     "@douyinfe/semi-illustrations": "^2.99.3",
     "@douyinfe/semi-ui": "^2.99.3",
-    "@embedpdf/react-pdf-viewer": "^2.14.3",
+    "@embedpdf/pdfium": "^2.14.4",
+    "@embedpdf/react-pdf-viewer": "^2.14.4",
     "@emoji-mart/data": "^1.2.1",
     "@emoji-mart/react": "^1.1.1",
     "@iconify/react": "^6.0.2",
