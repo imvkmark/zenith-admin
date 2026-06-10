@@ -305,7 +305,13 @@ export default function AIChatPage() {
     []
   );
 
-  const dialogueRenderConfig = useMemo(() => ({}), []);
+  const dialogueRenderConfig = useMemo(() => ({
+    // 隐藏分享按钮：从默认操作栏中排除 shareNode
+    renderDialogueAction: (props: { defaultActionsObj?: Record<string, React.ReactNode>; className: string }) => {
+      const { shareNode: _, ...rest } = props.defaultActionsObj ?? {};
+      return <div className={props.className}>{Object.values(rest)}</div>;
+    },
+  }), []);
 
   const renderDialogueContentItem = useMemo(() => ({
     pdf_card: (item: Record<string, unknown>) => renderPdfCardItem(item, setPdfFile),
