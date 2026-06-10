@@ -436,6 +436,27 @@ export default function AIChatPage() {
     );
   }, []);
 
+  /** 重新生成：删除最后一条 assistant 消息，找到前一条 user 消息重发 */
+  const handleRegenerate = useCallback(async (msg: Message) => {
+    if (generating || !activeConvId) return;
+    const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
+
+    // 从当前 messages 里找到这条 assistant 的前一条 user 消息
+    const curMessages = messages;
+    const idx = curMessages.findIndex((m) => m.id === msg.id);
+    const prevUserMsg = idx > 0 ? curMessages.slice(0, idx).reverse().find((m) => m.role === 'user') : null;
+    const userText = typeof prevUserMsg?.content === 'string' ? prevUserMsg.content : null;
+    if (!userText) { Toast.warning('找不到对应的用户消息，无法重新生成'); return; }
+
+    // 乐观删除 UI 里的 assistant 消息（Semi 的 resetMessage 已处理，但这里确保 DB 同步）
+    if (dbId) {
+      await request.delete(`/api/ai/conversations/${activeConvId}/messages/${dbId}`).catch(() => {});
+    }
+    // 去掉最后这条 assistant 消息后重发
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    void handleMessageSend({ text: userText });
+  }, [generating, activeConvId, messages, handleMessageSend]);
+
   const handleNewConversation = async () => {
     try {
       const res = await request.post<AiConversation>('/api/ai/conversations', { title: '新对话' });
@@ -613,7 +634,7 @@ export default function AIChatPage() {
                     void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1 })
                       .then(() => Toast.info('感谢您的反馈，我们会持续改进'));
                   }}
-                  onMessageReset={() => Toast.info('重新生成功能暂不支持')}
+                  onMessageReset={(msg) => msg && void handleRegenerate(msg)}
                   onFileClick={(fileItem) => {
                     const fi = fileItem?.fileInstance;
                     if (fi instanceof File) setPdfFile(fi);

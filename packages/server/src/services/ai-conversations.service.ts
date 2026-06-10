@@ -120,6 +120,21 @@ export async function getHistoryMessages(conversationId: number, limit = 20) {
 }
 
 /**
+ * 删除指定消息（用于重新生成：删除最后的 assistant 消息后重发）。
+ * 只允许删除 assistant 消息；会话所有者限制。
+ */
+export async function deleteMessage(conversationId: number, messageId: number) {
+  await ensureConversationOwner(conversationId);
+  const [msg] = await db
+    .select()
+    .from(aiMessages)
+    .where(and(eq(aiMessages.id, messageId), eq(aiMessages.conversationId, conversationId)));
+  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  if (msg.role !== 'assistant') throw new HTTPException(400, { message: '只能删除 AI 回复消息' });
+  await db.delete(aiMessages).where(eq(aiMessages.id, messageId));
+}
+
+/**
  * 给 assistant 消息提交用户反馈（点赞 +1 / 点踩 -1 / 撤销 null）。
  * 只允许对 assistant 消息打分；会话所有者限制。
  */

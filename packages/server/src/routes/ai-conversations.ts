@@ -20,6 +20,7 @@ import {
   listMessages,
   submitMessageFeedback,
   listFeedbackMessages,
+  deleteMessage,
 } from '../services/ai-conversations.service';
 import { createAiConversationSchema } from '@zenith/shared';
 import { guard } from '../middleware/guard';
@@ -151,6 +152,24 @@ const adminFeedbackList = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, create, getOne, remove, getMessages, submitFeedback, adminFeedbackList] as const);
+const deleteMsg = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete',
+    path: '/{id}/messages/{msgId}',
+    tags: ['AI'],
+    summary: '删除 assistant 消息（用于重新生成）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: z.object({ id: z.coerce.number(), msgId: z.coerce.number() }) },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  handler: async (c) => {
+    const { id, msgId } = c.req.valid('param');
+    await deleteMessage(id, msgId);
+    return c.json(okBody(null, '删除成功'), 200);
+  },
+});
+
+router.openapiRoutes([list, create, getOne, remove, getMessages, submitFeedback, deleteMsg, adminFeedbackList] as const);
 
 export default router;
