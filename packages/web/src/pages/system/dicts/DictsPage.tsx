@@ -399,7 +399,11 @@ export default function DictsPage() {
         onClick={() => selectDict(dict)}
         primary={dict.name}
         secondary={dict.code}
-        meta={formatDateTime(dict.createdAt)}
+        meta={dict.status === 'disabled'
+          ? <><Tag size="small" color="grey">停用</Tag>{formatDateTime(dict.createdAt)}</>
+          : formatDateTime(dict.createdAt)
+        }
+        style={dict.status === 'disabled' ? { opacity: 0.55 } : undefined}
         extra={
           <Dropdown
             trigger="click"
