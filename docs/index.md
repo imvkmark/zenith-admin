@@ -1,7 +1,3 @@
-<script setup>
-import { withBase } from 'vitepress'
-</script>
-
 ---
 layout: home
 title: Zenith Admin
@@ -34,6 +30,10 @@ features:
   - title: 个性化与 PWA
     details: 偏好设置（拼音搜索）、菜单收藏与最近访问、19 种主题色、路由动画、灰色/色弱模式；可选 PWA 支持（添加到主屏幕，离线静态资源缓存）。
 ---
+
+<script setup>
+import { withBase } from 'vitepress'
+</script>
 
 <section class="zn-section">
   <h2 class="zn-title">技术选型</h2>
