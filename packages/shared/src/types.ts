@@ -295,6 +295,10 @@ export interface FileStats {
     totalSize: number;
     imageCount: number;
     docCount: number;
+    videoCount: number;
+    audioCount: number;
+    todayCount: number;
+    thisMonthCount: number;
   };
   typeStats: { type: string; label: string; count: number; size: number }[];
   providerStats: { provider: string; count: number; size: number }[];

@@ -448,6 +448,10 @@ export async function getFileStats() {
       totalSize: sql<number>`CAST(COALESCE(SUM(${managedFiles.size}), 0) AS bigint)`,
       imageCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.mimeType} LIKE 'image/%') AS int)`,
       docCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.mimeType} LIKE 'text/%' OR ${managedFiles.mimeType} LIKE 'application/pdf%' OR ${managedFiles.mimeType} LIKE '%msword%' OR ${managedFiles.mimeType} LIKE '%wordprocessingml%' OR ${managedFiles.mimeType} LIKE '%spreadsheetml%' OR ${managedFiles.mimeType} LIKE '%presentationml%') AS int)`,
+      videoCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.mimeType} LIKE 'video/%') AS int)`,
+      audioCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.mimeType} LIKE 'audio/%') AS int)`,
+      todayCount: sql<number>`CAST(COUNT(*) FILTER (WHERE DATE(${managedFiles.createdAt}) = CURRENT_DATE) AS int)`,
+      thisMonthCount: sql<number>`CAST(COUNT(*) FILTER (WHERE DATE_TRUNC('month', ${managedFiles.createdAt}) = DATE_TRUNC('month', CURRENT_DATE)) AS int)`,
     }).from(managedFiles).where(tc),
 
     // 全量文件（用于按类型/provider/大小分区统计）
@@ -523,9 +527,9 @@ export async function getFileStats() {
     : [];
   const userMap = new Map(uploaderUsers.map((u) => [u.id, u.nickname || u.username]));
 
-  const s = summary[0] ?? { totalFiles: 0, totalSize: 0, imageCount: 0, docCount: 0 };
+  const s = summary[0] ?? { totalFiles: 0, totalSize: 0, imageCount: 0, docCount: 0, videoCount: 0, audioCount: 0, todayCount: 0, thisMonthCount: 0 };
   return {
-    summary: { totalFiles: Number(s.totalFiles), totalSize: Number(s.totalSize), imageCount: Number(s.imageCount), docCount: Number(s.docCount) },
+    summary: { totalFiles: Number(s.totalFiles), totalSize: Number(s.totalSize), imageCount: Number(s.imageCount), docCount: Number(s.docCount), videoCount: Number(s.videoCount), audioCount: Number(s.audioCount), todayCount: Number(s.todayCount), thisMonthCount: Number(s.thisMonthCount) },
     typeStats: Object.entries(typeMap).map(([type, v]) => ({ type, label: v.label, count: v.count, size: v.size })),
     providerStats: Object.entries(providerMap).map(([provider, v]) => ({ provider, count: v.count, size: v.size })).sort((a, b) => b.count - a.count),
     monthlyStats: monthlyRows.map((r) => ({ month: r.month, count: Number(r.count) })),

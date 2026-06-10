@@ -109,22 +109,22 @@ export default function FileStatsPanel() {
           </Col>
           <Col xs={24} sm={12} xl={6}>
             <StatCard
-              title="图片数量"
-              value={summary?.imageCount == null ? '—' : summary.imageCount.toLocaleString()}
-              sub={totalFiles > 0 && summary ? `占 ${((summary.imageCount / totalFiles) * 100).toFixed(1)}%` : undefined}
+              title="今日新增"
+              value={summary?.todayCount == null ? '—' : summary.todayCount.toLocaleString()}
+              sub="今日共上传"
             />
           </Col>
           <Col xs={24} sm={12} xl={6}>
             <StatCard
-              title="文档数量"
-              value={summary?.docCount == null ? '—' : summary.docCount.toLocaleString()}
-              sub={totalFiles > 0 && summary ? `占 ${((summary.docCount / totalFiles) * 100).toFixed(1)}%` : undefined}
+              title="本月新增"
+              value={summary?.thisMonthCount == null ? '—' : summary.thisMonthCount.toLocaleString()}
+              sub="本月共上传"
             />
           </Col>
         </Row>
 
         {/* 文件类型卡片 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           {FILE_TYPE_CONFIG.map(({ type, label, Icon, color, bgColor }) => {
             const stat = stats?.typeStats.find(t => t.type === type);
             const count = stat?.count ?? 0;
