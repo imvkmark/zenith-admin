@@ -4,6 +4,33 @@
 
 ---
 
+## v0.52.0 - 2026-06-10
+
+### Changed
+
+#### UI 布局对齐优化
+
+- **智能对话页**：右侧 detail 区域重构为 `MasterDetailLayout.Header` + `MasterDetailLayout.Body` 结构，与字典管理页保持一致的实现方式，左右顶部分割线完美对齐
+- **消息中心页**：左右两侧 header 均改用 `MasterDetailLayout.Header`，body 区域改用 `MasterDetailLayout.Body`；右侧头像统一调整为 `size={24}`，确保高度与左侧等高（44px 像素级对齐）
+
+#### 数据库管理页优化
+
+- **表浏览左侧列表**：表格项从双行（名称+大小独占一行）改为单行显示（`tableName · size`），列表更紧凑；Schema 折叠面板内容区域 padding 清零，减少折叠标题与表格项的间距
+
+#### 字典管理页优化
+
+- **禁用字典标识**：左侧字典列表中，禁用状态的字典项 meta 行右侧显示"停用"标签，并降低整体 opacity 至 0.55，区分度更高
+
+### Fixed
+
+- **依赖冲突**：将 `@hono/node-server` 版本从 `^2.0.4` 回退至 `^1.19.14`，解决与 `@hono/node-ws@1.3.1`（peer dependency 要求 `^1.x`）的版本冲突
+
+### Dependencies
+
+- 更新 `@douyinfe/semi-ui`、`@douyinfe/semi-illustrations`、`dompurify`、`@types/react`、`typescript-eslint`、`electron`、`electron-builder`、`zod` 等依赖至最新版本
+
+---
+
 ## v0.51.0 - 2026-06-10
 
 ### Added
