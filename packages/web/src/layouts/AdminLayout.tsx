@@ -1838,6 +1838,12 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                 </RadioGroup>
               </div>
               )}
+              {!isDark && matchesPref(['顶部栏深色', '深色', '深色模式', '顶部栏', '顶部导航']) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>顶部栏深色模式</span>
+                <Switch checked={preferences.headerDarkMode ?? false} onChange={(v) => setPreferences({ headerDarkMode: v })} />
+              </div>
+              )}
               {!isDark && matchesPref(['侧边栏深色', '深色', '深色模式', '侧边栏']) && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>侧边栏深色模式</span>
@@ -1857,12 +1863,6 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                   value={preferences.sidebarWidth ?? 216}
                   onChange={(v) => setPreferences({ sidebarWidth: Number(v) || 216 })}
                 />
-              </div>
-              )}
-              {!isDark && matchesPref(['顶部栏深色', '深色', '深色模式', '顶部栏', '顶部导航']) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>顶部栏深色模式</span>
-                <Switch checked={preferences.headerDarkMode ?? false} onChange={(v) => setPreferences({ headerDarkMode: v })} />
               </div>
               )}
 
