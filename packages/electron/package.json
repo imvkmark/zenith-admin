@@ -81,9 +81,9 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.3",
-    "electron": "42.3.3",
-    "electron-builder": "^26.15.0",
+    "electron": "42.4.0",
+    "electron-builder": "^26.15.2",
     "typescript": "^6.0.3",
-    "wait-on": "^8.0.3"
+    "wait-on": "^9.0.10"
   }
 }
