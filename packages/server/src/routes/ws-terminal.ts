@@ -1,12 +1,49 @@
 import { Hono } from 'hono';
 import type { UpgradeWebSocket } from 'hono/ws';
 import * as os from 'node:os';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as inspector from 'node:inspector';
 import * as pty from 'node-pty';
 import { verifyToken } from '../lib/jwt';
 import type { JwtPayload } from '../middleware/auth';
 import { isTokenBlacklisted } from '../lib/session-manager';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
+
+/** 终端 shell 类型 */
+type ShellType = 'powershell' | 'cmd' | 'bash';
+
+/**
+ * 根据前端选择的 shell 类型解析实际可执行文件与启动参数。
+ * - Windows：powershell.exe / cmd.exe / Git Bash（自动探测安装路径）
+ * - 其他平台：bash 或 $SHELL
+ */
+function resolveShell(type: string | undefined): { file: string; args: string[] } {
+  if (os.platform() === 'win32') {
+    switch (type as ShellType) {
+      case 'cmd':
+        return { file: process.env.COMSPEC ?? 'cmd.exe', args: [] };
+      case 'bash': {
+        const candidates = [
+          process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'Git', 'bin', 'bash.exe'),
+          process.env['ProgramFiles(x86)'] && path.join(process.env['ProgramFiles(x86)'], 'Git', 'bin', 'bash.exe'),
+          process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe'),
+        ].filter((p): p is string => Boolean(p));
+        const bash = candidates.find((p) => {
+          try { return fs.existsSync(p); } catch { return false; }
+        });
+        // 找到 Git Bash 用 login + interactive；否则回退 PowerShell
+        if (bash) return { file: bash, args: ['--login', '-i'] };
+        return { file: 'powershell.exe', args: [] };
+      }
+      case 'powershell':
+      default:
+        return { file: 'powershell.exe', args: [] };
+    }
+  }
+  if (type === 'bash') return { file: '/bin/bash', args: [] };
+  return { file: process.env.SHELL ?? '/bin/bash', args: [] };
+}
 
 /**
  * Web 终端 WebSocket 路由
@@ -22,6 +59,7 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {
     '/',
     upgradeWebSocket(async (c) => {
       const token = c.req.query('token');
+      const shellType = c.req.query('shell');
       let payload: JwtPayload | null = null;
 
       if (token) {
@@ -82,14 +120,11 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {
             return;
           }
 
-          // 启动 pty 进程
-          const shell =
-            os.platform() === 'win32'
-              ? (process.env.COMSPEC ?? 'powershell.exe')
-              : (process.env.SHELL ?? '/bin/bash');
+          // 启动 pty 进程（按前端选择的 shell 类型解析可执行文件）
+          const { file: shellFile, args: shellArgs } = resolveShell(shellType);
 
           try {
-            ptyProcess = pty.spawn(shell, [], {
+            ptyProcess = pty.spawn(shellFile, shellArgs, {
               name: 'xterm-256color',
               cols: 80,
               rows: 24,

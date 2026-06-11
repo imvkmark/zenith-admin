@@ -1,13 +1,21 @@
 import { useState, useCallback } from 'react';
-import { Button, Tabs, Typography, Space } from '@douyinfe/semi-ui';
-import { Plus, TerminalSquare } from 'lucide-react';
-import TerminalTab from './TerminalTab';
+import { Button, Tabs, Typography, Space, Dropdown } from '@douyinfe/semi-ui';
+import { Plus, TerminalSquare, ChevronDown } from 'lucide-react';
+import TerminalTab, { type ShellType } from './TerminalTab';
+import { useThemeController } from '@/providers/theme-controller';
 
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
+
+const SHELL_LABELS: Record<ShellType, string> = {
+  powershell: 'PowerShell',
+  cmd: 'Command Prompt',
+  bash: 'Git Bash',
+};
 
 interface Session {
   id: string;
   title: string;
+  shell: ShellType;
 }
 
 let sessionCounter = 1;
@@ -33,15 +41,16 @@ function DemoNotice() {
 }
 
 export default function TerminalPage() {
+  const { isDark } = useThemeController();
   const [sessions, setSessions] = useState<Session[]>([
-    { id: String(sessionCounter), title: 'Terminal 1' },
+    { id: String(sessionCounter), title: SHELL_LABELS.powershell, shell: 'powershell' },
   ]);
   const [activeId, setActiveId] = useState(String(sessionCounter));
 
-  const addSession = useCallback(() => {
+  const addSession = useCallback((shell: ShellType) => {
     sessionCounter += 1;
     const id = String(sessionCounter);
-    setSessions((prev) => [...prev, { id, title: `Terminal ${prev.length + 1}` }]);
+    setSessions((prev) => [...prev, { id, title: SHELL_LABELS[shell], shell }]);
     setActiveId(id);
   }, []);
 
@@ -52,7 +61,7 @@ export default function TerminalPage() {
         sessionCounter += 1;
         const newId = String(sessionCounter);
         setActiveId(newId);
-        return [{ id: newId, title: 'Terminal 1' }];
+        return [{ id: newId, title: SHELL_LABELS.powershell, shell: 'powershell' }];
       }
       return next;
     });
@@ -66,16 +75,35 @@ export default function TerminalPage() {
 
   if (IS_DEMO) return <DemoNotice />;
 
+  const shellMenu = (
+    <Dropdown.Menu>
+      {(Object.keys(SHELL_LABELS) as ShellType[]).map((sh) => (
+        <Dropdown.Item key={sh} onClick={() => addSession(sh)}>
+          {SHELL_LABELS[sh]}
+        </Dropdown.Item>
+      ))}
+    </Dropdown.Menu>
+  );
+
   const tabBarExtra = (
-    <Space style={{ paddingRight: 8 }}>
+    <Space spacing={2} style={{ paddingRight: 8 }}>
       <Button
         icon={<Plus size={13} />}
         size="small"
         theme="borderless"
         type="tertiary"
-        onClick={addSession}
-        title="新建终端"
+        onClick={() => addSession('powershell')}
+        title="新建终端（PowerShell）"
       />
+      <Dropdown trigger="click" position="bottomRight" render={shellMenu}>
+        <Button
+          icon={<ChevronDown size={13} />}
+          size="small"
+          theme="borderless"
+          type="tertiary"
+          title="选择 Shell 类型"
+        />
+      </Dropdown>
     </Space>
   );
 
@@ -85,7 +113,7 @@ export default function TerminalPage() {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#1e1e2e',
+        background: isDark ? '#1e1e2e' : '#ffffff',
         overflow: 'hidden',
       }}
     >
@@ -97,8 +125,8 @@ export default function TerminalPage() {
         style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
         contentStyle={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: 0 }}
         tabBarStyle={{
-          background: '#181825',
-          borderBottom: '1px solid #313244',
+          background: isDark ? '#181825' : '#f3f3f3',
+          borderBottom: `1px solid ${isDark ? '#313244' : '#e0e0e0'}`,
           padding: '0 8px',
           margin: 0,
           flexShrink: 0,
@@ -120,6 +148,7 @@ export default function TerminalPage() {
               <TerminalTab
                 sessionId={s.id}
                 active={activeId === s.id}
+                shell={s.shell}
               />
             </div>
           </Tabs.TabPane>

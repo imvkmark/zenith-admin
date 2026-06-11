@@ -1,30 +1,74 @@
 import { useEffect, useRef } from 'react';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
+import { useThemeController } from '@/providers/theme-controller';
 import '@xterm/xterm/css/xterm.css';
+
+export type ShellType = 'powershell' | 'cmd' | 'bash';
 
 interface TerminalTabProps {
   readonly sessionId: string;
   readonly active: boolean;
+  readonly shell: ShellType;
 }
 
-function buildWsUrl(): string {
+// 深色主题（Catppuccin Mocha）
+const DARK_THEME: ITheme = {
+  background: '#1e1e2e',
+  foreground: '#cdd6f4',
+  cursor: '#f5e0dc',
+  selectionBackground: '#45475a',
+  black: '#45475a',
+  red: '#f38ba8',
+  green: '#a6e3a1',
+  yellow: '#f9e2af',
+  blue: '#89b4fa',
+  magenta: '#cba6f7',
+  cyan: '#94e2d5',
+  white: '#bac2de',
+};
+
+// 浅色主题（VS Code Light 风格）
+const LIGHT_THEME: ITheme = {
+  background: '#ffffff',
+  foreground: '#383a42',
+  cursor: '#000000',
+  selectionBackground: '#add6ff',
+  black: '#000000',
+  red: '#cd3131',
+  green: '#00bc00',
+  yellow: '#949800',
+  blue: '#0451a5',
+  magenta: '#bc05bc',
+  cyan: '#0598bc',
+  white: '#555555',
+};
+
+function getTheme(isDark: boolean): ITheme {
+  return isDark ? DARK_THEME : LIGHT_THEME;
+}
+
+function buildWsUrl(shell: ShellType): string {
   const token = localStorage.getItem(TOKEN_KEY) ?? '';
   let wsBase = config.wsBaseUrl;
   if (!wsBase) {
     const base = config.apiBaseUrl || location.origin;
     wsBase = base.replace(/^http/, 'ws');
   }
-  return `${wsBase}/api/ws/terminal?token=${encodeURIComponent(token)}`;
+  return `${wsBase}/api/ws/terminal?token=${encodeURIComponent(token)}&shell=${encodeURIComponent(shell)}`;
 }
 
-export default function TerminalTab({ sessionId, active }: TerminalTabProps) {
+export default function TerminalTab({ sessionId, active, shell }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const termRef = useRef<Terminal | null>(null);
+  const { isDark } = useThemeController();
+  // 用 ref 持有最新 isDark，供仅在 mount 时执行的初始化闭包读取
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
 
   // 初始化 xterm + WebSocket（仅在 mount 时执行一次）
   useEffect(() => {
@@ -32,20 +76,7 @@ export default function TerminalTab({ sessionId, active }: TerminalTabProps) {
     if (!container) return;
 
     const term = new Terminal({
-      theme: {
-        background: '#1e1e2e',
-        foreground: '#cdd6f4',
-        cursor: '#f5e0dc',
-        selectionBackground: '#45475a',
-        black: '#45475a',
-        red: '#f38ba8',
-        green: '#a6e3a1',
-        yellow: '#f9e2af',
-        blue: '#89b4fa',
-        magenta: '#cba6f7',
-        cyan: '#94e2d5',
-        white: '#bac2de',
-      },
+      theme: getTheme(isDarkRef.current),
       fontFamily: '"Cascadia Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
       fontSize: 14,
       lineHeight: 1.2,
@@ -65,7 +96,7 @@ export default function TerminalTab({ sessionId, active }: TerminalTabProps) {
     fitRef.current = fitAddon;
 
     // 建立 WebSocket 连接
-    const ws = new WebSocket(buildWsUrl());
+    const ws = new WebSocket(buildWsUrl(shell));
 
     ws.onopen = () => {
       // 连接后立即同步当前终端大小
@@ -138,6 +169,13 @@ export default function TerminalTab({ sessionId, active }: TerminalTabProps) {
       return () => clearTimeout(timer);
     }
   }, [active]);
+
+  // 明暗模式切换时更新终端配色（不重建终端，保留会话内容）
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = getTheme(isDark);
+    }
+  }, [isDark]);
 
   return (
     <div
