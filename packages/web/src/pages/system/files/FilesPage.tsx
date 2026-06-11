@@ -21,7 +21,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Plus, Search, RotateCcw, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List as ListIcon, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Search, RotateCcw, Trash2, FolderDown, MoreHorizontal, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, X } from 'lucide-react';
 import type { FileStorageConfig, ManagedFile, PaginatedResponse } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -840,11 +840,12 @@ export default function FilesPage() {
                 {selectedRowKeys.length > 0 && (
                   <Button
                     size="small"
-                    theme="borderless"
+                    theme="light"
                     type="tertiary"
+                    icon={<X size={12} />}
                     onClick={() => setSelectedRowKeys([])}
                   >
-                    取消全部选择（{selectedRowKeys.length}）
+                    已选 {selectedRowKeys.length} 项，取消选择
                   </Button>
                 )}
               </div>
