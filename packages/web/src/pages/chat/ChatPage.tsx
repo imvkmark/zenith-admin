@@ -2625,9 +2625,9 @@ export default function ChatPage({
                               key={item.id}
                               style={{ padding: '8px 10px', background: 'var(--semi-color-bg-2)', border: '1px solid var(--semi-color-border)', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
                                 <span style={{ fontSize: 22, flexShrink: 0 }}>{getFileTypeIcon(asset?.name ?? '')}</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden' }}>
                                   <Text strong style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {asset?.name ?? '未知文件'}
                                   </Text>
@@ -2635,24 +2635,26 @@ export default function ChatPage({
                                     {asset?.size ? formatFileSize(asset.size) : ''}
                                   </Text>
                                 </div>
-                                {canPreviewFile(asset?.mimeType) && (
+                                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                                  {canPreviewFile(asset?.mimeType) && (
+                                    <Button
+                                      size="small"
+                                      theme="borderless"
+                                      type="tertiary"
+                                      icon={<Eye size={14} />}
+                                      title="预览"
+                                      onClick={() => { handleMediaFilePreview(item); }}
+                                    />
+                                  )}
                                   <Button
                                     size="small"
                                     theme="borderless"
-                                    type="tertiary"
-                                    icon={<Eye size={14} />}
-                                    title="预览"
-                                    onClick={() => { handleMediaFilePreview(item); }}
+                                    type="primary"
+                                    icon={<Download size={14} />}
+                                    title="下载"
+                                    onClick={() => { window.open(item.content, '_blank'); }}
                                   />
-                                )}
-                                <Button
-                                  size="small"
-                                  theme="borderless"
-                                  type="primary"
-                                  icon={<Download size={14} />}
-                                  title="下载"
-                                  onClick={() => { window.open(item.content, '_blank'); }}
-                                />
+                                </div>
                               </div>
                             </SemiList.Item>
                           );
