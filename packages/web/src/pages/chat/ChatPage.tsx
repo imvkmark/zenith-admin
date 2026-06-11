@@ -957,22 +957,14 @@ export default function ChatPage({
     setForwardViewVisible(true);
   }, []);
 
-  const handleDeleteSingle = useCallback((msg: ChatMessage) => {
-    Modal.confirm({
-      title: '删除这条消息？',
-      content: '删除后仅对自己隐藏，不影响其他人。',
-      okButtonProps: { type: 'danger', theme: 'solid' },
-      okText: '删除',
-      onOk: async () => {
-        const res = await request.post('/api/chat/messages/batch-delete', { messageIds: [msg.id] });
-        if ((res as { code: number }).code === 0) {
-          setMessages(removeMessageById(msg.id));
-          Toast.success('已删除');
-        } else {
-          Toast.error((res as { message?: string }).message ?? '删除失败');
-        }
-      },
-    });
+  const handleDeleteSingle = useCallback(async (msg: ChatMessage) => {
+    const res = await request.post('/api/chat/messages/batch-delete', { messageIds: [msg.id] });
+    if ((res as { code: number }).code === 0) {
+      setMessages(removeMessageById(msg.id));
+      Toast.success('已删除');
+    } else {
+      Toast.error((res as { message?: string }).message ?? '删除失败');
+    }
   }, []);
 
   const handleDeleteSelected = useCallback(async () => {

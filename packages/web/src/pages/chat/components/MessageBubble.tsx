@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Toast, Tooltip, Dropdown, Typography } from '@douyinfe/semi-ui';
+import { Button, Toast, Tooltip, Dropdown, Typography, Popconfirm } from '@douyinfe/semi-ui';
 import {
   CornerDownLeft, RotateCcw, Copy, Bookmark, Pin, Trash2, Forward, CheckSquare, Square, Download, Pencil, Check, X as XIcon,
 } from 'lucide-react';
@@ -65,6 +65,7 @@ export function MessageBubble({
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [deleteConfirmPos, setDeleteConfirmPos] = useState<{ x: number; y: number } | null>(null);
   const [inlineEditing, setInlineEditing] = useState(false);
   const [inlineEditContent, setInlineEditContent] = useState('');
   const inlineEditRef = useRef<HTMLTextAreaElement>(null);
@@ -584,7 +585,11 @@ export function MessageBubble({
                   <Dropdown.Item
                     icon={<Trash2 size={12} />}
                     type="danger"
-                    onClick={() => { onDeleteMessage?.(msg); setContextMenuPos(null); }}
+                    onClick={() => {
+                      const pos = contextMenuPos;
+                      setContextMenuPos(null);
+                      if (pos) setDeleteConfirmPos(pos);
+                    }}
                   >
                     删除
                   </Dropdown.Item>
@@ -618,6 +623,18 @@ export function MessageBubble({
               }}
             />
           </Dropdown>
+        )}
+        {deleteConfirmPos && (
+          <Popconfirm
+            title="确定要删除这条消息吗？"
+            content="删除后不可恢复"
+            trigger="custom"
+            visible={Boolean(deleteConfirmPos)}
+            onConfirm={() => { onDeleteMessage?.(msg); setDeleteConfirmPos(null); }}
+            onCancel={() => setDeleteConfirmPos(null)}
+          >
+            <span style={{ position: 'fixed', left: deleteConfirmPos.x, top: deleteConfirmPos.y, pointerEvents: 'none', width: 1, height: 1 }} />
+          </Popconfirm>
         )}
       </div>
     </div>
