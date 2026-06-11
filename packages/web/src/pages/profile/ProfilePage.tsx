@@ -55,7 +55,7 @@ function createRotatedImage(file: File, angleDeg: number): Promise<string> {
   });
 }
 
-type SectionKey = 'profile' | 'security' | 'devices' | 'logs' | 'api-tokens';
+type SectionKey = 'profile' | 'security' | 'devices' | 'login' | 'operation' | 'api-tokens';
 
 interface ProfilePageProps {
   readonly user: Omit<UserType, 'password'>;
@@ -158,7 +158,7 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   const [kickOthersLoading, setKickOthersLoading] = useState(false);
 
   // ─── 操作日志 ────────────────────────────────────────────────────────────────
-  const [logTab, setLogTab] = useState<'login' | 'operation'>('login');
+
   const [logsLoaded, setLogsLoaded] = useState(false);
   const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
   const [loginLogsLoading, setLoginLogsLoading] = useState(false);
@@ -188,15 +188,18 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
   useEffect(() => {
     if (activeSection === 'security' && !oauthLoaded) void fetchOauthAccounts();
     if (activeSection === 'devices') void fetchSessions();
-    if (activeSection === 'logs' && !logsLoaded) { void fetchLoginLogs(1); setLogsLoaded(true); }
+    if ((activeSection === 'login' || activeSection === 'operation') && !logsLoaded) {
+      void fetchLoginLogs(1);
+      void fetchOperationLogs(1);
+      setLogsLoaded(true);
+    }
     if (activeSection === 'api-tokens') void fetchApiTokens();
   }, [activeSection, oauthLoaded, logsLoaded]);
 
   useEffect(() => {
-    if (activeSection !== 'logs') return;
-    if (logTab === 'login') void fetchLoginLogs(loginLogsPage);
-    else void fetchOperationLogs(operationLogsPage);
-  }, [logTab, activeSection, loginLogsPage, operationLogsPage]);
+    if (activeSection === 'login') void fetchLoginLogs(loginLogsPage);
+    else if (activeSection === 'operation') void fetchOperationLogs(operationLogsPage);
+  }, [activeSection, loginLogsPage, operationLogsPage]);
 
   // ─── 数据获取 ────────────────────────────────────────────────────────────────
 
@@ -663,48 +666,47 @@ export default function ProfilePage({ user, onUserUpdate }: ProfilePageProps) {
               </div>
             </Tabs.TabPane>
 
-            {/* ── 操作日志 ──────────────────────────────────────── */}
+            {/* ── 登录记录 ──────────────────────────────────────── */}
             <Tabs.TabPane
-              itemKey="logs"
-              tab={<span className="profile-tab-label"><List size={14} /><span>操作日志</span></span>}
+              itemKey="login"
+              tab={<span className="profile-tab-label"><List size={14} /><span>登录记录</span></span>}
             >
               <div className="profile-section">
-                <Tabs
-                  activeKey={logTab}
-                  onChange={(v) => setLogTab(v as 'login' | 'operation')}
-                  size="small"
-                >
-                  <Tabs.TabPane itemKey="login" tab="登录记录">
-                    <LoginLogsTable
-                      loading={loginLogsLoading}
-                      dataSource={loginLogs}
-                      onRefresh={() => void fetchLoginLogs(loginLogsPage)}
-                      columnSettingsKey="profile-login-logs"
-                      pagination={{
-                        total: loginLogsTotal,
-                        currentPage: loginLogsPage,
-                        pageSize: 10,
-                        showSizeChanger: false,
-                        onPageChange: (page) => void fetchLoginLogs(page),
-                      }}
-                    />
-                  </Tabs.TabPane>
-                  <Tabs.TabPane itemKey="operation" tab="操作记录">
-                    <OperationLogsTable
-                      loading={operationLogsLoading}
-                      dataSource={operationLogs}
-                      onRefresh={() => void fetchOperationLogs(operationLogsPage)}
-                      columnSettingsKey="profile-operation-logs"
-                      pagination={{
-                        total: operationLogsTotal,
-                        currentPage: operationLogsPage,
-                        pageSize: 10,
-                        showSizeChanger: false,
-                        onPageChange: (page) => void fetchOperationLogs(page),
-                      }}
-                    />
-                  </Tabs.TabPane>
-                </Tabs>
+                <LoginLogsTable
+                  loading={loginLogsLoading}
+                  dataSource={loginLogs}
+                  onRefresh={() => void fetchLoginLogs(loginLogsPage)}
+                  columnSettingsKey="profile-login-logs"
+                  pagination={{
+                    total: loginLogsTotal,
+                    currentPage: loginLogsPage,
+                    pageSize: 10,
+                    showSizeChanger: false,
+                    onPageChange: (page) => void fetchLoginLogs(page),
+                  }}
+                />
+              </div>
+            </Tabs.TabPane>
+
+            {/* ── 操作记录 ──────────────────────────────────────── */}
+            <Tabs.TabPane
+              itemKey="operation"
+              tab={<span className="profile-tab-label"><List size={14} /><span>操作记录</span></span>}
+            >
+              <div className="profile-section">
+                <OperationLogsTable
+                  loading={operationLogsLoading}
+                  dataSource={operationLogs}
+                  onRefresh={() => void fetchOperationLogs(operationLogsPage)}
+                  columnSettingsKey="profile-operation-logs"
+                  pagination={{
+                    total: operationLogsTotal,
+                    currentPage: operationLogsPage,
+                    pageSize: 10,
+                    showSizeChanger: false,
+                    onPageChange: (page) => void fetchOperationLogs(page),
+                  }}
+                />
               </div>
             </Tabs.TabPane>
 
