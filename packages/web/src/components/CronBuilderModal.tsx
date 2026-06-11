@@ -7,8 +7,10 @@
  *   specific→ a,b,c（指定多个值）
  *   range   → a-b（连续范围）
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, InputNumber, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { CronExpressionParser } from 'cron-parser';
+import dayjs from 'dayjs';
 import AppModal from '@/components/AppModal';
 
 type FieldKey = 'sec' | 'min' | 'hour' | 'dom' | 'month' | 'dow';
@@ -238,6 +240,24 @@ function FieldEditor({ meta, config, onChange }: FieldEditorProps) {
   );
 }
 
+function getNextExecutions(expr: string, count: number): string[] {
+  try {
+    const interval = CronExpressionParser.parse(expr);
+    return Array.from({ length: count }, () => {
+      const d = interval.next().toDate();
+      const now = dayjs();
+      const t = dayjs(d);
+      const dateStr = t.format('YYYY-MM-DD');
+      let prefix = t.format('MM-DD');
+      if (dateStr === now.format('YYYY-MM-DD')) prefix = '今天';
+      else if (dateStr === now.add(1, 'day').format('YYYY-MM-DD')) prefix = '明天';
+      return `${prefix} ${t.format('HH:mm:ss')}`;
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ─── CronBuilderModal ─────────────────────────────────────────────────────────
 
 interface CronBuilderModalProps {
@@ -262,6 +282,7 @@ export function CronBuilderModal({ visible, value, onClose, onApply }: CronBuild
   const expr = buildCronFromState(state);
   const desc = describeExpression(state);
   const activeMeta = FIELD_META.find((m) => m.key === activeField)!;
+  const nextTimes = useMemo(() => getNextExecutions(expr, 5), [expr]);
 
   return (
     <AppModal
@@ -290,6 +311,26 @@ export function CronBuilderModal({ visible, value, onClose, onApply }: CronBuild
         <Typography.Text code style={{ fontSize: 14, letterSpacing: 1 }}>{expr}</Typography.Text>
         <Typography.Text type="secondary" size="small" style={{ display: 'block', marginTop: 4 }}>{desc}</Typography.Text>
       </div>
+
+      {/* 下次执行预览 */}
+      {nextTimes.length > 0 && (
+        <div
+          style={{
+            background: 'var(--semi-color-success-light-default)',
+            border: '1px solid var(--semi-color-success-light-active)',
+            borderRadius: 8,
+            padding: '8px 14px',
+            marginBottom: 16,
+          }}
+        >
+          <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 6 }}>最近 5 次执行时间</Typography.Text>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+            {nextTimes.map((t) => (
+              <Typography.Text key={t} size="small" style={{ fontVariantNumeric: 'tabular-nums' }}>{t}</Typography.Text>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 字段选择器 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
