@@ -22,4 +22,18 @@ export default tseslint.config(
       ],
     },
   },
+  // Node 启动/构建脚本（纯 JS，需要声明 Node 运行时全局）
+  {
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        Buffer: 'readonly',
+        URL: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+      },
+    },
+  },
 );

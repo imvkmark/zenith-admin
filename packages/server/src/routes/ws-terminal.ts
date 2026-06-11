@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { UpgradeWebSocket } from 'hono/ws';
 import * as os from 'node:os';
+import * as inspector from 'node:inspector';
 import * as pty from 'node-pty';
 import { verifyToken } from '../lib/jwt';
 import type { JwtPayload } from '../middleware/auth';
@@ -64,6 +65,21 @@ export function createWsTerminalRoute(upgradeWebSocket: UpgradeWebSocket) {
               ws.close(4003, 'Forbidden');
               return;
             }
+          }
+
+          // ⚠️ node-pty 在 Windows 上与 Node Inspector（调试器）附加存在已知死锁：
+          // 当 inspector 激活时调用 pty.spawn() 会同步阻塞、冻结整个 Node 事件循环，
+          // 导致后端所有请求无响应。检测到调试器时拒绝启动 pty，避免卡死整个服务。
+          // 正常开发请用 `npm run dev`（已通过 scripts/dev.mjs 剖离 inspector）。
+          if (os.platform() === 'win32' && inspector.url() !== undefined) {
+            ws.send(JSON.stringify({
+              type: 'terminal:error',
+              message:
+                '检测到 Node 调试器（Inspector）已附加。Windows 下 node-pty 与调试器冲突会导致后端卡死，' +
+                'Web 终端已自动禁用。请改用 `npm run dev` 运行后端（已自动剖离调试器）。',
+            }));
+            ws.close(1011, 'Inspector attached');
+            return;
           }
 
           // 启动 pty 进程
