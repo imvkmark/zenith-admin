@@ -104,7 +104,7 @@ export default function TerminalRecordingsPage() {
     },
     {
       title: '操作',
-      width: 160,
+      width: 200,
       fixed: 'right' as const,
       render: (_: unknown, r: Recording) => (
         <div style={{ display: 'flex', gap: 4 }}>
@@ -134,7 +134,6 @@ export default function TerminalRecordingsPage() {
   return (
     <div style={{ padding: '16px 24px', height: '100%', overflow: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Typography.Text type="tertiary" size="small">共 {total} 条录屏</Typography.Text>
         <div style={{ flex: 1 }} />
         <Button icon={<RotateCcw size={14} />} theme="borderless" size="small" onClick={() => void fetchList()}>
           刷新
