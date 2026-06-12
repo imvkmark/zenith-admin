@@ -796,21 +796,28 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         }}
       />
 
-      {/* 上传进度区 */}
+      {/* 传输进度折叠面板（有上传任务时显示） */}
       {uploading.length > 0 && (
-        <div style={{ flexShrink: 0, borderTop: '1px solid var(--semi-color-border)', padding: '8px', background: 'var(--semi-color-bg-2)', maxHeight: 160, overflow: 'auto' }}>
-          <Typography.Text size="small" strong style={{ display: 'block', marginBottom: 6 }}>
-            上传中...（{uploading.filter((u) => u.progress >= 100).length}/{uploading.length}）
-          </Typography.Text>
-          {uploading.map((u) => (
-            <div key={u.name} style={{ marginBottom: 6 }}>
-              <Typography.Text size="small" ellipsis style={{ display: 'block', maxWidth: '100%' }}>
-                {u.name}
-              </Typography.Text>
-              <Progress percent={u.progress} size="small" aria-label={u.name} style={{ marginTop: 2 }} />
+        <Collapse
+          style={{ flexShrink: 0, borderTop: '1px solid var(--semi-color-border)' }}
+          defaultActiveKey="transfers"
+        >
+          <Collapse.Panel
+            header={`传输进度（${uploading.filter((u) => u.progress >= 100).length}/${uploading.length}）`}
+            itemKey="transfers"
+          >
+            <div style={{ maxHeight: 160, overflow: 'auto' }}>
+              {uploading.map((u) => (
+                <div key={u.name} style={{ marginBottom: 8 }}>
+                  <Typography.Text size="small" ellipsis style={{ display: 'block', maxWidth: '100%' }}>
+                    {u.name}
+                  </Typography.Text>
+                  <Progress percent={u.progress} size="small" aria-label={u.name} style={{ marginTop: 2 }} />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </Collapse.Panel>
+        </Collapse>
       )}
     </div>
   );
