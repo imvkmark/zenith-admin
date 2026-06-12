@@ -7,6 +7,7 @@ import { config } from '@/config';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme, toXtermTheme } from './themes';
+import { request } from '@/utils/request';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalTabProps {
@@ -33,6 +34,14 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
   const termRef = useRef<Terminal | null>(null);
   const { isDark } = useThemeController();
   const { terminal } = useTerminalPreferences();
+
+  // 录屏数据 —— 在闭包内直接读写，无需传入 effect 依赖
+  const recordingRef = useRef<{
+    startTime: number;
+    events: [number, 'o' | 'i', string][];
+    cols: number;
+    rows: number;
+  } | null>(null);
 
   const currentTheme = useMemo(
     () => resolveTheme(isDark ? terminal.themeDark : terminal.themeLight, isDark ? 'dark' : 'light'),
@@ -82,15 +91,20 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     const ws = new WebSocket(buildWsUrl(shell, cwd));
 
     ws.onopen = () => {
-      // 连接后立即同步当前终端大小
+      // 连接后立即同步当前终端大小并开始录屏
       const { cols, rows } = term;
       ws.send(JSON.stringify({ type: 'terminal:resize', cols, rows }));
+      recordingRef.current = { startTime: Date.now(), events: [], cols, rows };
     };
 
     ws.onmessage = (evt) => {
       try {
         const msg = JSON.parse(evt.data as string) as { type: string; data?: string; message?: string };
         if (msg.type === 'terminal:output' && msg.data) {
+          const rec = recordingRef.current;
+          if (rec) {
+            rec.events.push([(Date.now() - rec.startTime) / 1000, 'o', msg.data]);
+          }
           term.write(msg.data);
         } else if (msg.type === 'terminal:exit') {
           term.write('\r\n\x1b[33m[进程已退出]\x1b[0m\r\n');
@@ -105,6 +119,20 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     };
 
     ws.onclose = (evt) => {
+      // 保存录屏
+      const rec = recordingRef.current;
+      if (rec && rec.events.length > 0) {
+        const duration = (Date.now() - rec.startTime) / 1000;
+        void request.post('/api/terminal-recordings', {
+          title: `${shell || 'terminal'} 录屏 - ${new Date().toLocaleString('zh-CN')}`,
+          shell: shell || null,
+          cols: rec.cols,
+          rows: rec.rows,
+          duration,
+          events: rec.events,
+        }, { silent: true });
+        recordingRef.current = null;
+      }
       if (evt.code === 4001) {
         term.write('\r\n\x1b[31m[认证失败，请重新登录]\x1b[0m\r\n');
       } else if (evt.code === 4003) {
@@ -117,6 +145,9 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     // 将用户输入发送到服务端 pty
     term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
+        // 记录输入事件
+        const rec = recordingRef.current;
+        if (rec) rec.events.push([(Date.now() - rec.startTime) / 1000, 'i', data]);
         ws.send(JSON.stringify({ type: 'terminal:input', data }));
       }
     });

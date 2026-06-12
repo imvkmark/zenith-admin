@@ -36,3 +36,4 @@ export * from './data-mask';
 export * from './oauth2';
 export * from './maintenance';
 export * from './terminal-files';
+export * from './terminal-recordings';

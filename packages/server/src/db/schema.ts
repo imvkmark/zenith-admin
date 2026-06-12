@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex, jsonb, smallint, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, uniqueIndex, jsonb, smallint, real, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
@@ -1723,3 +1723,24 @@ export const maintenanceMode = pgTable('maintenance_mode', {
 
 export type MaintenanceModeRow = typeof maintenanceMode.$inferSelect;
 export type NewMaintenanceMode = typeof maintenanceMode.$inferInsert;
+
+// ─── 终端录屏表 ─────────────────────────────────────────────────────────
+/** 终端 session 录屏事件：[timeOffset(秒), type('o'|’i'), data] */
+export type RecordingEvent = [number, 'o' | 'i', string];
+
+export const terminalRecordings = pgTable('terminal_recordings', {
+  id: serial('id').primaryKey(),
+  title: varchar('title', { length: 256 }).notNull().default(''),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  shell: varchar('shell', { length: 64 }),
+  cols: integer('cols').notNull().default(80),
+  rows: integer('rows').notNull().default(24),
+  duration: real('duration').notNull().default(0), // 秒
+  events: jsonb('events').$type<RecordingEvent[]>().notNull().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type TerminalRecordingRow = typeof terminalRecordings.$inferSelect;
+export type NewTerminalRecording = typeof terminalRecordings.$inferInsert;
