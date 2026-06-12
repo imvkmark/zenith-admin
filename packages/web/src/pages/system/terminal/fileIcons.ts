@@ -592,3 +592,24 @@ export function getFolderIcon(folderName: string, isOpen = false): string {
   }
   return isOpen ? DEFAULT_FOLDER_OPEN_ICON : DEFAULT_FOLDER_ICON;
 }
+
+/** Shell 类型 ID → iconify 图标 ID（用于终端标签，与 listShells() 返回的 id 对齐） */
+const SHELL_ICON_MAP: Readonly<Record<string, string>> = {
+  powershell: 'vscode-icons:file-type-powershell',
+  cmd: 'vscode-icons:file-type-bat',
+  bash: 'vscode-icons:file-type-shell',
+  zsh: 'vscode-icons:file-type-shell',
+  fish: 'vscode-icons:file-type-shell',
+  sh: 'vscode-icons:file-type-shell',
+};
+
+const DEFAULT_SHELL_ICON = 'vscode-icons:file-type-shell';
+
+/**
+ * 根据 shell 类型 ID 获取 Iconify 图标 ID。
+ * 未知类型兜底为通用 shell 图标。
+ */
+export function getShellIcon(shellId: string | undefined): string {
+  if (!shellId) return DEFAULT_SHELL_ICON;
+  return SHELL_ICON_MAP[shellId.toLowerCase()] ?? DEFAULT_SHELL_ICON;
+}

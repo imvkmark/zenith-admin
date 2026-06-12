@@ -8,7 +8,7 @@ import FileExplorer from './FileExplorer';
 import TerminalSettings from './TerminalSettings';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { request } from '@/utils/request';
-import { getFileIcon } from './fileIcons';
+import { getFileIcon, getShellIcon } from './fileIcons';
 
 const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
 
@@ -289,7 +289,7 @@ export default function TerminalPage() {
                   {s.type === 'editor' ? (
                     <Icon icon={getFileIcon(s.title)} width={13} height={13} />
                   ) : (
-                    <TerminalSquare size={13} />
+                    <Icon icon={getShellIcon(s.shell)} width={13} height={13} />
                   )}
                 </span>
                 <span className="admin-tab-item__text">
