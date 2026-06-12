@@ -160,9 +160,11 @@ export function closePane(
   const newRoot = recur(root, true);
 
   // 若 nextActiveId 所指的叶子 id 被重命名，同步更新
+  // 用局部变量引用 renamedPaneId 避免 TypeScript 闭包追踪问题
+  const rp = renamedPaneId;
   const finalNextActiveId =
-    renamedPaneId?.from === nextActiveLeafId
-      ? renamedPaneId.to
+    rp !== null && rp.from === nextActiveLeafId
+      ? rp.to
       : nextActiveLeafId;
 
   return { root: newRoot, nextActiveId: finalNextActiveId, renamedPaneId };

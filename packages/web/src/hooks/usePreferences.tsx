@@ -158,6 +158,8 @@ export const defaultPreferences: UserPreferences = {
     fontFamily: '"Cascadia Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
     lineHeight: 1.2,
     favorites: [],
+    tabPosition: 'top' as const,
+    tabCollapsed: false,
   },
 };
 
