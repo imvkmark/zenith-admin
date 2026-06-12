@@ -105,6 +105,21 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const dragCounterRef = useRef(0);
   const dropTargetDirRef = useRef('');
   const treeContainerRef = useRef<HTMLElement | null>(null);
+  const treeWrapperRef = useRef<HTMLDivElement | null>(null);
+  const treeRef = useRef<{ scrollTo: (config: { key: string; align?: 'auto' | 'center' | 'start' | 'end' | 'smart' }) => void } | null>(null);
+  const [treeHeight, setTreeHeight] = useState(0);
+
+  // 动态计算 tree wrapper 高度，供虚拟化列表使用
+  useEffect(() => {
+    const el = treeWrapperRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const h = entry.contentRect.height;
+      if (h > 0) setTreeHeight(h);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const loadRoot = useCallback(async () => {
     setLoading(true);
@@ -208,9 +223,8 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
 
       // 等待 React 重新渲染后滚动到选中节点
       setTimeout(() => {
-        const container = treeContainerRef.current;
-        const el = container?.querySelector('.semi-tree-option-selected');
-        el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        // 虚拟化树使用组件自身的 scrollTo 方法（比 DOM querySelector 更可靠）
+        treeRef.current?.scrollTo({ key: target, align: 'auto' });
       }, 150);
     },
     [rootPath],
@@ -486,9 +500,9 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: 'auto',
-          padding: '4px 0',
-          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
           outline: isDragOver ? '2px dashed var(--semi-color-primary)' : undefined,
           outlineOffset: isDragOver ? '-2px' : undefined,
         }}
@@ -500,9 +514,7 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         {isDragOver && (
           <div
             style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
+              flexShrink: 0,
               background: 'var(--semi-color-primary-light-default)',
               borderBottom: '1px solid var(--semi-color-primary)',
               padding: '3px 8px',
@@ -520,20 +532,26 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
             </span>
           </div>
         )}
-        <Tree
-          treeData={treeData}
-          loadData={loadData}
-          onSelect={handleSelect}
-          renderLabel={renderLabel}
-          value={selectedKey || undefined}
-          onChange={(val) => setSelectedKey(typeof val === 'string' ? val : '')}
-          expandedKeys={expandedKeys}
-          onExpand={(keys) => setExpandedKeys(keys.map(String))}
-          expandAction="click"
-          motion={false}
-          emptyContent="暂无文件"
-          style={{ width: '100%' }}
-        />
+        <div ref={treeWrapperRef} style={{ flex: 1, minHeight: 0 }}>
+          {treeHeight > 0 && (
+          <Tree
+            ref={treeRef as never}
+            treeData={treeData}
+            loadData={loadData}
+            onSelect={handleSelect}
+            renderLabel={renderLabel}
+            value={selectedKey || undefined}
+            onChange={(val) => setSelectedKey(typeof val === 'string' ? val : '')}
+            expandedKeys={expandedKeys}
+            onExpand={(keys) => setExpandedKeys(keys.map(String))}
+            expandAction="click"
+            motion={false}
+            emptyContent="暂无文件"
+            virtualize={{ height: treeHeight, width: '100%', itemSize: 32 }}
+            style={{ width: '100%' }}
+          />
+          )}
+        </div>
       </section>
 
       {favorites.length > 0 && (
