@@ -100,8 +100,10 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [selectedKey, setSelectedKey] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dropTargetDir, setDropTargetDir] = useState('');
   const loadedRef = useRef(false);
   const dragCounterRef = useRef(0);
+  const dropTargetDirRef = useRef('');
   const treeContainerRef = useRef<HTMLElement | null>(null);
 
   const loadRoot = useCallback(async () => {
@@ -232,26 +234,38 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     if (dragCounterRef.current <= 0) {
       dragCounterRef.current = 0;
       setIsDragOver(false);
+      dropTargetDirRef.current = '';
+      setDropTargetDir('');
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
     if (!isFilesDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
+    // 事件委托：通过当前悬停的 DOM 元素上的 data-node-path 属性确定目标目录
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-node-path]');
+    const dir = el?.dataset.nodePath ?? '';
+    if (dir !== dropTargetDirRef.current) {
+      dropTargetDirRef.current = dir;
+      setDropTargetDir(dir);
+    }
   };
 
   const handleDrop = useCallback(
     async (e: React.DragEvent<HTMLDivElement>) => {
       dragCounterRef.current = 0;
       setIsDragOver(false);
+      const finalTarget = dropTargetDirRef.current;
+      dropTargetDirRef.current = '';
+      setDropTargetDir('');
       if (!isFilesDrag(e)) return;
       e.preventDefault();
       e.stopPropagation();
       const { files } = e.dataTransfer;
       if (!files.length) return;
 
-      const targetDir = selectedDir || rootPath;
+      const targetDir = finalTarget || selectedDir || rootPath;
       const uploads = Array.from(files).map((file) => {
         const fd = new FormData();
         fd.append('path', targetDir);
@@ -371,8 +385,23 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
       node.fileType === 'dir'
         ? getFolderIcon(node.label, isOpen)
         : getFileIcon(node.label);
+    const isDropTarget = isDragOver && dropTargetDir === node.value;
     return (
-      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 4 }}>
+      <div
+        data-node-path={node.fileType === 'dir' ? node.value : parentOf(node.value)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          gap: 4,
+          ...(isDropTarget ? {
+            background: 'var(--semi-color-primary-light-default)',
+            borderRadius: 4,
+            outline: '2px solid var(--semi-color-primary)',
+            outlineOffset: '-1px',
+          } : {}),
+        }}
+      >
         <Icon icon={iconId} width={16} height={16} style={{ flexShrink: 0 }} />
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {label}
@@ -454,7 +483,15 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
       <section
         ref={treeContainerRef}
         aria-label="文件树（支持从本地拖入文件上传）"
-        style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '4px 0', position: 'relative' }}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          padding: '4px 0',
+          position: 'relative',
+          outline: isDragOver ? '2px dashed var(--semi-color-primary)' : undefined,
+          outlineOffset: isDragOver ? '-2px' : undefined,
+        }}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -463,25 +500,24 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         {isDragOver && (
           <div
             style={{
-              position: 'absolute',
-              inset: 0,
+              position: 'sticky',
+              top: 0,
               zIndex: 10,
-              background: 'var(--semi-color-primary-light-hover)',
-              border: '2px dashed var(--semi-color-primary)',
-              borderRadius: 4,
+              background: 'var(--semi-color-primary-light-default)',
+              borderBottom: '1px solid var(--semi-color-primary)',
+              padding: '3px 8px',
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
+              gap: 4,
+              fontSize: 12,
+              color: 'var(--semi-color-primary)',
               pointerEvents: 'none',
             }}
           >
-            <UploadIcon size={24} style={{ color: 'var(--semi-color-primary)' }} />
-            <Typography.Text size="small" type="tertiary" style={{ textAlign: 'center', padding: '0 12px' }}>
-              松开即可上传到<br />
-              {selectedDir || rootPath || '主目录'}
-            </Typography.Text>
+            <UploadIcon size={13} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              上传到：{dropTargetDir || selectedDir || rootPath || '主目录'}
+            </span>
           </div>
         )}
         <Tree
