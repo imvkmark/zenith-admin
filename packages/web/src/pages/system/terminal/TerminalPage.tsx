@@ -193,7 +193,11 @@ export default function TerminalPage() {
         <Dropdown.Item disabled>无可用 Shell</Dropdown.Item>
       ) : (
         shells.map((sh) => (
-          <Dropdown.Item key={sh.id} onClick={() => addTerminal(sh.id)}>
+          <Dropdown.Item
+            key={sh.id}
+            icon={<Icon icon={getShellIcon(sh.id)} width={14} height={14} />}
+            onClick={() => addTerminal(sh.id)}
+          >
             {sh.label}
           </Dropdown.Item>
         ))
