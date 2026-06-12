@@ -14,7 +14,14 @@ export interface CreateRecordingInput {
   events: RecordingEvent[];
 }
 
-function mapRecording(r: typeof terminalRecordings.$inferSelect & { nickname: string | null }) {
+type RecordingRow = {
+  id: number; title: string; userId: number; shell: string | null;
+  cols: number; rows: number; duration: number;
+  createdAt: Date; updatedAt: Date;
+  nickname?: string | null;
+};
+
+function mapRow(r: RecordingRow) {
   return {
     id: r.id,
     title: r.title,
@@ -44,7 +51,7 @@ export async function createRecording(userId: number, tenantId: number | null, i
       events: input.events,
     })
     .returning();
-  return mapRecording(row);
+  return mapRow(row);
 }
 
 /** 分页查询当前用户的录屏列表（不返回 events 字段）。 */
@@ -78,7 +85,7 @@ export async function listRecordings(userId: number, page: number, pageSize: num
   ]);
   return {
     total,
-    list: rows.map((r) => mapRecording({ ...r, nickname: r.nickname ?? null })),
+    list: rows.map((r) => mapRow({ ...r, nickname: r.nickname ?? null })),
     page,
     pageSize,
   };
@@ -94,7 +101,7 @@ export async function getRecording(id: number, userId: number) {
   if (!row) throw new HTTPException(404, { message: '录屏不存在' });
   const rec = row.terminal_recordings;
   const nickname = row.users?.nickname ?? '';
-  return { ...mapRecording({ ...rec, nickname }), events: rec.events };
+  return { ...mapRow({ ...rec, nickname }), events: rec.events };
 }
 
 /** 删除录屏。仅允许删除自己的录屏。 */
