@@ -304,9 +304,9 @@ function ContainersTab() {
     <>
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="搜索容器名 / 镜像 / Compose 项目" showClear value={keyword} onChange={setKeyword} style={{ width: 280 }} />
-        <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchContainers()}>刷新</Button>
+        <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void fetchContainers()}>刷新</Button>
         {allGroupIds.length > 0 && (
-          <Button type="tertiary" icon={allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />} onClick={toggleExpandAll}>
+          <Button type="primary" icon={allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />} onClick={toggleExpandAll}>
             {allExpanded ? '全部折叠' : '全部展开'}
           </Button>
         )}
