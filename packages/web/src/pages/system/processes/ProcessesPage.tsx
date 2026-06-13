@@ -264,7 +264,7 @@ export default function ProcessesPage() {
     {
       title: '进程名',
       dataIndex: 'name',
-      width: 200,
+      // 不设 width — 弹性列，填满剩余宽度
       render: (name: string) => (
         <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
           {name}
@@ -484,7 +484,7 @@ export default function ProcessesPage() {
         bordered
         virtualized
         className="processes-table"
-        scroll={{ y: tableHeight, x: 1380 }}
+        scroll={{ y: tableHeight }}
         columns={columns}
         dataSource={filteredProcesses}
         loading={loading && processes.length === 0}
