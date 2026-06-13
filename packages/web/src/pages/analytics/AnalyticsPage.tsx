@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button, Select, Spin, Tabs, TabPane, Typography, Empty, Table, Tag, Progress } from '@douyinfe/semi-ui';
+import { Button, Select, Spin, Tabs, TabPane, Typography, Empty, Tag, Progress } from '@douyinfe/semi-ui';
 import { Clock, MousePointerClick, Flame, RefreshCcw } from 'lucide-react';
 import { request } from '@/utils/request';
 import type { PageStats, PageStatItem, FeatureStats, FeatureStatItem, HeatmapData, HeatmapPageListItem } from '@zenith/shared';
 import { usePageTracker } from '@/hooks/usePageTracker';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 
 const { Text } = Typography;
 
@@ -96,10 +97,9 @@ function PageDwellTab() {
         <Select value={days} onChange={(v) => setDays(v as number)} style={{ width: 120 }}>
           {DAYS_OPTIONS.map((o) => <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>)}
         </Select>
-        <Button icon={<RefreshCcw size={14} />} onClick={load} loading={loading}>刷新</Button>
         {data && <Text type="tertiary">共 {data.totalVisits.toLocaleString()} 次访问，{data.items.length} 个页面</Text>}
       </div>
-      <Table
+      <ConfigurableTable
         columns={columns}
         dataSource={data?.items ?? []}
         loading={loading}
@@ -107,6 +107,8 @@ function PageDwellTab() {
         bordered
         empty={<Empty description="暂无停留时长数据" style={{ padding: 60 }} />}
         pagination={false}
+        onRefresh={load}
+        refreshLoading={loading}
       />
     </div>
   );
@@ -188,10 +190,9 @@ function FeatureUsageTab() {
         <Select value={days} onChange={(v) => setDays(v as number)} style={{ width: 120 }}>
           {DAYS_OPTIONS.map((o) => <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>)}
         </Select>
-        <Button icon={<RefreshCcw size={14} />} onClick={load} loading={loading}>刷新</Button>
         {data && <Text type="tertiary">共 {data.totalEvents.toLocaleString()} 次操作，{data.items.length} 个功能</Text>}
       </div>
-      <Table
+      <ConfigurableTable
         columns={columns}
         dataSource={data?.items ?? []}
         loading={loading}
@@ -199,6 +200,8 @@ function FeatureUsageTab() {
         bordered
         empty={<Empty description="暂无功能使用数据" style={{ padding: 60 }} />}
         pagination={false}
+        onRefresh={load}
+        refreshLoading={loading}
       />
     </div>
   );
