@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   Button, Input, Tag, Typography, Toast, Select, Switch,
 } from '@douyinfe/semi-ui';
@@ -6,6 +6,66 @@ import { FolderOpen, Play, Square, Search, FileText } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { request } from '@/utils/request';
+
+// ─── ANSI 颜色解析器 ────────────────────────────────────────────────────────
+const ANSI_FG = ['#3c3c3c','#c0392b','#27ae60','#d4ac0d','#2980b9','#8e44ad','#17a589','#bdc3c7'];
+const ANSI_FG_BRIGHT = ['#7f8c8d','#e74c3c','#2ecc71','#f1c40f','#3498db','#9b59b6','#1abc9c','#ecf0f1'];
+
+interface AnsiSpan { text: string; color?: string; bg?: string; bold?: boolean; italic?: boolean; dim?: boolean }
+
+function parseAnsi(raw: string): AnsiSpan[] {
+  const result: AnsiSpan[] = [];
+  let color: string | undefined;
+  let bg: string | undefined;
+  let bold = false; let italic = false; let dim = false;
+  const segs = raw.split(/(\x1b\[[0-9;]*m)/);
+  for (const seg of segs) {
+    if (seg.startsWith('\x1b[') && seg.endsWith('m')) {
+      const codes = seg.slice(2, -1).split(';').map(Number);
+      for (const code of codes) {
+        if (code === 0) { color = undefined; bg = undefined; bold = false; italic = false; dim = false; }
+        else if (code === 1) { bold = true; }
+        else if (code === 2) { dim = true; }
+        else if (code === 3) { italic = true; }
+        else if (code === 22) { bold = false; dim = false; }
+        else if (code === 23) { italic = false; }
+        else if (code === 39) { color = undefined; }
+        else if (code === 49) { bg = undefined; }
+        else if (code >= 30 && code <= 37) { color = ANSI_FG[code - 30]; }
+        else if (code >= 90 && code <= 97) { color = ANSI_FG_BRIGHT[code - 90]; }
+        else if (code >= 40 && code <= 47) { bg = ANSI_FG[code - 40]; }
+      }
+    } else if (seg) {
+      result.push({ text: seg, color, bg, bold: bold || undefined, italic: italic || undefined, dim: dim || undefined });
+    }
+  }
+  return result;
+}
+
+/** 去除所有 ANSI 转义序列（用于关键词匹配） */
+function stripAnsi(s: string): string {
+  return s.replaceAll(/\x1b\[[0-9;]*m/g, '');
+}
+
+/** 渲染单行（含 ANSI 颜色） */
+function AnsiLine({ raw, highlight }: { raw: string; highlight: boolean }) {
+  const spans = useMemo(() => parseAnsi(raw), [raw]);
+  return (
+    <span style={highlight ? { background: 'rgba(255,230,0,0.25)', display: 'block', borderLeft: '3px solid #f1c40f', paddingLeft: 4 } : undefined}>
+      {spans.map((s, i) => (
+        <span key={i} style={{
+          color: s.color,
+          backgroundColor: s.bg,
+          fontWeight: s.bold ? 'bold' : undefined,
+          fontStyle: s.italic ? 'italic' : undefined,
+          opacity: s.dim ? 0.6 : undefined,
+        }}>
+          {s.text}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 /** 常用日志路径 */
 const COMMON_LOG_PATHS = [
@@ -42,22 +102,6 @@ async function fetchStream(
   }
 }
 
-/** 简单关键词高亮：将匹配行用颜色标记 */
-function highlightLines(content: string, keyword: string, filterOnly: boolean): string {
-  if (!keyword.trim()) return content;
-  const lines = content.split('\n');
-  const kw = keyword.trim().toLowerCase();
-  const result: string[] = [];
-  for (const line of lines) {
-    if (line.toLowerCase().includes(kw)) {
-      result.push(`>>> ${line}`); // 标记匹配行
-    } else if (!filterOnly) {
-      result.push(line);
-    }
-  }
-  return result.join('\n');
-}
-
 export default function LogViewerPage() {
   const [filePath, setFilePath] = useState('');
   const [keyword, setKeyword] = useState('');
@@ -66,12 +110,13 @@ export default function LogViewerPage() {
   const [loading, setLoading] = useState(false);
   const [following, setFollowing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const preRef = useRef<HTMLPreElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
 
   // 追踪模式下自动滚到底部
   useEffect(() => {
-    if (following && preRef.current) {
-      preRef.current.scrollTop = preRef.current.scrollHeight;
+    if (following && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [content, following]);
 
@@ -111,7 +156,15 @@ export default function LogViewerPage() {
     setContent((prev) => `${prev}\n\n⬛ 已停止追踪\n`);
   }, []);
 
-  const displayContent = content ? highlightLines(content, keyword, filterOnly) : '';
+  // 按关键词过滤行（在去除 ANSI 码的文本上匹配）
+  const displayLines = useMemo(() => {
+    const lines = content.split('\n');
+    if (!keyword.trim()) return lines.map((raw) => ({ raw, highlight: false }));
+    const kw = keyword.trim().toLowerCase();
+    return lines
+      .filter((raw) => !filterOnly || stripAnsi(raw).toLowerCase().includes(kw))
+      .map((raw) => ({ raw, highlight: stripAnsi(raw).toLowerCase().includes(kw) }));
+  }, [content, keyword, filterOnly]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 12 }}>
@@ -171,7 +224,7 @@ export default function LogViewerPage() {
         {following && <Tag color="green" size="small">● 实时追踪中</Tag>}
         {content && (
           <Typography.Text size="small" type="tertiary">
-            共 {content.split('\n').length} 行
+            {displayLines.length} 行{keyword && ` / 全 ${content.split('\n').length} 行`}
           </Typography.Text>
         )}
         {content && (
@@ -179,30 +232,34 @@ export default function LogViewerPage() {
         )}
       </div>
 
-      {/* 输出区 */}
+      {/* 输出区（ANSI 色彩渲染） */}
       <div style={{ flex: 1, minHeight: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--semi-color-border)' }}>
-        <pre
-          ref={preRef}
+        <div
+          ref={scrollRef}
           style={{
-            margin: 0,
-            padding: 12,
+            padding: '8px 12px',
             fontFamily: 'Consolas, "Courier New", monospace',
             fontSize: 12,
             lineHeight: 1.6,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
             background: 'var(--semi-color-bg-1)',
             height: '100%',
             overflow: 'auto',
             color: 'var(--semi-color-text-0)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
           }}
         >
-          {displayContent || (
-            <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>
-              {loading ? '加载中...' : '请选择日志文件并点击「加载」'}
-            </Typography.Text>
-          )}
-        </pre>
+          {displayLines.length > 0 && content
+            ? displayLines.map((line, i) => (
+                <AnsiLine key={i} raw={line.raw} highlight={line.highlight} />
+              ))
+            : (
+              <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>
+                {loading ? '加载中...' : '请选择日志文件并点击「加载」'}
+              </Typography.Text>
+            )
+          }
+        </div>
       </div>
     </div>
   );
