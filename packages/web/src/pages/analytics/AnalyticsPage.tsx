@@ -137,7 +137,7 @@ function FeatureUsageTab() {
     {
       title: '排名',
       key: 'rank',
-      width: 60,
+      width: 80,
       render: (_: unknown, __: unknown, index: number) => (
         <Text type={index < 3 ? 'warning' : 'tertiary'} strong={index < 3}>{index + 1}</Text>
       ),
