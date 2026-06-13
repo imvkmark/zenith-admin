@@ -37,6 +37,8 @@ export interface TerminalPreferences {
   tabPosition: TerminalTabPosition;
   /** 右侧标签栏是否折叠为仅图标模式（仅 tabPosition=right 时生效） */
   tabCollapsed: boolean;
+  /** 滚回缓冲区行数（默认 5000） */
+  scrollback: number;
 }
 
 export interface UserPreferences {
@@ -157,6 +159,7 @@ export const defaultPreferences: UserPreferences = {
     fontSize: 14,
     fontFamily: '"Cascadia Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
     lineHeight: 1.2,
+    scrollback: 5000,
     favorites: [],
     tabPosition: 'top' as const,
     tabCollapsed: false,

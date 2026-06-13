@@ -1,4 +1,5 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
+import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme } from './themes';
@@ -16,6 +17,10 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
   const containerRef = useRef<HTMLDivElement>(null);
   const { isDark } = useThemeController();
   const { terminal } = useTerminalPreferences();
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const currentTheme = useMemo(
     () => resolveTheme(isDark ? terminal.themeDark : terminal.themeLight, isDark ? 'dark' : 'light'),
@@ -28,13 +33,34 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     fontSize: terminal.fontSize,
     fontFamily: terminal.fontFamily,
     lineHeight: terminal.lineHeight,
+    scrollback: terminal.scrollback,
   });
   initCfgRef.current = {
     theme: currentTheme,
     fontSize: terminal.fontSize,
     fontFamily: terminal.fontFamily,
     lineHeight: terminal.lineHeight,
+    scrollback: terminal.scrollback,
   };
+
+  // 搜索操作
+  const doSearch = useCallback((text: string, direction: 'next' | 'prev') => {
+    if (!text) return;
+    const opts = { caseSensitive: searchCaseSensitive };
+    if (direction === 'next') terminalSessionStore.findNext(sessionId, text, opts);
+    else terminalSessionStore.findPrevious(sessionId, text, opts);
+  }, [sessionId, searchCaseSensitive]);
+
+  const openSearch = useCallback(() => {
+    setSearchVisible(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchVisible(false);
+    setSearchText('');
+    terminalSessionStore.clearSearch(sessionId);
+  }, [sessionId]);
 
   // mount / sessionId 变化时：创建或复用 session，然后 attach
   useEffect(() => {
@@ -44,11 +70,9 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     let cancelled = false;
     const setupSession = async () => {
       if (!terminalSessionStore.has(sessionId)) {
-        // 异步创建（会检查录屏开关配置）
         await terminalSessionStore.create(sessionId, { shell, cwd, ...initCfgRef.current });
       }
       if (!cancelled) {
-        // 复用或新建的 session 都挂载到当前容器
         terminalSessionStore.attach(sessionId, container);
       }
     };
@@ -56,12 +80,24 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
 
     return () => {
       cancelled = true;
-      // 组件卸载（分屏关闭 / 分屏布局变化）时 detach，保持 WebSocket 不断线
       terminalSessionStore.detach(sessionId);
     };
-    // shell / cwd 仅在创建时使用，变化不重连
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Ctrl+F 打开搜索栏
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        if (searchVisible) inputRef.current?.focus();
+        else openSearch();
+      }
+      if (e.key === 'Escape' && searchVisible) closeSearch();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [searchVisible, openSearch, closeSearch]);
 
   // tab 切换激活时重新 fit
   useEffect(() => {
@@ -81,9 +117,44 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
   }, [currentTheme, terminal.fontSize, terminal.fontFamily, terminal.lineHeight, sessionId]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%' }}
-    />
+    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      {/* 搜索栏（Ctrl+F 唤出，Escape 关闭） */}
+      {searchVisible && (
+        <div style={{
+          position: 'absolute', top: 4, right: 4, zIndex: 20,
+          display: 'flex', alignItems: 'center', gap: 4,
+          background: 'var(--semi-color-bg-2)',
+          border: '1px solid var(--semi-color-border)',
+          borderRadius: 6, padding: '3px 6px',
+          boxShadow: 'var(--semi-shadow-elevated)',
+        }}>
+          <input
+            ref={inputRef}
+            value={searchText}
+            onChange={(e) => {
+              setSearchText(e.target.value);
+              if (e.target.value) terminalSessionStore.findNext(sessionId, e.target.value, { caseSensitive: searchCaseSensitive });
+              else terminalSessionStore.clearSearch(sessionId);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); doSearch(searchText, e.shiftKey ? 'prev' : 'next'); }
+              if (e.key === 'Escape') closeSearch();
+            }}
+            placeholder="搜索终端..."
+            style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, width: 180, color: 'var(--semi-color-text-0)' }}
+          />
+          <button
+            type="button"
+            title={`大小写${searchCaseSensitive ? '敏感' : '不敏感'}`}
+            onClick={() => setSearchCaseSensitive((v) => !v)}
+            style={{ border: 'none', background: searchCaseSensitive ? 'var(--semi-color-primary-light-default)' : 'none', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: searchCaseSensitive ? 'var(--semi-color-primary)' : 'var(--semi-color-text-2)' }}
+          >Aa</button>
+          <button type="button" title="上一个（Shift+Enter）" onClick={() => doSearch(searchText, 'prev')} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'var(--semi-color-text-1)' }}><ChevronUp size={14} /></button>
+          <button type="button" title="下一个（Enter）" onClick={() => doSearch(searchText, 'next')} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'var(--semi-color-text-1)' }}><ChevronDown size={14} /></button>
+          <button type="button" title="关闭（Esc）" onClick={closeSearch} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'var(--semi-color-text-2)' }}><X size={14} /></button>
+        </div>
+      )}
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0 }} />
+    </div>
   );
 }

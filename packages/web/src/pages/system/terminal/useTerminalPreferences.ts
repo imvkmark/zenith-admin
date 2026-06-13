@@ -12,6 +12,7 @@ export const defaultTerminalPreferences: TerminalPreferences = {
   favorites: [],
   tabPosition: 'top',
   tabCollapsed: false,
+  scrollback: 5000,
 };
 
 /**

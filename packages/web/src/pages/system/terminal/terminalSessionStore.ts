@@ -13,6 +13,7 @@
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { SearchAddon } from '@xterm/addon-search';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { request } from '@/utils/request';
@@ -25,14 +26,19 @@ export interface SessionCreateOptions {
   fontSize: number;
   fontFamily: string;
   lineHeight: number;
+  /** 滚回缓冲行数，默认 5000 */
+  scrollback?: number;
 }
 
 interface SessionState {
   term: Terminal;
   fitAddon: FitAddon;
   ws: WebSocket;
+  searchAddon: SearchAddon;
   shell: string;
   cwd?: string;
+  /** OSC 7 追踪到的当前工作目录 */
+  currentCwd?: string;
   container: HTMLDivElement;
   resizeObserver: ResizeObserver | null;
   recording: {
@@ -65,6 +71,7 @@ function buildWsUrl(sessionId: string, shell: string, cwd?: string): string {
 
 class TerminalSessionStore {
   private readonly sessions = new Map<string, SessionState>();
+  private readonly cwdCallbacks = new Map<string, (cwd: string) => void>();
   private readonly pendingDestroy = new Set<string>();
   private hiddenRoot: HTMLDivElement | null = null;
 
@@ -107,11 +114,13 @@ class TerminalSessionStore {
       lineHeight: options.lineHeight,
       cursorBlink: true,
       cursorStyle: 'block',
-      scrollback: 5000,
+      scrollback: options.scrollback ?? 5000,
     });
 
     const fitAddon = new FitAddon();
+    const searchAddon = new SearchAddon();
     term.loadAddon(fitAddon);
+    term.loadAddon(searchAddon);
     term.loadAddon(new WebLinksAddon());
     term.open(container);
 
@@ -121,6 +130,7 @@ class TerminalSessionStore {
     const session: SessionState = {
       term,
       fitAddon,
+      searchAddon,
       ws,
       shell,
       cwd,
@@ -131,6 +141,20 @@ class TerminalSessionStore {
       reconnect: { attempts: 0, timer: null, stopped: false },
     };
     this.sessions.set(sessionId, session);
+
+    // OSC 7：Shell 报告当前工作目录（需 Shell 配置，如 bash/zsh PROMPT_COMMAND）
+    term.parser.registerOscHandler(7, (data: string) => {
+      try {
+        // 格式：file://hostname/path/to/dir
+        const match = /^file:\/\/[^/]*(\/[^?#]*)/.exec(data);
+        if (match) {
+          const newCwd = decodeURIComponent(match[1]);
+          session.currentCwd = newCwd;
+          this.cwdCallbacks.get(sessionId)?.(newCwd);
+        }
+      } catch { /* ignore */ }
+      return false;
+    });
 
     this.setupWsHandlers(sessionId, ws, session, shell);
 
@@ -363,6 +387,40 @@ class TerminalSessionStore {
     if (opts.fontFamily !== undefined) session.term.options.fontFamily = opts.fontFamily;
     if (opts.lineHeight !== undefined) session.term.options.lineHeight = opts.lineHeight;
     session.fitAddon.fit();
+  }
+
+  // ── 搜索 ──────────────────────────────────────────────────────────────────
+
+  /** 向下查找下一个匹配项 */
+  findNext(sessionId: string, text: string, opts?: { caseSensitive?: boolean; regex?: boolean; wholeWord?: boolean }): boolean {
+    return this.sessions.get(sessionId)?.searchAddon.findNext(text, opts) ?? false;
+  }
+
+  /** 向上查找上一个匹配项 */
+  findPrevious(sessionId: string, text: string, opts?: { caseSensitive?: boolean; regex?: boolean; wholeWord?: boolean }): boolean {
+    return this.sessions.get(sessionId)?.searchAddon.findPrevious(text, opts) ?? false;
+  }
+
+  /** 清除搜索高亮 */
+  clearSearch(sessionId: string): void {
+    this.sessions.get(sessionId)?.searchAddon.clearDecorations();
+  }
+
+  // ── CWD (OSC 7) ───────────────────────────────────────────────────────────
+
+  /** 获取通过 OSC 7 追踪到的当前工作目录 */
+  getCwd(sessionId: string): string | undefined {
+    return this.sessions.get(sessionId)?.currentCwd;
+  }
+
+  /** 注册 CWD 变化回调（每次 OSC 7 触发时调用） */
+  onCwdChange(sessionId: string, cb: (cwd: string) => void): void {
+    this.cwdCallbacks.set(sessionId, cb);
+  }
+
+  /** 取消 CWD 变化回调 */
+  offCwdChange(sessionId: string): void {
+    this.cwdCallbacks.delete(sessionId);
   }
 }
 

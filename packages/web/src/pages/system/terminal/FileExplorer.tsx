@@ -145,6 +145,8 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
   const [dropTargetDir, setDropTargetDir] = useState('');
   const [rootInfo, setRootInfo] = useState<RootInfo | null>(null);
   const [uploading, setUploading] = useState<{ name: string; progress: number }[]>([]);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
   const ctxUploadInputRef = useRef<HTMLInputElement>(null);
   const ctxUploadDirRef = useRef('');
   const loadedRef = useRef(false);
@@ -415,6 +417,28 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
     });
   };
 
+  const handleBatchDelete = () => {
+    if (!checkedKeys.length) return;
+    Modal.confirm({
+      title: `批量删除 ${checkedKeys.length} 项`,
+      content: '选中的文件/目录将被永久删除，此操作不可恢复。',
+      okType: 'danger',
+      okText: '确认删除',
+      cancelText: '取消',
+      onOk: async () => {
+        let success = 0;
+        for (const path of checkedKeys) {
+          const res = await request.delete(`/api/terminal-files/entry?path=${encodeURIComponent(path)}`);
+          if (res.code === 0) success++;
+        }
+        Toast.success(`已删除 ${success}/${checkedKeys.length} 项`);
+        setCheckedKeys([]);
+        setMultiSelectMode(false);
+        void loadRoot();
+      },
+    });
+  };
+
   const confirmDialog = async () => {
     if (!dialog) return;
     const name = dialog.value.trim();
@@ -619,6 +643,16 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
             onClick={() => void loadRoot()}
           />
         </Tooltip>
+        <Tooltip content={multiSelectMode ? '退出多选' : '多选模式'}>
+          <Button
+            size="small"
+            theme={multiSelectMode ? 'solid' : 'borderless'}
+            type={multiSelectMode ? 'primary' : 'tertiary'}
+            onClick={() => { setMultiSelectMode((v) => !v); setCheckedKeys([]); }}
+          >
+            ☑
+          </Button>
+        </Tooltip>
       </div>
 
       {/* Windows 多盘符切换行（仅 Windows 且有多个盘符时显示） */}
@@ -683,13 +717,20 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
         <div ref={treeWrapperRef} style={{ flex: 1, minHeight: 0 }}>
           {treeHeight > 0 && (
           <Tree
-            ref={treeRef as never}
+            // @ts-expect-error – Semi UI Tree ref type needs `scrollTo` API which doesn't appear in the typings
+            ref={treeRef}
             treeData={treeData}
             loadData={loadData}
             onSelect={handleSelect}
             renderLabel={renderLabel}
-            value={selectedKey || undefined}
-            onChange={(val) => setSelectedKey(typeof val === 'string' ? val : '')}
+            value={multiSelectMode ? checkedKeys : (selectedKey || undefined)}
+            onChange={(val) => {
+              if (multiSelectMode) {
+                setCheckedKeys(Array.isArray(val) ? (val as string[]).map(String) : (typeof val === 'string' && val ? [val] : []));
+              } else {
+                setSelectedKey(typeof val === 'string' ? val : '');
+              }
+            }}
             expandedKeys={expandedKeys}
             onExpand={(keys) => setExpandedKeys(keys.map(String))}
             expandAction="click"
@@ -697,10 +738,22 @@ export default function FileExplorer({ active, onOpenFile, onOpenTerminalAt }: F
             emptyContent="暂无文件"
             virtualize={{ height: treeHeight, width: '100%', itemSize: 32 }}
             style={{ width: '100%' }}
+            multiple={multiSelectMode}
           />
           )}
         </div>
       </section>
+
+      {/* 批量操作工具栏（多选模式下有选中项时显示） */}
+      {multiSelectMode && checkedKeys.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', background: 'var(--semi-color-primary-light-default)', borderTop: '1px solid var(--semi-color-border)', flexShrink: 0 }}>
+          <Typography.Text size="small" style={{ flex: 1, color: 'var(--semi-color-primary)' }}>
+            已选 {checkedKeys.length} 项
+          </Typography.Text>
+          <Button size="small" type="danger" theme="light" icon={<Trash2 size={12} />} onClick={handleBatchDelete}>删除</Button>
+          <Button size="small" theme="borderless" type="tertiary" onClick={() => setCheckedKeys([])}>清空</Button>
+        </div>
+      )}
 
       {favorites.length > 0 && (
         <Collapse style={{ flexShrink: 0, borderTop: '1px solid var(--semi-color-border)' }}>

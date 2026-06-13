@@ -144,6 +144,19 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
         />
       </Field>
 
+      <Field label="滚回行数">
+        <InputNumber
+          value={terminal.scrollback ?? 5000}
+          min={100}
+          max={100000}
+          step={1000}
+          onChange={(v) => setTerminalPref({ scrollback: Number(v) || 5000 })}
+          style={{ width: '100%' }}
+          formatter={(v) => `${v} 行`}
+          parser={(v) => (v ? v.replace(' 行', '') : '')}
+        />
+      </Field>
+
       <Divider margin="12px" />
 
       <Button icon={<RotateCcw size={14} />} onClick={() => setTerminalPref({ ...defaultTerminalPreferences, favorites: terminal.favorites })} block>
