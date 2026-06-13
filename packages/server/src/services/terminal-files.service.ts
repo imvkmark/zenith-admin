@@ -352,7 +352,17 @@ export async function moveEntry(from: string, to: string): Promise<TerminalFileE
   try { await fs.stat(src); } catch { throw new HTTPException(404, { message: '源路径不存在' }); }
   if (existsSyncSafe(dst)) throw new HTTPException(400, { message: '目标路径已存在' });
   await fs.mkdir(path.dirname(dst), { recursive: true });
-  await fs.rename(src, dst);
+  try {
+    await fs.rename(src, dst);
+  } catch (err) {
+    // 跨盘符或跨文件系统时 rename 会抛 EXDEV，降级为 cp + rm
+    if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
+      await fs.cp(src, dst, { recursive: true });
+      await fs.rm(src, { recursive: true, force: true });
+    } else {
+      throw err;
+    }
+  }
   return buildEntry(dst);
 }
 

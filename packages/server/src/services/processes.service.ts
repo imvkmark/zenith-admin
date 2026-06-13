@@ -4,11 +4,79 @@ import os from 'node:os';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../lib/datetime';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
-import type { ProcessInfo, ProcessListResponse, SetProcessPriorityInput } from '@zenith/shared';
+import type { ProcessInfo, ProcessListResponse, ProcessNetConn, SetProcessPriorityInput } from '@zenith/shared';
 
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 20 * 1024 * 1024;
 const PLATFORM = os.platform();
+
+// ─── 端口缓存（每 15 秒刷新一次，避免 SSE 每帧都调 netstat）─────────────────
+let portsCache: Map<number, string> | null = null;
+let portsCacheAt = 0;
+const PORTS_TTL = 15_000;
+
+async function fetchPortsByPid(): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  try {
+    if (PLATFORM === 'win32') {
+      const { stdout } = await execFileAsync(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-Command',
+          'Get-NetTCPConnection -State Listen | Select-Object LocalPort,OwningProcess | ConvertTo-Json -Compress'],
+        { maxBuffer: 2 * 1024 * 1024, timeout: 8000 },
+      );
+      const raw = JSON.parse(stdout.trim() || '[]') as unknown;
+      const arr: Array<{ LocalPort?: number; OwningProcess?: number }> = Array.isArray(raw) ? raw : [raw];
+      for (const r of arr) {
+        const pid = Number(r.OwningProcess);
+        const port = Number(r.LocalPort);
+        if (pid > 0 && port > 0) {
+          const existing = map.get(pid);
+          map.set(pid, existing ? `${existing}, ${port}` : String(port));
+        }
+      }
+    } else if (PLATFORM === 'darwin') {
+      // macOS: lsof -i -n -P (faster than netstat)
+      const { stdout } = await execFileAsync('lsof', ['-i', '-n', '-P'], { maxBuffer: 4 * 1024 * 1024, timeout: 8000 });
+      for (const line of stdout.split('\n')) {
+        if (!line.includes('(LISTEN)') && !line.includes('UDP')) continue;
+        const parts = line.trim().split(/\s+/);
+        const pid = Number.parseInt(parts[1] ?? '', 10);
+        const addr = parts[8] ?? '';
+        const portMatch = addr.match(/:(\d+)$/);
+        if (Number.isNaN(pid) || !portMatch) continue;
+        const port = portMatch[1];
+        const existing = map.get(pid);
+        if (!existing?.includes(port)) {
+          map.set(pid, existing ? `${existing}, ${port}` : port);
+        }
+      }
+    } else {
+      // Linux: ss is faster than netstat
+      const { stdout } = await execFileAsync('ss', ['-tlnpH'], { maxBuffer: 4 * 1024 * 1024, timeout: 8000 });
+      for (const line of stdout.split('\n')) {
+        const portMatch = line.match(/:(\d+)\s/);
+        const pidMatch = line.match(/pid=(\d+)/);
+        if (!portMatch || !pidMatch) continue;
+        const pid = Number.parseInt(pidMatch[1], 10);
+        const port = portMatch[1];
+        const existing = map.get(pid);
+        if (!existing?.includes(port)) {
+          map.set(pid, existing ? `${existing}, ${port}` : port);
+        }
+      }
+    }
+  } catch { /* best-effort */ }
+  return map;
+}
+
+async function getPortsByPid(): Promise<Map<number, string>> {
+  if (portsCache && Date.now() - portsCacheAt < PORTS_TTL) return portsCache;
+  const map = await fetchPortsByPid();
+  portsCache = map;
+  portsCacheAt = Date.now();
+  return map;
+}
 
 function mapUnixState(stat: string): string {
   if (!stat) return 'unknown';
@@ -49,6 +117,8 @@ async function listProcessesUnix(): Promise<ProcessInfo[]> {
         threads: Number.parseInt(nlwpStr, 10) || 1,
         nice: Number.parseInt(niStr, 10),
         priorityClass: null,
+        ports: null,
+        connections: null,
       });
     }
     return result;
@@ -106,6 +176,8 @@ else { "[" + ($result | ConvertTo-Json -Depth 1 -Compress) + "]" }
           threads: Number(p.threads) || 1,
           nice: null,
           priorityClass,
+          ports: null,
+          connections: null,
         };
       });
   } catch (err) {
@@ -115,9 +187,15 @@ else { "[" + ($result | ConvertTo-Json -Depth 1 -Compress) + "]" }
 
 export async function listProcesses(): Promise<ProcessListResponse> {
   const timestamp = formatDateTime(new Date());
-  const processes = PLATFORM === 'win32'
-    ? await listProcessesWindows()
-    : await listProcessesUnix();
+  const [processes, portsMap] = await Promise.all([
+    PLATFORM === 'win32' ? listProcessesWindows() : listProcessesUnix(),
+    getPortsByPid(),
+  ]);
+  // Merge port data into process list
+  for (const p of processes) {
+    const ports = portsMap.get(p.pid);
+    if (ports) p.ports = ports;
+  }
   return { platform: PLATFORM, processes, total: processes.length, timestamp };
 }
 
@@ -144,6 +222,7 @@ async function getProcessDetailUnix(pid: number): Promise<ProcessInfo> {
       if (!Number.isNaN(d.getTime())) startTime = formatDateTime(d);
     }
     const fullCmd = cmdResult.status === 'fulfilled' ? cmdResult.value.stdout.trim() : null;
+    const connections = await getConnectionsByPid(pid).catch(() => null);
     return {
       pid: Number.parseInt(pidStr, 10),
       ppid: Number.parseInt(ppidStr, 10) || 0,
@@ -158,6 +237,8 @@ async function getProcessDetailUnix(pid: number): Promise<ProcessInfo> {
       threads: Number.parseInt(nlwpStr, 10) || 1,
       nice: Number.parseInt(niStr, 10),
       priorityClass: null,
+      ports: portsCache?.get(Number.parseInt(pidStr, 10)) ?? null,
+      connections,
     };
   } catch (err) {
     if (err instanceof HTTPException) throw err;
@@ -195,6 +276,7 @@ $c = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"
     const command = typeof p.command === 'string' ? p.command : name;
     const startTime = typeof p.startTime === 'string' && p.startTime ? p.startTime : null;
     const priorityClass = typeof p.priorityClass === 'string' ? p.priorityClass : 'Normal';
+    const connections = await getConnectionsByPid(pid).catch(() => null);
     return {
       pid,
       ppid: Number(p.ppid) || 0,
@@ -209,10 +291,93 @@ $c = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}"
       threads: Number(p.threads) || 1,
       nice: null,
       priorityClass,
+      ports: portsCache?.get(pid) ?? null,
+      connections,
     };
   } catch {
     throw new HTTPException(404, { message: `进程 ${pid} 不存在或无法访问` });
   }
+}
+
+// ─── 获取单个进程的网络连接详情 ──────────────────────────────────────────────
+
+async function getConnectionsByPid(pid: number): Promise<ProcessNetConn[] | null> {
+  try {
+    if (PLATFORM === 'win32') {
+      const { stdout } = await execFileAsync(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-Command',
+          `Get-NetTCPConnection -OwningProcess ${pid} -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State | ConvertTo-Json -Compress`],
+        { maxBuffer: 512 * 1024, timeout: 8000 },
+      );
+      const raw = JSON.parse(stdout.trim() || '[]') as unknown;
+      let arr: Array<Record<string, unknown>>;
+      if (Array.isArray(raw)) {
+        arr = raw;
+      } else if (raw) {
+        arr = [raw as Record<string, unknown>];
+      } else {
+        arr = [];
+      }
+      return arr.map((r) => {
+        const la = typeof r.LocalAddress === 'string' ? r.LocalAddress : '';
+        const ra = typeof r.RemoteAddress === 'string' ? r.RemoteAddress : '';
+        let st: string;
+        if (typeof r.State === 'string') {
+          st = r.State;
+        } else if (typeof r.State === 'number') {
+          st = String(r.State);
+        } else {
+          st = '';
+        }
+        return {
+          localAddr: la,
+          localPort: Number(r.LocalPort) || 0,
+          remoteAddr: ra,
+          remotePort: Number(r.RemotePort) || 0,
+          state: st,
+          protocol: 'tcp',
+        };
+      });
+    } else if (PLATFORM === 'darwin') {
+      const { stdout } = await execFileAsync(
+        'lsof', ['-i', '-n', '-P', '-p', String(pid)],
+        { maxBuffer: 512 * 1024, timeout: 6000 },
+      );
+      const conns: ProcessNetConn[] = [];
+      for (const line of stdout.split('\n').slice(1)) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 9) continue;
+        const proto = (parts[7] ?? '').toLowerCase();
+        const addr = parts[8] ?? '';
+        const state = (parts[9] ?? '').replace(/[()]/g, '');
+        const [localFull = '', remoteFull = ''] = addr.includes('->') ? addr.split('->') : [addr, ''];
+        const localPort = Number(localFull.split(':').pop()) || 0;
+        const remotePort = Number(remoteFull.split(':').pop()) || 0;
+        const proto6 = proto.includes('6') ? 'tcp6' : 'tcp';
+        conns.push({ localAddr: localFull, localPort, remoteAddr: remoteFull, remotePort, state, protocol: proto6 });
+      }
+      return conns;
+    } else {
+      // Linux: ss -ntp
+      const { stdout } = await execFileAsync(
+        'ss', ['-ntp', `"( pid = ${pid} )"`],
+        { maxBuffer: 512 * 1024, timeout: 6000, shell: true },
+      );
+      const conns: ProcessNetConn[] = [];
+      for (const line of stdout.split('\n').slice(1)) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 5) continue;
+        const state = parts[0] ?? '';
+        const local = parts[4] ?? '';
+        const remote = parts[5] ?? '';
+        const localPort = Number((local).split(':').pop()) || 0;
+        const remotePort = Number((remote).split(':').pop()) || 0;
+        conns.push({ localAddr: local, localPort, remoteAddr: remote, remotePort, state, protocol: 'tcp' });
+      }
+      return conns;
+    }
+  } catch { return null; }
 }
 
 export async function getProcessDetail(pid: number): Promise<ProcessInfo> {
@@ -287,6 +452,7 @@ const EXPORT_COLUMNS = [
   { header: '线程数', key: 'threads', width: 10 },
   { header: 'Nice', key: 'nice', width: 8 },
   { header: '优先级类', key: 'priorityClass', width: 14 },
+  { header: '端口', key: 'ports', width: 20 },
   { header: '启动时间', key: 'startTime', width: 22 },
   { header: '命令', key: 'command', width: 60 },
 ];

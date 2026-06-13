@@ -1794,6 +1794,15 @@ export interface OAuth2AuthorizeInfo {
 }
 
 // ─── 进程管理 ───────────────────────────────────────────────────────────────
+export interface ProcessNetConn {
+  localAddr: string;
+  localPort: number;
+  remoteAddr: string;
+  remotePort: number;
+  state: string;
+  protocol: string; // 'tcp' | 'udp'
+}
+
 export interface ProcessInfo {
   pid: number;
   ppid: number;
@@ -1815,6 +1824,10 @@ export interface ProcessInfo {
   nice: number | null;
   /** Windows priority class, null on Unix */
   priorityClass: string | null;
+  /** Listening port numbers (comma-separated string, from cached netstat) */
+  ports: string | null;
+  /** Full connection list (only populated in detail view) */
+  connections: ProcessNetConn[] | null;
 }
 
 export interface ProcessListResponse {

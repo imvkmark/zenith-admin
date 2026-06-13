@@ -3,6 +3,17 @@
  */
 import { z } from '@hono/zod-openapi';
 
+export const ProcessNetConnDTO = z
+  .object({
+    localAddr: z.string(),
+    localPort: z.number().int(),
+    remoteAddr: z.string(),
+    remotePort: z.number().int(),
+    state: z.string(),
+    protocol: z.string(),
+  })
+  .openapi('ProcessNetConn');
+
 export const ProcessInfoDTO = z
   .object({
     pid: z.number().int(),
@@ -18,6 +29,8 @@ export const ProcessInfoDTO = z
     threads: z.number().int(),
     nice: z.number().int().nullable(),
     priorityClass: z.string().nullable(),
+    ports: z.string().nullable(),
+    connections: z.array(ProcessNetConnDTO).nullable(),
   })
   .openapi('ProcessInfo');
 

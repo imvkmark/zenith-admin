@@ -16,7 +16,6 @@ import { config } from '@/config';
 import { TOKEN_KEY } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import type { ProcessInfo, ProcessListResponse } from '@zenith/shared';
-
 // ─── 工具函数 ─────────────────────────────────────────────────────────────
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -255,7 +254,7 @@ export default function ProcessesPage() {
     {
       title: '进程名',
       dataIndex: 'name',
-      // 不设 width — 弹性列
+      width: 200,
       render: (name: string) => (
         <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
           {name}
@@ -327,6 +326,14 @@ export default function ProcessesPage() {
       dataIndex: 'startTime',
       width: 155,
       render: (v: string | null) => v ?? <span style={{ color: '#bbb' }}>—</span>,
+    },
+    {
+      title: '端口',
+      dataIndex: 'ports',
+      width: 130,
+      render: (v: string | null) => v
+        ? <Typography.Text style={{ fontSize: 12 }}>{v}</Typography.Text>
+        : <span style={{ color: '#bbb' }}>—</span>,
     },
     {
       title: '操作',
@@ -465,7 +472,7 @@ export default function ProcessesPage() {
       <ConfigurableTable
         bordered
         virtualized
-        scroll={{ y: tableHeight }}
+        scroll={{ y: tableHeight, x: 1380 }}
         columns={columns}
         dataSource={filteredProcesses}
         loading={loading && processes.length === 0}
@@ -490,6 +497,7 @@ export default function ProcessesPage() {
       >
         <Spin spinning={detailLoading}>
           {detailProcess && (
+            <>
             <Descriptions
               align="center"
               size="small"
@@ -517,6 +525,7 @@ export default function ProcessesPage() {
                     ? (detailProcess.priorityClass ?? '—')
                     : (detailProcess.nice ?? '—'),
                 },
+                { key: '端口', value: detailProcess.ports ?? '—' },
                 { key: '启动时间', value: detailProcess.startTime ?? '—' },
                 {
                   key: '命令行',
@@ -532,6 +541,33 @@ export default function ProcessesPage() {
                 },
               ]}
             />
+            {/* 网络连接 */}
+            {detailProcess.connections && detailProcess.connections.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Typography.Title heading={6} style={{ marginBottom: 8 }}>网络连接</Typography.Title>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--semi-color-fill-0)' }}>
+                      <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid var(--semi-color-border)' }}>协议</th>
+                      <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid var(--semi-color-border)' }}>本地地址</th>
+                      <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid var(--semi-color-border)' }}>远端地址</th>
+                      <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid var(--semi-color-border)' }}>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailProcess.connections.map((c) => (
+                      <tr key={`${c.protocol}-${c.localAddr}-${c.localPort}`} style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
+                        <td style={{ padding: '3px 8px' }}>{c.protocol}</td>
+                        <td style={{ padding: '3px 8px' }}>{c.localAddr}:{c.localPort}</td>
+                        <td style={{ padding: '3px 8px' }}>{c.remoteAddr ? `${c.remoteAddr}:${c.remotePort}` : '—'}</td>
+                        <td style={{ padding: '3px 8px' }}>{c.state}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            </>
           )}
         </Spin>
       </AppModal>
