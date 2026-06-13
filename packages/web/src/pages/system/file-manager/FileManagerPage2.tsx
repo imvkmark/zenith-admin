@@ -182,7 +182,7 @@ function FsGridCard({ entry, selected, onSelect, onOpen, onContextMenu }: Readon
 // ── 虚拟网格 ─────────────────────────────────────────────────────────────────
 
 const VG_CARD_MIN_W = 128; // 每卡最小宽（px）
-const VG_CARD_H = 120;    // 每卡高度（px）
+const VG_CARD_H = 110;    // 每卡固定高度（必须与 CSS .fm-grid-card height 一致）
 const VG_GAP = 8;          // 横纵间距
 const VG_PAD = 12;         // 容器内边距
 const VG_OVERSCAN = 2;     // 上下额外渲染行数

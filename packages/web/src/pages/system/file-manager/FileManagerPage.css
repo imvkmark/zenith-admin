@@ -138,6 +138,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   padding: 10px 8px;
   border-radius: 8px;
@@ -146,6 +147,9 @@
   transition: background 0.15s;
   position: relative;
   border: 2px solid transparent;
+  /* 固定高度：与 FileManagerPage2.tsx 中 VG_CARD_H 必须保持一致 */
+  height: 110px;
+  overflow: hidden;
 }
 
 .fm-grid-card:hover {
