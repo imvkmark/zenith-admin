@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button, Input, Select, InputNumber, Tag, Typography } from '@douyinfe/semi-ui';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Button, Input, Select, InputNumber, Tag, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Play, Square, Wifi, Search } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
@@ -14,7 +14,112 @@ const TOOL_OPTIONS = [
 
 type ToolType = (typeof TOOL_OPTIONS)[number]['value'];
 
-const STREAMING_TOOLS: ToolType[] = ['ping', 'traceroute'];
+const STREAMING_TOOLS = new Set<ToolType>(['ping', 'traceroute']);
+
+// ─── Traceroute 解析 + 可视化 ────────────────────────────────────────────────
+
+interface HopInfo {
+  hop: number; host: string; ip: string | null;
+  rtts: number[]; timeout: boolean; avgRtt: number | null;
+}
+
+function parseTraceroute(text: string): HopInfo[] {
+  const hops: HopInfo[] = [];
+  for (const line of text.split('\n')) {
+    // Linux: " 1  host (1.2.3.4)  X ms  Y ms  Z ms"
+    const lm = line.match(/^\s*(\d+)\s+(.+?)\s+\(([^)]+)\)\s+(.+)$/);
+    if (lm) {
+      const rtts = [...lm[4].matchAll(/(\d+(?:\.\d+)?)\s+ms/g)].map((m) => Number.parseFloat(m[1]));
+      hops.push({
+        hop: Number.parseInt(lm[1], 10), host: lm[2].trim(), ip: lm[3],
+        rtts, timeout: rtts.length === 0,
+        avgRtt: rtts.length > 0 ? rtts.reduce((a, b) => a + b, 0) / rtts.length : null,
+      });
+      continue;
+    }
+    // Timeout: " 3  * * *"
+    const tm = line.match(/^\s*(\d+)\s+\*\s+\*\s+\*/);
+    if (tm) {
+      hops.push({ hop: Number.parseInt(tm[1], 10), host: '*', ip: null, rtts: [], timeout: true, avgRtt: null });
+      continue;
+    }
+    // Windows tracert: "  1     1 ms  ..."
+    const wm = line.match(/^\s*(\d+)\s+.+$/);
+    if (wm) {
+      const winRtts = [...line.matchAll(/(\d+)\s+ms/g)].map((m) => Number.parseInt(m[1], 10));
+      const winHost = line.replace(/^\s*\d+\s+([\d\s]+ms\s*){0,3}/, '').replace(/[\r\n]/g, '').trim();
+      const isTimeout = line.includes('*') || winRtts.length === 0;
+      hops.push({
+        hop: Number.parseInt(wm[1], 10), host: winHost || '*', ip: null,
+        rtts: winRtts, timeout: isTimeout,
+        avgRtt: winRtts.length > 0 ? winRtts.reduce((a, b) => a + b, 0) / winRtts.length : null,
+      });
+    }
+  }
+  return hops;
+}
+
+function rttColor(ms: number): string {
+  if (ms < 20) return '#27ae60';
+  if (ms < 80) return '#f39c12';
+  return '#e74c3c';
+}
+
+function TracerouteViz({ hops }: { hops: HopInfo[] }) {
+  const maxRtt = Math.max(...hops.filter((h) => h.avgRtt !== null).map((h) => h.avgRtt ?? 0), 1);
+  return (
+    <div style={{ overflowX: 'auto', padding: '4px 0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: 'monospace' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
+            {['跳', '主机', 'IP', 'RTT 均值', '延迟可视化'].map((h) => (
+              <th key={h} style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--semi-color-text-1)' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {hops.map((hop) => (
+            <tr key={hop.hop} style={{ borderBottom: '1px solid var(--semi-color-fill-1)' }}>
+              <td style={{ padding: '4px 8px', width: 40, color: 'var(--semi-color-text-2)' }}>{hop.hop}</td>
+              <td style={{ padding: '4px 8px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {hop.timeout ? <span style={{ color: 'var(--semi-color-text-3)' }}>超时</span> : (hop.host !== hop.ip ? hop.host : '—')}
+              </td>
+              <td style={{ padding: '4px 8px', color: 'var(--semi-color-text-2)', whiteSpace: 'nowrap' }}>{hop.ip ?? hop.host}</td>
+              <td style={{ padding: '4px 8px', whiteSpace: 'nowrap' }}>
+                {hop.avgRtt !== null
+                  ? <Tag size="small" color={hop.avgRtt < 20 ? 'green' : hop.avgRtt < 80 ? 'orange' : 'red'}>{hop.avgRtt.toFixed(1)} ms</Tag>
+                  : <span style={{ color: 'var(--semi-color-text-3)' }}>—</span>
+                }
+              </td>
+              <td style={{ padding: '4px 8px', minWidth: 150 }}>
+                {hop.avgRtt !== null && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{
+                      height: 12, borderRadius: 3,
+                      width: `${Math.max((hop.avgRtt / maxRtt) * 140, 4)}px`,
+                      background: rttColor(hop.avgRtt),
+                      transition: 'width 0.4s ease',
+                    }} />
+                    {hop.rtts.length > 1 && (
+                      <span style={{ color: 'var(--semi-color-text-3)', fontSize: 11 }}>
+                        {hop.rtts.map((r) => `${r.toFixed(1)}`).join(' / ')} ms
+                      </span>
+                    )}
+                  </div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {hops.length === 0 && (
+        <Typography.Text type="tertiary" style={{ padding: '12px 8px', display: 'block', fontStyle: 'italic' }}>
+          等待 traceroute 输出...
+        </Typography.Text>
+      )}
+    </div>
+  );
+}
 
 async function fetchStream(
   url: string,
@@ -48,6 +153,8 @@ export default function NetworkDiagPage() {
   const abortRef = useRef<AbortController | null>(null);
   const preRef = useRef<HTMLPreElement>(null);
 
+  const hops = useMemo(() => (tool === 'traceroute' ? parseTraceroute(output) : []), [output, tool]);
+
   // 输出更新时自动滚到底部
   useEffect(() => {
     if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
@@ -58,7 +165,7 @@ export default function NetworkDiagPage() {
     setOutput('');
     setRunning(true);
 
-    if (STREAMING_TOOLS.includes(tool)) {
+    if (STREAMING_TOOLS.has(tool)) {
       const abort = new AbortController();
       abortRef.current = abort;
       const params = new URLSearchParams({ type: tool, host: host.trim() });
@@ -168,33 +275,42 @@ export default function NetworkDiagPage() {
 
       {/* 输出区 */}
       <div style={{ flex: 1, minHeight: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--semi-color-border)' }}>
-        <div style={{
-          padding: '4px 12px',
-          background: 'var(--semi-color-fill-1)',
-          borderBottom: '1px solid var(--semi-color-border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <Typography.Text size="small" type="secondary">输出</Typography.Text>
-          {running && <Tag color="green" size="small">● 运行中</Tag>}
-        </div>
-        <pre
-          ref={preRef}
-          style={{
-            margin: 0,
-            padding: 12,
-            fontFamily: 'Consolas, "Courier New", monospace',
-            fontSize: 13,
-            lineHeight: 1.6,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            background: 'var(--semi-color-bg-1)',
-            height: 'calc(100% - 32px)',
-            overflow: 'auto',
-            color: 'var(--semi-color-text-0)',
-          }}
-        >
-          {output || <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>等待运行...</Typography.Text>}
-        </pre>
+        {tool === 'traceroute'
+          ? (
+            <Tabs type="line" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+              tabBarExtraContent={running ? <Tag color="green" size="small" style={{ marginRight: 8 }}>● 运行中</Tag> : undefined}>
+              <TabPane tab="可视化" itemKey="viz" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 0 }}>
+                <div style={{ padding: 12, height: '100%', overflow: 'auto', background: 'var(--semi-color-bg-1)' }}>
+                  <TracerouteViz hops={hops} />
+                </div>
+              </TabPane>
+              <TabPane tab="原始输出" itemKey="raw" style={{ flex: 1, minHeight: 0 }}>
+                <pre ref={preRef} style={{
+                  margin: 0, padding: 12, fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--semi-color-bg-1)',
+                  height: '100%', overflow: 'auto', color: 'var(--semi-color-text-0)',
+                }}>
+                  {output || <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>等待运行...</Typography.Text>}
+                </pre>
+              </TabPane>
+            </Tabs>
+          )
+          : (
+            <>
+              <div style={{ padding: '4px 12px', background: 'var(--semi-color-fill-1)', borderBottom: '1px solid var(--semi-color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography.Text size="small" type="secondary">输出</Typography.Text>
+                {running && <Tag color="green" size="small">● 运行中</Tag>}
+              </div>
+              <pre ref={preRef} style={{
+                margin: 0, padding: 12, fontFamily: 'Consolas, "Courier New", monospace', fontSize: 13, lineHeight: 1.6,
+                whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--semi-color-bg-1)',
+                height: 'calc(100% - 32px)', overflow: 'auto', color: 'var(--semi-color-text-0)',
+              }}>
+                {output || <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>等待运行...</Typography.Text>}
+              </pre>
+            </>
+          )
+        }
       </div>
     </div>
   );
