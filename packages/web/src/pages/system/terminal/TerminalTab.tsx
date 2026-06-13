@@ -34,6 +34,11 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     fontFamily: terminal.fontFamily,
     lineHeight: terminal.lineHeight,
     scrollback: terminal.scrollback,
+    cursorStyle: terminal.cursorStyle,
+    cursorBlink: terminal.cursorBlink,
+    copyOnSelect: terminal.copyOnSelect,
+    rendererType: terminal.rendererType,
+    fastScrollSensitivity: terminal.fastScrollSensitivity,
   });
   initCfgRef.current = {
     theme: currentTheme,
@@ -41,6 +46,11 @@ export default function TerminalTab({ sessionId, active, shell, cwd }: TerminalT
     fontFamily: terminal.fontFamily,
     lineHeight: terminal.lineHeight,
     scrollback: terminal.scrollback,
+    cursorStyle: terminal.cursorStyle,
+    cursorBlink: terminal.cursorBlink,
+    copyOnSelect: terminal.copyOnSelect,
+    rendererType: terminal.rendererType,
+    fastScrollSensitivity: terminal.fastScrollSensitivity,
   };
 
   // 搜索操作

@@ -39,6 +39,16 @@ export interface TerminalPreferences {
   tabCollapsed: boolean;
   /** 滚回缓冲区行数（默认 5000） */
   scrollback: number;
+  /** 光标样式 */
+  cursorStyle: 'block' | 'underline' | 'bar';
+  /** 光标是否闪烁 */
+  cursorBlink: boolean;
+  /** 选中文本时自动复制到剪贴板 */
+  copyOnSelect: boolean;
+  /** 渲染模式：canvas（默认）或 webgl（性能更好，部分环境不支持） */
+  rendererType: 'canvas' | 'webgl';
+  /** 按住 Alt 快速滚动时的行数倍率（默认 5） */
+  fastScrollSensitivity: number;
 }
 
 export interface UserPreferences {

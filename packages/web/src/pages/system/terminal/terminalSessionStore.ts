@@ -28,6 +28,16 @@ export interface SessionCreateOptions {
   lineHeight: number;
   /** 滚回缓冲行数，默认 5000 */
   scrollback?: number;
+  /** 光标样式 */
+  cursorStyle?: 'block' | 'underline' | 'bar';
+  /** 光标是否闪烁 */
+  cursorBlink?: boolean;
+  /** 选中文本自动复制 */
+  copyOnSelect?: boolean;
+  /** 渲染模式 */
+  rendererType?: 'canvas' | 'webgl';
+  /** Alt 快速滚动倍率 */
+  fastScrollSensitivity?: number;
 }
 
 interface SessionState {
@@ -112,9 +122,11 @@ class TerminalSessionStore {
       fontFamily: options.fontFamily,
       fontSize: options.fontSize,
       lineHeight: options.lineHeight,
-      cursorBlink: true,
-      cursorStyle: 'block',
+      cursorBlink: options.cursorBlink ?? true,
+      cursorStyle: options.cursorStyle ?? 'block',
+      copyOnSelection: options.copyOnSelect ?? false,
       scrollback: options.scrollback ?? 5000,
+      fastScrollSensitivity: options.fastScrollSensitivity ?? 5,
     });
 
     const fitAddon = new FitAddon();

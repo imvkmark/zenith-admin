@@ -13,6 +13,11 @@ export const defaultTerminalPreferences: TerminalPreferences = {
   tabPosition: 'top',
   tabCollapsed: false,
   scrollback: 5000,
+  cursorStyle: 'block',
+  cursorBlink: true,
+  copyOnSelect: false,
+  rendererType: 'canvas',
+  fastScrollSensitivity: 5,
 };
 
 /**

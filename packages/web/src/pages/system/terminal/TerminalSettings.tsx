@@ -159,6 +159,66 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
 
       <Divider margin="12px" />
 
+      <Field label="光标样式">
+        <Select
+          value={terminal.cursorStyle ?? 'block'}
+          onChange={(v) => setTerminalPref({ cursorStyle: (v as 'block' | 'underline' | 'bar') ?? 'block' })}
+          style={{ width: '100%' }}
+        >
+          <Select.Option value="block">块状（默认）</Select.Option>
+          <Select.Option value="underline">下划线</Select.Option>
+          <Select.Option value="bar">竖线（VS Code 风格）</Select.Option>
+        </Select>
+      </Field>
+
+      <Field label="光标闪烁">
+        <Switch
+          checked={terminal.cursorBlink ?? true}
+          onChange={(v) => setTerminalPref({ cursorBlink: v })}
+        />
+      </Field>
+
+      <Divider margin="12px" />
+
+      <Field label="选中文字自动复制">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Switch
+            checked={terminal.copyOnSelect ?? false}
+            onChange={(v) => setTerminalPref({ copyOnSelect: v })}
+          />
+          <Typography.Text size="small" type="tertiary">选中即复制到剪贴板</Typography.Text>
+        </div>
+      </Field>
+
+      <Field label="渲染模式">
+        <Select
+          value={terminal.rendererType ?? 'canvas'}
+          onChange={(v) => setTerminalPref({ rendererType: (v as 'canvas' | 'webgl') ?? 'canvas' })}
+          style={{ width: '100%' }}
+        >
+          <Select.Option value="canvas">Canvas（默认，兼容性好）</Select.Option>
+          <Select.Option value="webgl">WebGL（高性能，GPU 加速）</Select.Option>
+        </Select>
+        <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>
+          WebGL 模式在大量输出时帧率更高，需重新打开终端生效。
+        </Typography.Text>
+      </Field>
+
+      <Field label="快速滚动倍率（Alt+滚轮）">
+        <InputNumber
+          value={terminal.fastScrollSensitivity ?? 5}
+          min={1}
+          max={20}
+          step={1}
+          onChange={(v) => setTerminalPref({ fastScrollSensitivity: Number(v) || 5 })}
+          style={{ width: '100%' }}
+          formatter={(v) => `${v}x`}
+          parser={(v) => (v ? v.replace('x', '') : '')}
+        />
+      </Field>
+
+      <Divider margin="12px" />
+
       <Button icon={<RotateCcw size={14} />} onClick={() => setTerminalPref({ ...defaultTerminalPreferences, favorites: terminal.favorites })} block>
         恢复默认（保留收藏）
       </Button>
