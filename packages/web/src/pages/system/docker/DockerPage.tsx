@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   Button,
   Tag,
@@ -24,6 +24,7 @@ import {
   FileText,
   RefreshCw,
   ChevronDown,
+  ChevronUp,
   Activity,
   Search,
   Info,
@@ -116,6 +117,10 @@ function ContainersTab() {
   const [inspectTarget, setInspectTarget] = useState<ContainerInfo | null>(null);
   const [inspectData, setInspectData] = useState('');
   const [inspectLoading, setInspectLoading] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const [logsFollowing, setLogsFollowing] = useState(true);
+  const logsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const logsPreRef = useRef<HTMLPreElement>(null);
 
   const fetchContainers = useCallback(async () => {
     setLoading(true);
@@ -125,6 +130,27 @@ function ContainersTab() {
   }, []);
 
   useEffect(() => { void fetchContainers(); }, [fetchContainers]);
+
+  // 新增 Compose 分组时自动展开，已有分组保持状态
+  useEffect(() => {
+    const groupIds = [...new Set(containers
+      .filter(c => c.composeProject)
+      .map(c => `__compose__${c.composeProject}`))];
+    setExpandedKeys(prev => {
+      const newIds = groupIds.filter(id => !prev.includes(id));
+      return newIds.length > 0 ? [...prev, ...newIds] : prev;
+    });
+  }, [containers]);
+
+  // 追踪模式下自动滚到底部
+  useEffect(() => {
+    if (logsFollowing && logsPreRef.current) {
+      logsPreRef.current.scrollTop = logsPreRef.current.scrollHeight;
+    }
+  }, [logs, logsFollowing]);
+
+  // 卸载时清理轮询定时器
+  useEffect(() => () => { if (logsIntervalRef.current) clearInterval(logsIntervalRef.current); }, []);
 
   const handleAction = async (id: string, action: 'start' | 'stop' | 'restart') => {
     setActionLoading((p) => ({ ...p, [id]: true }));
@@ -138,10 +164,36 @@ function ContainersTab() {
   };
 
   const openLogs = async (c: ContainerInfo) => {
-    setLogsContainer(c); setLogsLoading(true); setLogs('');
-    const res = await request.get<{ logs: string }>(`/api/docker/${c.id}/logs?tail=500`);
-    setLogsLoading(false);
-    if (res.code === 0 && res.data) setLogs(res.data.logs);
+    if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
+    setLogsContainer(c); setLogsLoading(true); setLogs(''); setLogsFollowing(true);
+    const fetchOnce = async () => {
+      const res = await request.get<{ logs: string }>(`/api/docker/${c.id}/logs?tail=500`);
+      if (res.code === 0 && res.data) { setLogs(res.data.logs); setLogsLoading(false); }
+    };
+    await fetchOnce();
+    logsIntervalRef.current = setInterval(() => void fetchOnce(), 2000);
+  };
+
+  const closeLogs = () => {
+    if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
+    setLogsContainer(null); setLogs('');
+  };
+
+  const toggleLogsFollow = () => {
+    setLogsFollowing(prev => {
+      const next = !prev;
+      if (!next) {
+        if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
+      } else if (logsContainer) {
+        const fetchOnce = async () => {
+          const res = await request.get<{ logs: string }>(`/api/docker/${logsContainer.id}/logs?tail=500`);
+          if (res.code === 0 && res.data) setLogs(res.data.logs);
+        };
+        void fetchOnce();
+        logsIntervalRef.current = setInterval(() => void fetchOnce(), 2000);
+      }
+      return next;
+    });
   };
 
   const openStats = async (c: ContainerInfo) => {
@@ -159,6 +211,12 @@ function ContainersTab() {
   };
 
   const isGroup = (r: ContainerInfo) => r.id.startsWith('__compose__');
+
+  const allGroupIds = useMemo(
+    () => [...new Set(containers.filter(c => c.composeProject).map(c => `__compose__${c.composeProject}`))],
+    [containers]);
+  const allExpanded = allGroupIds.length > 0 && allGroupIds.every(id => expandedKeys.includes(id));
+  const toggleExpandAll = () => setExpandedKeys(allExpanded ? [] : allGroupIds);
 
   const filtered = keyword
     ? groupByCompose(containers.filter((c) =>
@@ -247,18 +305,35 @@ function ContainersTab() {
       <SearchToolbar>
         <Input prefix={<Search size={14} />} placeholder="搜索容器名 / 镜像 / Compose 项目" showClear value={keyword} onChange={setKeyword} style={{ width: 280 }} />
         <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchContainers()}>刷新</Button>
+        {allGroupIds.length > 0 && (
+          <Button type="tertiary" icon={allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />} onClick={toggleExpandAll}>
+            {allExpanded ? '全部折叠' : '全部展开'}
+          </Button>
+        )}
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchContainers()} refreshLoading={loading}
-        empty="未检测到 Docker 容器" pagination={{ pageSize: 30, showSizeChanger: true }} expandAllGroupRows />
+        empty="未检测到 Docker 容器" pagination={{ pageSize: 30, showSizeChanger: true }}
+        expandedRowKeys={expandedKeys}
+        onExpand={(expanded: boolean | undefined, record: ContainerInfo) =>
+          setExpandedKeys(prev => expanded ? [...prev, record.id] : prev.filter(k => k !== record.id))
+        }
+      />
 
       <SideSheet
-        title={<span><FileText size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} />容器日志：{logsContainer?.names[0] ?? ''}</span>}
-        visible={!!logsContainer} onCancel={() => { setLogsContainer(null); setLogs(''); }} width={680} placement="right"
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span><FileText size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} />容器日志：{logsContainer?.names[0] ?? ''}</span>
+            <Button size="small" type={logsFollowing ? 'primary' : 'tertiary'} onClick={toggleLogsFollow} style={{ marginRight: 32 }}>
+              {logsFollowing ? '⏸ 暂停追踪' : '▶ 继续追踪'}
+            </Button>
+          </div>
+        }
+        visible={!!logsContainer} onCancel={closeLogs} width={680} placement="right"
       >
         {logsLoading
           ? <div style={{ textAlign: 'center', padding: 40 }}><Typography.Text type="tertiary">加载中...</Typography.Text></div>
-          : <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 6, maxHeight: 'calc(100vh - 120px)', overflow: 'auto', margin: 0 }}>{logs || '（暂无日志）'}</pre>
+          : <pre ref={logsPreRef} style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 6, height: 'calc(100vh - 120px)', overflow: 'auto', margin: 0 }}>{logs || '（暂无日志）'}</pre>
         }
       </SideSheet>
 
