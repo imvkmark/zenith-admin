@@ -542,33 +542,15 @@ export default function DataMaskPage() {
       </AppModal>
 
       {/* ─── 扫描敏感字段对话框 ───────────────────────────────────────────────── */}
-      <Modal
+      <AppModal
         title="扫描数据库敏感字段"
         visible={scanVisible}
         onCancel={closeScan}
+        onOk={() => void handleBatchCreate()}
+        okText={scanSelected.length > 0 ? `生成规则（${scanSelected.length}）` : '生成规则'}
+        okButtonProps={{ loading: creatingBatch, disabled: !scanResults || scanResults.length === 0 || scanSelected.length === 0 }}
+        cancelText="关闭"
         width={980}
-        footer={
-          scanResults !== null && scanResults.length > 0 ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography.Text type="secondary" size="small">
-                共发现 {scanResults.length} 个字段，已勾选 {scanSelected.length} 个
-              </Typography.Text>
-              <Space>
-                <Button onClick={closeScan}>取消</Button>
-                <Button
-                  type="primary"
-                  loading={creatingBatch}
-                  disabled={scanSelected.length === 0}
-                  onClick={() => void handleBatchCreate()}
-                >
-                  生成规则（{scanSelected.length}）
-                </Button>
-              </Space>
-            </div>
-          ) : (
-            <Button onClick={closeScan}>关闭</Button>
-          )
-        }
       >
         {scanResults === null ? (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
@@ -668,7 +650,8 @@ export default function DataMaskPage() {
             />
           </>
         )}
-      </Modal>
+      </AppModal>
+
     </div>
   );
 }
