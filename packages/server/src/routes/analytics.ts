@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { validationHook, commonErrorResponses, ok, okMsg, okBody } from '../lib/openapi-schemas';
+import { validationHook, commonErrorResponses, ok, okMsg, okBody, okPaginated } from '../lib/openapi-schemas';
 import {
   BatchUserEventsBodyDTO,
   PageStatsDTO,
@@ -9,6 +9,7 @@ import {
   HeatmapDataDTO,
   HeatmapPageListDTO,
   UserStatsDTO,
+  EventListDTO,
 } from '../lib/openapi-dtos';
 import {
   batchInsertEvents,
@@ -17,6 +18,8 @@ import {
   getHeatmapData,
   getHeatmapPageList,
   getUserStats,
+  cleanAnalyticsEvents,
+  listAnalyticsEvents,
 } from '../services/analytics.service';
 
 const analyticsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -135,6 +138,50 @@ const userStatsRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getUserStats(c.req.valid('query'))), 200),
 });
 
-analyticsRoute.openapiRoutes([ingestRoute, pageStatsRoute, featureStatsRoute, heatmapRoute, heatmapPagesRoute, userStatsRoute] as const);
+const cleanRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete',
+    path: '/clean',
+    tags: ['Analytics'],
+    summary: '清除埋点事件数据',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:manage' })] as const,
+    request: {
+      query: z.object({
+        days: z.coerce.number().int().min(0).default(0),
+      }),
+    },
+    responses: { ...okMsg('清除成功'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { days } = c.req.valid('query');
+    const deleted = await cleanAnalyticsEvents(days);
+    return c.json(okBody(null, `共删除 ${deleted} 条事件数据`), 200);
+  },
+});
+
+const eventListRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/events',
+    tags: ['Analytics'],
+    summary: '埋点事件列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:manage' })] as const,
+    request: {
+      query: z.object({
+        page: z.coerce.number().int().min(1).optional().default(1),
+        pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
+        eventType: z.enum(['page_view', 'page_leave', 'feature_use', 'area_click']).optional(),
+        username: z.string().optional(),
+        pagePath: z.string().optional(),
+      }),
+    },
+    responses: { ...okPaginated(EventListDTO, '事件列表'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await listAnalyticsEvents(c.req.valid('query'))), 200),
+});
+
+analyticsRoute.openapiRoutes([ingestRoute, pageStatsRoute, featureStatsRoute, heatmapRoute, heatmapPagesRoute, userStatsRoute, cleanRoute, eventListRoute] as const);
 
 export default analyticsRoute;

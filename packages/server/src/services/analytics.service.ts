@@ -1,10 +1,11 @@
-import { and, eq, gte, isNotNull, sql, countDistinct } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, sql, countDistinct, desc, like } from 'drizzle-orm';
 import { db } from '../db';
 import { userEvents } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { tenantScope, currentCreateTenantId } from '../lib/tenant';
-import { mergeWhere } from '../lib/where-helpers';
-import { formatNullableDateTime } from '../lib/datetime';
+import { mergeWhere, escapeLike } from '../lib/where-helpers';
+import { formatNullableDateTime, formatDateTime } from '../lib/datetime';
+import { pageOffset } from '../lib/pagination';
 
 export interface BatchEventInput {
   sessionId: string;
@@ -293,5 +294,67 @@ export async function getUserStats(q: UserStatsQuery) {
   return {
     items,
     totalUsers: items.length,
+  };
+}
+
+export async function cleanAnalyticsEvents(days: number): Promise<number> {
+  const where = days > 0
+    ? mergeWhere(
+        sql`${userEvents.createdAt} < NOW() - INTERVAL '${sql.raw(String(days))} days'`,
+        tenantScope(userEvents),
+      )
+    : tenantScope(userEvents);
+
+  const result = await db.delete(userEvents).where(where);
+  return (result as unknown as { rowCount?: number }).rowCount ?? 0;
+}
+
+export interface EventListQuery {
+  page?: number;
+  pageSize?: number;
+  eventType?: 'page_view' | 'page_leave' | 'feature_use' | 'area_click';
+  username?: string;
+  pagePath?: string;
+}
+
+export async function listAnalyticsEvents(q: EventListQuery) {
+  const page = Math.max(Number(q.page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(q.pageSize) || 20, 1), 100);
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (q.eventType) conditions.push(eq(userEvents.eventType, q.eventType));
+  if (q.username) conditions.push(like(userEvents.username, `%${escapeLike(q.username)}%`));
+  if (q.pagePath) conditions.push(like(userEvents.pagePath, `%${escapeLike(q.pagePath)}%`));
+
+  const where = mergeWhere(and(...conditions), tenantScope(userEvents));
+
+  const [list, total] = await Promise.all([
+    db
+      .select({
+        id: userEvents.id,
+        userId: userEvents.userId,
+        username: userEvents.username,
+        eventType: userEvents.eventType,
+        pagePath: userEvents.pagePath,
+        pageTitle: userEvents.pageTitle,
+        elementKey: userEvents.elementKey,
+        elementLabel: userEvents.elementLabel,
+        componentArea: userEvents.componentArea,
+        durationMs: userEvents.durationMs,
+        createdAt: userEvents.createdAt,
+      })
+      .from(userEvents)
+      .where(where)
+      .orderBy(desc(userEvents.createdAt))
+      .limit(pageSize)
+      .offset(pageOffset(page, pageSize)),
+    db.$count(userEvents, where),
+  ]);
+
+  return {
+    list: list.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) })),
+    total,
+    page,
+    pageSize,
   };
 }

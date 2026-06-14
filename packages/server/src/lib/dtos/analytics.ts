@@ -103,3 +103,28 @@ export const UserStatsDTO = z
     totalUsers: z.number().int(),
   })
   .openapi('UserStats');
+
+export const EventListItemDTO = z
+  .object({
+    id: z.number().int(),
+    userId: z.number().int().nullable(),
+    username: z.string().nullable(),
+    eventType: z.enum(['page_view', 'page_leave', 'feature_use', 'area_click']),
+    pagePath: z.string(),
+    pageTitle: z.string().nullable(),
+    elementKey: z.string().nullable(),
+    elementLabel: z.string().nullable(),
+    componentArea: z.string().nullable(),
+    durationMs: z.number().int().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('EventListItem');
+
+export const EventListDTO = z
+  .object({
+    list: z.array(EventListItemDTO),
+    total: z.number().int(),
+    page: z.number().int(),
+    pageSize: z.number().int(),
+  })
+  .openapi('EventList');
