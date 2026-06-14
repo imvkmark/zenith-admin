@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button, Select, Spin, Tabs, TabPane, Typography, Empty, Tag, Progress, Card } from '@douyinfe/semi-ui';
-import { Clock, MousePointerClick, Flame, RefreshCcw, TrendingUp, BarChart3, Target, Activity } from 'lucide-react';
+import { Clock, MousePointerClick, Flame, RefreshCcw, TrendingUp, BarChart3, Target, Activity, Users, Eye, Zap } from 'lucide-react';
 import { request } from '@/utils/request';
-import type { PageStats, PageStatItem, FeatureStats, FeatureStatItem, HeatmapData, HeatmapPageListItem } from '@zenith/shared';
+import type { PageStats, PageStatItem, FeatureStats, FeatureStatItem, HeatmapData, HeatmapPageListItem, UserStats, UserStatItem } from '@zenith/shared';
 import { usePageTracker } from '@/hooks/usePageTracker';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 
@@ -442,6 +442,130 @@ function HeatmapTab() {
   );
 }
 
+// ─── User Stats Tab ──────────────────────────────────────────────────────────
+
+function UserStatsTab() {
+  const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<UserStats | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await request.get<UserStats>(`/api/analytics/user-stats?days=${days}&limit=20`);
+      if (res.code === 0) setData(res.data);
+    } finally {
+      setLoading(false);
+    }
+  }, [days]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const maxEvents = Math.max(...(data?.items ?? []).map((i) => i.totalEvents), 1);
+  const topUser = data?.items[0];
+
+  const columns = [
+    {
+      title: '排名',
+      key: 'rank',
+      width: 70,
+      render: (_: unknown, __: unknown, index: number) => (
+        <Text type={index < 3 ? 'warning' : 'tertiary'} strong={index < 3}>{index + 1}</Text>
+      ),
+    },
+    {
+      title: '用户',
+      dataIndex: 'username',
+      key: 'username',
+      render: (v: string | null) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--semi-color-primary-light-default)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: 'var(--semi-color-primary)', flexShrink: 0 }}>
+            {(v ?? '?')[0]?.toUpperCase()}
+          </div>
+          <Text strong>{v ?? '未知用户'}</Text>
+        </div>
+      ),
+    },
+    {
+      title: '总操作次数',
+      dataIndex: 'totalEvents',
+      key: 'totalEvents',
+      width: 220,
+      render: (v: number) => {
+        const intensity = v / maxEvents;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 6px', borderRadius: 4, background: heatColor(intensity) }}>
+            <Progress percent={Math.round(intensity * 100)} showInfo={false} style={{ width: 70 }} size="small" />
+            <Text strong>{v.toLocaleString()}</Text>
+          </div>
+        );
+      },
+    },
+    {
+      title: '页面访问',
+      dataIndex: 'pageViews',
+      key: 'pageViews',
+      width: 100,
+      render: (v: number) => <Tag color="blue" size="small">{v.toLocaleString()}</Tag>,
+    },
+    {
+      title: '访问页面数',
+      dataIndex: 'uniquePages',
+      key: 'uniquePages',
+      width: 100,
+      render: (v: number) => <Tag color="teal" size="small">{v}</Tag>,
+    },
+    {
+      title: '功能使用',
+      dataIndex: 'featureUses',
+      key: 'featureUses',
+      width: 100,
+      render: (v: number) => <Tag color="green" size="small">{v.toLocaleString()}</Tag>,
+    },
+    {
+      title: '总停留时长',
+      dataIndex: 'totalDwellMs',
+      key: 'totalDwellMs',
+      width: 120,
+      render: (v: number | null) => <Text size="small">{msToReadable(v)}</Text>,
+    },
+    {
+      title: '最近活跃',
+      dataIndex: 'lastActiveAt',
+      key: 'lastActiveAt',
+      width: 160,
+      render: (v: string | null) => <Text size="small" type="tertiary">{v ?? '–'}</Text>,
+    },
+  ];
+
+  return (
+    <div>
+      {/* Summary cards */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <StatCard icon={<Users size={18} />} label="活跃用户数" value={(data?.totalUsers ?? 0).toLocaleString()} sub={`近 ${days} 天有操作记录`} />
+        <StatCard icon={<Zap size={18} />} label="最活跃用户" value={topUser?.username ?? '–'} sub={topUser ? `${topUser.totalEvents.toLocaleString()} 次操作` : '暂无数据'} color="var(--semi-color-success)" />
+        <StatCard icon={<Eye size={18} />} label="用户均访问页面" value={data && data.items.length > 0 ? `${Math.round(data.items.reduce((s, i) => s + i.uniquePages, 0) / data.items.length)}` : '–'} sub="个不同页面（平均）" color="var(--semi-color-warning)" />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <Select value={days} onChange={(v) => setDays(v as number)} style={{ width: 120 }}>
+          {DAYS_OPTIONS.map((o) => <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>)}
+        </Select>
+      </div>
+      <ConfigurableTable
+        columns={columns}
+        dataSource={data?.items ?? []}
+        loading={loading}
+        rowKey={(r: UserStatItem) => String(r.userId ?? r.username ?? 'unknown')}
+        bordered
+        empty={<Empty description="暂无用户行为数据" style={{ padding: 60 }} />}
+        pagination={false}
+        onRefresh={load}
+        refreshLoading={loading}
+      />
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
@@ -472,6 +596,14 @@ export default function AnalyticsPage() {
         >
           <div style={{ paddingTop: 16 }}>
             <HeatmapTab />
+          </div>
+        </TabPane>
+        <TabPane
+          tab={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Users size={14} />用户分析</span>}
+          itemKey="users"
+        >
+          <div style={{ paddingTop: 16 }}>
+            <UserStatsTab />
           </div>
         </TabPane>
       </Tabs>

@@ -83,3 +83,23 @@ export const HeatmapPageListDTO = z
     ),
   })
   .openapi('HeatmapPageList');
+
+export const UserStatItemDTO = z
+  .object({
+    userId: z.number().int().nullable(),
+    username: z.string().nullable(),
+    totalEvents: z.number().int(),
+    pageViews: z.number().int(),
+    uniquePages: z.number().int(),
+    featureUses: z.number().int(),
+    totalDwellMs: z.number().int().nullable(),
+    lastActiveAt: z.string().nullable(),
+  })
+  .openapi('UserStatItem');
+
+export const UserStatsDTO = z
+  .object({
+    items: z.array(UserStatItemDTO),
+    totalUsers: z.number().int(),
+  })
+  .openapi('UserStats');

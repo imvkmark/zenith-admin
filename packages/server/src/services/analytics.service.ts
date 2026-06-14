@@ -1,9 +1,10 @@
-import { and, eq, gte, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, sql, countDistinct } from 'drizzle-orm';
 import { db } from '../db';
 import { userEvents } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { tenantScope, currentCreateTenantId } from '../lib/tenant';
 import { mergeWhere } from '../lib/where-helpers';
+import { formatNullableDateTime } from '../lib/datetime';
 
 export interface BatchEventInput {
   sessionId: string;
@@ -79,9 +80,9 @@ export async function getPageStats(q: PageStatsQuery) {
     pagePath: r.pagePath,
     pageTitle: r.pageTitle,
     visits: Number(r.visits),
-    avgMs: r.avgMs != null ? Number(r.avgMs) : null,
-    medianMs: r.medianMs != null ? Number(r.medianMs) : null,
-    p90Ms: r.p90Ms != null ? Number(r.p90Ms) : null,
+    avgMs: r.avgMs == null ? null : Number(r.avgMs),
+    medianMs: r.medianMs == null ? null : Number(r.medianMs),
+    p90Ms: r.p90Ms == null ? null : Number(r.p90Ms),
   }));
 
   return {
@@ -242,5 +243,55 @@ export async function getHeatmapPageList(q: HeatmapPageListQuery) {
       pageTitle: p.pageTitle,
       areas: Array.from(p.areas),
     })),
+  };
+}
+
+export interface UserStatsQuery {
+  days?: number;
+  limit?: number;
+}
+
+export async function getUserStats(q: UserStatsQuery) {
+  const days = Math.min(Math.max(Number(q.days) || 30, 1), 365);
+  const limit = Math.min(Math.max(Number(q.limit) || 20, 1), 100);
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  const where = mergeWhere(
+    gte(userEvents.createdAt, startDate),
+    tenantScope(userEvents),
+  );
+
+  const rows = await db
+    .select({
+      userId: userEvents.userId,
+      username: userEvents.username,
+      totalEvents: sql<number>`COUNT(*)::integer`,
+      pageViews: sql<number>`SUM(CASE WHEN ${userEvents.eventType} = 'page_view' THEN 1 ELSE 0 END)::integer`,
+      uniquePages: countDistinct(userEvents.pagePath),
+      featureUses: sql<number>`SUM(CASE WHEN ${userEvents.eventType} = 'feature_use' THEN 1 ELSE 0 END)::integer`,
+      totalDwellMs: sql<number | null>`SUM(CASE WHEN ${userEvents.eventType} = 'page_leave' THEN ${userEvents.durationMs} ELSE NULL END)::bigint`,
+      lastActiveAt: sql<Date | null>`MAX(${userEvents.createdAt})`,
+    })
+    .from(userEvents)
+    .where(where)
+    .groupBy(userEvents.userId, userEvents.username)
+    .orderBy(sql`COUNT(*) DESC`)
+    .limit(limit);
+
+  const items = rows.map((r) => ({
+    userId: r.userId,
+    username: r.username,
+    totalEvents: Number(r.totalEvents),
+    pageViews: Number(r.pageViews),
+    uniquePages: Number(r.uniquePages),
+    featureUses: Number(r.featureUses),
+    totalDwellMs: r.totalDwellMs == null ? null : Number(r.totalDwellMs),
+    lastActiveAt: formatNullableDateTime(r.lastActiveAt),
+  }));
+
+  return {
+    items,
+    totalUsers: items.length,
   };
 }

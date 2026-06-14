@@ -443,6 +443,22 @@ export interface HeatmapPageListItem {
   areas: string[];
 }
 
+export interface UserStatItem {
+  userId: number | null;
+  username: string | null;
+  totalEvents: number;
+  pageViews: number;
+  uniquePages: number;
+  featureUses: number;
+  totalDwellMs: number | null;
+  lastActiveAt: string | null;
+}
+
+export interface UserStats {
+  items: UserStatItem[];
+  totalUsers: number;
+}
+
 // ─── 公告 ──────────────────────────────────────────────────
 export type AnnouncementPublishStatus = 'draft' | 'published' | 'recalled' | 'scheduled';
 export type AnnouncementType = 'notice' | 'announcement' | 'warning';

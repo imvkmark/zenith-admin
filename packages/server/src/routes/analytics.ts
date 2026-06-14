@@ -8,6 +8,7 @@ import {
   FeatureStatsDTO,
   HeatmapDataDTO,
   HeatmapPageListDTO,
+  UserStatsDTO,
 } from '../lib/openapi-dtos';
 import {
   batchInsertEvents,
@@ -15,6 +16,7 @@ import {
   getFeatureStats,
   getHeatmapData,
   getHeatmapPageList,
+  getUserStats,
 } from '../services/analytics.service';
 
 const analyticsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -114,6 +116,25 @@ const heatmapPagesRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getHeatmapPageList(c.req.valid('query'))), 200),
 });
 
-analyticsRoute.openapiRoutes([ingestRoute, pageStatsRoute, featureStatsRoute, heatmapRoute, heatmapPagesRoute] as const);
+const userStatsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/user-stats',
+    tags: ['Analytics'],
+    summary: '用户行为统计',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'analytics:view' })] as const,
+    request: {
+      query: z.object({
+        days: z.coerce.number().int().min(1).max(365).optional().default(30),
+        limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+      }),
+    },
+    responses: { ...ok(UserStatsDTO, '用户行为统计'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await getUserStats(c.req.valid('query'))), 200),
+});
+
+analyticsRoute.openapiRoutes([ingestRoute, pageStatsRoute, featureStatsRoute, heatmapRoute, heatmapPagesRoute, userStatsRoute] as const);
 
 export default analyticsRoute;
