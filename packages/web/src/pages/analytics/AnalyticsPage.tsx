@@ -512,7 +512,7 @@ function UserStatsTab() {
       title: '访问页面数',
       dataIndex: 'uniquePages',
       key: 'uniquePages',
-      width: 100,
+      width: 120,
       render: (v: number) => <Tag color="teal" size="small">{v}</Tag>,
     },
     {
