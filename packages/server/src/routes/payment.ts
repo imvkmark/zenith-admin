@@ -134,7 +134,7 @@ const channelCreateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/channels', tags: ['支付中心'], summary: '创建支付渠道',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:create', audit: { description: '创建支付渠道', module: '支付中心' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'payment:channel:create', audit: { description: '创建支付渠道', module: '支付中心', recordBody: false } })] as const,
     request: { body: { content: jsonContent(channelCreateSchema), required: true } },
     responses: { ...ok(PaymentChannelConfigDTO, '创建成功'), ...commonErrorResponses },
   }),
@@ -145,7 +145,7 @@ const channelUpdateRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/channels/{id}', tags: ['支付中心'], summary: '更新支付渠道',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'payment:channel:update', audit: { description: '更新支付渠道', module: '支付中心' } })] as const,
+    middleware: [authMiddleware, guard({ permission: 'payment:channel:update', audit: { description: '更新支付渠道', module: '支付中心', recordBody: false } })] as const,
     request: { params: IdParam, body: { content: jsonContent(channelUpdateSchema), required: true } },
     responses: { ...ok(PaymentChannelConfigDTO, '更新成功'), ...commonErrorResponses },
   }),

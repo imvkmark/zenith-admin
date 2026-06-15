@@ -5,7 +5,7 @@
  * 内部负责：解析渠道配置、解密密钥组装 AdapterContext、订单状态机、事务落库、
  * 回调验签后处理、发支付事件。所有渠道差异封装在适配器内，业务层无感知。
  */
-import { and, desc, eq, gte, like, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, like, lte, notInArray, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../db';
@@ -231,7 +231,7 @@ export async function createPayment(input: CreatePaymentInput & { clientIp?: str
 
   try {
     const payParams = await getAdapter(channel).createPayment(buildAdapterContext(config), orderRow);
-    await db.update(paymentOrders).set({ status: 'paying' }).where(eq(paymentOrders.id, orderRow.id));
+    await db.update(paymentOrders).set({ status: 'paying' }).where(and(eq(paymentOrders.id, orderRow.id), eq(paymentOrders.status, 'pending')));
     return { orderNo, payParams };
   } catch (err) {
     await db.update(paymentOrders).set({ status: 'failed', errorMessage: errMessage(err).slice(0, 500) }).where(eq(paymentOrders.id, orderRow.id));
@@ -244,8 +244,10 @@ export async function createPayment(input: CreatePaymentInput & { clientIp?: str
 export async function markOrderPaid(
   order: PaymentOrderRow,
   info: { channelTradeNo?: string; paidAmount?: number; paidAt?: Date; notifyData?: string },
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  // 原子条件更新：仅当订单尚未进入成功/退款态时才置为 success，
+  // 确保并发回调（渠道重试）下「标记成功 + 发事件」息恰好执行一次，避免重复履约。
+  const updated = await db
     .update(paymentOrders)
     .set({
       status: 'success',
@@ -254,8 +256,11 @@ export async function markOrderPaid(
       paidAt: info.paidAt ?? new Date(),
       notifyData: info.notifyData ?? order.notifyData,
     })
-    .where(eq(paymentOrders.id, order.id));
+    .where(and(eq(paymentOrders.id, order.id), notInArray(paymentOrders.status, ['success', 'refunding', 'refunded'])))
+    .returning({ id: paymentOrders.id });
+  if (updated.length === 0) return false; // 已被并发处理，幂等跳过
   emitPaymentEvent('payment.succeeded', order);
+  return true;
 }
 
 /** 主动查单并同步本地状态（回调兜底，供查单接口与对账任务复用） */

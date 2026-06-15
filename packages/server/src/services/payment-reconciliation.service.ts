@@ -18,6 +18,9 @@ export async function closeExpiredOrders(): Promise<number> {
   let count = 0;
   for (const order of rows) {
     try {
+      // 先主动查单：若用户已在过期边缘完成支付，会被标记 success，从而跳过关单，避免误关已支付订单
+      const synced = await syncOrderStatus(order);
+      if (synced.status !== 'pending' && synced.status !== 'paying') continue;
       const config = await loadOrderConfig(order);
       if (config) {
         try {
@@ -26,8 +29,13 @@ export async function closeExpiredOrders(): Promise<number> {
           /* 渠道关单失败不阻塞本地关单 */
         }
       }
-      await db.update(paymentOrders).set({ status: 'closed' }).where(eq(paymentOrders.id, order.id));
-      count++;
+      // 条件更新：仅当仍处于待支付态时才置为 closed
+      const closed = await db
+        .update(paymentOrders)
+        .set({ status: 'closed' })
+        .where(and(eq(paymentOrders.id, order.id), inArray(paymentOrders.status, ['pending', 'paying'])))
+        .returning({ id: paymentOrders.id });
+      if (closed.length > 0) count++;
     } catch (err) {
       logger.warn('[payment] close expired failed', { orderNo: order.orderNo, err: err instanceof Error ? err.message : 'unknown' });
     }
