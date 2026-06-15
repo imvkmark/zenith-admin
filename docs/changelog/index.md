@@ -4,6 +4,32 @@
 
 ---
 
+## v0.58.0 - 2026-06-15
+
+### Added
+
+#### 支付中心
+
+- 新增统一支付中心模块，提供与渠道无关的统一支付接口，业务模块一行代码即可接入，无需关注各渠道签名与回调细节
+- **多渠道支持**：微信支付（Native 扫码 / JSAPI / H5）、支付宝（电脑网站 / 手机网站 / APP），采用「适配器接口 + 注册表」架构，新增渠道零改动业务层
+- **统一门面**：`createPayment` / `queryPayment` / `refund` / `closePayment` 四个方法，金额全链路整数分
+- **真实签名/验签**：Node 原生 crypto 实现微信 v3（RSA-SHA256 鉴权头 + AES-256-GCM 回调解密 + 平台证书按 `Wechatpay-Serial` 自动下载选证）与支付宝（RSA2 签名/验签 + 同步响应验签），外呼全程经 `http-client`
+- **异步通知**：公开回调端点 `/api/public/payment/notify/{channel}` 验签后经进程内事件总线 `paymentEventBus` 通知业务模块，并通过 WebSocket 实时推送付款用户
+- **退款**：统一退款接口，支持部分退款与退款查询，退款回调原子幂等处理
+- **后台管理**：支付渠道配置（密钥加密存储 + 掩码）、支付订单（查单 / 关单 / 退款）、退款记录、回调日志四个管理页面
+- **对账与关单**：新增 `closeExpiredPaymentOrders`、`paymentReconciliation` 定时任务处理器（回调 + 主动查单双保险）
+- 新增 4 张表（`payment_channel_configs` / `payment_orders` / `payment_refunds` / `payment_notify_logs`）及对应迁移
+- 同步覆盖 MSW Demo Mock 与设计文档 `docs/backend/payment.md`
+
+### Security
+
+- 渠道密钥（APIv3 Key / 商户私钥 / 支付宝应用私钥）`encryptField` 加密落库，响应仅以 `hasXxx` 布尔位标识，绝不返回明文
+- 渠道创建 / 更新不记录请求体，避免密钥写入操作日志
+- 支付成功与退款回调采用原子条件更新 + 幂等发事件，杜绝并发回调重复履约
+- 回调地址强制校验为公网 http(s) 绝对地址
+
+---
+
 ## v0.57.0 - 2026-06-14
 
 ### Added
