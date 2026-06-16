@@ -274,4 +274,18 @@ export const alipayAdapter: PaymentChannelAdapter = {
       raw: params,
     };
   },
+
+  async testConnectivity(ctx: AdapterContext): Promise<void> {
+    const fakeNo = `TEST${Date.now()}`;
+    try {
+      await alipayApiCall(ctx, 'alipay.trade.query', { out_trade_no: fakeNo }, 'alipay_trade_query_response');
+      // 意外成功也视为凭据可用
+    } catch (err) {
+      if (!(err instanceof HTTPException)) throw err;
+      const msg = err.message ?? '';
+      // TRADE_NOT_EXIST / ACQ.TRADE_NOT_EXIST / 交易不存在 = 凭据有效
+      if (msg.includes('TRADE_NOT_EXIST') || msg.includes('交易不存在')) return;
+      throw err; // 签名错误 / 权限未授权 / 其他鉴权失败
+    }
+  },
 };

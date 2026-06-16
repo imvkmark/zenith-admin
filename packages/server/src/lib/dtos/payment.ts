@@ -137,3 +137,12 @@ export const PaymentStatsDTO = z
     byStatus: z.array(z.object({ status: z.string(), count: z.number() })),
   })
   .openapi('PaymentStats');
+
+
+export const ChannelConnectivityResultDTO = z
+  .object({
+    success: z.boolean().openapi({ description: '连通性是否正常（凭据有效）' }),
+    message: z.string().openapi({ description: '测试结果描述' }),
+    latencyMs: z.number().openapi({ description: '探测耗时（毫秒）' }),
+  })
+  .openapi('ChannelConnectivityResult');

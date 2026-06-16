@@ -83,4 +83,11 @@ export interface PaymentChannelAdapter {
   queryRefund(ctx: AdapterContext, refund: PaymentRefundRow, order: PaymentOrderRow): Promise<RefundQueryResult>;
   /** 验签 + 解析异步回调 */
   verifyNotify(ctx: AdapterContext, rawBody: string, headers: Headers): Promise<NotifyResult>;
+  /**
+   * 连通性测试（可选）。
+   * 向渠道发起一个轻量的探测请求（如查询一个不存在的订单号），
+   * 用于验证商户凭据配置是否正确。"订单不存在"属预期结果，应正常返回；
+   * 签名错误、鉴权失败等凭据问题则抛出异常。
+   */
+  testConnectivity?(ctx: AdapterContext): Promise<void>;
 }

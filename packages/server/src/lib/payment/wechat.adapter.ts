@@ -275,4 +275,18 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
       raw: data,
     };
   },
+
+  async testConnectivity(ctx: AdapterContext): Promise<void> {
+    const fakeNo = `TEST${Date.now()}`;
+    try {
+      await wechatRequest(ctx, 'GET', `/v3/pay/transactions/out-trade-no/${fakeNo}`);
+      // 真实订单意外命中也视为凭据可用
+    } catch (err) {
+      if (!(err instanceof HTTPException)) throw err;
+      const msg = err.message ?? '';
+      // ORDER_NOT_EXIST / RESOURCE_NOT_EXISTS = 凭据有效，订单不存在属预期
+      if (msg.includes('ORDER_NOT_EXIST') || msg.includes('RESOURCE_NOT_EXISTS')) return;
+      throw err; // 签名错误 / 商户号不存在 / 其他鉴权失败
+    }
+  },
 };

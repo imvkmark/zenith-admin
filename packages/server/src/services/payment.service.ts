@@ -5,7 +5,7 @@
  * 内部负责：解析渠道配置、解密密钥组装 AdapterContext、订单状态机、事务落库、
  * 回调验签后处理、发支付事件。所有渠道差异封装在适配器内，业务层无感知。
  */
-import { and, desc, eq, gte, like, lte, ne, notInArray, or } from 'drizzle-orm';
+import { and, desc, eq, gte, like, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { randomInt } from 'node:crypto';
 import { db } from '../db';
@@ -351,36 +351,44 @@ export async function refund(input: CreateRefundInput & { operatorId?: number })
   if (order.status !== 'success' && order.status !== 'refunding') {
     throw new HTTPException(400, { message: '订单未支付成功，无法退款' });
   }
-  const existing = await db
-    .select({ amount: paymentRefunds.refundAmount, status: paymentRefunds.status })
-    .from(paymentRefunds)
-    .where(eq(paymentRefunds.orderId, order.id));
-  const lockedTotal = existing.filter((r) => r.status === 'success' || r.status === 'processing').reduce((s, r) => s + r.amount, 0);
-  if (lockedTotal + input.refundAmount > order.amount) {
-    throw new HTTPException(400, { message: '退款金额超过可退余额' });
-  }
   const config = await loadOrderConfig(order);
   if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法退款' });
 
   const refundNo = genNo('REF');
   const operatorId = input.operatorId ?? currentUserOrNull()?.userId ?? null;
-  const [refundRow] = await db
-    .insert(paymentRefunds)
-    .values({
-      refundNo,
-      outRefundNo: refundNo,
-      orderNo: order.orderNo,
-      orderId: order.id,
-      channel: order.channel,
-      refundAmount: input.refundAmount,
-      totalAmount: order.amount,
-      reason: input.reason ?? null,
-      status: 'pending',
-      operatorId,
-      tenantId: order.tenantId,
-    })
-    .returning();
-  await db.update(paymentOrders).set({ status: 'refunding' }).where(eq(paymentOrders.id, order.id));
+
+  // ── 原子校验 + 插入（事务内 SELECT FOR UPDATE 防并发超退） ──────────────────
+  const refundRow = await db.transaction(async (tx) => {
+    // 锁定订单行，阻塞同一订单的并发退款请求，直至本事务提交/回滚
+    await tx.execute(sql`SELECT id FROM payment_orders WHERE id = ${order.id} FOR UPDATE`);
+    // 事务内重新计算已退/处理中总额
+    const existing = await tx
+      .select({ amount: paymentRefunds.refundAmount, status: paymentRefunds.status })
+      .from(paymentRefunds)
+      .where(eq(paymentRefunds.orderId, order.id));
+    const lockedTotal = calcLockedRefundAmount(existing);
+    if (lockedTotal + input.refundAmount > order.amount) {
+      throw new HTTPException(400, { message: `退款金额超过可退余额（剩余 ${order.amount - lockedTotal} 分）` });
+    }
+    const [row] = await tx
+      .insert(paymentRefunds)
+      .values({
+        refundNo,
+        outRefundNo: refundNo,
+        orderNo: order.orderNo,
+        orderId: order.id,
+        channel: order.channel,
+        refundAmount: input.refundAmount,
+        totalAmount: order.amount,
+        reason: input.reason ?? null,
+        status: 'pending',
+        operatorId,
+        tenantId: order.tenantId,
+      })
+      .returning();
+    await tx.update(paymentOrders).set({ status: 'refunding' }).where(eq(paymentOrders.id, order.id));
+    return row;
+  });
 
   try {
     const ctx = buildAdapterContext(config);
@@ -639,4 +647,44 @@ export async function listNotifyLogs(q: ListNotifyLogsQuery) {
     withPagination(db.select().from(paymentNotifyLogs).where(finalWhere).orderBy(desc(paymentNotifyLogs.id)).$dynamic(), page, pageSize),
   ]);
   return { list: list.map(mapNotifyLog), total, page, pageSize };
+}
+
+// ─── 纯函数：可供单测直接导入 ──────────────────────────────────────────────────
+
+/**
+ * 计算指定退款记录列表中的"已锁定退款总额"（状态为 success 或 processing 的退款）。
+ * 纯函数，无副作用，可独立单测。
+ */
+export function calcLockedRefundAmount(refunds: Array<{ amount: number; status: string }>): number {
+  return refunds
+    .filter((r) => r.status === 'success' || r.status === 'processing')
+    .reduce((s, r) => s + r.amount, 0);
+}
+
+// ─── 渠道连通性测试 ─────────────────────────────────────────────────────────────
+
+/**
+ * 对指定渠道配置发起轻量探测请求（查询一个不存在的订单号），
+ * 验证商户凭据（API Key / 私钥 / 商户号等）是否正确。
+ * @returns { success, message, latencyMs }
+ */
+export async function testChannelConnectivity(
+  id: number,
+): Promise<{ success: boolean; message: string; latencyMs: number }> {
+  const { ensureChannelConfigExists } = await import('./payment-channels.service');
+  const config = await ensureChannelConfigExists(id);
+  const adapter = getAdapter(config.channel as PaymentChannel);
+  if (!adapter.testConnectivity) {
+    return { success: false, message: `渠道 ${config.channel} 暂不支持连通性测试`, latencyMs: 0 };
+  }
+  const ctx = buildAdapterContext(config);
+  const start = Date.now();
+  try {
+    await adapter.testConnectivity(ctx);
+    return { success: true, message: '连通性测试通过（凭据有效）', latencyMs: Date.now() - start };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    const msg = err instanceof HTTPException ? err.message : String(err);
+    return { success: false, message: `连通性测试失败：${msg}`, latencyMs };
+  }
 }

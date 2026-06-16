@@ -25,6 +25,7 @@ import {
   CreatePaymentResponseDTO,
   PaymentRefundResultDTO,
   PaymentStatsDTO,
+  ChannelConnectivityResultDTO,
 } from '../lib/openapi-dtos';
 import { getClientIp } from '../lib/request-helpers';
 import {
@@ -45,6 +46,7 @@ import {
   listRefunds,
   getRefundDetail,
   listNotifyLogs,
+  testChannelConnectivity,
 } from '../services/payment.service';
 import { getPaymentStats, exportOrders, exportOrdersCsv, exportRefunds, exportRefundsCsv } from '../services/payment-stats.service';
 
@@ -185,7 +187,23 @@ const channelDeleteRoute = defineOpenAPIRoute({
   },
 });
 
-// ─── 支付订单 ───────────────────────────────────────────────────────────────────
+const channelTestRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/channels/{id}/test', tags: ['支付中心'], summary: '测试渠道连通性',
+    description: '向支付渠道发起轻量探测请求（查询一个不存在的订单号），验证商户凭据是否正确。',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:channel:update' })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(ChannelConnectivityResultDTO, '连通性测试结果'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const result = await testChannelConnectivity(id);
+    return c.json(okBody(result), 200);
+  },
+});
+
+// ─── 支付订单 ─────────────────────────────────────────────────────────────
 const ordersListRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/orders', tags: ['支付中心'], summary: '支付订单列表',
@@ -356,6 +374,7 @@ paymentRouter.openapiRoutes([
   channelCreateRoute,
   channelUpdateRoute,
   channelDeleteRoute,
+  channelTestRoute,
   ordersListRoute,
   orderCreateRoute,
   ordersExportRoute,
