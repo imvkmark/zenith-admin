@@ -4,13 +4,21 @@ import { config } from '../config';
 import type { JwtPayload } from '../middleware/auth';
 
 vi.mock('../config', () => ({
-  config: { multiTenantMode: true }
+  config: { multiTenantMode: true, log: { level: 'silent', dir: 'logs', maxFiles: '30d' } }
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((col, val) => ({ op: 'eq', col, val })),
-  isNull: vi.fn((col) => ({ op: 'isNull', col }))
+  isNull: vi.fn((col) => ({ op: 'isNull', col })),
+  // schema.ts 导入 relations 定义各表关系；mock 返回空对象即可（tenant 逻辑不依赖关系）
+  relations: vi.fn(() => ({})),
 }));
+
+// tenant.ts 在 line 64 `import { currentUser } from './context'`，而 context.ts 运行时
+// `import { db } from '../db'` + `import { users, departments } from '../db/schema'`，
+// 会触发 db/index 真实连接（config.database.*）与 schema relations。mock context 切断该链；
+// 本单测仅验证显式传参版函数（tenantCondition(table, user) 等），不依赖 currentUser。
+vi.mock('./context', () => ({ currentUser: vi.fn() }));
 
 describe('tenant utility', () => {
   beforeEach(() => {

@@ -26,6 +26,8 @@ function createUserResult(menuGroups: Array<Array<{ id: number; permission: stri
         roleMenus: menus.map((menu) => ({ menu })),
       },
     })),
+    // 实现侧 getUserPermissions 还会读取 user.userMenus（直接菜单授权），需提供以免 undefined.map
+    userMenus: [],
   };
 }
 
@@ -65,7 +67,7 @@ describe('isSuperAdmin', () => {
 // ─── getUserPermissions ───────────────────────────────────────────────────────
 describe('getUserPermissions', () => {
   it('用户无角色时返回空数组（仅查一次 DB）', async () => {
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
 
     const perms = await getUserPermissions(1);
 
@@ -132,7 +134,7 @@ describe('getUserPermissions', () => {
     // 推进 5 分钟 + 1ms，超过 CACHE_TTL
     vi.advanceTimersByTime(5 * 60 * 1000 + 1);
 
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
     await getUserPermissions(50);
 
     expect(findUserMock).toHaveBeenCalledTimes(2); // 缓存失效，多查一次
@@ -142,7 +144,7 @@ describe('getUserPermissions', () => {
 // ─── getUserMenuIds ────────────────────────────────────────────────────────────
 describe('getUserMenuIds', () => {
   it('用户无角色时返回空数组', async () => {
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
 
     const ids = await getUserMenuIds(99);
 
@@ -168,32 +170,32 @@ describe('getUserMenuIds', () => {
 describe('clearUserPermissionCache', () => {
   it('清除指定用户的缓存后，下次调用重新查询 DB', async () => {
     // 预热 user 1 的缓存（roles 为空，只查一次 DB）
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
     await getUserPermissions(1);
     expect(findUserMock).toHaveBeenCalledTimes(1);
 
     clearUserPermissionCache(1);
 
     // 清除后再次调用应重查 DB
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
     await getUserPermissions(1);
     expect(findUserMock).toHaveBeenCalledTimes(2);
   });
 
   it('不传 userId 时清除所有用户的缓存', async () => {
     // 预热 user 1 & user 2 的缓存
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
     await getUserPermissions(1);
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
     await getUserPermissions(2);
     const callsAfterWarmup = findUserMock.mock.calls.length;
 
     clearUserPermissionCache(); // 清除全部
 
     // 两个用户都应重查
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
     await getUserPermissions(1);
-    findUserMock.mockResolvedValueOnce({ userRoles: [] } as never);
+    findUserMock.mockResolvedValueOnce({ userRoles: [], userMenus: [] } as never);
     await getUserPermissions(2);
 
     expect(findUserMock).toHaveBeenCalledTimes(callsAfterWarmup + 2);
