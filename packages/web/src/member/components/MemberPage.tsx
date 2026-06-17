@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '@douyinfe/semi-ui';
 import { ChevronLeft } from 'lucide-react';
 
 interface MemberPageProps {
@@ -7,27 +8,30 @@ interface MemberPageProps {
   showBack?: boolean;
   rightSlot?: ReactNode;
   children: ReactNode;
-  /** 无底部 tabbar 的二级页面，内容区底部 padding 减小 */
+  /** no longer used in PC layout, kept for API compatibility */
   noTabbar?: boolean;
 }
 
-/**
- * 会员前台通用页面容器：固定顶部栏（含可选返回） + 滚动内容区。
- */
-export function MemberPage({ title, showBack, rightSlot, children, noTabbar }: Readonly<MemberPageProps>) {
+export function MemberPage({ title, showBack, rightSlot, children }: Readonly<MemberPageProps>) {
   const navigate = useNavigate();
   return (
-    <>
-      <header className="member-header">
-        {showBack && (
-          <button type="button" className="m-header-left" aria-label="返回" onClick={() => navigate(-1)}>
-            <ChevronLeft size={22} />
-          </button>
-        )}
-        <span>{title}</span>
-        {rightSlot ? <div className="m-header-right">{rightSlot}</div> : null}
-      </header>
-      <main className={`member-content${noTabbar ? ' no-tabbar' : ''}`}>{children}</main>
-    </>
+    <div className="mc-page">
+      <div className="mc-page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {showBack && (
+            <Button
+              theme="borderless"
+              size="small"
+              icon={<ChevronLeft size={18} />}
+              style={{ marginLeft: -8 }}
+              onClick={() => navigate(-1)}
+            />
+          )}
+          <h2 className="mc-page-title">{title}</h2>
+        </div>
+        {rightSlot && <div>{rightSlot}</div>}
+      </div>
+      <div className="mc-page-body">{children}</div>
+    </div>
   );
 }

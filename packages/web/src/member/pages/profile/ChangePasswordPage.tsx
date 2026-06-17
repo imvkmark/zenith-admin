@@ -1,15 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button, Toast } from '@douyinfe/semi-ui';
+import { Input, Button, Toast, Card } from '@douyinfe/semi-ui';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 
-function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+function FieldRow({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--m-border)' }}>
-      <div style={{ width: 76, fontSize: 14, color: 'var(--m-text-secondary)' }}>{label}</div>
-      <div style={{ flex: 1 }}>{children}</div>
+    <div className="mc-field-row">
+      <div className="mc-field-label">{label}</div>
+      <div className="mc-field-value">{children}</div>
     </div>
   );
 }
@@ -50,28 +50,26 @@ export default function ChangePasswordPage() {
 
   return (
     <MemberPage title={needOld ? '修改密码' : '设置密码'} showBack noTabbar>
-      <div className="m-card">
+      <Card style={{ maxWidth: 520, marginBottom: 16 }}>
         {needOld && (
-          <Field label="原密码">
+          <FieldRow label="原密码">
             <Input mode="password" value={oldPassword} onChange={setOldPassword} placeholder="请输入原密码" borderless />
-          </Field>
+          </FieldRow>
         )}
-        <Field label="新密码">
+        <FieldRow label="新密码">
           <Input mode="password" value={newPassword} onChange={setNewPassword} placeholder="至少 6 位" borderless />
-        </Field>
-        <Field label="确认密码">
+        </FieldRow>
+        <FieldRow label="确认密码">
           <Input mode="password" value={confirm} onChange={setConfirm} placeholder="再次输入新密码" borderless />
-        </Field>
-      </div>
+        </FieldRow>
+      </Card>
       <Button
-        block
-        size="large"
         theme="solid"
         loading={saving}
         onClick={handleSave}
-        style={{ background: 'var(--m-primary)', marginTop: 8 }}
+        style={{ background: 'var(--m-primary)' }}
       >
-        确认
+        确认修改
       </Button>
     </MemberPage>
   );

@@ -1,21 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar } from '@douyinfe/semi-ui';
-import { Coins, Wallet, Ticket, Crown, UserCog, Lock } from 'lucide-react';
+import { Coins, Wallet, Ticket, Crown } from 'lucide-react';
 import type { MemberPointAccount, MemberWallet, MemberCoupon, PaginatedResponse } from '@zenith/shared';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { formatYuan } from '../../utils/format';
-
-const GRID = [
-  { key: '/points', label: '我的积分', icon: Coins },
-  { key: '/wallet', label: '我的钱包', icon: Wallet },
-  { key: '/coupons', label: '我的卡券', icon: Ticket },
-  { key: '/level', label: '等级权益', icon: Crown },
-  { key: '/profile/edit', label: '编辑资料', icon: UserCog },
-  { key: '/profile/password', label: '修改密码', icon: Lock },
-] as const;
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -39,59 +30,49 @@ export default function HomePage() {
   }, []);
 
   return (
-    <MemberPage title="会员中心">
-      {/* 用户信息 */}
-      <div className="m-card">
-        <div className="m-profile-head">
-          <Avatar size="medium" src={member?.avatar ?? undefined} style={{ background: 'var(--m-primary)' }}>
-            {member?.nickname?.[0] ?? 'U'}
-          </Avatar>
-          <div className="m-profile-meta">
-            <div className="m-profile-name">{member?.nickname ?? '会员'}</div>
-            <div className="m-profile-sub">{member?.phone ?? member?.email ?? member?.username ?? '—'}</div>
+    <MemberPage title="会员概览">
+      {/* 欢迎横幅 */}
+      <div className="mc-welcome-banner">
+        <Avatar size="large" src={member?.avatar ?? undefined} style={{ background: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
+          {member?.nickname?.[0] ?? 'U'}
+        </Avatar>
+        <div className="mc-welcome-text">
+          <h3>欢迎回来，{member?.nickname ?? '会员'}！</h3>
+          <p>
+            {member?.levelName ? (
+              <>
+                <Crown size={12} style={{ display: 'inline', marginRight: 4 }} />
+                {member.levelName}
+                {member.growthValue !== undefined ? `  · 成长值 ${member.growthValue}` : ''}
+              </>
+            ) : '普通会员'}
+          </p>
+        </div>
+      </div>
+
+      {/* 资产统计 */}
+      <div className="mc-stat-row">
+        <button type="button" className="mc-stat-card" onClick={() => navigate('/points')}>
+          <div className="mc-stat-label">
+            <Coins size={14} color="var(--m-primary)" />
+            我的积分
           </div>
-          {member?.levelName ? (
-            <span className="m-level-badge">
-              <Crown size={12} />
-              {member.levelName}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      {/* 资产卡 */}
-      <div className="m-asset-card">
-        <div className="m-asset-row">
-          <button type="button" className="m-asset-item" onClick={() => navigate('/points')}>
-            <div className="m-asset-value">{points ?? '—'}</div>
-            <div className="m-asset-label">积分</div>
-          </button>
-          <button type="button" className="m-asset-item" onClick={() => navigate('/wallet')}>
-            <div className="m-asset-value">{wallet === null ? '—' : formatYuan(wallet)}</div>
-            <div className="m-asset-label">余额</div>
-          </button>
-          <button type="button" className="m-asset-item" onClick={() => navigate('/coupons')}>
-            <div className="m-asset-value">{couponCount ?? '—'}</div>
-            <div className="m-asset-label">卡券</div>
-          </button>
-        </div>
-      </div>
-
-      {/* 功能宫格 */}
-      <div className="m-card">
-        <div className="m-grid">
-          {GRID.map((g) => {
-            const Icon = g.icon;
-            return (
-              <button type="button" key={g.key} className="m-grid-item" onClick={() => navigate(g.key)}>
-                <span className="m-grid-icon">
-                  <Icon size={20} />
-                </span>
-                {g.label}
-              </button>
-            );
-          })}
-        </div>
+          <div className="mc-stat-value">{points ?? '—'}</div>
+        </button>
+        <button type="button" className="mc-stat-card" onClick={() => navigate('/wallet')}>
+          <div className="mc-stat-label">
+            <Wallet size={14} color="var(--m-primary)" />
+            账户余额
+          </div>
+          <div className="mc-stat-value">{wallet === null ? '—' : formatYuan(wallet)}</div>
+        </button>
+        <button type="button" className="mc-stat-card" onClick={() => navigate('/coupons')}>
+          <div className="mc-stat-label">
+            <Ticket size={14} color="var(--m-primary)" />
+            可用卡券
+          </div>
+          <div className="mc-stat-value">{couponCount ?? '—'}</div>
+        </button>
       </div>
     </MemberPage>
   );

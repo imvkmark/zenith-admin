@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal, Button, Toast, RadioGroup, Radio, InputNumber } from '@douyinfe/semi-ui';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Wallet } from 'lucide-react';
 import type { MemberWallet } from '@zenith/shared';
 import { WALLET_TX_TYPE_LABELS } from '@zenith/shared';
 import { memberRequest } from '../../utils/member-request';
@@ -22,6 +22,23 @@ interface RechargeResult {
   payUrl?: string;
   formHtml?: string;
   expiredAt?: string;
+}
+
+function StatCard({ label, value }: Readonly<{ label: React.ReactNode; value: React.ReactNode }>) {
+  return (
+    <div style={{
+      flex: 1,
+      background: '#fff',
+      borderRadius: 10,
+      border: '1px solid var(--m-border)',
+      padding: '16px 20px',
+    }}>
+      <div style={{ fontSize: 13, color: 'var(--m-text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--m-text)' }}>{value}</div>
+    </div>
+  );
 }
 
 export default function WalletPage() {
@@ -72,41 +89,44 @@ export default function WalletPage() {
   return (
     <MemberPage
       title="我的钱包"
-      rightSlot={<RefreshCw size={18} onClick={() => setRefreshKey((k) => k + 1)} />}
+      rightSlot={
+        <Button
+          theme="borderless"
+          size="small"
+          icon={<RefreshCw size={14} />}
+          onClick={() => setRefreshKey((k) => k + 1)}
+        >
+          刷新
+        </Button>
+      }
     >
-      <div className="m-asset-card">
-        <div style={{ textAlign: 'center', fontSize: 13, opacity: 0.85 }}>账户余额（元）</div>
-        <div style={{ textAlign: 'center', fontSize: 36, fontWeight: 700, lineHeight: 1.3 }}>
-          {wallet === null ? '—' : fenToYuanPlain(wallet.balance)}
-        </div>
-        <div className="m-asset-row" style={{ marginTop: 8 }}>
-          <div className="m-asset-item">
-            <div className="m-asset-value" style={{ fontSize: 18 }}>
-              {wallet === null ? '—' : fenToYuanPlain(wallet.totalRecharge)}
-            </div>
-            <div className="m-asset-label">累计充值</div>
-          </div>
-          <div className="m-asset-item">
-            <div className="m-asset-value" style={{ fontSize: 18 }}>
-              {wallet === null ? '—' : fenToYuanPlain(wallet.totalConsume)}
-            </div>
-            <div className="m-asset-label">累计消费</div>
-          </div>
-        </div>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+        <StatCard
+          label={<><Wallet size={13} color="var(--m-primary)" />账户余额（元）</>}
+          value={wallet === null ? '—' : `¥${(wallet.balance / 100).toFixed(2)}`}
+        />
+        <StatCard
+          label="累计充值（元）"
+          value={wallet === null ? '—' : `¥${(wallet.totalRecharge / 100).toFixed(2)}`}
+        />
+        <StatCard
+          label="累计消费（元）"
+          value={wallet === null ? '—' : `¥${(wallet.totalConsume / 100).toFixed(2)}`}
+        />
       </div>
 
-      <Button
-        size="large"
-        theme="solid"
-        block
-        icon={<Plus size={18} />}
-        onClick={() => setModalOpen(true)}
-        style={{ background: 'var(--m-primary)', marginBottom: 12 }}
-      >
-        充值
-      </Button>
+      <div style={{ marginBottom: 20 }}>
+        <Button
+          theme="solid"
+          icon={<Plus size={15} />}
+          onClick={() => setModalOpen(true)}
+          style={{ background: 'var(--m-primary)' }}
+        >
+          充值
+        </Button>
+      </div>
 
-      <div className="m-card-title" style={{ padding: '0 4px' }}>收支明细</div>
+      <div className="mc-card-title">收支明细</div>
       <TransactionList
         key={refreshKey}
         fetchUrl="/api/member/wallet/transactions"
@@ -155,9 +175,4 @@ export default function WalletPage() {
       </Modal>
     </MemberPage>
   );
-}
-
-/** 分 → 元（不带货币符号，卡片内已有“元”标注） */
-function fenToYuanPlain(fen: number): string {
-  return (fen / 100).toFixed(2);
 }

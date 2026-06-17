@@ -1,16 +1,16 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button, Toast, Select } from '@douyinfe/semi-ui';
+import { Input, Button, Toast, Select, Card } from '@douyinfe/semi-ui';
 import type { Member } from '@zenith/shared';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 
-function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+function FieldRow({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--m-border)' }}>
-      <div style={{ width: 64, fontSize: 14, color: 'var(--m-text-secondary)' }}>{label}</div>
-      <div style={{ flex: 1 }}>{children}</div>
+    <div className="mc-field-row">
+      <div className="mc-field-label">{label}</div>
+      <div className="mc-field-value">{children}</div>
     </div>
   );
 }
@@ -44,28 +44,26 @@ export default function EditProfilePage() {
 
   return (
     <MemberPage title="编辑资料" showBack noTabbar>
-      <div className="m-card">
-        <Field label="昵称">
+      <Card style={{ maxWidth: 520, marginBottom: 16 }}>
+        <FieldRow label="昵称">
           <Input value={nickname} onChange={setNickname} placeholder="请输入昵称" borderless />
-        </Field>
-        <Field label="性别">
-          <Select value={gender} onChange={(v) => setGender(v as string)} style={{ width: '100%' }} placeholder="请选择">
+        </FieldRow>
+        <FieldRow label="性别">
+          <Select value={gender} onChange={(v) => setGender(v as string)} style={{ width: '100%' }} placeholder="请选择" borderless>
             <Select.Option value="male">男</Select.Option>
             <Select.Option value="female">女</Select.Option>
             <Select.Option value="">保密</Select.Option>
           </Select>
-        </Field>
-        <Field label="邮箱">
+        </FieldRow>
+        <FieldRow label="邮箱">
           <Input value={email} onChange={setEmail} placeholder="请输入邮箱" borderless />
-        </Field>
-      </div>
+        </FieldRow>
+      </Card>
       <Button
-        block
-        size="large"
         theme="solid"
         loading={saving}
         onClick={handleSave}
-        style={{ background: 'var(--m-primary)', marginTop: 8 }}
+        style={{ background: 'var(--m-primary)' }}
       >
         保存
       </Button>

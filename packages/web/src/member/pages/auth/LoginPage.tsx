@@ -44,90 +44,97 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="m-auth-page">
-      <div className="m-auth-head">
-        <div className="m-auth-logo">
-          <Crown size={32} />
+    <div className="mc-auth-wrap">
+      <div className="mc-auth-card">
+        <div className="mc-auth-logo">
+          <Crown size={28} />
         </div>
-        <div className="m-auth-title">会员登录</div>
-        <div className="m-auth-sub">欢迎回来，登录你的会员账户</div>
-      </div>
+        <div className="mc-auth-title">会员登录</div>
+        <div className="mc-auth-sub">欢迎回来，登录你的会员账户</div>
 
-      <div className="m-auth-tabs">
-        <button type="button" className={`m-auth-tab${tab === 'password' ? ' active' : ''}`} onClick={() => setTab('password')}>
-          密码登录
-        </button>
-        <button type="button" className={`m-auth-tab${tab === 'sms' ? ' active' : ''}`} onClick={() => setTab('sms')}>
-          验证码登录
-        </button>
-      </div>
+        <div className="mc-auth-tabs">
+          <button
+            type="button"
+            className={`mc-auth-tab${tab === 'password' ? ' active' : ''}`}
+            onClick={() => setTab('password')}
+          >
+            密码登录
+          </button>
+          <button
+            type="button"
+            className={`mc-auth-tab${tab === 'sms' ? ' active' : ''}`}
+            onClick={() => setTab('sms')}
+          >
+            验证码登录
+          </button>
+        </div>
 
-      {tab === 'password' ? (
-        <>
-          <Input
-            size="large"
-            placeholder="手机号 / 邮箱 / 用户名"
-            value={account}
-            onChange={setAccount}
-            style={{ marginTop: 16 }}
-          />
-          <Input
-            size="large"
-            mode="password"
-            placeholder="登录密码"
-            value={password}
-            onChange={setPassword}
-            onEnterPress={handleLogin}
-            style={{ marginTop: 12 }}
-          />
-        </>
-      ) : (
-        <>
-          <Input
-            size="large"
-            placeholder="手机号"
-            value={phone}
-            onChange={setPhone}
-            style={{ marginTop: 16 }}
-          />
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        {tab === 'password' ? (
+          <>
             <Input
               size="large"
-              placeholder="6 位验证码"
-              value={smsCode}
-              onChange={setSmsCode}
-              onEnterPress={handleLogin}
-              style={{ flex: 1 }}
+              placeholder="手机号 / 邮箱 / 用户名"
+              value={account}
+              onChange={setAccount}
+              style={{ marginBottom: 12 }}
             />
-            <Button size="large" disabled={counting > 0} onClick={() => send(phone)}>
-              {counting > 0 ? `${counting}s` : '获取验证码'}
-            </Button>
-          </div>
-        </>
-      )}
+            <Input
+              size="large"
+              mode="password"
+              placeholder="登录密码"
+              value={password}
+              onChange={setPassword}
+              onEnterPress={handleLogin}
+            />
+          </>
+        ) : (
+          <>
+            <Input
+              size="large"
+              placeholder="手机号"
+              value={phone}
+              onChange={setPhone}
+              style={{ marginBottom: 12 }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                size="large"
+                placeholder="6 位验证码"
+                value={smsCode}
+                onChange={setSmsCode}
+                onEnterPress={handleLogin}
+                style={{ flex: 1 }}
+              />
+              <Button size="large" disabled={counting > 0} onClick={() => send(phone)}>
+                {counting > 0 ? `${counting}s` : '获取验证码'}
+              </Button>
+            </div>
+          </>
+        )}
 
-      <div style={{ textAlign: 'right', marginTop: 12 }}>
-        <button type="button" className="m-auth-link" onClick={() => navigate('/forgot-password')}>
-          忘记密码？
-        </button>
-      </div>
+        <div style={{ textAlign: 'right', margin: '10px 0 20px' }}>
+          <button type="button" className="mc-auth-link" onClick={() => navigate('/forgot-password')}>
+            忘记密码？
+          </button>
+        </div>
 
-      <Button
-        size="large"
-        theme="solid"
-        block
-        loading={loading}
-        onClick={handleLogin}
-        style={{ marginTop: 24, background: 'var(--m-primary)' }}
-      >
-        登录
-      </Button>
+        <Button
+          size="large"
+          theme="solid"
+          block
+          loading={loading}
+          onClick={handleLogin}
+          style={{ background: 'var(--m-primary)' }}
+        >
+          登录
+        </Button>
 
-      <div className="m-auth-footer">
-        还没有账户？
-        <button type="button" className="m-auth-link" onClick={() => navigate('/register')}>
-          立即注册
-        </button>
+        <div className="mc-auth-footer">
+          还没有账户？
+          <button type="button" className="mc-auth-link" onClick={() => navigate('/register')}>
+            立即注册
+          </button>
+        </div>
       </div>
     </div>
   );

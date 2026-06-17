@@ -44,48 +44,60 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="m-auth-page">
-      <div className="m-auth-head">
-        <div className="m-auth-logo">
-          <Crown size={32} />
+    <div className="mc-auth-wrap">
+      <div className="mc-auth-card">
+        <div className="mc-auth-logo">
+          <Crown size={28} />
         </div>
-        <div className="m-auth-title">重置密码</div>
-        <div className="m-auth-sub">通过手机验证码重置登录密码</div>
-      </div>
+        <div className="mc-auth-title">重置密码</div>
+        <div className="mc-auth-sub">通过手机验证码重置登录密码</div>
 
-      <Input size="large" placeholder="手机号" value={phone} onChange={setPhone} style={{ marginTop: 16 }} />
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <Input size="large" placeholder="6 位验证码" value={smsCode} onChange={setSmsCode} style={{ flex: 1 }} />
-        <Button size="large" disabled={counting > 0} onClick={() => send(phone)}>
-          {counting > 0 ? `${counting}s` : '获取验证码'}
+        <Input
+          size="large"
+          placeholder="手机号"
+          value={phone}
+          onChange={setPhone}
+          style={{ marginBottom: 12 }}
+        />
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <Input
+            size="large"
+            placeholder="6 位验证码"
+            value={smsCode}
+            onChange={setSmsCode}
+            style={{ flex: 1 }}
+          />
+          <Button size="large" disabled={counting > 0} onClick={() => send(phone)}>
+            {counting > 0 ? `${counting}s` : '获取验证码'}
+          </Button>
+        </div>
+        <Input
+          size="large"
+          mode="password"
+          placeholder="新密码（至少 6 位）"
+          value={newPassword}
+          onChange={setNewPassword}
+          onEnterPress={handleReset}
+          style={{ marginBottom: 20 }}
+        />
+
+        <Button
+          size="large"
+          theme="solid"
+          block
+          loading={loading}
+          onClick={handleReset}
+          style={{ background: 'var(--m-primary)' }}
+        >
+          重置密码
         </Button>
-      </div>
-      <Input
-        size="large"
-        mode="password"
-        placeholder="新密码（至少 6 位）"
-        value={newPassword}
-        onChange={setNewPassword}
-        onEnterPress={handleReset}
-        style={{ marginTop: 12 }}
-      />
 
-      <Button
-        size="large"
-        theme="solid"
-        block
-        loading={loading}
-        onClick={handleReset}
-        style={{ marginTop: 24, background: 'var(--m-primary)' }}
-      >
-        重置密码
-      </Button>
-
-      <div className="m-auth-footer">
-        想起密码了？
-        <button type="button" className="m-auth-link" onClick={() => navigate('/login')}>
-          返回登录
-        </button>
+        <div className="mc-auth-footer">
+          想起密码了？
+          <button type="button" className="mc-auth-link" onClick={() => navigate('/login')}>
+            返回登录
+          </button>
+        </div>
       </div>
     </div>
   );

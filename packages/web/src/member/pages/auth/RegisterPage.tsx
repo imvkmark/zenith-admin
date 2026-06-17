@@ -47,67 +47,67 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="m-auth-page">
-      <div className="m-auth-head">
-        <div className="m-auth-logo">
-          <Crown size={32} />
+    <div className="mc-auth-wrap">
+      <div className="mc-auth-card">
+        <div className="mc-auth-logo">
+          <Crown size={28} />
         </div>
-        <div className="m-auth-title">注册会员</div>
-        <div className="m-auth-sub">手机号快速注册，即刻享受会员权益</div>
-      </div>
+        <div className="mc-auth-title">注册会员</div>
+        <div className="mc-auth-sub">手机号快速注册，即刻享受会员权益</div>
 
-      <Input
-        size="large"
-        placeholder="手机号"
-        value={phone}
-        onChange={setPhone}
-        style={{ marginTop: 16 }}
-      />
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <Input
           size="large"
-          placeholder="6 位验证码"
-          value={smsCode}
-          onChange={setSmsCode}
-          style={{ flex: 1 }}
+          placeholder="手机号"
+          value={phone}
+          onChange={setPhone}
+          style={{ marginBottom: 12 }}
         />
-        <Button size="large" disabled={counting > 0} onClick={() => send(phone)}>
-          {counting > 0 ? `${counting}s` : '获取验证码'}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <Input
+            size="large"
+            placeholder="6 位验证码"
+            value={smsCode}
+            onChange={setSmsCode}
+            style={{ flex: 1 }}
+          />
+          <Button size="large" disabled={counting > 0} onClick={() => send(phone)}>
+            {counting > 0 ? `${counting}s` : '获取验证码'}
+          </Button>
+        </div>
+        <Input
+          size="large"
+          placeholder="昵称（选填）"
+          value={nickname}
+          onChange={setNickname}
+          style={{ marginBottom: 12 }}
+        />
+        <Input
+          size="large"
+          mode="password"
+          placeholder="设置登录密码（选填，至少 6 位）"
+          value={password}
+          onChange={setPassword}
+          onEnterPress={handleRegister}
+          style={{ marginBottom: 20 }}
+        />
+
+        <Button
+          size="large"
+          theme="solid"
+          block
+          loading={loading}
+          onClick={handleRegister}
+          style={{ background: 'var(--m-primary)' }}
+        >
+          注册并登录
         </Button>
-      </div>
-      <Input
-        size="large"
-        placeholder="昵称（选填）"
-        value={nickname}
-        onChange={setNickname}
-        style={{ marginTop: 12 }}
-      />
-      <Input
-        size="large"
-        mode="password"
-        placeholder="设置登录密码（选填，至少 6 位）"
-        value={password}
-        onChange={setPassword}
-        onEnterPress={handleRegister}
-        style={{ marginTop: 12 }}
-      />
 
-      <Button
-        size="large"
-        theme="solid"
-        block
-        loading={loading}
-        onClick={handleRegister}
-        style={{ marginTop: 24, background: 'var(--m-primary)' }}
-      >
-        注册并登录
-      </Button>
-
-      <div className="m-auth-footer">
-        已有账户？
-        <button type="button" className="m-auth-link" onClick={() => navigate('/login')}>
-          返回登录
-        </button>
+        <div className="mc-auth-footer">
+          已有账户？
+          <button type="button" className="mc-auth-link" onClick={() => navigate('/login')}>
+            返回登录
+          </button>
+        </div>
       </div>
     </div>
   );
