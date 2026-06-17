@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { itemKey: '/profile/edit', text: '编辑资料', icon: <UserCog size={15} /> },
   { itemKey: '/profile/password', text: '修改密码', icon: <Lock size={15} /> },
   { itemKey: '__logout__', text: '退出登录', icon: <LogOut size={15} /> },
-] as const;
+];
 
 export default function MemberLayout() {
   const { member, logout } = useMemberAuth();
@@ -109,7 +109,7 @@ export default function MemberLayout() {
         }}
         footer={{
           collapseButton: true,
-          collapseText: (isCollapsed: boolean) => (isCollapsed ? '展开侧边栏' : '收起侧边栏'),
+          collapseText: (isCollapsed?: boolean) => (isCollapsed ? '展开侧边栏' : '收起侧边栏'),
         }}
         renderWrapper={renderWrapper}
       />
