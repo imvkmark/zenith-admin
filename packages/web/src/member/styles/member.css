@@ -571,6 +571,9 @@ body {
   font-size: 14px;
   color: var(--m-text-secondary);
   text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
   border-radius: var(--m-radius);
   transition: color 0.15s, background 0.15s;
 }

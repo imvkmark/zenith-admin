@@ -12,6 +12,10 @@ const NAV_LINKS = [
   { key: 'about', label: '关于我们' },
 ];
 
+const scrollTo = (id: string) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 const FEATURES = [
   { icon: Coins, title: '积分奖励', desc: '每笔消费均可获得积分，积分可兑换专属礼品与优惠' },
   { icon: Tag, title: '专属折扣', desc: '会员等级越高，享受的消费折扣越大，最高享受9折优惠' },
@@ -51,9 +55,14 @@ export default function LandingPage() {
 
         <nav className="mc-landing-nav">
           {NAV_LINKS.map((link) => (
-            <a key={link.key} href={`#${link.key}`} className="mc-landing-nav-link">
+            <button
+              key={link.key}
+              type="button"
+              className="mc-landing-nav-link"
+              onClick={() => scrollTo(link.key)}
+            >
               {link.label}
-            </a>
+            </button>
           ))}
         </nav>
 
@@ -159,8 +168,8 @@ export default function LandingPage() {
         </section>
       )}
 
-      {/* ── Footer ── */}
-      <footer className="mc-landing-footer">
+      {/* ── Footer / About ── */}
+      <footer className="mc-landing-footer" id="about">
         <div className="mc-landing-logo">
           <Crown size={15} color="var(--m-primary)" />
           <span>会员中心</span>
