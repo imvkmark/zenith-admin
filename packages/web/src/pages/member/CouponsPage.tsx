@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Input, Select, Form, Toast, Tag, Popconfirm } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Form, Toast, Tag, Popconfirm, Row, Col } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, Plus, Send } from 'lucide-react';
@@ -194,37 +194,78 @@ export default function CouponsPage() {
         onRefresh={fetchData} refreshLoading={loading} rowKey="id" size="small"
         pagination={buildPagination(total, fetchData)} empty="暂无优惠券" scroll={{ x: 1200 }} />
 
-      <AppModal title={editing ? '编辑优惠券' : '新增优惠券'} visible={modalVisible} width={560}
+      <AppModal title={editing ? '编辑优惠券' : '新增优惠券'} visible={modalVisible} width={700}
         onCancel={() => setModalVisible(false)} onOk={handleSubmit}>
         <Form<FormValues> key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }}
-          initValues={initValues() as FormValues} labelPosition="left" labelWidth={110}
+          initValues={initValues() as FormValues} labelPosition="left" labelWidth={130}
           onValueChange={(values) => { if (values.type) setFormType(values.type); if (values.validType) setFormValidType(values.validType); }}>
-          <Form.Input field="name" label="券名称" rules={[{ required: true, message: '请输入券名称' }]} maxLength={64} />
-          <Form.Select field="type" label="券类型" optionList={typeOptions} style={{ width: '100%' }} rules={[{ required: true }]} />
-          <Form.InputNumber field="faceValue" label={formType === 'amount' ? '减免金额(元)' : '折扣百分比(%)'} style={{ width: '100%' }}
-            min={formType === 'amount' ? 0.01 : 1} max={formType === 'percent' ? 100 : undefined}
-            precision={formType === 'amount' ? 2 : 0}
-            placeholder={formType === 'amount' ? '如 10 表示减 10 元' : '如 80 表示 8 折'}
-            rules={[{ required: true, message: '请输入面值' }]} />
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Input field="name" label="券名称" rules={[{ required: true, message: '请输入券名称' }]} maxLength={64} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select field="type" label="券类型" optionList={typeOptions} style={{ width: '100%' }} rules={[{ required: true }]} />
+            </Col>
+            <Col span={12}>
+              <Form.Select field="status" label="状态" optionList={statusOptions} style={{ width: '100%' }} rules={[{ required: true }]} />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.InputNumber field="faceValue" label={formType === 'amount' ? '减免金额(元)' : '折扣百分比(%)'} style={{ width: '100%' }}
+                min={formType === 'amount' ? 0.01 : 1} max={formType === 'percent' ? 100 : undefined}
+                precision={formType === 'amount' ? 2 : 0}
+                placeholder={formType === 'amount' ? '如 10 表示减 10 元' : '如 80 表示 8 折'}
+                rules={[{ required: true, message: '请输入面值' }]} />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="threshold" label="使用门槛(元)" style={{ width: '100%' }} min={0} precision={2} placeholder="0 表示无门槛" />
+            </Col>
+          </Row>
           {formType === 'percent' && (
-            <Form.InputNumber field="maxDiscount" label="最高减免(元)" style={{ width: '100%' }} min={0} precision={2} placeholder="0 或留空表示不限" />
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.InputNumber field="maxDiscount" label="最高减免(元)" style={{ width: '100%' }} min={0} precision={2} placeholder="0 或留空表示不限" />
+              </Col>
+            </Row>
           )}
-          <Form.InputNumber field="threshold" label="使用门槛(元)" style={{ width: '100%' }} min={0} precision={2} placeholder="0 表示无门槛" />
-          <Form.InputNumber field="totalQuantity" label="发行总量" style={{ width: '100%' }} min={0} placeholder="0 表示不限量" />
-          <Form.InputNumber field="perLimit" label="每人限领" style={{ width: '100%' }} min={0} placeholder="0 表示不限" />
-          <Form.Select field="validType" label="有效期类型" style={{ width: '100%' }} rules={[{ required: true }]}
-            optionList={[{ value: 'fixed', label: '固定日期' }, { value: 'relative', label: '领取后 N 天' }]} />
-          {formValidType === 'fixed' ? (
-            <>
-              <Form.DatePicker field="validStart" label="生效时间" type="dateTime" style={{ width: '100%' }} />
-              <Form.DatePicker field="validEnd" label="失效时间" type="dateTime" style={{ width: '100%' }} />
-            </>
-          ) : (
-            <Form.InputNumber field="validDays" label="有效天数" style={{ width: '100%' }} min={1} placeholder="领取后多少天内有效"
-              rules={[{ required: true, message: '请输入有效天数' }]} />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.InputNumber field="totalQuantity" label="发行总量" style={{ width: '100%' }} min={0} placeholder="0 表示不限量" />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber field="perLimit" label="每人限领" style={{ width: '100%' }} min={0} placeholder="0 表示不限" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Select field="validType" label="有效期类型" style={{ width: '100%' }} rules={[{ required: true }]}
+                optionList={[{ value: 'fixed', label: '固定日期' }, { value: 'relative', label: '领取后 N 天' }]} />
+            </Col>
+            {formValidType === 'relative' && (
+              <Col span={12}>
+                <Form.InputNumber field="validDays" label="有效天数" style={{ width: '100%' }} min={1} placeholder="领取后多少天内有效"
+                  rules={[{ required: true, message: '请输入有效天数' }]} />
+              </Col>
+            )}
+          </Row>
+          {formValidType === 'fixed' && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.DatePicker field="validStart" label="生效时间" type="dateTime" style={{ width: '100%' }} />
+              </Col>
+              <Col span={12}>
+                <Form.DatePicker field="validEnd" label="失效时间" type="dateTime" style={{ width: '100%' }} />
+              </Col>
+            </Row>
           )}
-          <Form.Select field="status" label="状态" optionList={statusOptions} style={{ width: '100%' }} rules={[{ required: true }]} />
-          <Form.TextArea field="description" label="说明" maxCount={256} />
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.TextArea field="description" label="说明" maxCount={256} />
+            </Col>
+          </Row>
         </Form>
       </AppModal>
 
