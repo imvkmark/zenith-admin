@@ -98,7 +98,7 @@ describe('初始化', () => {
     expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBeNull();
   });
 
-  it('有 token 但接口抛出异常时清除 token，user 为 null', async () => {
+  it('有 token 但接口抛出网络异常时保留 token（避免误登出），user 为 null', async () => {
     localStorage.setItem(TOKEN_KEY, 'bad-token');
     mockRequest.get.mockRejectedValueOnce(new Error('Network Error'));
 
@@ -107,7 +107,8 @@ describe('初始化', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.user).toBeNull();
-    expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
+    // fix(auth) 8d40983b：网络异常/后端未就绪时不清除 token（仅认证失败 code≠0 才清除），避免网络抖动误登出
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('bad-token');
   });
 });
 
