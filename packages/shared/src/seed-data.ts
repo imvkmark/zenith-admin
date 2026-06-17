@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -585,4 +585,11 @@ export const SEED_INAPP_TEMPLATES: InAppTemplate[] = [
   { id: 1, name: '系统升级通知', code: 'system_upgrade',  title: '系统将于 {{time}} 升级',   content: '系统将于 {{time}} 进行升级，预计耗时 {{duration}}。', type: 'info',    variables: 'time,duration', status: 'enabled', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, name: '审批通过',     code: 'approval_passed', title: '您的申请已通过',        content: '您提交的【{{title}}】已通过审批。',                          type: 'success', variables: 'title',        status: 'enabled', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 3, name: '异常告警',     code: 'system_warning',  title: '系统异常告警',             content: '检测到异常：{{message}}，请尽快处理。',                type: 'warning', variables: 'message',      status: 'enabled', remark: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 租户示例 ───────────────────────────────────────────────────────────────────
+
+export const SEED_TENANTS: Tenant[] = [
+  { id: 1, name: '示例租户A', code: 'tenant_a', logo: null, contactName: '张三', contactPhone: '13800001111', status: 'enabled', expireAt: null, maxUsers: 50,   remark: '演示用租户A', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, name: '示例租户B', code: 'tenant_b', logo: null, contactName: '李四', contactPhone: '13800002222', status: 'enabled', expireAt: null, maxUsers: null, remark: '演示用租户B', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];

@@ -5,7 +5,7 @@ import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
 
@@ -268,26 +268,10 @@ async function seedRest() {
   }
   logger.info(`  ✔ Regions seeded (onConflictDoNothing) — ${inserted} records`);
 
-  // ─── 租户示例数据 ──────────────────────────────────────────────────────────
-  await db.insert(tenants).values([
-    {
-      name: '示例租户A',
-      code: 'tenant_a',
-      contactName: '张三',
-      contactPhone: '13800001111',
-      status: 'enabled',
-      maxUsers: 50,
-      remark: '演示用租户A',
-    },
-    {
-      name: '示例租户B',
-      code: 'tenant_b',
-      contactName: '李四',
-      contactPhone: '13800002222',
-      status: 'enabled',
-      remark: '演示用租户B',
-    },
-  ]).onConflictDoNothing({ target: tenants.code });
+  // ─── 租户示例数据（数据来源：@zenith/shared SEED_TENANTS）───────────────────────────────────
+  await db.insert(tenants).values(
+    SEED_TENANTS.map(({ name, code, contactName, contactPhone, status, maxUsers, remark }) => ({ name, code, contactName, contactPhone, status, maxUsers, remark })),
+  ).onConflictDoNothing({ target: tenants.code });
   logger.info('  ✔ Tenants seeded (onConflictDoNothing)');
 
   // ─── 邮件模板示例数据（数据来源：@zenith/shared SEED_EMAIL_TEMPLATES）─────────────────────────
