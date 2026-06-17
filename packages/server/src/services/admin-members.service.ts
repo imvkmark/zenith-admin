@@ -13,8 +13,7 @@ import { forceLogoutAllByMember } from '../lib/member-session-manager';
 import { escapeLike } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
-import { streamToExcel, formatDateTimeForExcel, type ExcelColumn } from '../lib/excel-export';
-import { formatDateTime } from '../lib/datetime';
+import { streamToExcel, streamToCsv, formatDateTimeForExcel, type ExcelColumn } from '../lib/excel-export';
 import { mapPointAccount, mapPointTransaction, ensurePointAccount } from './member-points.service';
 import { mapWallet, mapWalletTransaction, ensureWallet } from './member-wallet.service';
 import { MEMBER_STATUS_LABELS, type MemberStatus } from '@zenith/shared';
@@ -290,4 +289,41 @@ export async function exportMembers(q: { keyword?: string; status?: MemberStatus
   ];
   const stream = await streamToExcel(columns, data);
   return { stream, filename: 'members.xlsx' };
+}
+
+export async function exportMembersAsCsv(q: { keyword?: string; status?: MemberStatus; levelId?: number }) {
+  const where = buildMemberWhere(q);
+  const rows = await db.query.members.findMany({
+    where,
+    with: { level: { columns: { name: true } } },
+    orderBy: desc(members.id),
+  });
+  const data = rows.map((r) => ({
+    id: r.id,
+    username: r.username ?? '',
+    phone: r.phone ?? '',
+    email: r.email ?? '',
+    nickname: r.nickname,
+    levelName: r.level?.name ?? '',
+    status: MEMBER_STATUS_LABELS[r.status],
+    growthValue: r.growthValue,
+    registerSource: r.registerSource,
+    lastLoginAt: r.lastLoginAt ? formatDateTimeForExcel(r.lastLoginAt) : '',
+    createdAt: formatDateTimeForExcel(r.createdAt),
+  }));
+  const columns: ExcelColumn[] = [
+    { header: 'ID', key: 'id', width: 8 },
+    { header: '用户名', key: 'username', width: 16 },
+    { header: '手机号', key: 'phone', width: 16 },
+    { header: '邮箱', key: 'email', width: 22 },
+    { header: '昵称', key: 'nickname', width: 16 },
+    { header: '等级', key: 'levelName', width: 12 },
+    { header: '状态', key: 'status', width: 10 },
+    { header: '成长值', key: 'growthValue', width: 10 },
+    { header: '注册来源', key: 'registerSource', width: 10 },
+    { header: '最后登录', key: 'lastLoginAt', width: 20 },
+    { header: '注册时间', key: 'createdAt', width: 20 },
+  ];
+  const stream = streamToCsv(columns, data[Symbol.iterator]());
+  return { stream, filename: 'members.csv' };
 }

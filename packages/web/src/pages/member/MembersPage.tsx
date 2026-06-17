@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Input, Select, Space, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown, Typography } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Space, Modal, Form, Toast, Tag, Spin, Row, Col, Dropdown, Typography, SplitButtonGroup } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, Plus, RotateCcw, Download, KeyRound, MoreHorizontal, ChevronDown } from 'lucide-react';
@@ -28,6 +28,7 @@ export default function MembersPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [search, setSearch] = useState<SearchParams>(defaultSearch);
   const searchRef = useRef<SearchParams>(defaultSearch);
@@ -205,14 +206,46 @@ export default function MembersPage() {
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         {hasPermission('member:member:list') && (
-          <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => {
-            setExportLoading(true);
-            try {
-              const ap = searchRef.current;
-              const q = new URLSearchParams({ ...(ap.keyword ? { keyword: ap.keyword } : {}), ...(ap.status ? { status: ap.status } : {}), ...(ap.levelId ? { levelId: String(ap.levelId) } : {}) }).toString();
-              await request.download(`/api/members/export${q ? `?${q}` : ''}`, '会员列表.xlsx');
-            } finally { setExportLoading(false); }
-          }}>导出</Button>
+          <SplitButtonGroup>
+            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => {
+              setExportLoading(true);
+              try {
+                const ap = searchRef.current;
+                const q = new URLSearchParams({ ...(ap.keyword ? { keyword: ap.keyword } : {}), ...(ap.status ? { status: ap.status } : {}), ...(ap.levelId ? { levelId: String(ap.levelId) } : {}) }).toString();
+                const url = q ? `/api/members/export?${q}` : '/api/members/export';
+                await request.download(url, '会员列表.xlsx');
+              } finally { setExportLoading(false); }
+            }}>导出</Button>
+            <Dropdown
+              trigger="click"
+              position="bottomRight"
+              clickToHide
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={async () => {
+                    setExportLoading(true);
+                    try {
+                      const ap = searchRef.current;
+                      const q = new URLSearchParams({ ...(ap.keyword ? { keyword: ap.keyword } : {}), ...(ap.status ? { status: ap.status } : {}), ...(ap.levelId ? { levelId: String(ap.levelId) } : {}) }).toString();
+                      const url = q ? `/api/members/export?${q}` : '/api/members/export';
+                      await request.download(url, '会员列表.xlsx');
+                    } finally { setExportLoading(false); }
+                  }}>导出 Excel</Dropdown.Item>
+                  <Dropdown.Item onClick={async () => {
+                    setExportCsvLoading(true);
+                    try {
+                      const ap = searchRef.current;
+                      const q = new URLSearchParams({ ...(ap.keyword ? { keyword: ap.keyword } : {}), ...(ap.status ? { status: ap.status } : {}), ...(ap.levelId ? { levelId: String(ap.levelId) } : {}) }).toString();
+                      const csvUrl = q ? `/api/members/export/csv?${q}` : '/api/members/export/csv';
+                      await request.download(csvUrl, '会员列表.csv');
+                    } finally { setExportCsvLoading(false); }
+                  }}>导出 CSV</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+            </Dropdown>
+          </SplitButtonGroup>
         )}
         {hasPermission('member:member:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
       </SearchToolbar>

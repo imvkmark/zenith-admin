@@ -3,13 +3,13 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, okExcel, excelStreamBody, BatchIdsBody,
+  ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, okExcel, excelStreamBody, okCsv, csvStreamBody, BatchIdsBody,
 } from '../lib/openapi-schemas';
 import { MemberDTO, MemberOverviewDTO } from '../lib/openapi-dtos';
 import {
   listMembers, getMemberDetail, getMemberOverview, createMember, updateMember,
   setMemberStatus, batchSetMemberStatus, batchSetMemberLevel,
-  resetMemberPasswordByAdmin, deleteMember, exportMembers,
+  resetMemberPasswordByAdmin, deleteMember, exportMembers, exportMembersAsCsv,
 } from '../services/admin-members.service';
 import { ensureMemberExists } from '../services/member-auth.service';
 
@@ -126,6 +126,21 @@ const exportRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── GET /export/csv — 导出 CSV（必须在 /export 之后、/{id} 之前注册）─────────────────────
+const exportCsvRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/export/csv', tags: ['会员管理'], summary: '导出会员 CSV',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:list' })] as const,
+    request: { query: exportQuery },
+    responses: { ...commonErrorResponses, ...okCsv('会员 CSV') },
+  }),
+  handler: async (c) => {
+    const { stream, filename } = await exportMembersAsCsv(c.req.valid('query'));
+    return csvStreamBody(c, stream, filename);
+  },
+});
+
 // ─── GET /{id} — 会员详情 ────────────────────────────────────────────────────
 const getOneRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -137,8 +152,6 @@ const getOneRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => c.json(okBody(await getMemberDetail(c.req.valid('param').id)), 200),
 });
-
-// ─── POST / — 创建会员 ───────────────────────────────────────────────────────
 const createRoute_ = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/', tags: ['会员管理'], summary: '创建会员',
@@ -221,7 +234,7 @@ const deleteRoute_ = defineOpenAPIRoute({
 
 membersRouter.openapiRoutes([
   batchStatusRoute, batchLevelRoute, overviewRoute,
-  listRoute, exportRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
+  listRoute, exportRoute, exportCsvRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
 ] as const);
 
 export default membersRouter;
