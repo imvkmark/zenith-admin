@@ -1,4 +1,4 @@
-import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus } from './constants';
+import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
 
@@ -2052,4 +2052,133 @@ export interface CreatePaymentResult {
   /** APP 支付：客户端调起字符串 */
   appOrderStr?: string;
   expiredAt?: string;
+}
+
+// ─── 会员中心（Member Center）────────────────────────────────────────
+export interface MemberLevel {
+  id: number;
+  name: string;
+  level: number;
+  growthThreshold: number;
+  /** 折扣百分比（100=原价，95=95折）*/
+  discount: number;
+  icon?: string | null;
+  benefits: string[];
+  description?: string | null;
+  sort: number;
+  status: EntityStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Member {
+  id: number;
+  username?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  nickname: string;
+  avatar?: string | null;
+  gender?: string | null;
+  birthday?: string | null;
+  status: MemberStatus;
+  levelId?: number | null;
+  levelName?: string | null;
+  growthValue: number;
+  registerSource: string;
+  registerIp?: string | null;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
+  remark?: string | null;
+  /** 是否已设置登录密码 */
+  hasPassword?: boolean;
+  /** 积分余额（关联查询时附加）*/
+  pointBalance?: number;
+  /** 钱包余额（分，关联查询时附加）*/
+  walletBalance?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberPointAccount {
+  memberId: number;
+  balance: number;
+  frozen: number;
+  totalEarned: number;
+  totalSpent: number;
+}
+
+export interface MemberWallet {
+  memberId: number;
+  /** 余额（分）*/
+  balance: number;
+  frozen: number;
+  totalRecharge: number;
+  totalConsume: number;
+}
+
+export interface MemberPointTransaction {
+  id: number;
+  memberId: number;
+  type: PointTxType;
+  amount: number;
+  balanceAfter: number;
+  bizType?: string | null;
+  bizId?: string | null;
+  remark?: string | null;
+  createdAt: string;
+}
+
+export interface MemberWalletTransaction {
+  id: number;
+  memberId: number;
+  type: WalletTxType;
+  /** 金额变动（分）*/
+  amount: number;
+  balanceAfter: number;
+  bizType?: string | null;
+  bizId?: string | null;
+  remark?: string | null;
+  createdAt: string;
+}
+
+export interface Coupon {
+  id: number;
+  name: string;
+  type: CouponType;
+  /** amount 型为减免金额（分）；percent 型为折扣百分比 */
+  faceValue: number;
+  threshold: number;
+  maxDiscount?: number | null;
+  totalQuantity: number;
+  issuedQuantity: number;
+  perLimit: number;
+  validType: CouponValidType;
+  validStart?: string | null;
+  validEnd?: string | null;
+  validDays?: number | null;
+  status: CouponTemplateStatus;
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberCoupon {
+  id: number;
+  couponId: number;
+  memberId: number;
+  code: string;
+  status: MemberCouponStatus;
+  receivedAt: string;
+  usedAt?: string | null;
+  expireAt?: string | null;
+  coupon?: Coupon;
+  /** 后台列表展示用：会员昵称/标识 */
+  memberName?: string;
+  createdAt: string;
+}
+
+/** 会员登录结果 */
+export interface MemberLoginResult {
+  member: Member;
+  token: { accessToken: string; refreshToken: string };
 }

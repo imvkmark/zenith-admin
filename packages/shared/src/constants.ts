@@ -101,3 +101,72 @@ export const PAYMENT_REFUND_STATUS_LABELS: Record<PaymentRefundStatus, string> =
   success: '退款成功',
   failed: '退款失败',
 };
+
+// ─── 会员中心（Member Center）────────────────────────────────────────
+/** 会员前台 token 的 localStorage key（与管理员 zenith_token 隔离）*/
+export const MEMBER_TOKEN_KEY = 'zenith_member_token';
+export const MEMBER_REFRESH_TOKEN_KEY = 'zenith_member_refresh_token';
+
+export const MEMBER_STATUSES = ['active', 'inactive', 'banned'] as const;
+export type MemberStatus = typeof MEMBER_STATUSES[number];
+
+export const POINT_TX_TYPES = ['earn', 'redeem', 'expire', 'adjust', 'refund'] as const;
+export type PointTxType = typeof POINT_TX_TYPES[number];
+
+export const WALLET_TX_TYPES = ['recharge', 'consume', 'refund', 'adjust'] as const;
+export type WalletTxType = typeof WALLET_TX_TYPES[number];
+
+export const COUPON_TYPES = ['amount', 'percent'] as const;
+export type CouponType = typeof COUPON_TYPES[number];
+
+export const COUPON_VALID_TYPES = ['fixed', 'relative'] as const;
+export type CouponValidType = typeof COUPON_VALID_TYPES[number];
+
+export const COUPON_TEMPLATE_STATUSES = ['draft', 'active', 'paused', 'expired'] as const;
+export type CouponTemplateStatus = typeof COUPON_TEMPLATE_STATUSES[number];
+
+export const MEMBER_COUPON_STATUSES = ['unused', 'used', 'expired', 'frozen'] as const;
+export type MemberCouponStatus = typeof MEMBER_COUPON_STATUSES[number];
+
+export const MEMBER_REGISTER_SOURCES = ['web', 'h5', 'app', 'admin'] as const;
+export type MemberRegisterSource = typeof MEMBER_REGISTER_SOURCES[number];
+
+export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {
+  active: '正常',
+  inactive: '未激活',
+  banned: '已封禁',
+};
+
+export const POINT_TX_TYPE_LABELS: Record<PointTxType, string> = {
+  earn: '获得',
+  redeem: '兑换消耗',
+  expire: '过期',
+  adjust: '调整',
+  refund: '退还',
+};
+
+export const WALLET_TX_TYPE_LABELS: Record<WalletTxType, string> = {
+  recharge: '充值',
+  consume: '消费',
+  refund: '退款',
+  adjust: '调整',
+};
+
+export const COUPON_TYPE_LABELS: Record<CouponType, string> = {
+  amount: '满减券',
+  percent: '折扣券',
+};
+
+export const COUPON_TEMPLATE_STATUS_LABELS: Record<CouponTemplateStatus, string> = {
+  draft: '草稿',
+  active: '生效中',
+  paused: '已暂停',
+  expired: '已过期',
+};
+
+export const MEMBER_COUPON_STATUS_LABELS: Record<MemberCouponStatus, string> = {
+  unused: '未使用',
+  used: '已使用',
+  expired: '已过期',
+  frozen: '已冻结',
+};

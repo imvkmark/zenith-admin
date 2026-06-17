@@ -1,0 +1,162 @@
+import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { memberAuthMiddleware } from '../middleware/member-auth';
+import { idempotencyGuard } from '../middleware/idempotency';
+import {
+  jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okBody, PaginationQuery,
+} from '../lib/openapi-schemas';
+import {
+  MemberPointAccountDTO,
+  MemberPointTransactionDTO,
+  MemberWalletDTO,
+  MemberWalletTransactionDTO,
+  MemberWalletRechargeResultDTO,
+  MemberLevelDTO,
+  MemberCouponDTO,
+  CouponDTO,
+} from '../lib/openapi-dtos';
+import { currentMemberId } from '../lib/member-context';
+import { getClientInfo } from '../services/auth.service';
+import { getMyPointAccount, listMyPointTransactions } from '../services/member-points.service';
+import { getMyWallet, listMyWalletTransactions, rechargeWallet } from '../services/member-wallet.service';
+import { getEnabledLevels } from '../services/member-levels.service';
+import { listMyCoupons, getAvailableCoupons, receiveCoupon } from '../services/coupons.service';
+
+const memberSelf = new OpenAPIHono({ defaultHook: validationHook });
+
+const pointTypeEnum = z.enum(['earn', 'redeem', 'expire', 'adjust', 'refund']);
+const walletTypeEnum = z.enum(['recharge', 'consume', 'refund', 'adjust']);
+const memberCouponStatusEnum = z.enum(['unused', 'used', 'expired', 'frozen']);
+const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']);
+
+const rechargeSchema = z.object({
+  amount: z.number().int().positive('充值金额必须大于 0'),
+  payMethod: payMethodEnum,
+});
+const receiveCouponSchema = z.object({ couponId: z.number().int().positive() });
+
+// ─── GET /points/account — 我的积分账户 ──────────────────────────────────────
+const pointAccountRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/points/account', tags: ['MemberSelf'], summary: '我的积分账户',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(MemberPointAccountDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyPointAccount()), 200),
+});
+
+// ─── GET /points/transactions — 我的积分流水 ─────────────────────────────────
+const pointTxRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/points/transactions', tags: ['MemberSelf'], summary: '我的积分流水',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery.extend({ type: pointTypeEnum.optional() }) },
+    responses: { ...commonErrorResponses, ...okPaginated(MemberPointTransactionDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listMyPointTransactions(c.req.valid('query'))), 200),
+});
+
+// ─── GET /wallet — 我的钱包 ──────────────────────────────────────────────────
+const walletRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/wallet', tags: ['MemberSelf'], summary: '我的钱包',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(MemberWalletDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyWallet()), 200),
+});
+
+// ─── GET /wallet/transactions — 钱包流水 ─────────────────────────────────────
+const walletTxRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/wallet/transactions', tags: ['MemberSelf'], summary: '我的钱包流水',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery.extend({ type: walletTypeEnum.optional() }) },
+    responses: { ...commonErrorResponses, ...okPaginated(MemberWalletTransactionDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listMyWalletTransactions(c.req.valid('query'))), 200),
+});
+
+// ─── POST /wallet/recharge — 发起充值 ────────────────────────────────────────
+const rechargeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/wallet/recharge', tags: ['MemberSelf'], summary: '发起钱包充值',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 10 })] as const,
+    request: { body: { content: jsonContent(rechargeSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MemberWalletRechargeResultDTO, '已创建充值订单') },
+  }),
+  handler: async (c) => {
+    const { amount, payMethod } = c.req.valid('json');
+    const { ip } = getClientInfo(c.req.raw.headers);
+    const result = await rechargeWallet(currentMemberId(), amount, payMethod, ip);
+    return c.json(okBody(result, '已创建充值订单'), 200);
+  },
+});
+
+// ─── GET /levels — 会员等级权益 ──────────────────────────────────────────────
+const levelsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/levels', tags: ['MemberSelf'], summary: '会员等级权益列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(MemberLevelDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getEnabledLevels()), 200),
+});
+
+// ─── GET /coupons — 我的优惠券 ───────────────────────────────────────────────
+const myCouponsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/coupons', tags: ['MemberSelf'], summary: '我的优惠券',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    request: { query: PaginationQuery.extend({ status: memberCouponStatusEnum.optional() }) },
+    responses: { ...commonErrorResponses, ...okPaginated(MemberCouponDTO, 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listMyCoupons(c.req.valid('query'))), 200),
+});
+
+// ─── GET /coupons/available — 可领取优惠券 ───────────────────────────────────
+const availableCouponsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/coupons/available', tags: ['MemberSelf'], summary: '可领取的优惠券',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(CouponDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getAvailableCoupons()), 200),
+});
+
+// ─── POST /coupons/receive — 领取优惠券 ──────────────────────────────────────
+const receiveCouponRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/coupons/receive', tags: ['MemberSelf'], summary: '领取优惠券',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
+    request: { body: { content: jsonContent(receiveCouponSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MemberCouponDTO, '领取成功') },
+  }),
+  handler: async (c) => {
+    const { couponId } = c.req.valid('json');
+    const r = await receiveCoupon(couponId);
+    return c.json(okBody(r, '领取成功'), 200);
+  },
+});
+
+memberSelf.openapiRoutes([
+  pointAccountRoute,
+  pointTxRoute,
+  walletRoute,
+  walletTxRoute,
+  rechargeRoute,
+  levelsRoute,
+  availableCouponsRoute,
+  myCouponsRoute,
+  receiveCouponRoute,
+] as const);
+
+export default memberSelf;

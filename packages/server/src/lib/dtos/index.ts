@@ -42,3 +42,4 @@ export * from './analytics';
 export * from './ssh-profiles';
 export * from './frontend-errors';
 export * from './payment';
+export * from './member';

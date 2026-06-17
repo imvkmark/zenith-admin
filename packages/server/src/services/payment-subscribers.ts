@@ -5,6 +5,7 @@
 import { paymentEventBus } from '../lib/payment-event-bus';
 import { sendToUser } from '../lib/ws-manager';
 import logger from '../lib/logger';
+import { creditWalletOnRecharge, WALLET_RECHARGE_BIZ_TYPE } from './member-wallet.service';
 
 let registered = false;
 
@@ -29,6 +30,14 @@ export function registerPaymentSubscribers(): void {
     const refundAmount = e.refundAmount ?? 0;
     setImmediate(() => {
       sendToUser(userId, { type: 'payment:refunded', payload: { orderNo: e.orderNo, refundNo, refundAmount } });
+    });
+  });
+
+  // 会员钱包充值到账（bizType=member_recharge，由 member-wallet 幂等入账）
+  paymentEventBus.on('payment.succeeded', (e) => {
+    if (e.bizType !== WALLET_RECHARGE_BIZ_TYPE) return;
+    void creditWalletOnRecharge({ bizId: e.bizId, orderNo: e.orderNo, amount: e.amount }).catch((err) => {
+      logger.error('[member] 钱包充值入账失败', { orderNo: e.orderNo, err });
     });
   });
 

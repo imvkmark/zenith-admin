@@ -43,6 +43,11 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     await jwtMiddleware(c, async () => {});
     const payload = c.get('jwtPayload') as JwtPayload;
 
+    // 安全隔离：拒绝会员 token 访问管理端接口（会员 token 带 type='member'）
+    if ((payload as { type?: string }).type === 'member') {
+      return c.json(errBody('无效的访问令牌', 401), 401);
+    }
+
     // Check if this token has been force-logged-out (best-effort, don't block on Redis errors)
     if (payload.jti) {
       try {

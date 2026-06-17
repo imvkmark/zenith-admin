@@ -88,6 +88,11 @@ export default defineConfig(({ mode }) => {
       ...(buildTarget ? { target: buildTarget } : {}),
       chunkSizeWarningLimit: 900,
       rollupOptions: {
+        // 多入口：后台管理（index.html）+ 会员前台（member.html）
+        input: {
+          main: fileURLToPath(new URL('./index.html', import.meta.url)),
+          member: fileURLToPath(new URL('./member.html', import.meta.url)),
+        },
         output: {
           manualChunks(id) {
             const normalizedId = id.replaceAll('\\', '/');

@@ -743,6 +743,13 @@
       "when": 1781614731623,
       "tag": "0105_groovy_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1781622861077,
+      "tag": "0106_cute_proudstar",
+      "breakpoints": true
     }
   ]
 }
