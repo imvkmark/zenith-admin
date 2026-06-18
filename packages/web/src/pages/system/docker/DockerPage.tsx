@@ -313,7 +313,7 @@ function ContainersTab() {
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchContainers()} refreshLoading={loading}
-        empty="未检测到 Docker 容器" pagination={{ pageSize: 30, showSizeChanger: true }}
+        empty="未检测到 Docker 容器" pagination={false}
         expandedRowKeys={expandedKeys}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onExpand={(expanded: boolean | undefined, record: any) =>
@@ -458,7 +458,7 @@ function ImagesTab() {
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchImages()} refreshLoading={loading}
-        empty="未检测到 Docker 镜像" pagination={{ pageSize: 30, showSizeChanger: true }} />
+        empty="未检测到 Docker 镜像" pagination={false} />
 
       <Modal title="拉取镜像" visible={pullVisible} onCancel={() => { setPullVisible(false); setPullTag(''); }}
         onOk={() => void handlePull()} okText="开始拉取" okButtonProps={{ loading: pulling }} width={440}>
@@ -551,7 +551,7 @@ function NetworksTab() {
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchNetworks()} refreshLoading={loading}
-        empty="未检测到 Docker 网络" pagination={{ pageSize: 30, showSizeChanger: true }} />
+        empty="未检测到 Docker 网络" pagination={false} />
 
       <Modal title="创建网络" visible={createVisible} onCancel={() => setCreateVisible(false)}
         onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={440}>
@@ -648,7 +648,7 @@ function VolumesTab() {
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="name" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchVolumes()} refreshLoading={loading}
-        empty="未检测到 Docker 存储卷" pagination={{ pageSize: 30, showSizeChanger: true }} />
+        empty="未检测到 Docker 存储卷" pagination={false} />
 
       <Modal title="创建存储卷" visible={createVisible} onCancel={() => setCreateVisible(false)}
         onOk={() => void handleCreate()} okText="创建" okButtonProps={{ loading: creating }} width={400}>
