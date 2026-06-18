@@ -676,59 +676,23 @@ export default function TerminalPage() {
       <TerminalSettings visible={showSettings} onClose={() => setShowSettings(false)} shells={shells} />
 
       {ctxMenu && (
-        <>
-          <button
-            type="button"
-            aria-label="关闭菜单"
-            style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'transparent', border: 'none', padding: 0, cursor: 'default' }}
-            onClick={() => setCtxMenu(null)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setCtxMenu(null);
-            }}
-          />
-          <div
-            style={{
-              position: 'fixed',
-              left: ctxMenu.x,
-              top: ctxMenu.y,
-              zIndex: 1001,
-              minWidth: 140,
-              background: 'var(--semi-color-bg-3)',
-              border: '1px solid var(--semi-color-border)',
-              borderRadius: 6,
-              boxShadow: 'var(--semi-shadow-elevated)',
-              padding: '4px 0',
-            }}
-          >
-            {[
-              { label: '关闭', fn: () => removeSession(ctxMenu.id) },
-              { label: '关闭其他', fn: () => closeOthers(ctxMenu.id) },
-              { label: '关闭右侧', fn: () => closeRight(ctxMenu.id) },
-              { label: '全部关闭', fn: () => closeAll() },
-            ].map((it) => (
-              <button
-                key={it.label}
-                type="button"
-                onClick={() => { it.fn(); setCtxMenu(null); }}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '6px 14px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--semi-color-text-0)',
-                  font: 'inherit',
-                  fontSize: 13,
-                }}
-              >
-                {it.label}
-              </button>
-            ))}
-          </div>
-        </>
+        <Dropdown
+          trigger="click"
+          visible
+          clickToHide
+          position="bottomLeft"
+          onVisibleChange={(v) => { if (!v) setCtxMenu(null); }}
+          render={(
+            <Dropdown.Menu>
+              <Dropdown.Item onClick={() => { removeSession(ctxMenu.id); setCtxMenu(null); }}>关闭</Dropdown.Item>
+              <Dropdown.Item onClick={() => { closeOthers(ctxMenu.id); setCtxMenu(null); }}>关闭其他</Dropdown.Item>
+              <Dropdown.Item onClick={() => { closeRight(ctxMenu.id); setCtxMenu(null); }}>关闭右侧</Dropdown.Item>
+              <Dropdown.Item onClick={() => { closeAll(); setCtxMenu(null); }}>全部关闭</Dropdown.Item>
+            </Dropdown.Menu>
+          )}
+        >
+          <span style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, width: 1, height: 1 }} />
+        </Dropdown>
       )}
     </div>
   );
