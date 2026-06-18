@@ -19,20 +19,41 @@ export const THEME_PRESETS: ThemePreset[] = [
   { name: 'pink', color: '#eb2f96', label: '粉玫瑰' },
 ];
 
+function safeGetColor(): string {
+  try {
+    return (typeof window !== 'undefined' && localStorage.getItem(THEME_COLOR_KEY)) || DEFAULT_THEME_COLOR;
+  } catch {
+    return DEFAULT_THEME_COLOR;
+  }
+}
+
+function safeSaveColor(color: string): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(THEME_COLOR_KEY, color);
+    }
+  } catch {
+    // ignore — private mode or storage quota exceeded
+  }
+}
+
+function applyColor(color: string): void {
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.setProperty('--m-primary', color);
+  }
+}
+
 /** 在 React 渲染前调用一次，避免主题闪烁 */
 export function initMemberTheme() {
-  const color = localStorage.getItem(THEME_COLOR_KEY) ?? DEFAULT_THEME_COLOR;
-  document.documentElement.style.setProperty('--m-primary', color);
+  applyColor(safeGetColor());
 }
 
 export function useMemberTheme() {
-  const [themeColor, setThemeColorState] = useState<string>(
-    () => localStorage.getItem(THEME_COLOR_KEY) ?? DEFAULT_THEME_COLOR,
-  );
+  const [themeColor, setThemeColorState] = useState<string>(safeGetColor);
 
   const setThemeColor = useCallback((color: string) => {
-    localStorage.setItem(THEME_COLOR_KEY, color);
-    document.documentElement.style.setProperty('--m-primary', color);
+    safeSaveColor(color);
+    applyColor(color);
     setThemeColorState(color);
   }, []);
 

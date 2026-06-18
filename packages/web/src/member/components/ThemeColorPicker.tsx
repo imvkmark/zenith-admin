@@ -1,8 +1,8 @@
 import { Check } from 'lucide-react';
-import { useMemberTheme, THEME_PRESETS } from '../hooks/useMemberTheme';
+import { useMemberTheme } from '../hooks/useMemberTheme';
 
 export function ThemeColorPicker() {
-  const { themeColor, setThemeColor } = useMemberTheme();
+  const { themeColor, setThemeColor, presets } = useMemberTheme();
 
   return (
     <div>
@@ -10,11 +10,12 @@ export function ThemeColorPicker() {
         选择你喜欢的主题色，偏好会保存在本设备
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        {THEME_PRESETS.map((preset) => {
+        {presets.map((preset) => {
           const selected = themeColor === preset.color;
           return (
             <div key={preset.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <button
+                type="button"
                 title={preset.label}
                 onClick={() => setThemeColor(preset.color)}
                 aria-label={preset.label}
