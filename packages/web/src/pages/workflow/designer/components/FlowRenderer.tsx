@@ -1,7 +1,7 @@
 /**
  * FlowRenderer — 递归渲染整个流程树
  */
-import type { FlowNode, FlowNodeType, FlowBranch } from '../types';
+import type { FlowNode, FlowNodeType, FlowBranch, NodeRuntimeInfo } from '../types';
 import { isBranchNode } from '../types';
 import InitiatorNode from './InitiatorNode';
 import EndNode from './EndNode';
@@ -22,6 +22,10 @@ interface FlowRendererProps {
   onMoveBranch?: (branchNodeId: string, branchId: string, direction: 'up' | 'down') => void;
   formFields?: ReadonlyArray<{ key: string; label: string; type?: string }>;
   readOnly?: boolean;
+  /** 运行态：nodeKey → 节点运行态（实例详情流程图叠加状态） */
+  nodeRuntime?: Map<string, NodeRuntimeInfo>;
+  /** 运行态：未被实际命中的分支 id 集合（用于置灰未走的分支） */
+  dimmedBranchIds?: Set<string>;
 }
 
 const noop = () => { /* noop */ };
@@ -39,6 +43,8 @@ export default function FlowRenderer({
   onMoveBranch,
   formFields,
   readOnly = false,
+  nodeRuntime,
+  dimmedBranchIds,
 }: Readonly<FlowRendererProps>) {
 
   const editNode = onEditNode ?? noop;
@@ -66,6 +72,7 @@ export default function FlowRenderer({
             onMoveBranch={moveBranch}
             onEditNode={editNode}
             formFields={formFields}
+            dimmedBranchIds={dimmedBranchIds}
             renderChildren={(childNode, key) => renderNodeChain(childNode, key)}
             readOnly={readOnly}
           />
@@ -76,6 +83,7 @@ export default function FlowRenderer({
             onDelete={deleteNode}
             onDuplicate={onDuplicateNode}
             readOnly={readOnly}
+            runtime={nodeRuntime?.get(node.key ?? node.id)}
           />
         )}
 

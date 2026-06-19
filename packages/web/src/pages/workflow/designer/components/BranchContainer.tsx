@@ -23,6 +23,8 @@ interface BranchContainerProps {
   renderChildren: (childNode: FlowNode | undefined, parentId: string) => React.ReactNode;
   /** 可选：表单字段列表，用于路由分支展示「路由字段：XXX」提示 */
   formFields?: ReadonlyArray<{ key: string; label: string; type?: string }>;
+  /** 运行态：未被实际命中的分支 id（置灰展示） */
+  dimmedBranchIds?: Set<string>;
   readOnly?: boolean;
 }
 
@@ -77,6 +79,7 @@ export default function BranchContainer({
   onEditNode,
   renderChildren,
   formFields,
+  dimmedBranchIds,
   readOnly = false,
 }: Readonly<BranchContainerProps>) {
   const branches = node.branches ?? [];
@@ -141,7 +144,7 @@ export default function BranchContainer({
 
       <div className="fd-branch-box">
         {branches.map((branch, index) => (
-          <div key={branch.id} className="fd-branch-col">
+          <div key={branch.id} className={`fd-branch-col${dimmedBranchIds?.has(branch.id) ? ' fd-branch-col--dimmed' : ''}`}>
             <div className="fd-branch-col-top-line" />
 
             <button className="fd-branch-title" type="button" onClick={readOnly || branchType === 'parallelBranch' ? undefined : () => onEditBranch(branch, node.id)} tabIndex={readOnly || branchType === 'parallelBranch' ? -1 : 0}>

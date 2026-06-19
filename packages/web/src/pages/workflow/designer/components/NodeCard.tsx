@@ -5,8 +5,10 @@
  */
 import { ChevronRight, Copy, X } from 'lucide-react';
 import { Popconfirm, Tooltip } from '@douyinfe/semi-ui';
-import type { FlowNode, AssigneeType, ApproveMethod, ApprovalType, OperationPermission, FieldPermission } from '../types';
+import type { FlowNode, AssigneeType, ApproveMethod, ApprovalType, OperationPermission, FieldPermission, NodeRuntimeInfo } from '../types';
 import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METHOD_OPTIONS, APPROVAL_TYPE_OPTIONS } from '../constants';
+import { UserAvatar } from '@/components/UserAvatar';
+import { formatDateTime } from '@/utils/date';
 
 interface NodeCardProps {
   node: FlowNode;
@@ -14,6 +16,30 @@ interface NodeCardProps {
   onDelete: (nodeId: string) => void;
   onDuplicate?: (nodeId: string) => void;
   readOnly?: boolean;
+  /** 运行态信息（实例详情流程图叠加：实际处理人 + 状态 + 时间）；设计态为空 */
+  runtime?: NodeRuntimeInfo;
+}
+
+/** 节点级运行态标签 */
+const RT_NODE_STATUS: Record<NodeRuntimeInfo['status'], { label: string }> = {
+  approved: { label: '已通过' },
+  rejected: { label: '已驳回' },
+  pending: { label: '审批中' },
+  waiting: { label: '待审批' },
+  skipped: { label: '已跳过' },
+};
+
+/** 单处理人状态文案（抄送节点语义不同） */
+function approverStatusLabel(nodeType: FlowNode['type'], status: NodeRuntimeInfo['status']): string {
+  if (nodeType === 'cc') return status === 'approved' ? '已抄送' : '待抄送';
+  switch (status) {
+    case 'approved': return '已同意';
+    case 'rejected': return '已拒绝';
+    case 'pending': return '审批中';
+    case 'waiting': return '待审批';
+    case 'skipped': return '已跳过';
+    default: return '';
+  }
 }
 
 function getNodeInfo(type: FlowNode['type']) {
@@ -139,7 +165,7 @@ function getNodeTags(node: FlowNode): string[] {
   return tags;
 }
 
-export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly = false }: Readonly<NodeCardProps>) {
+export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly = false, runtime }: Readonly<NodeCardProps>) {
   const info = getNodeInfo(node.type);
   const color = NODE_COLOR_MAP[node.type] ?? '#999';
   const Icon = info?.icon;
@@ -150,7 +176,7 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly
   return (
     <button
       type="button"
-      className="fd-node-card"
+      className={`fd-node-card${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}`}
       data-fd-node-id={node.id}
       onClick={readOnly ? undefined : () => onEdit(node)}
       tabIndex={readOnly ? -1 : 0}
@@ -163,6 +189,11 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly
           </span>
         )}
         <span className="fd-node-card__header-title">{node.name || info?.label || '节点'}</span>
+        {runtime && (
+          <span className={`fd-node-card__rt-badge fd-node-card__rt-badge--${runtime.status}`}>
+            {RT_NODE_STATUS[runtime.status]?.label}
+          </span>
+        )}
         {!readOnly && (
         <span className="fd-node-card__header-actions">
           {onDuplicate && (
@@ -196,19 +227,47 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly
       </div>
 
       {/* 内容区 */}
-      <div className="fd-node-card__body">
-        <div className="fd-node-card__body-content">
-          <span className="fd-node-card__body-text">{bodyText}</span>
-          {tags.length > 0 && (
-            <div className="fd-node-card__body-tags">
-              {tags.map(tag => (
-                <span key={tag} className="fd-node-card__tag">{tag}</span>
+      {runtime ? (
+        <div className="fd-node-card__body fd-node-card__body--rt">
+          {runtime.approvers.length === 0 ? (
+            <span className="fd-node-card__body-text">{bodyText}</span>
+          ) : (
+            <div className="fd-node-card__rt-list">
+              {runtime.approvers.map((a, i) => (
+                <div className="fd-node-card__rt-row" key={`${a.name}-${i}`}>
+                  <UserAvatar
+                    name={a.name || '?'}
+                    avatar={a.status === 'skipped' ? null : a.avatar}
+                    semiSize="extra-extra-small"
+                    size={18}
+                  />
+                  <span className="fd-node-card__rt-name" title={a.name}>{a.name || '未指定'}</span>
+                  <span className={`fd-node-card__rt-status fd-node-card__rt-status--${a.status}`}>
+                    {approverStatusLabel(node.type, a.status)}
+                  </span>
+                  {a.actionAt && (
+                    <span className="fd-node-card__rt-time">{formatDateTime(a.actionAt)}</span>
+                  )}
+                </div>
               ))}
             </div>
           )}
         </div>
-        <ChevronRight size={16} className="fd-node-card__body-arrow" />
-      </div>
+      ) : (
+        <div className="fd-node-card__body">
+          <div className="fd-node-card__body-content">
+            <span className="fd-node-card__body-text">{bodyText}</span>
+            {tags.length > 0 && (
+              <div className="fd-node-card__body-tags">
+                {tags.map(tag => (
+                  <span key={tag} className="fd-node-card__tag">{tag}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          <ChevronRight size={16} className="fd-node-card__body-arrow" />
+        </div>
+      )}
     </button>
   );
 }

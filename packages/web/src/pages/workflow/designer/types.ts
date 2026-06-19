@@ -291,6 +291,23 @@ export interface FlowProcess {
   initiator: FlowNode;  // 根节点（发起人）
 }
 
+// ─── 运行态（实例详情流程图）渲染辅助类型 ───────────────────────────
+
+/** 单个节点上的某一处理人运行态 */
+export interface NodeRuntimeApprover {
+  name: string;
+  avatar?: string | null;
+  status: 'approved' | 'rejected' | 'pending' | 'waiting' | 'skipped';
+  actionAt?: string | null;
+  comment?: string | null;
+}
+
+/** 节点级运行态（由实例 tasks 聚合而来），用于流程图按 nodeKey 叠加状态 */
+export interface NodeRuntimeInfo {
+  status: 'approved' | 'rejected' | 'pending' | 'waiting' | 'skipped';
+  approvers: NodeRuntimeApprover[];
+}
+
 // ─── 用于渲染的辅助类型 ─────────────────────────────────────────────
 
 export type BranchNodeType = 'conditionBranch' | 'parallelBranch' | 'inclusiveBranch' | 'routeBranch';
