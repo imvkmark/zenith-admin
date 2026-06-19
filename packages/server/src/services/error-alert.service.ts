@@ -152,7 +152,7 @@ export async function evaluateAlerts(): Promise<{ evaluated: number; triggered: 
     } else if (rule.condition === 'spike') {
       const prevStart = new Date(now - rule.windowMinutes * 2 * 60_000);
       const cur = await db.$count(errorEvents, evWhere);
-      const prevConds = [gte(errorEvents.createdAt, prevStart), sql`${errorEvents.createdAt} < ${windowStart}`];
+      const prevConds = [gte(errorEvents.createdAt, prevStart), sql`${errorEvents.createdAt} < ${windowStart.toISOString()}::timestamptz`];
       if (rule.errorType) prevConds.push(eq(errorEvents.errorType, rule.errorType));
       if (rule.level) prevConds.push(eq(errorEvents.level, rule.level));
       if (tId != null) prevConds.push(eq(errorEvents.tenantId, tId)); else prevConds.push(isNull(errorEvents.tenantId));

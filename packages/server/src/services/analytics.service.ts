@@ -134,7 +134,7 @@ async function upsertSessions(
           exitPage: s.lastPage,
           pageCount: sql`${analyticsSessions.pageCount} + ${s.pageviews}`,
           eventCount: sql`${analyticsSessions.eventCount} + ${s.events}`,
-          durationMs: sql`GREATEST(0, EXTRACT(EPOCH FROM (${now}::timestamptz - ${analyticsSessions.startedAt})) * 1000)::integer`,
+          durationMs: sql`GREATEST(0, EXTRACT(EPOCH FROM (NOW() - ${analyticsSessions.startedAt})) * 1000)::integer`,
           isBounce: sql`(${analyticsSessions.pageCount} + ${s.pageviews}) <= 1`,
           userId: sql`COALESCE(${analyticsSessions.userId}, ${ctx.userId})`,
           username: sql`COALESCE(${analyticsSessions.username}, ${ctx.username})`,
@@ -196,7 +196,7 @@ export async function getOverview(daysRaw: unknown) {
         mergeWhere(
           and(
             gte(userEvents.createdAt, start),
-            sql`${userEvents.distinctId} NOT IN (SELECT DISTINCT distinct_id FROM user_events WHERE created_at < ${start} AND distinct_id IS NOT NULL)`,
+            sql`${userEvents.distinctId} NOT IN (SELECT DISTINCT distinct_id FROM user_events WHERE created_at < ${start.toISOString()}::timestamptz AND distinct_id IS NOT NULL)`,
           ),
           tenantScope(userEvents),
         ),
