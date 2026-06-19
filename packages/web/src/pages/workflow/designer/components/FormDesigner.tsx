@@ -163,6 +163,9 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
     case 'pinCode':
       field.maxCount = 6;
       break;
+    case 'colorPicker':
+      field.defaultValue = '#1677ff';
+      break;
     case 'formula':
       field.formula = '';
       field.precision = 2;

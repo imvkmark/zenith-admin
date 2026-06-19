@@ -39,6 +39,7 @@ import {
   KeyRound,
   SquareAsterisk,
   TextCursorInput,
+  Palette,
   type LucideIcon,
 } from 'lucide-react';
 import type { WorkflowFormFieldType } from '@zenith/shared';
@@ -72,6 +73,7 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'switch',       label: '开关',     icon: ToggleRight,   group: '选择控件', description: '是 / 否 开关' },
   { type: 'slider',       label: '滑块',     icon: SlidersHorizontal, group: '选择控件', description: '滑块数值选择' },
   { type: 'tags',         label: '标签',     icon: Tags,          group: '选择控件', description: '多标签录入' },
+  { type: 'colorPicker',  label: '颜色',     icon: Palette,       group: '选择控件', description: '颜色选择器' },
 
   // 格式化控件
   { type: 'phone',        label: '手机号',   icon: Phone,         group: '格式化控件', description: '手机号码，含格式校验' },

@@ -14,6 +14,7 @@ import RichTextEditor from '@/components/RichTextEditor';
 import UserSelect from '@/components/UserSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
 import DictSelect from '@/components/DictSelect';
+import ColorPickerInput from '@/components/ColorPickerInput';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 const EMAIL_REGEX = /^[\w.+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
@@ -143,6 +144,7 @@ const FormSignature = withField(SignaturePad);
 const FormUserSelect = withField(UserSelect);
 const FormDeptSelect = withField(DepartmentSelect);
 const FormDictSelect = withField(DictSelect);
+const FormColorPicker = withField(ColorPickerInput);
 
 export function flattenFields(fields: WorkflowFormField[]): WorkflowFormField[] {
   const out: WorkflowFormField[] = [];
@@ -702,6 +704,17 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请输入${field.label}后回车`}
           max={field.maxCount}
+          initValue={field.defaultValue}
+          rules={rules} disabled={disabled}
+          {...extraProps}
+        />
+      );
+
+    case 'colorPicker':
+      return (
+        <FormColorPicker
+          field={field.key} label={field.label}
+          alpha={field.alpha}
           initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}

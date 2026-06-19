@@ -1084,6 +1084,7 @@ export type WorkflowFormFieldType =
   | 'switch'        // 开关
   | 'slider'        // 滑块
   | 'tags'          // 标签录入
+  | 'colorPicker'   // 颜色选择器
   | 'amount'        // 金额
   | 'phone'         // 手机号
   | 'email'         // 邮箱
@@ -1179,6 +1180,8 @@ export interface WorkflowFormField {
   multiple?: boolean;                   // userSelect/deptSelect/dictSelect：是否允许多选
   // slider 滑块
   sliderMarks?: boolean;                // 是否显示刻度标记
+  // colorPicker 颜色选择器
+  alpha?: boolean;                      // 是否支持透明度（rgba）
   // 字段级标签设置（覆盖表单级 settings）
   labelPosition?: 'top' | 'left' | 'inset';   // 字段级标签位置
   labelAlign?: 'left' | 'right';               // 字段级标签对齐

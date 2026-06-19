@@ -59,13 +59,14 @@ export default function FieldConfigPanel({
   const isSwitch = field.type === 'switch';
   const isSlider = field.type === 'slider';
   const isTags = field.type === 'tags';
+  const isColorPicker = field.type === 'colorPicker';
   const isPinCode = field.type === 'pinCode';
   const isAutoComplete = field.type === 'autoComplete';
   const isUserSelect = field.type === 'userSelect';
   const isDeptSelect = field.type === 'deptSelect';
   const isDictSelect = field.type === 'dictSelect';
   const isSystemSelect = isUserSelect || isDeptSelect || isDictSelect;
-  const isSpecialInput = isTime || isRegion || isSignature || isRichText || isSwitch || isSlider || isTags || isPinCode || isSystemSelect;
+  const isSpecialInput = isTime || isRegion || isSignature || isRichText || isSwitch || isSlider || isTags || isColorPicker || isPinCode || isSystemSelect;
   // 支持响应式列宽 / 只读 / 隐藏的普通输入字段（排除布局类与纯展示类）
   const supportsLayoutState = !isLayout && !isDescription && !isSerialNumber;
   // 支持字段级标签覆盖（排除布局/分割线/纯展示）
@@ -495,6 +496,18 @@ export default function FieldConfigPanel({
             <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>
               上方「选项」即为输入时的建议项，用户仍可自由输入其它值。
             </Typography.Text>
+          )}
+
+          {/* 颜色选择器：透明度 */}
+          {isColorPicker && (
+            <div className="fd-form-config__field fd-form-config__field--inline">
+              <Typography.Text strong size="small">支持透明度</Typography.Text>
+              <Switch
+                checked={field.alpha ?? false}
+                onChange={(v) => onChange({ alpha: v || undefined })}
+                size="small"
+              />
+            </div>
           )}
 
           {/* 明细子字段 */}
