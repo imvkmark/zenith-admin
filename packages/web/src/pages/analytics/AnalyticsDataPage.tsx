@@ -612,7 +612,7 @@ export default function AnalyticsDataPage() {
       ),
     },
     { title: '时长', dataIndex: 'durationMs', width: 100, render: (value: number | null) => msToReadable(value) },
-    { title: '时间', dataIndex: 'createdAt', width: 170, render: (value: string) => formatDateTime(value) },
+    { title: '时间', dataIndex: 'createdAt', width: 180, render: (value: string) => formatDateTime(value) },
     {
       title: '操作',
       dataIndex: '__actions',
