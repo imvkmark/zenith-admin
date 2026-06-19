@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { Modal, Spin, Toast, AudioPlayer, VideoPlayer, Typography } from '@douyinfe/semi-ui';
+import { X } from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
 import { fetchProtectedFile, isSpreadsheetFile, isWordFile, isMarkdownFile, isPlainTextFile, isZipFile, isJsonFile, isSvgFile, isCodeFile, getFileTypeIcon } from '@/utils/file-utils';
 import { PDFPreviewPanel } from '@/pages/ai/chat/PDFPreviewPanel';
@@ -7,6 +9,7 @@ import { request } from '@/utils/request';
 import AppModal from '@/components/AppModal';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { CSSProperties, ReactNode } from 'react';
+import './filePreview.css';
 
 // Univer 体积较大，懒加载，避免进入文件管理页即拉取
 const ExcelPreviewPanel = lazy(() => import('@/components/ExcelPreviewPanel'));
@@ -475,24 +478,30 @@ export default function FilePreviewModal({
   }
 
   if (audioUrl) {
-    return (
-      <AppModal
-        visible
-        onCancel={handleClose}
-        title={previewTitle}
-        footer={null}
-        fullscreenable={false}
-        width={600}
-        style={{ top: '25vh' }}
-        bodyStyle={{ padding: 0, overflow: 'hidden', borderRadius: 8 }}
-        keepDOM={false}
-      >
-        <AudioPlayer
-          audioUrl={{ src: audioUrl, title: fileName }}
-          theme={isDark ? 'dark' : 'light'}
-          style={{ borderRadius: 8 }}
-        />
-      </AppModal>
+    // 音频固定在页面底部以播放条形式呈现，避免在窄弹窗内控件（播放键）被裁切
+    return createPortal(
+      <div className="zenith-audio-dock" role="region" aria-label="音频播放器">
+        <div className="zenith-audio-dock__inner">
+          <div className="zenith-audio-dock__player">
+            <AudioPlayer
+              className="zenith-audio-preview"
+              audioUrl={{ src: audioUrl, title: fileName }}
+              theme={isDark ? 'dark' : 'light'}
+              autoPlay
+              style={{ width: '100%' }}
+            />
+          </div>
+          <button
+            type="button"
+            className="zenith-audio-dock__close"
+            onClick={handleClose}
+            aria-label="关闭音频播放器"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      </div>,
+      document.body,
     );
   }
 

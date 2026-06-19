@@ -1,0 +1,91 @@
+/**
+ * 音频预览：底部固定播放条
+ *
+ * 原生 Semi AudioPlayer 进度条固定 323px，整体宽度约 640px+，放在窄弹窗里
+ * （内容居中 + overflow:hidden）会把最左侧的播放键裁切到可视区域外。
+ *
+ * 改为固定在页面底部的全宽播放条后，播放器有充足横向空间；同时让进度条弹性
+ * 伸缩铺满播放条，播放键、音量、倍速等控件始终完整可见。
+ */
+
+/* ── 底部播放条容器 ───────────────────────────────────────────── */
+.zenith-audio-dock {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 1050;
+  background: var(--semi-color-bg-2);
+  border-top: 1px solid var(--semi-color-border);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.12);
+  padding: 10px 24px;
+  animation: zenith-audio-dock-in 0.22s ease;
+}
+
+@keyframes zenith-audio-dock-in {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.zenith-audio-dock__inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.zenith-audio-dock__player {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.zenith-audio-dock__close {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+  background: var(--semi-color-fill-1);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.zenith-audio-dock__close:hover {
+  background: var(--semi-color-fill-2);
+  color: var(--semi-color-text-0);
+}
+
+/* ── 播放器自适应铺满播放条 ───────────────────────────────────── */
+.zenith-audio-preview.semi-audio-player {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* 在底部播放条内让播放器背景透明、去掉边框，与播放条融为一体 */
+.zenith-audio-dock .zenith-audio-preview.semi-audio-player {
+  background: transparent;
+  border: none;
+  height: auto;
+}
+
+.zenith-audio-preview .semi-audio-player-info-container,
+.zenith-audio-preview .semi-audio-player-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.zenith-audio-preview .semi-audio-player-info-time {
+  width: 100%;
+}
+
+.zenith-audio-preview .semi-audio-player-slider-container {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
