@@ -293,7 +293,7 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
 
   return (
     <div className="fd-form-designer-shell">
-      {/* 顶部工具栏：撤销 / 重做（外部接管时隐藏） */}
+      {/* 顶部工具栏：撤销 / 重做（由外部工具栏接管时隐藏） */}
       {showToolbar && (
         <div className="fd-form-designer__toolbar">
           <Tooltip content="撤销 (Ctrl+Z)">
