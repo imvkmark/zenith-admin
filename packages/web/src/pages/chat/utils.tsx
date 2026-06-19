@@ -58,6 +58,7 @@ export function getMessageSummary(msg: ChatMessage): string {
     const asset = getAssetMeta(msg);
     return asset?.name ? `[文件] ${asset.name}` : '[文件]';
   }
+  if (msg.type === 'voice') return '[语音]';
   return msg.content;
 }
 

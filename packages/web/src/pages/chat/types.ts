@@ -46,3 +46,14 @@ export interface FailedMessage {
   convId: number;
   content: string;
 }
+
+/** 单条消息的已读回执信息（仅对自己发送的消息计算） */
+export type MessageReadReceipt =
+  | { kind: 'direct'; read: boolean }
+  | {
+      kind: 'group';
+      readCount: number;
+      total: number;
+      readers: Array<{ nickname: string; avatar: string | null }>;
+      unreaders: Array<{ nickname: string; avatar: string | null }>;
+    };

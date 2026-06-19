@@ -4,14 +4,14 @@ import {
   chatConversations, chatConversationMembers, chatMessages, users, chatMessageReactions,
   departments, positions, userPositions,
 } from '../db/schema';
-import { scheduleSendToUsers } from '../lib/ws-manager';
+import { scheduleSendToUsers, isUserOnline, getUserLastSeen } from '../lib/ws-manager';
 import { currentUser } from '../lib/context';
-import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/datetime';
+import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { httpGet } from '../lib/http-client';
 import { HTTPException } from 'hono/http-exception';
 import type {
-  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup, ChatVoteData,
+  SendChatMessageInput, ForwardMessagesInput, ChatMessage, ChatConversation, ChatLinkPreview, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatForwardedItem, ChatReactionGroup, ChatVoteData, ChatReadState, ChatPresence,
 } from '@zenith/shared';
 
 const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i;
@@ -310,6 +310,7 @@ function buildMessageSearchSnippet(message: ChatMessage): string {
   if (message.isRecalled) return '消息已撤回';
   if (message.type === 'image') return `[图片] ${message.extra?.asset?.name ?? ''}`.trim();
   if (message.type === 'file') return `[文件] ${message.extra?.asset?.name ?? ''}`.trim();
+  if (message.type === 'voice') return '[语音]';
   if (message.type === 'system') return `[系统] ${message.content}`;
   return message.content;
 }
@@ -1283,9 +1284,10 @@ export async function editMessage(messageId: number, content: string): Promise<C
 
 export async function markConversationRead(conversationId: number): Promise<void> {
   const me = currentUser();
+  const readAt = new Date();
 
   await db.update(chatConversationMembers)
-    .set({ lastReadAt: new Date() })
+    .set({ lastReadAt: readAt })
     .where(and(
       eq(chatConversationMembers.conversationId, conversationId),
       eq(chatConversationMembers.userId, me.userId),
@@ -1300,7 +1302,53 @@ export async function markConversationRead(conversationId: number): Promise<void
       ne(chatConversationMembers.userId, me.userId),
     ));
 
-  scheduleSendToUsers(members, { type: 'chat:read', payload: { conversationId, userId: me.userId } });
+  scheduleSendToUsers(members, {
+    type: 'chat:read',
+    payload: { conversationId, userId: me.userId, readAt: formatDateTime(readAt) },
+  });
+}
+
+// ─── 已读回执：会话成员已读状态 ──────────────────────────────────────────────
+
+export async function getConversationReadStates(conversationId: number): Promise<ChatReadState[]> {
+  const me = currentUser();
+  await ensureConversationMember(conversationId);
+
+  const rows = await db
+    .select({
+      userId: chatConversationMembers.userId,
+      nickname: users.nickname,
+      avatar: users.avatar,
+      lastReadAt: chatConversationMembers.lastReadAt,
+    })
+    .from(chatConversationMembers)
+    .innerJoin(users, eq(chatConversationMembers.userId, users.id))
+    .where(and(
+      eq(chatConversationMembers.conversationId, conversationId),
+      ne(chatConversationMembers.userId, me.userId),
+    ));
+
+  return rows.map((r) => ({
+    userId: r.userId,
+    nickname: r.nickname,
+    avatar: r.avatar ?? null,
+    lastReadAt: formatNullableDateTime(r.lastReadAt),
+  }));
+}
+
+// ─── 在线状态：批量查询用户在线/最近在线 ───────────────────────────────────────
+
+export function getPresenceForUsers(userIds: number[]): ChatPresence[] {
+  const unique = [...new Set(userIds)];
+  return unique.map((userId) => {
+    const online = isUserOnline(userId);
+    const lastSeenMs = online ? null : getUserLastSeen(userId);
+    return {
+      userId,
+      online,
+      lastSeen: lastSeenMs ? formatDateTime(new Date(lastSeenMs)) : null,
+    };
+  });
 }
 
 // ─── 创建群聊 ──────────────────────────────────────────────────────────────────

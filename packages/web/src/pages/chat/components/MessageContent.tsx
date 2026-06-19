@@ -2,6 +2,7 @@ import { Typography, List, Button } from '@douyinfe/semi-ui';
 import { getFileTypeIcon, formatFileSize, canPreviewFile } from '@/utils/file-utils';
 import { getMessageExtra, renderTextWithMentions } from '../utils';
 import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
+import { VoiceMessage } from './VoiceMessage';
 
 const { Text } = Typography;
 
@@ -14,6 +15,7 @@ function getForwardedItemKey(item: ForwardedMessageItem): string {
 function getForwardedItemPreview(item: ForwardedMessageItem): string {
   if (item.type === 'image') return '[图片，点击查看]';
   if (item.type === 'file') return `[文件] ${item.asset?.name ?? ''}`;
+  if (item.type === 'voice') return '[语音]';
   return item.content;
 }
 
@@ -179,6 +181,10 @@ export function MessageContent({
         )}
       </div>
     );
+  }
+
+  if (msg.type === 'voice') {
+    return <VoiceMessage msg={msg} isSelf={isSelf} />;
   }
 
   if (msg.type === 'vote') {

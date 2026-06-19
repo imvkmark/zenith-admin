@@ -10,12 +10,13 @@ import type { ChatUser } from '../types';
 const { Text } = Typography;
 
 export function GroupMembersPanel({
-  conversationId, currentUserId, conv, onConvUpdate,
+  conversationId, currentUserId, conv, onConvUpdate, onlineUserIds,
 }: Readonly<{
   conversationId: number;
   currentUserId: number | null;
   conv: ChatConversation;
   onConvUpdate: (patch: Partial<ChatConversation>) => void;
+  onlineUserIds?: Set<number>;
 }>) {
   const [members, setMembers] = useState<ChatGroupMember[]>([]);
   const [loading, setLoading] = useState(false);
@@ -201,7 +202,14 @@ export function GroupMembersPanel({
                 key={m.id}
                 align="center"
                 style={{ padding: '6px 0' }}
-                header={<UserAvatar name={m.nickname} avatar={m.avatar} size={28} />}
+                header={(
+                  <span style={{ position: 'relative', display: 'inline-flex' }}>
+                    <UserAvatar name={m.nickname} avatar={m.avatar} size={28} />
+                    {onlineUserIds?.has(m.id) && (
+                      <span style={{ position: 'absolute', insetInlineEnd: -1, bottom: -1, width: 9, height: 9, borderRadius: '50%', background: 'var(--semi-color-success)', border: '2px solid var(--semi-color-bg-1)', boxSizing: 'border-box' }} />
+                    )}
+                  </span>
+                )}
                 main={(
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

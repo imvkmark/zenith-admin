@@ -37,7 +37,7 @@ export const ChatLinkPreviewDTO = z
 
 export const ChatAssetMetaDTO = z
   .object({
-    kind: z.enum(['image', 'file']),
+    kind: z.enum(['image', 'file', 'voice']),
     name: z.string(),
     size: z.number().int(),
     mimeType: z.string().nullable(),
@@ -46,6 +46,7 @@ export const ChatAssetMetaDTO = z
     width: z.number().int().nullable().optional(),
     height: z.number().int().nullable().optional(),
     thumbnailUrl: z.string().max(2048).nullable().optional(),
+    duration: z.number().nullable().optional(),
   })
   .strict()
   .openapi('ChatAssetMeta');
@@ -69,7 +70,7 @@ export const ChatAnnouncementHistoryDTO = z
 export const ChatForwardedItemDTO = z
   .object({
     senderName: z.string().nullable(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice']),
     content: z.string(),
     createdAt: z.string(),
     asset: ChatAssetMetaDTO.nullable().optional(),
@@ -134,7 +135,7 @@ export const ChatMessageDTO = z
     senderId: z.number().int().nullable(),
     senderName: z.string().nullable(),
     senderAvatar: z.string().nullable().optional(),
-    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote']),
+    type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice']),
     content: z.string(),
     replyToId: z.number().int().nullable().optional(),
     isRecalled: z.boolean(),
@@ -181,3 +182,20 @@ export const ChatConversationDTO = z
     updatedAt: z.string(),
   })
   .openapi('ChatConversation');
+
+export const ChatReadStateDTO = z
+  .object({
+    userId: z.number().int(),
+    nickname: z.string(),
+    avatar: z.string().nullable(),
+    lastReadAt: z.string().nullable(),
+  })
+  .openapi('ChatReadState');
+
+export const ChatPresenceDTO = z
+  .object({
+    userId: z.number().int(),
+    online: z.boolean(),
+    lastSeen: z.string().nullable(),
+  })
+  .openapi('ChatPresence');

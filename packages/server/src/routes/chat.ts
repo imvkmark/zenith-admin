@@ -6,7 +6,7 @@ import {
 } from '../lib/openapi-schemas';
 import {
   ChatMessageDTO, ChatConversationDTO, ChatUserDTO, ChatGroupMemberDTO, ChatLinkPreviewDTO, ChatMessageExtraDTO,
-  ChatMessageSearchItemDTO, ChatMessageContextDTO, ChatReactionGroupDTO,
+  ChatMessageSearchItemDTO, ChatMessageContextDTO, ChatReactionGroupDTO, ChatReadStateDTO, ChatPresenceDTO,
 } from '../lib/openapi-dtos';
 import {
   listConversations, getOrCreateDirectConversation, listMessages,
@@ -17,6 +17,7 @@ import {
   pinConversation, starConversation, muteConversation, removeConversation,
   getLinkPreview, listPinnedMessages, listFavoriteMessages, listGlobalFavoriteMessages,
   toggleMessageFavorite, toggleMessagePin, listAnnouncementHistory, deleteAnnouncementHistory, forwardMessages, deleteMessagesForUser, toggleReaction, submitVote,
+  getConversationReadStates, getPresenceForUsers,
 } from '../services/chat.service';
 
 const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -34,6 +35,31 @@ chatRouter.openapi(
   async (c) => {
     const { keyword } = c.req.valid('query');
     const list = await listChatUsers(keyword);
+    return c.json(okBody(list), 200);
+  },
+);
+
+// ─── 在线状态（presence）────────────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/presence', tags: ['Chat'], summary: '批量查询用户在线状态',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      query: z.object({
+        userIds: z.string().optional().openapi({ description: '逗号分隔的用户 ID 列表', example: '1,2,3' }),
+      }),
+    },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatPresenceDTO), '在线状态列表') },
+  }),
+  async (c) => {
+    const { userIds } = c.req.valid('query');
+    const ids = (userIds ?? '')
+      .split(',')
+      .map((s) => Number.parseInt(s.trim(), 10))
+      .filter((n) => Number.isInteger(n) && n > 0);
+    const list = getPresenceForUsers(ids);
     return c.json(okBody(list), 200);
   },
 );
@@ -184,7 +210,7 @@ chatRouter.openapi(
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
-  type: z.enum(['text', 'image', 'file', 'forward', 'vote']).default('text'),
+  type: z.enum(['text', 'image', 'file', 'forward', 'vote', 'voice']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
   extra: ChatMessageExtraDTO.nullable().optional(),
 });
@@ -341,6 +367,23 @@ chatRouter.openapi(
     const { id } = c.req.valid('param');
     await markConversationRead(id);
     return c.json(okBody(null), 200);
+  },
+);
+
+// ─── 已读回执：会话成员已读状态 ──────────────────────────────────────────────
+
+chatRouter.openapi(
+  createRoute({
+    method: 'get', path: '/conversations/{id}/read-states', tags: ['Chat'], summary: '获取会话成员已读状态',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.array(ChatReadStateDTO), '成员已读状态列表') },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const list = await getConversationReadStates(id);
+    return c.json(okBody(list), 200);
   },
 );
 

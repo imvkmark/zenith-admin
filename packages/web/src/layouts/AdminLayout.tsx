@@ -22,6 +22,7 @@ import { renderLucideIcon } from '@/utils/icons';
 import NProgress from '@/components/NProgress';
 import Watermark from '@/components/Watermark';
 import QuickChatButton from '@/components/QuickChatButton';
+import { useChatNotifier } from '@/pages/chat/useChatNotifier';
 import AppLogo from '@/components/AppLogo';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import BreadcrumbMenuPopover from '@/components/BreadcrumbMenuPopover';
@@ -601,6 +602,9 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   }, [onLogout, fetchInAppMessages, clearLockPassword]);
 
   const { disconnect: disconnectWs } = useWebSocket(handleWsMessage);
+
+  // 全局聊天通知（桌面通知 + 提示音）
+  useChatNotifier(displayUser?.id ?? null);
 
   const markAsRead = (id: number) => {
     request.post(`/api/in-app-messages/${id}/read`, undefined, { silent: true }).then((res) => {

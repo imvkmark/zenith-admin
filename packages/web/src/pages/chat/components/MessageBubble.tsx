@@ -8,6 +8,7 @@ import type { ChatMessage, ChatMessageExtra } from '@zenith/shared';
 import { getAssetMeta } from '../utils';
 import { UserAvatar } from '@/components/UserAvatar';
 import { MessageContent } from './MessageContent';
+import type { MessageReadReceipt } from '../types';
 
 const { Text } = Typography;
 
@@ -34,7 +35,7 @@ export function MessageBubble({
   msg, isSelf, onReply, onRecall, onOpenImage, shouldShowTime, getReplyMessage, onScrollToMessage,
   onToggleFavorite, onTogglePin, onEditRecalled, recalledDraft, multiSelectMode, isSelected,
   onToggleSelect, onForwardSingle, onOpenForwardView, onDeleteMessage, onReaction, onPickReactionEmoji,
-  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview,
+  currentUserId, onEdit, onVote, isHighlighted, onOpenFilePreview, readReceipt,
 }: Readonly<{
   msg: ChatMessage;
   isSelf: boolean;
@@ -61,6 +62,7 @@ export function MessageBubble({
   onVote?: (msg: ChatMessage, optionIds: string[]) => void;
   isHighlighted?: boolean;
   onOpenFilePreview?: (msg: ChatMessage) => void;
+  readReceipt?: MessageReadReceipt;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   const [isHovered, setIsHovered] = useState(false);
@@ -256,6 +258,50 @@ export function MessageBubble({
   if (multiSelectMode) bubblePadding = '2px 4px';
   else if (isHighlighted) bubblePadding = '4px 6px';
 
+  const renderReadReceipt = () => {
+    if (!isSelf || !readReceipt) return null;
+    const wrapStyle: React.CSSProperties = { flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, maxWidth: 88 };
+    if (readReceipt.kind === 'direct') {
+      return (
+        <div style={wrapStyle}>
+          <Text style={{ fontSize: 11, whiteSpace: 'nowrap', color: readReceipt.read ? 'var(--semi-color-success)' : 'var(--semi-color-text-3)' }}>
+            {readReceipt.read ? '已读' : '未读'}
+          </Text>
+        </div>
+      );
+    }
+    if (readReceipt.total === 0) return null;
+    if (readReceipt.readCount === 0) {
+      return (
+        <div style={wrapStyle}>
+          <Text style={{ fontSize: 11, whiteSpace: 'nowrap', color: 'var(--semi-color-text-3)' }}>未读</Text>
+        </div>
+      );
+    }
+    const allRead = readReceipt.readCount === readReceipt.total;
+    const detail = (
+      <div style={{ maxWidth: 220, fontSize: 12, lineHeight: 1.7 }}>
+        <div style={{ color: 'var(--semi-color-success)', marginBottom: readReceipt.unreaders.length ? 6 : 0 }}>
+          已读（{readReceipt.readers.length}）：{readReceipt.readers.map((m) => m.nickname).join('、') || '无'}
+        </div>
+        {readReceipt.unreaders.length > 0 && (
+          <div style={{ color: 'var(--semi-color-text-2)' }}>
+            未读（{readReceipt.unreaders.length}）：{readReceipt.unreaders.map((m) => m.nickname).join('、')}
+          </div>
+        )}
+      </div>
+    );
+    return (
+      <div style={wrapStyle}>
+        <Tooltip content={detail}>
+          <Text style={{ fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer', color: allRead ? 'var(--semi-color-success)' : 'var(--semi-color-primary)' }}>
+            {allRead ? '全部已读' : `${readReceipt.readCount}人已读`}
+          </Text>
+        </Tooltip>
+      </div>
+    );
+  };
+
   return (
     <div // NOSONAR
       id={`msg-${msg.id}`}
@@ -299,6 +345,7 @@ export function MessageBubble({
             if (replied.isRecalled) replyText = '消息已撤回';
             else if (replied.type === 'image') replyText = '[图片]';
             else if (replied.type === 'file') replyText = `[文件] ${replied.extra?.asset?.name ?? ''}`;
+            else if (replied.type === 'voice') replyText = '[语音]';
             else replyText = replied.content.length > 40 ? `${replied.content.slice(0, 40)}…` : replied.content;
           }
           return (
@@ -637,6 +684,7 @@ export function MessageBubble({
           </Popconfirm>
         )}
       </div>
+      {renderReadReceipt()}
     </div>
   );
 }

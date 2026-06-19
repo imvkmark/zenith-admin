@@ -633,7 +633,7 @@ export type WsMessage =
   | { type: 'session:force-logout'; payload: { reason: string } }
   | { type: 'chat:message'; payload: ChatMessage }
   | { type: 'chat:recall'; payload: { conversationId: number; messageId: number } }
-  | { type: 'chat:read'; payload: { conversationId: number; userId: number } }
+  | { type: 'chat:read'; payload: { conversationId: number; userId: number; readAt: string } }
   | { type: 'chat:member-join'; payload: { conversationId: number; user: { id: number; nickname: string; avatar: string | null } } }
   | { type: 'chat:member-leave'; payload: { conversationId: number; userId: number } }
   | { type: 'chat:group-update'; payload: { conversationId: number; name?: string | null; announcement?: string | null } }
@@ -641,6 +641,7 @@ export type WsMessage =
   | { type: 'chat:reaction'; payload: { conversationId: number; messageId: number; reactions: ChatReactionGroup[] } }
   | { type: 'chat:edit'; payload: ChatMessage }
   | { type: 'chat:vote-update'; payload: { conversationId: number; messageId: number; voteData: ChatVoteData } }
+  | { type: 'chat:presence'; payload: { userId: number; online: boolean; lastSeen: string | null } }
   | { type: 'workflow:taskCreated'; payload: { instanceId: number; taskId: number; instanceTitle: string; nodeName: string } }
   | { type: 'workflow:taskFinished'; payload: { instanceId: number; taskId: number; decision: 'approved' | 'rejected' | 'skipped' } }
   | { type: 'workflow:instanceFinished'; payload: { instanceId: number; status: WorkflowInstanceStatus; title: string } }
@@ -1531,7 +1532,7 @@ export interface WorkflowTriggerExecution {
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export type ChatConversationType = 'direct' | 'group';
-export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote';
+export type ChatMessageType = 'text' | 'image' | 'file' | 'system' | 'forward' | 'vote' | 'voice';
 
 export interface ChatVoteOption {
   id: string;
@@ -1565,7 +1566,7 @@ export interface ChatLinkPreview {
 }
 
 export interface ChatAssetMeta {
-  kind: 'image' | 'file';
+  kind: 'image' | 'file' | 'voice';
   name: string;
   size: number;
   mimeType: string | null;
@@ -1575,6 +1576,8 @@ export interface ChatAssetMeta {
   width?: number | null;
   height?: number | null;
   thumbnailUrl?: string | null;
+  /** 语音消息时长（秒），仅 kind='voice' 有效 */
+  duration?: number | null;
 }
 
 export interface ChatMention {
@@ -1692,6 +1695,23 @@ export interface ChatConversation {
   isMuted: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 会话成员的已读状态（用于已读回执） */
+export interface ChatReadState {
+  userId: number;
+  nickname: string;
+  avatar: string | null;
+  /** 最后已读时间，null 表示从未读过 */
+  lastReadAt: string | null;
+}
+
+/** 用户在线状态（用于在线状态指示） */
+export interface ChatPresence {
+  userId: number;
+  online: boolean;
+  /** 最近在线时间，online=true 时为 null */
+  lastSeen: string | null;
 }
 
 // ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────

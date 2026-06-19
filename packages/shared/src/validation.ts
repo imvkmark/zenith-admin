@@ -927,7 +927,7 @@ export const chatLinkPreviewSchema = z.object({
 }).strict();
 
 export const chatAssetMetaSchema = z.object({
-  kind: z.enum(['image', 'file']),
+  kind: z.enum(['image', 'file', 'voice']),
   name: z.string().min(1).max(512),
   size: z.number().int().nonnegative(),
   mimeType: z.string().max(255).nullable(),
@@ -935,6 +935,7 @@ export const chatAssetMetaSchema = z.object({
   width: z.number().int().positive().nullable().optional(),
   height: z.number().int().positive().nullable().optional(),
   thumbnailUrl: z.string().max(2048).nullable().optional(),
+  duration: z.number().nonnegative().nullable().optional(),
 }).strict();
 
 export const chatMentionSchema = z.object({
@@ -949,7 +950,7 @@ export const chatAnnouncementHistorySchema = z.object({
 
 export const chatForwardedItemSchema = z.object({
   senderName: z.string().max(100).nullable(),
-  type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote']),
+  type: z.enum(['text', 'image', 'file', 'system', 'forward', 'vote', 'voice']),
   content: z.string().max(4096),
   createdAt: z.string(),
   asset: chatAssetMetaSchema.nullable().optional(),
@@ -991,7 +992,7 @@ export const chatMessageExtraSchema = z.object({
 
 export const sendChatMessageSchema = z.object({
   content: z.string().min(1, '消息不能为空').max(4096),
-  type: z.enum(['text', 'image', 'file', 'forward', 'vote']).default('text'),
+  type: z.enum(['text', 'image', 'file', 'forward', 'vote', 'voice']).default('text'),
   replyToId: z.number().int().positive().nullable().optional(),
   extra: chatMessageExtraSchema.nullable().optional(),
 });

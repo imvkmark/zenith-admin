@@ -1,10 +1,13 @@
 import type { WSContext } from 'hono/ws';
 import type { WsMessage } from '@zenith/shared';
+import { formatDateTime } from './datetime';
 
 // tokenId → WSContext (precise single-session targeting)
 const tokenConnections = new Map<string, WSContext>();
 // userId → Set<tokenId> (for broadcast to all sessions of a user)
 const userTokens = new Map<number, Set<string>>();
+// userId → 最近在线时间戳（ms），仅在用户全部连接断开后记录
+const userLastSeen = new Map<number, number>();
 
 // ─── 监控指标 ──────────────────────────────────────────────────────────
 interface ConnMeta {
@@ -44,6 +47,7 @@ function trySend(ws: WSContext, data: string, tokenId: string) {
 export function registerConnection(userId: number, tokenId: string, ws: WSContext) {
   tokenConnections.set(tokenId, ws);
   let set = userTokens.get(userId);
+  const wentOnline = !set || set.size === 0;
   if (!set) {
     set = new Set();
     userTokens.set(userId, set);
@@ -52,14 +56,22 @@ export function registerConnection(userId: number, tokenId: string, ws: WSContex
   const now = Date.now();
   connMeta.set(tokenId, { userId, connectedAt: now, lastActivityAt: now, sent: 0, recv: 0 });
   counters.totalConnects += 1;
+  if (wentOnline) {
+    userLastSeen.delete(userId);
+    broadcastPresence(userId, true);
+  }
 }
 
 export function removeConnection(userId: number, tokenId: string, reason = 'close') {
   tokenConnections.delete(tokenId);
   const set = userTokens.get(userId);
+  let wentOffline = false;
   if (set) {
     set.delete(tokenId);
-    if (set.size === 0) userTokens.delete(userId);
+    if (set.size === 0) {
+      userTokens.delete(userId);
+      wentOffline = true;
+    }
   }
   const meta = connMeta.get(tokenId);
   if (meta) {
@@ -78,6 +90,10 @@ export function removeConnection(userId: number, tokenId: string, reason = 'clos
       recentDisconnects.length = RECENT_DISCONNECT_MAX;
     }
     connMeta.delete(tokenId);
+  }
+  if (wentOffline) {
+    userLastSeen.set(userId, Date.now());
+    broadcastPresence(userId, false);
   }
 }
 
@@ -158,6 +174,31 @@ export function scheduleSendToUsers(members: { userId: number }[], message: WsMe
     for (const { userId } of members) {
       sendToUser(userId, message);
     }
+  });
+}
+
+// ─── 在线状态（presence）─────────────────────────────────────────────────
+/** 用户是否在线（至少有一个活跃连接） */
+export function isUserOnline(userId: number): boolean {
+  return userTokens.has(userId);
+}
+
+/** 当前所有在线用户 ID */
+export function getOnlineUserIds(): number[] {
+  return [...userTokens.keys()];
+}
+
+/** 用户最近在线时间（ms 时间戳）；在线或无记录时返回 null */
+export function getUserLastSeen(userId: number): number | null {
+  if (userTokens.has(userId)) return null;
+  return userLastSeen.get(userId) ?? null;
+}
+
+/** 上下线变更时向所有连接广播在线状态 */
+function broadcastPresence(userId: number, online: boolean): void {
+  broadcast({
+    type: 'chat:presence',
+    payload: { userId, online, lastSeen: online ? null : formatDateTime(new Date()) },
   });
 }
 

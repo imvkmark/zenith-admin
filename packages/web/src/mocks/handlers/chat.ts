@@ -307,6 +307,35 @@ export const chatHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: null });
   }),
 
+  // 会话成员已读状态（已读回执）
+  http.get('/api/chat/conversations/:id/read-states', ({ params }) => {
+    const convId = Number(params.id);
+    const conv = mockChatConversations.find((c) => c.id === convId);
+    let states: Array<{ userId: number; nickname: string; avatar: string | null; lastReadAt: string | null }> = [];
+    if (conv?.type === 'group') {
+      states = (mockGroupMembers[convId] ?? [])
+        .filter((m) => m.id !== CURRENT_USER_ID)
+        .map((m) => ({ userId: m.id, nickname: m.nickname, avatar: m.avatar ?? null, lastReadAt: mockDateTime() }));
+    } else if (conv?.targetUser) {
+      states = [{ userId: conv.targetUser.id, nickname: conv.targetUser.nickname, avatar: conv.targetUser.avatar ?? null, lastReadAt: mockDateTime() }];
+    }
+    return HttpResponse.json({ code: 0, message: 'ok', data: states });
+  }),
+
+  // 批量在线状态（演示：偶数 ID 在线，奇数离线）
+  http.get('/api/chat/presence', ({ request }) => {
+    const url = new URL(request.url);
+    const ids = (url.searchParams.get('userIds') ?? '')
+      .split(',')
+      .map((s) => Number.parseInt(s.trim(), 10))
+      .filter((n) => Number.isInteger(n) && n > 0);
+    const data = ids.map((userId) => {
+      const online = userId % 2 === 0;
+      return { userId, online, lastSeen: online ? null : mockDateTime() };
+    });
+    return HttpResponse.json({ code: 0, message: 'ok', data });
+  }),
+
   // 创建群聊
   http.post('/api/chat/conversations/group', async ({ request }) => {
     const body = await request.json() as { name: string };

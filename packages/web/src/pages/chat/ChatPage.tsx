@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AppModal } from '@/components/AppModal';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover, Progress,
+  Input, Button, Badge, Typography, Empty, Spin, Toast, Tooltip, Modal, Tag, Select, DatePicker, Dropdown, ImagePreview, Popover, Progress, Switch,
   List as SemiList,
 } from '@douyinfe/semi-ui';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
@@ -14,7 +14,7 @@ import Picker from '@emoji-mart/react';
 import {
   Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, MoreHorizontal,
   Pin, PinOff, Star, X, Paperclip, Bookmark, History, Forward, Trash2, BellOff, Images, AlertCircle,
-  ArrowLeft, ExternalLink, BarChart3, MessageSquare, Eye, Download,
+  ArrowLeft, ExternalLink, BarChart3, MessageSquare, Eye, Download, Mic, Bell,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,13 +26,14 @@ import FilePreviewModal from '@/components/FilePreviewModal';
 import type {
   ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
   ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext, ChatVoteData,
+  ChatReadState, ChatPresence,
 } from '@zenith/shared';
 import {
   extractFirstUrl, getFileExtension, getAssetMeta, getMessageSummary, shouldDisplayMessageTime,
   getImageDimensions,
 } from './utils';
 import './ChatPage.css';
-import type { ChatUser, PendingImage, PendingFile, SearchDatePreset, FailedMessage, UploadingItem } from './types';
+import type { ChatUser, PendingImage, PendingFile, SearchDatePreset, FailedMessage, UploadingItem, MessageReadReceipt } from './types';
 import { CHAT_MESSAGE_TYPE_OPTIONS } from './types';
 import { UserAvatar } from '@/components/UserAvatar';
 import { GroupGridAvatar } from './components/GroupGridAvatar';
@@ -44,8 +45,32 @@ import { VotePollModal } from './components/VotePollModal';
 import { MessageBubble } from './components/MessageBubble';
 
 import { MessageContent } from './components/MessageContent';
+import { useVoiceRecorder } from './useVoiceRecorder';
+import { getChatNotifyPrefs, setChatNotifyPrefs } from './notifyPrefs';
 
 const { Text, Title } = Typography;
+
+const ONLINE_DOT_STYLE: React.CSSProperties = {
+  position: 'absolute', insetInlineEnd: -1, bottom: -1, width: 10, height: 10, borderRadius: '50%',
+  background: 'var(--semi-color-success)', border: '2px solid var(--semi-color-bg-1)', boxSizing: 'border-box',
+};
+
+/** 给头像叠加在线小绿点 */
+function PresenceAvatar({ online, children }: Readonly<{ online: boolean; children: React.ReactNode }>) {
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+      {children}
+      {online && <span style={ONLINE_DOT_STYLE} />}
+    </span>
+  );
+}
+
+/** 在线/最近在线文案：lastSeen 为 'YYYY-MM-DD HH:mm:ss' */
+function formatPresenceText(online: boolean, lastSeen: string | null | undefined): string {
+  if (online) return '在线';
+  if (!lastSeen) return '离线';
+  return `最近在线 ${lastSeen.slice(5, 16)}`;
+}
 
 function getNextMentionUnread(
   current: boolean | undefined,
@@ -73,6 +98,7 @@ function makeProgressHandler(
 const getReplyPreviewText = (m: ChatMessage): string => {
   if (m.type === 'image') return '[图片]';
   if (m.type === 'file') return `[文件] ${getAssetMeta(m)?.name ?? ''}`;
+  if (m.type === 'voice') return '[语音]';
   return m.content;
 };
 const removeMessagesByIds = (ids: Set<number>) => (prev: ChatMessage[]) => prev.filter((m) => !ids.has(m.id));
@@ -161,6 +187,12 @@ export default function ChatPage({
   const [searchMembers, setSearchMembers] = useState<ChatGroupMember[]>([]);
   const [groupAvatarMap, setGroupAvatarMap] = useState<Record<number, Array<{ id: number; nickname: string; avatar?: string | null }>>>({});
   const [activeGroupMembers, setActiveGroupMembers] = useState<ChatGroupMember[]>([]);
+  const [readStates, setReadStates] = useState<ChatReadState[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(() => new Set());
+  const [lastSeenMap, setLastSeenMap] = useState<Record<number, string | null>>({});
+  const [notifyDesktop, setNotifyDesktop] = useState(() => getChatNotifyPrefs().desktop);
+  const [notifySound, setNotifySound] = useState(() => getChatNotifyPrefs().sound);
+  const [notifyPermission, setNotifyPermission] = useState(() => (typeof Notification !== 'undefined' ? Notification.permission : 'default'));
   const [selectedMentions, setSelectedMentions] = useState<Array<{ userId: number; nickname: string }>>([]);
   const [leftPaneMode, setLeftPaneMode] = useState<'conversations' | 'favorites' | 'globalSearch'>('conversations');
   const [globalSearchKeyword, setGlobalSearchKeyword] = useState('');
@@ -464,13 +496,40 @@ export default function ChatPage({
     }, 80);
   }, []);
 
+  const fetchReadStates = useCallback(async (convId: number) => {
+    const res = await request.get<ChatReadState[]>(`/api/chat/conversations/${convId}/read-states`, { silent: true });
+    if (res.code === 0 && res.data) setReadStates(res.data);
+  }, []);
+
+  const fetchPresence = useCallback(async (userIds: number[]) => {
+    const ids = [...new Set(userIds)].filter((id) => id > 0);
+    if (ids.length === 0) return;
+    const res = await request.get<ChatPresence[]>(`/api/chat/presence?userIds=${ids.join(',')}`, { silent: true });
+    if (res.code !== 0 || !res.data) return;
+    setOnlineUserIds((prev) => {
+      const next = new Set(prev);
+      for (const p of res.data!) {
+        if (p.online) next.add(p.userId);
+        else next.delete(p.userId);
+      }
+      return next;
+    });
+    setLastSeenMap((prev) => {
+      const next = { ...prev };
+      for (const p of res.data!) next[p.userId] = p.lastSeen;
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!activeConvId) {
       setActiveGroupMembers([]);
       setPinnedMessages([]);
+      setReadStates([]);
       return;
     }
     void fetchPinnedMessages(activeConvId);
+    void fetchReadStates(activeConvId);
     if (activeConv?.type === 'group') {
       void request.get<ChatGroupMember[]>(`/api/chat/conversations/${activeConvId}/members`, { silent: true }).then((res) => {
         if (res.code === 0 && res.data) setActiveGroupMembers(res.data);
@@ -478,7 +537,51 @@ export default function ChatPage({
     } else {
       setActiveGroupMembers([]);
     }
-  }, [activeConv?.type, activeConvId, fetchPinnedMessages]);
+  }, [activeConv?.type, activeConvId, fetchPinnedMessages, fetchReadStates]);
+
+  // 拉取相关用户在线状态：单聊对方 + 当前群成员
+  useEffect(() => {
+    const directIds = conversations
+      .filter((c) => c.type === 'direct' && c.targetUser)
+      .map((c) => c.targetUser!.id);
+    const groupIds = activeGroupMembers.map((m) => m.id);
+    void fetchPresence([...directIds, ...groupIds]);
+  }, [conversations, activeGroupMembers, fetchPresence]);
+
+  // 计算单条消息的已读回执（仅对自己发送的消息）
+  const computeReadReceipt = useCallback((msg: ChatMessage): MessageReadReceipt | undefined => {
+    if (!activeConv || msg.senderId !== currentUserId) return undefined;
+    if (msg.isRecalled || msg.type === 'system') return undefined;
+    const isRead = (s: ChatReadState) => !!s.lastReadAt && s.lastReadAt >= msg.createdAt;
+    if (activeConv.type === 'direct') {
+      const other = readStates[0];
+      return { kind: 'direct', read: other ? isRead(other) : false };
+    }
+    const readers = readStates.filter(isRead);
+    const unreaders = readStates.filter((s) => !isRead(s));
+    return {
+      kind: 'group',
+      readCount: readers.length,
+      total: readStates.length,
+      readers: readers.map((s) => ({ nickname: s.nickname, avatar: s.avatar })),
+      unreaders: unreaders.map((s) => ({ nickname: s.nickname, avatar: s.avatar })),
+    };
+  }, [activeConv, currentUserId, readStates]);
+
+  const handleToggleNotifyDesktop = useCallback(async (checked: boolean) => {
+    if (checked && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      const perm = await Notification.requestPermission();
+      setNotifyPermission(perm);
+      if (perm !== 'granted') { Toast.warning('通知权限被拒绝，无法开启桌面通知'); return; }
+    }
+    setNotifyDesktop(checked);
+    setChatNotifyPrefs({ desktop: checked, sound: notifySound });
+  }, [notifySound]);
+
+  const handleToggleNotifySound = useCallback((checked: boolean) => {
+    setNotifySound(checked);
+    setChatNotifyPrefs({ desktop: notifyDesktop, sound: checked });
+  }, [notifyDesktop]);
 
   useEffect(() => {
     if (leftPaneMode === 'favorites') {
@@ -664,6 +767,39 @@ export default function ChatPage({
     if (msgRes.code === 0 && msgRes.data) appendMessageOnce(msgRes.data);
     return msgRes.code === 0;
   }, [activeConvId, appendMessageOnce]);
+
+  const sendVoiceMessage = useCallback(async (blob: Blob, durationSec: number, mimeType: string) => {
+    if (!activeConvId) return;
+    const ext = mimeType.includes('mp4') ? 'm4a' : (mimeType.includes('ogg') ? 'ogg' : 'webm');
+    const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: mimeType });
+    const fd = new FormData();
+    fd.append('file', file);
+    const uploadRes = await request.postForm<{ id: number; url: string; originalName: string; size: number }>('/api/files/upload-one', fd);
+    if (uploadRes.code !== 0 || !uploadRes.data) { Toast.error('语音上传失败'); return; }
+    const { id: fileId, url, size } = uploadRes.data;
+    const asset: ChatAssetMeta = {
+      kind: 'voice',
+      name: file.name,
+      size,
+      mimeType,
+      extension: ext,
+      fileId,
+      duration: Math.max(1, Math.round(durationSec)),
+    };
+    const msgRes = await request.post<ChatMessage>(`/api/chat/conversations/${activeConvId}/messages`, {
+      content: url,
+      type: 'voice',
+      extra: { asset },
+    });
+    if (msgRes.code === 0 && msgRes.data) appendMessageOnce(msgRes.data);
+    else Toast.error(msgRes.message ?? '语音发送失败');
+  }, [activeConvId, appendMessageOnce]);
+
+  const voiceRecorder = useVoiceRecorder({
+    maxSeconds: 60,
+    onStop: (blob, seconds, mimeType) => { void sendVoiceMessage(blob, seconds, mimeType); },
+    onError: (message) => Toast.warning(message),
+  });
 
   const fetchLinkPreview = useCallback(async (url: string): Promise<ChatLinkPreview | null> => {
     const res = await request.get<ChatLinkPreview>(`/api/chat/link-preview?url=${encodeURIComponent(url)}`, { silent: true });
@@ -1381,6 +1517,19 @@ export default function ChatPage({
           }
           : c),
       );
+    } else if (wsMsg.type === 'chat:read') {
+      const { conversationId, userId, readAt } = wsMsg.payload;
+      if (conversationId !== activeConvId || userId === currentUserId) return;
+      setReadStates((prev) => prev.map((s) => (s.userId === userId ? { ...s, lastReadAt: readAt } : s)));
+    } else if (wsMsg.type === 'chat:presence') {
+      const { userId, online, lastSeen } = wsMsg.payload;
+      setOnlineUserIds((prev) => {
+        const next = new Set(prev);
+        if (online) next.add(userId);
+        else next.delete(userId);
+        return next;
+      });
+      setLastSeenMap((prev) => ({ ...prev, [userId]: online ? null : lastSeen }));
     }
   }, [activeConvId, appendMessageOnce, applyMessageUpdate, conversations, currentUserId, fetchConversations, refreshGroupAvatarMembers]);
 
@@ -1696,9 +1845,10 @@ export default function ChatPage({
                   const avatarName = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '?') : (conv.name ?? '?');
                   const avatar = conv.type === 'direct' ? conv.targetUser?.avatar : null;
                   const groupMembers = conv.type === 'group' ? groupAvatarMap[conv.id] : undefined;
+                  const isTargetOnline = conv.type === 'direct' && conv.targetUser ? onlineUserIds.has(conv.targetUser.id) : false;
                   const avatarNode = conv.type === 'group'
                     ? <GroupGridAvatar name={avatarName} size={38} members={groupMembers} />
-                    : <UserAvatar name={avatarName} avatar={avatar} size={38} />;
+                    : <PresenceAvatar online={isTargetOnline}><UserAvatar name={avatarName} avatar={avatar} size={38} /></PresenceAvatar>;
                   const lastMsg = conv.lastMessage;
                   const isActive = conv.id === activeConvId;
                   const isPinned = conv.isPinned ?? false;
@@ -2134,6 +2284,45 @@ export default function ChatPage({
                         />
                       </Tooltip>
                     )}
+                    <Popover
+                      trigger="click"
+                      position="bottomRight"
+                      showArrow
+                      content={(
+                        <div style={{ padding: '10px 12px', width: 230 }}>
+                          <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 10 }}>消息通知设置</Text>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <Text style={{ fontSize: 13 }}>桌面通知</Text>
+                            <Switch
+                              size="small"
+                              checked={notifyDesktop && notifyPermission === 'granted'}
+                              onChange={(v) => { void handleToggleNotifyDesktop(v); }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 13 }}>新消息提示音</Text>
+                            <Switch size="small" checked={notifySound} onChange={handleToggleNotifySound} />
+                          </div>
+                          {notifyPermission === 'denied' && (
+                            <Text type="tertiary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+                              浏览器已禁用通知权限，请在浏览器设置中允许后重试
+                            </Text>
+                          )}
+                          <Text type="tertiary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+                            仅在窗口处于后台时提醒，已免打扰的会话不提醒
+                          </Text>
+                        </div>
+                      )}
+                    >
+                      <Tooltip content="通知设置">
+                        <Button
+                          size="small"
+                          theme="borderless"
+                          type={notifyDesktop && notifyPermission === 'granted' ? 'primary' : 'tertiary'}
+                          icon={notifyDesktop && notifyPermission === 'granted' ? <Bell size={15} /> : <BellOff size={15} />}
+                        />
+                      </Tooltip>
+                    </Popover>
                     <Tooltip content={showSearchPanel ? '关闭聊天记录' : '聊天记录'}>
                       <Button
                         size="small"
@@ -2255,7 +2444,9 @@ export default function ChatPage({
                 )}
               >
                 <span style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: isQuick ? 6 : 8, maxWidth: '60%', minWidth: 0 }}>
-                  <UserAvatar name={activeConv.targetUser.nickname} avatar={activeConv.targetUser.avatar} size={24} />
+                  <PresenceAvatar online={onlineUserIds.has(activeConv.targetUser.id)}>
+                    <UserAvatar name={activeConv.targetUser.nickname} avatar={activeConv.targetUser.avatar} size={24} />
+                  </PresenceAvatar>
                   <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0, overflow: 'hidden' }}>
                     <Title
                       heading={6}
@@ -2271,11 +2462,9 @@ export default function ChatPage({
                     >
                       {activeConv.targetUser.nickname}
                     </Title>
-                    {activeConv.targetUser.departmentName && (
-                      <Text size="small" type="tertiary" style={{ whiteSpace: 'nowrap', flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {activeConv.targetUser.departmentName}
-                      </Text>
-                    )}
+                    <Text size="small" type="tertiary" style={{ whiteSpace: 'nowrap', flexShrink: 0, color: onlineUserIds.has(activeConv.targetUser.id) ? 'var(--semi-color-success)' : undefined }}>
+                      {formatPresenceText(onlineUserIds.has(activeConv.targetUser.id), lastSeenMap[activeConv.targetUser.id])}
+                    </Text>
                   </span>
                 </span>
               </Popover>
@@ -2484,6 +2673,7 @@ export default function ChatPage({
                               fileId: asset.fileId ?? undefined,
                             });
                           }}
+                          readReceipt={computeReadReceipt(msg)}
                         />
                       </div>
                     );
@@ -2565,6 +2755,7 @@ export default function ChatPage({
                 conversationId={activeConv.id}
                 currentUserId={currentUserId}
                 conv={activeConv}
+                onlineUserIds={onlineUserIds}
                 onConvUpdate={(patch) => {
                   setConversations((prev) =>
                     prev.map((c) => c.id === activeConv.id ? { ...c, ...patch } : c),
@@ -3014,6 +3205,26 @@ export default function ChatPage({
                   disabled={!activeConvId}
                 />
               </Tooltip>
+              {voiceRecorder.supported && (
+                <Tooltip content="按住说话（点击开始/结束录音）">
+                  <Button
+                    size="small" theme="borderless" type={voiceRecorder.isRecording ? 'primary' : 'tertiary'}
+                    icon={<Mic size={16} />}
+                    onClick={() => { if (voiceRecorder.isRecording) voiceRecorder.stop(); else void voiceRecorder.start(); }}
+                    disabled={!activeConvId}
+                  />
+                </Tooltip>
+              )}
+              {voiceRecorder.isRecording && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 4, padding: '2px 10px', borderRadius: 14, background: 'var(--semi-color-danger-light-default)' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--semi-color-danger)', animation: 'qcVoicePulse 1s infinite' }} />
+                  <Text style={{ fontSize: 12, color: 'var(--semi-color-danger)', fontVariantNumeric: 'tabular-nums' }}>
+                    录音中 {String(Math.floor(voiceRecorder.seconds / 60)).padStart(2, '0')}:{String(voiceRecorder.seconds % 60).padStart(2, '0')} / 01:00
+                  </Text>
+                  <Button size="small" theme="borderless" type="tertiary" onClick={() => voiceRecorder.cancel()}>取消</Button>
+                  <Button size="small" theme="solid" type="primary" icon={<Send size={12} />} onClick={() => voiceRecorder.stop()}>发送</Button>
+                </div>
+              )}
               <input
                 ref={fileAttachRef}
                 type="file"
