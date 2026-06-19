@@ -1,78 +1,21 @@
 import { useEffect, useRef } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
-import { TOKEN_KEY } from '@zenith/shared';
-
-// ─── Error Reporter ──────────────────────────────────────────────────────────
-
-/** Simple MD5-like fingerprint for deduplication (FNV-1a hash → hex) */
-function hashFingerprint(str: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.codePointAt(i) ?? 0;
-    h = (h * 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, '0');
-}
-
-function reportToBackend(
-  errorType: 'js_error' | 'promise_rejection' | 'resource_error' | 'console_error',
-  message: string,
-  options?: { stack?: string; sourceUrl?: string; lineNo?: number; colNo?: number },
-) {
-  try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) return; // only report for authenticated users
-
-    const fingerprint = hashFingerprint(`${errorType}:${message}:${options?.sourceUrl ?? ''}`);
-    const apiBase = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
-    const sessionId = sessionStorage.getItem('zenith_tracker_sid') ?? undefined;
-
-    const payload = {
-      fingerprint,
-      errorType,
-      message: message.slice(0, 2000),
-      stack: options?.stack?.slice(0, 8000),
-      sourceUrl: options?.sourceUrl?.slice(0, 512),
-      lineNo: options?.lineNo,
-      colNo: options?.colNo,
-      pageUrl: globalThis.location.href.slice(0, 512),
-      userAgent: navigator.userAgent.slice(0, 512),
-      sessionId,
-    };
-
-    fetch(`${apiBase}/frontend-errors`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    }).catch(() => { /* ignore reporting failures */ });
-  } catch {
-    // never break the app for monitoring errors
-  }
-}
+import { reportError } from '@/utils/error-reporter';
+import { addBreadcrumb } from '@/utils/breadcrumbs';
 
 /**
- * 全局异步错误兜底。
+ * 全局前端异常兜底 + 上报。
  *
- * React Error Boundary 无法捕获 Promise rejection 和 window.onerror 级别的错误。
- * 本 hook 在 App 根组件中挂载一次，通过以下两个全局事件托底：
+ * 捕获并上报到错误监控（/api/frontend-errors）：
+ * - `error`（捕获阶段）：JS 运行时错误 + 资源加载失败
+ * - `unhandledrejection`：未处理的 Promise 拒绝
+ * - `console.error`：控制台错误（记录面包屑 + 上报）
+ * - 白屏检测：加载后根节点长时间无内容
  *
- * - `unhandledrejection`：未被 catch 的 Promise 拒绝
- * - `error`：未被捕获的同步运行时错误（脚本层面）
- *
- * 捕获后以 Toast 通知用户，同时在控制台输出完整信息，并自动上报到后端。
- *
- * 防护机制：
- * - 去重：5 秒内相同消息只弹一次 Toast
- * - 限流：5 秒窗口内最多弹 3 次 Toast，超出后仅 console 输出
+ * 同时向用户弹出 Toast（去重 + 限流），并记录行为面包屑用于错误现场还原。
  */
 export function useGlobalErrorHandler() {
-  // 去重 Set：key = 消息内容，5 秒后自动清除
   const recentRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  // 限流：记录当前窗口内已弹出的 Toast 次数
   const countRef = useRef(0);
   const countResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,52 +25,45 @@ export function useGlobalErrorHandler() {
     const RATE_WINDOW = 5_000;
 
     function showToast(message: string) {
-      // 限流检查
       countRef.current += 1;
       countResetTimerRef.current ??= globalThis.setTimeout(() => {
         countRef.current = 0;
         countResetTimerRef.current = null;
       }, RATE_WINDOW);
       if (countRef.current > MAX_PER_WINDOW) return;
-
-      // 去重检查
       if (recentRef.current.has(message)) return;
-      const timer = globalThis.setTimeout(() => {
-        recentRef.current.delete(message);
-      }, DEDUP_TTL);
+      const timer = globalThis.setTimeout(() => recentRef.current.delete(message), DEDUP_TTL);
       recentRef.current.set(message, timer);
-
       Toast.error({ content: message, duration: 5 });
     }
 
     function handleUnhandledRejection(event: PromiseRejectionEvent) {
       const reason = event.reason;
-      const message =
-        reason instanceof Error
-          ? reason.message
-          : String(reason || '发生了未处理的异步错误');
-
+      const message = reason instanceof Error ? reason.message : String(reason || '发生了未处理的异步错误');
       console.error('[GlobalErrorHandler] 未处理的 Promise rejection:', reason);
       showToast(`操作失败：${message}`);
-      reportToBackend('promise_rejection', message, {
-        stack: reason instanceof Error ? reason.stack : undefined,
-      });
+      reportError('promise_rejection', message, { stack: reason instanceof Error ? reason.stack : undefined });
     }
 
     function handleWindowError(event: ErrorEvent) {
-      // 忽略跨域脚本错误（message 为 "Script error."，无法获取详情）
-      if (!event.message || event.message === 'Script error.') return;
+      // 资源加载错误（img/script/link/...）：target 为元素且非 window
+      const target = event.target as (HTMLElement & { src?: string; href?: string }) | null;
+      if (target && target !== (globalThis as unknown as EventTarget) && target.tagName) {
+        const url = target.src || target.href || '';
+        if (!url) return;
+        addBreadcrumb({ type: 'custom', message: `资源加载失败: ${target.tagName} ${url}`, level: 'warning' });
+        reportError('resource_error', `资源加载失败: ${target.tagName.toLowerCase()} ${url}`, { level: 'warning', sourceUrl: url });
+        return;
+      }
 
-      // 忽略来自浏览器扩展的错误（React DevTools、广告拦截器等），不属于应用代码
+      if (!event.message || event.message === 'Script error.') return;
       const filename = event.filename ?? '';
       if (filename.startsWith('chrome-extension://') || filename.startsWith('moz-extension://')) return;
-
-      // 忽略 ResizeObserver 良性警告：由浏览器渲染引擎触发，不影响功能，无需提示用户
       if (event.message.includes('ResizeObserver loop')) return;
 
       console.error('[GlobalErrorHandler] 未捕获的运行时错误:', event.error ?? event.message);
       showToast(`页面发生错误：${event.message}`);
-      reportToBackend('js_error', event.message, {
+      reportError('js_error', event.message, {
         stack: event.error instanceof Error ? event.error.stack : undefined,
         sourceUrl: event.filename,
         lineNo: event.lineno,
@@ -135,18 +71,44 @@ export function useGlobalErrorHandler() {
       });
     }
 
-    globalThis.addEventListener('unhandledrejection', handleUnhandledRejection);
-    globalThis.addEventListener('error', handleWindowError);
+    // console.error 捕获（记录面包屑 + 上报，跳过自身日志）
+    const origConsoleError = console.error.bind(console);
+    function patchedConsoleError(...args: unknown[]) {
+      try {
+        const msg = args.map((a) => (a instanceof Error ? a.message : typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ').slice(0, 500);
+        if (!msg.startsWith('[GlobalErrorHandler]')) {
+          addBreadcrumb({ type: 'console', message: msg.slice(0, 200), level: 'error' });
+          const err = args.find((a) => a instanceof Error) as Error | undefined;
+          reportError('console_error', msg, { level: 'warning', stack: err?.stack });
+        }
+      } catch { /* ignore */ }
+      origConsoleError(...args);
+    }
+    console.error = patchedConsoleError;
 
+    globalThis.addEventListener('unhandledrejection', handleUnhandledRejection);
+    globalThis.addEventListener('error', handleWindowError, true);
+
+    // 白屏检测：加载完成 8s 后根节点仍无内容则上报一次
+    const whiteScreenTimer = globalThis.setTimeout(() => {
+      try {
+        const root = document.getElementById('root');
+        const text = (root?.innerText ?? '').trim();
+        if (root && root.childElementCount === 0 && text.length === 0) {
+          reportError('white_screen', '检测到疑似白屏：根节点无渲染内容', { level: 'fatal' });
+        }
+      } catch { /* ignore */ }
+    }, 8000);
+
+    const recentMap = recentRef.current;
     return () => {
       globalThis.removeEventListener('unhandledrejection', handleUnhandledRejection);
-      globalThis.removeEventListener('error', handleWindowError);
-      // 清理所有去重计时器
-      recentRef.current.forEach((t) => globalThis.clearTimeout(t));
-      recentRef.current.clear();
-      if (countResetTimerRef.current !== null) {
-        globalThis.clearTimeout(countResetTimerRef.current);
-      }
+      globalThis.removeEventListener('error', handleWindowError, true);
+      console.error = origConsoleError;
+      globalThis.clearTimeout(whiteScreenTimer);
+      recentMap.forEach((t) => globalThis.clearTimeout(t));
+      recentMap.clear();
+      if (countResetTimerRef.current !== null) globalThis.clearTimeout(countResetTimerRef.current);
     };
   }, []);
 }

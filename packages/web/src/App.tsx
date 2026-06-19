@@ -3,6 +3,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 
 import { useAuth } from '@/hooks/useAuth';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 import { useGlobalErrorHandler } from '@/hooks/useGlobalErrorHandler';
+import { initTracker, identify, resetIdentity } from '@/utils/tracker';
 import ElectronTitleBar from '@/components/ElectronTitleBar';
 import { PermissionContext } from '@/hooks/usePermission';
 import { PreferencesProvider } from '@/hooks/PreferencesProvider';
@@ -199,6 +200,14 @@ export default function App() {
   const { user, permissions, loading, login, register, logout, updateUser } = useAuth();
 
   const isSuperAdmin = user?.roles?.some((r) => r.code === 'super_admin') ?? false;
+
+  // 初始化埋点 SDK（自动采集 / Web Vitals / API 监控）
+  useEffect(() => { initTracker(); }, []);
+  // 登录身份合并（匿名 → 登录），退出时重置
+  useEffect(() => {
+    if (user?.id) identify(user.id, user.username);
+    else resetIdentity();
+  }, [user?.id, user?.username]);
 
   interface MaintenanceInfo {
     message: string;

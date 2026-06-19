@@ -1,212 +1,122 @@
 # 用户行为埋点分析
 
-Zenith Admin 内置了轻量级的前端用户行为分析系统，无需外部服务即可收集**页面停留时长**、**功能使用频率**和**点击热力图**数据，帮助你了解用户真实行为，持续优化产品体验。
+Zenith Admin 内置了一套对标 GA4 / PostHog / 神策 / Sentry 的前端数据分析与错误监控系统，无需任何外部服务即可完成**行为采集、多维分析、错误监控与告警**。
 
-## 架构概览
+## 能力总览
 
-```
-前端 Tracker SDK (tracker.ts)
-    ↓  内存缓冲，每 30s 或 50 条批量上报
-POST /api/analytics/events
-    ↓  批量写入 PostgreSQL
-user_events 表
-    ↓  聚合分析接口
-GET /api/analytics/page-stats     页面停留时长
-GET /api/analytics/feature-stats  功能使用频率
-GET /api/analytics/heatmap        点击热力图
-GET /api/analytics/heatmap-pages  有热力图数据的页面列表
-```
-
-所有数据均与当前登录用户（`userId`）和租户（`tenantId`）关联，支持多租户隔离。
+| 模块 | 能力 |
+|------|------|
+| 采集 SDK | 自动采集（页面/点击）、自定义事件、属性袋、Web Vitals 性能、API 请求监控、离线缓存重试、匿名→登录身份合并、UTM/来源/设备上下文、远程配置（开关/采样/黑名单/DNT） |
+| 行为分析 | 概览 KPI、PV/UV/会话/事件趋势、实时、页面停留、功能使用、会话分析、漏斗、留存、路径、用户行为时间线、维度分布、Web Vitals、点击热力图 |
+| 数据管理 | 事件明细（多维筛选 + 日期范围 + 详情 + 导出 Excel/CSV）、事件字典治理、每日聚合、采集设置、数据保留策略 |
+| 错误监控 | Issue 分组模型、状态流转/指派/备注、趋势与影响面、行为面包屑、UA 解析、Source Map 堆栈还原、告警规则（邮件/Webhook/站内） |
 
 ---
 
-## 快速接入（3 步）
+## 架构
 
-### 第一步：追踪页面停留时长
+```text
+前端 Tracker SDK (utils/tracker.ts)
+  · 自动采集 + Web Vitals + API 监控 + 离线重试 + 远程配置
+        ↓ 批量上报（匿名/登录均可）
+POST /api/analytics/events           埋点事件
+POST /api/frontend-errors            错误上报（含面包屑/上下文）
+        ↓ 服务端解析 UA / IP、计算指纹、维护会话
+PostgreSQL
+  user_events / analytics_sessions / analytics_daily_rollup
+  analytics_event_meta / analytics_settings
+  error_groups / error_events / error_alert_rules / source_maps
+        ↓ 聚合分析接口
+GET /api/analytics/*                 概览/趋势/会话/漏斗/留存/路径/维度/实时…
+GET /api/frontend-errors/*           概览/分组/详情(还原)/事件/告警…
+        ↓ 定时任务（pg-boss）
+analyticsRollupDaily / analyticsRetention / evaluateErrorAlerts
+```
 
-在页面组件顶部调用 `usePageTracker` hook，**1 行代码**，无需其他改动：
+所有数据均与 `userId` / `tenantId` 关联，支持多租户隔离。采集端点支持匿名上报（登录前埋点），错误指纹含租户因子保证全局唯一。
+
+---
+
+## 前端接入
+
+### 1. 自动采集（零代码）
+
+SDK 在 `App` 启动时通过 `initTracker()` 自动初始化（已内置）。启用后自动采集：
+
+- **页面浏览**：路由进入/离开（`usePageTracker` 已覆盖主要页面）。
+- **元素点击**：自动捕获 `button` / `a` / `[role=button]` / `[data-track]`，无需逐个埋点。
+- **Web Vitals**：LCP / INP / CLS / FCP / TTFB。
+- **API 监控**：拦截 fetch/XHR，记录慢请求与 4xx/5xx，5xx 自动转为错误上报。
+
+给元素加 `data-track` / `data-track-label` / `data-area` 可自定义自动采集的标识：
 
 ```tsx
-// packages/web/src/pages/users/UsersPage.tsx
-import { usePageTracker } from '@/hooks/usePageTracker';
-
-export default function UsersPage() {
-  usePageTracker('用户管理');  // ← 只加这 1 行
-  // ...其余代码不变
-}
+<Button data-track="user-export" data-track-label="导出用户" data-area="toolbar">导出</Button>
 ```
 
-hook 会自动在路由进入时记录 `page_view` 事件，路由离开时记录 `page_leave` 事件（携带 `durationMs`）。
-
----
-
-### 第二步：追踪功能点击频率
-
-在现有按钮的 `onClick` 中追加一行 `trackFeature()` 调用：
+### 2. 手动埋点（精细化）
 
 ```tsx
-import { trackFeature } from '@/utils/tracker';
+import { trackFeature, trackEvent, trackAreaClick } from '@/utils/tracker';
 
-// 搜索按钮
-<Button onClick={() => { trackFeature('search-btn', '查询', 'search-toolbar'); handleSearch(); }}>
-  查询
-</Button>
+// 功能点击
+trackFeature('export-btn', '导出', 'search-toolbar');
 
-// 新增按钮
-<Button onClick={() => { trackFeature('create-btn', '新增', 'search-toolbar'); openCreate(); }}>
-  新增
-</Button>
+// 自定义事件（带属性）
+trackEvent('order_submit', { amount: 199, channel: 'wechat' });
 
-// 导出按钮
-<Button onClick={() => { trackFeature('export-btn', '导出', 'search-toolbar'); handleExport(); }}>
-  导出
-</Button>
+// 区域点击（热力图）
+const ref = useRef<HTMLDivElement>(null);
+<div ref={ref} onClick={(e) => ref.current && trackAreaClick(e, ref.current, 'table')}>…</div>
 ```
 
-**参数说明：**
+### 3. 身份与配置
 
-| 参数 | 类型 | 说明 |
+- 登录后自动 `identify(userId, username)`，退出 `resetIdentity()`（已在 `App` 中接入）。
+- SDK 启动时拉取 `GET /api/analytics/config` 应用远程配置（采集开关、采样率、路径黑名单、是否尊重 DNT）。
+- 上报失败/断网时事件落 `localStorage` 队列并自动重试，页面卸载时通过 `fetch keepalive` 兜底。
+
+---
+
+## 错误监控
+
+- 全局兜底：`useGlobalErrorHandler` 捕获 JS 错误、Promise 拒绝、资源加载失败、`console.error`、白屏，并附带最近行为面包屑上报。
+- **Issue 模型**：相同错误按指纹聚合为 `error_group`，每次发生记录为 `error_event`；支持未解决/已解决/已忽略/已静音状态流转、指派处理人、备注；已解决错误再次发生自动重开（回归检测）。
+- **Source Map 还原**：在「错误监控 → Source Map」上传打包产物的 `.map`（按 `release` + 文件名），详情页自动将压缩堆栈还原为源码位置。
+- **告警**：在「错误监控 → 告警规则」配置阈值/激增/新错误条件，命中后经邮件 / Webhook / 站内通知，由 `evaluateErrorAlerts` 定时任务（每 5 分钟）评估。
+
+---
+
+## 后台页面
+
+| 页面 | 路径 | 权限 |
 |------|------|------|
-| `elementKey` | `string` | 稳定的标识符，如 `create-btn`、`export-btn`，用于统计聚合 |
-| `elementLabel` | `string` | 人类可读标签，如 `新增`、`导出`，显示在分析面板中 |
-| `componentArea` | `string`（可选）| UI 区域，如 `search-toolbar`、`table-actions`、`form` |
+| 行为分析 | `/analytics/behavior` | `analytics:view` |
+| 数据管理 | `/analytics/data` | `analytics:manage` / `analytics:export` |
+| 错误监控 | `/analytics/errors` | `monitor:error:list` / `monitor:error:manage` / `monitor:alert:*` |
 
 ---
 
-### 第三步：追踪点击热力图
+## 数据保留与聚合
 
-给需要分析的容器区域加 `ref` 和 `onClick`，记录点击坐标（以百分比存储，与屏幕分辨率无关）：
-
-```tsx
-import { useRef } from 'react';
-import { trackAreaClick } from '@/utils/tracker';
-
-export default function UsersPage() {
-  const tableRef = useRef<HTMLDivElement>(null);
-
-  return (
-    <div
-      ref={tableRef}
-      onClick={(e) => trackAreaClick(e.nativeEvent, tableRef.current!, 'table')}
-    >
-      <ConfigurableTable ... />
-    </div>
-  );
-}
-```
-
-坐标范围为 `0–100`（百分比），分析面板会在热力图可视化中还原成位置。
+- 「数据管理 → 采集设置」可配置埋点/错误数据保留天数、采样率、采集开关、路径黑名单、会话超时。
+- 定时任务：`analyticsRollupDaily`（每日 01:00 预聚合）、`analyticsRetention`（每日 02:00 按保留策略清理）。
+- 趋势查询默认实时计算；每日聚合表 `analytics_daily_rollup` 供长周期/大数据量提速，可在「数据聚合」面板手动重建。
 
 ---
 
-## API 参考
+## 数据模型
 
-### `usePageTracker(pageTitle?)`
+| 表 | 说明 |
+|----|------|
+| `user_events` | 原始事件流（含属性袋、UTM、设备、地域、性能指标） |
+| `analytics_sessions` | 会话聚合（时长/页数/入口出口/跳出） |
+| `analytics_daily_rollup` | 每日预聚合指标 |
+| `analytics_event_meta` | 事件字典 / 埋点元数据治理 |
+| `analytics_settings` | 采集与保留配置（SDK 远程配置来源） |
+| `error_groups` | 错误分组（Issue，指纹全局唯一） |
+| `error_events` | 单次错误事件（堆栈/面包屑/上下文/解析后 UA） |
+| `error_alert_rules` | 错误告警规则 |
+| `source_maps` | 上传的 Source Map（堆栈还原） |
 
-```ts
-import { usePageTracker } from '@/hooks/usePageTracker';
-```
-
-React Hook，自动追踪当前路由的进入/离开。参数 `pageTitle` 为可选的人类可读标题（如 `'用户管理'`）。
-
----
-
-### `trackFeature(elementKey, elementLabel, componentArea?)`
-
-```ts
-import { trackFeature } from '@/utils/tracker';
-```
-
-手动埋点，记录一次功能操作（`feature_use` 事件）。通常放在按钮的 `onClick` 回调中。
-
----
-
-### `trackAreaClick(e, containerEl, componentArea)`
-
-```ts
-import { trackAreaClick } from '@/utils/tracker';
-```
-
-记录一次区域点击（`area_click` 事件），用于热力图分析。
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `e` | `{ clientX: number; clientY: number }` | React `MouseEvent` 或原生 `MouseEvent` |
-| `containerEl` | `HTMLElement` | 容器元素，用于计算点击的相对坐标 |
-| `componentArea` | `string` | 区域标识符，如 `'table'`、`'search-toolbar'` |
-
----
-
-### `trackPageView(pagePath, pageTitle?)`  /  `trackPageLeave(pagePath, durationMs, pageTitle?)`
-
-底层函数，`usePageTracker` 内部已调用。如需在非路由场景（如 Modal、Tab 切换）手动记录，可直接使用。
-
----
-
-## 数据上报机制
-
-Tracker SDK 采用**内存缓冲 + 批量上报**策略，减少请求数量：
-
-- **定时上报**：每 30 秒自动上报一次缓冲区内的所有事件
-- **缓冲区满**：事件数达到 50 条时立即上报
-- **页面关闭**：监听 `pagehide` 和 `visibilitychange` 事件，页面隐藏/关闭时通过 `navigator.sendBeacon` 可靠上报（保证数据不丢失）
-
-每个浏览器 tab 有独立的 `sessionId`（存储在 `sessionStorage`），用于区分不同会话。
-
----
-
-## 分析仪表盘
-
-数据收集完成后，可在管理后台的 **数据分析 → 行为分析** 页面（`/analytics/behavior`）查看三个维度的分析结果：
-
-### 页面停留时长
-
-展示各页面的平均停留时长（秒），按时长降序排列，帮助发现用户最关注的页面。
-
-![停留时长示意](https://placeholder.com/analytics-dwell.png)
-
-### 功能使用频率
-
-展示各功能按钮的点击次数，按频次排列，发现最常用和最少用的功能。
-
-### 点击热力图
-
-选择页面路径后，以百分比坐标渲染点击密度分布图，颜色越深表示点击越密集。
-
----
-
-## 数据库结构
-
-事件数据存储在 `user_events` 表：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | `serial` | 主键 |
-| `user_id` | `integer` | 关联用户（可为空，未登录时） |
-| `username` | `varchar(64)` | 用户名快照 |
-| `tenant_id` | `integer` | 租户 ID |
-| `session_id` | `varchar(36)` | 浏览器 Tab 会话 ID |
-| `event_type` | `enum` | `page_view` / `page_leave` / `feature_use` / `area_click` |
-| `page_path` | `varchar(256)` | 路由路径，如 `/users` |
-| `page_title` | `varchar(128)` | 页面标题，如 `用户管理` |
-| `element_key` | `varchar(128)` | 功能标识符，如 `create-btn` |
-| `element_label` | `varchar(128)` | 功能标签，如 `新增` |
-| `component_area` | `varchar(64)` | 区域，如 `search-toolbar` |
-| `click_x` | `real` | 点击横坐标（0–100%） |
-| `click_y` | `real` | 点击纵坐标（0–100%） |
-| `duration_ms` | `integer` | 停留时长（毫秒，仅 `page_leave`） |
-| `created_at` | `timestamptz` | 事件时间 |
-
----
-
-## 已埋点页面清单
-
-当前已接入 `usePageTracker` 的页面：
-
-| 页面 | 路由 | 功能点 |
-|------|------|--------|
-| 我的申请 | `/workflow/instances/mine` | 页面停留、查询、重置、发起申请 |
-| 待我审批 | `/workflow/tasks/pending` | 页面停留、查询、重置、通过、驳回 |
-
-> 如需为更多页面接入埋点，按照本文档的[快速接入](#快速接入-3-步)步骤操作即可。每个页面仅需 1–3 行代码。
+> 修改这些表后需 `npm run db:generate && npm run db:migrate`，并在 `packages/shared/src/seed-data.ts` 同步菜单/权限。

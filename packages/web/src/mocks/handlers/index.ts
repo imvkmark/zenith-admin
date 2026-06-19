@@ -48,6 +48,7 @@ import { dbQueryFavoritesHandlers } from './db-query-favorites';
 import { userPermissionsHandlers } from './user-permissions';
 import { maintenanceHandlers } from './maintenance';
 import { analyticsHandlers } from './analytics';
+import { frontendErrorsHandlers } from './frontend-errors';
 import { paymentHandlers } from './payment';
 import { memberFrontHandlers } from './member-front';
 import { memberAdminHandlers } from './member-admin';
@@ -105,6 +106,7 @@ export const handlers = [
   ...userPermissionsHandlers,
   ...maintenanceHandlers,
   ...analyticsHandlers,
+  ...frontendErrorsHandlers,
   ...paymentHandlers,
   ...memberFrontHandlers,
   ...memberAdminHandlers,

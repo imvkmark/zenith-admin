@@ -103,6 +103,25 @@ handlerRegistry.set('dispatchPaymentEvents', async () => {
   return `补投支付事件 ${count} 条`;
 });
 
+handlerRegistry.set('analyticsRollupDaily', async (params) => {
+  const { rebuildRollup } = await import('../services/analytics-rollup.service');
+  const days = Number(params) || 2;
+  const n = await rebuildRollup(days);
+  return `重建每日聚合 ${n} 条`;
+});
+
+handlerRegistry.set('analyticsRetention', async () => {
+  const { runAnalyticsRetention } = await import('../services/analytics-rollup.service');
+  const r = await runAnalyticsRetention();
+  return `数据保留清理：埋点 ${r.events} 条、会话 ${r.sessions} 条、错误 ${r.errors} 条`;
+});
+
+handlerRegistry.set('evaluateErrorAlerts', async () => {
+  const { evaluateAlerts } = await import('../services/error-alert.service');
+  const r = await evaluateAlerts();
+  return `错误告警评估：规则 ${r.evaluated} 条，触发 ${r.triggered} 条`;
+});
+
 /** 已注册 handler 名称列表（供前端下拉选择） */
 export function getRegisteredHandlers(): string[] {
   return Array.from(handlerRegistry.keys());

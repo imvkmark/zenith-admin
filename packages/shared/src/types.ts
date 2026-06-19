@@ -410,7 +410,9 @@ export interface MemberLoginLog {
 }
 
 // ─── 用户行为分析 ────────────────────────────────────────────
-export type UserBehaviorEventType = 'page_view' | 'page_leave' | 'feature_use' | 'area_click';
+export type UserBehaviorEventType =
+  | 'page_view' | 'page_leave' | 'feature_use' | 'area_click'
+  | 'custom' | 'perf' | 'api_request' | 'identify';
 
 export interface PageStatItem {
   pagePath: string;
@@ -474,26 +476,378 @@ export interface UserStats {
   totalUsers: number;
 }
 
-// ─── 前端错误上报 ──────────────────────────────────────────────────────────────
-export type FrontendErrorType = 'js_error' | 'promise_rejection' | 'resource_error' | 'console_error';
+// ─── 前端错误监控（Issue 模型）──────────────────────────────────────────────
+export type FrontendErrorType =
+  | 'js_error' | 'promise_rejection' | 'resource_error' | 'console_error'
+  | 'http_error' | 'white_screen' | 'crash';
+export type ErrorLevel = 'fatal' | 'error' | 'warning' | 'info';
+export type ErrorStatus = 'unresolved' | 'resolved' | 'ignored' | 'muted';
+export type ErrorAlertCondition = 'new_error' | 'threshold' | 'spike';
 
-export interface FrontendError {
+/** 错误分组（Issue） */
+export interface ErrorGroup {
   id: number;
   fingerprint: string;
   errorType: FrontendErrorType;
+  level: ErrorLevel;
+  message: string;
+  status: ErrorStatus;
+  assigneeId: number | null;
+  assigneeName: string | null;
+  release: string | null;
+  note: string | null;
+  count: number;
+  affectedUsers: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+}
+
+/** 单次错误事件 */
+export interface ErrorEvent {
+  id: number;
+  groupId: number;
+  fingerprint: string;
+  errorType: FrontendErrorType;
+  level: ErrorLevel;
   message: string;
   stack: string | null;
   sourceUrl: string | null;
   lineNo: number | null;
   colNo: number | null;
   pageUrl: string | null;
+  release: string | null;
   userAgent: string | null;
+  browser: string | null;
+  browserVersion: string | null;
+  os: string | null;
+  deviceType: AnalyticsDeviceType | null;
   userId: number | null;
   username: string | null;
   sessionId: string | null;
+  breadcrumbs: ErrorBreadcrumb[] | null;
+  context: Record<string, unknown> | null;
+  httpStatus: number | null;
+  httpMethod: string | null;
+  httpUrl: string | null;
+  createdAt: string;
+}
+
+export interface ErrorBreadcrumb {
+  type: 'navigation' | 'click' | 'http' | 'console' | 'custom';
+  message: string;
+  level?: ErrorLevel;
+  data?: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface ErrorOverview {
+  totalGroups: number;
+  unresolved: number;
+  totalOccurrences: number;
+  affectedUsers: number;
+  newToday: number;
+  byType: { errorType: FrontendErrorType; groups: number; occurrences: number }[];
+  byLevel: { level: ErrorLevel; groups: number; occurrences: number }[];
+  trend: { date: string; occurrences: number; groups: number }[];
+  topIssues: ErrorGroup[];
+}
+
+export interface SourceMapItem {
+  id: number;
+  release: string;
+  fileName: string;
+  size: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ErrorAlertRule {
+  id: number;
+  name: string;
+  errorType: FrontendErrorType | null;
+  level: ErrorLevel | null;
+  condition: ErrorAlertCondition;
+  thresholdCount: number;
+  windowMinutes: number;
+  channels: string[];
+  webhookUrl: string | null;
+  recipients: string[];
+  enabled: boolean;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── 用户行为采集（埋点）──────────────────────────────────────────────────────
+export type AnalyticsDeviceType = 'desktop' | 'mobile' | 'tablet' | 'bot' | 'unknown';
+
+/** 单条上报事件（客户端 → 服务端） */
+export interface TrackEventInput {
+  sessionId: string;
+  anonymousId?: string;
+  distinctId?: string;
+  eventType: UserBehaviorEventType;
+  eventName?: string;
+  pagePath: string;
+  pageTitle?: string;
+  elementKey?: string;
+  elementLabel?: string;
+  componentArea?: string;
+  clickX?: number;
+  clickY?: number;
+  scrollDepth?: number;
+  durationMs?: number;
+  properties?: Record<string, unknown>;
+  referrer?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  screenW?: number;
+  screenH?: number;
+  language?: string;
+  metricName?: string;
+  metricValue?: number;
+}
+
+/** SDK 远程配置 */
+export interface AnalyticsSettings {
+  id: number;
+  enabled: boolean;
+  sampleRate: number;
+  trackPageviews: boolean;
+  trackClicks: boolean;
+  trackPerformance: boolean;
+  trackErrors: boolean;
+  trackApi: boolean;
+  maskInputs: boolean;
+  respectDnt: boolean;
+  blacklistPaths: string[];
+  retentionDays: number;
+  errorRetentionDays: number;
+  sessionTimeoutMinutes: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** SDK 公开配置（无需鉴权可获取的精简版） */
+export interface AnalyticsPublicConfig {
+  enabled: boolean;
+  sampleRate: number;
+  trackPageviews: boolean;
+  trackClicks: boolean;
+  trackPerformance: boolean;
+  trackErrors: boolean;
+  trackApi: boolean;
+  maskInputs: boolean;
+  respectDnt: boolean;
+  blacklistPaths: string[];
+}
+
+export type AnalyticsEventMetaStatus = 'active' | 'deprecated' | 'blocked';
+export interface AnalyticsEventPropertyDef {
+  key: string;
+  type: string;
+  description?: string;
+}
+export interface AnalyticsEventMeta {
+  id: number;
+  eventName: string;
+  displayName: string | null;
+  category: string | null;
+  description: string | null;
+  propertySchema: AnalyticsEventPropertyDef[] | null;
+  status: AnalyticsEventMetaStatus;
+  eventCount: number;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── 行为分析（聚合结果）──────────────────────────────────────────────────────
+export interface AnalyticsOverview {
+  pv: number;
+  uv: number;
+  sessions: number;
+  events: number;
+  newUsers: number;
+  avgSessionMs: number;
+  bounceRate: number;
+  avgPagesPerSession: number;
+  pvDelta: number;
+  uvDelta: number;
+  sessionsDelta: number;
+  bounceRateDelta: number;
+  activeNow: number;
+}
+
+export interface TrendSeries {
+  dates: string[];
+  series: { key: string; name: string; data: number[] }[];
+}
+
+export interface SessionListItem {
+  id: number;
+  sessionId: string;
+  userId: number | null;
+  username: string | null;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  pageCount: number;
+  eventCount: number;
+  entryPage: string | null;
+  exitPage: string | null;
+  referrer: string | null;
+  browser: string | null;
+  os: string | null;
+  deviceType: AnalyticsDeviceType | null;
+  region: string | null;
+  isBounce: boolean;
+}
+
+export interface FunnelStepInput {
+  eventType?: UserBehaviorEventType;
+  eventName?: string;
+  pagePath?: string;
+  elementKey?: string;
+  label: string;
+}
+export interface FunnelStepResult {
+  label: string;
+  users: number;
+  conversionRate: number;
+  stepConversionRate: number;
+  dropoff: number;
+}
+export interface FunnelResult {
+  steps: FunnelStepResult[];
+  totalUsers: number;
+  overallConversionRate: number;
+}
+
+export interface RetentionResult {
+  cohorts: {
+    cohortDate: string;
+    cohortSize: number;
+    values: (number | null)[];
+  }[];
+  periods: number[];
+}
+
+export interface PathNode { id: string; label: string; value: number }
+export interface PathLink { source: string; target: string; value: number }
+export interface PathResult { nodes: PathNode[]; links: PathLink[] }
+
+export interface UserTimelineEvent {
+  id: number;
+  eventType: UserBehaviorEventType;
+  eventName: string | null;
+  pagePath: string;
+  pageTitle: string | null;
+  elementLabel: string | null;
+  componentArea: string | null;
+  durationMs: number | null;
+  sessionId: string | null;
+  properties: Record<string, unknown> | null;
+  createdAt: string;
+}
+export interface UserTimeline {
+  userId: number | null;
+  username: string | null;
+  totalEvents: number;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  items: UserTimelineEvent[];
+}
+
+export interface DimensionBreakdownItem { name: string; value: number; percent: number }
+export interface DimensionBreakdown {
+  dimension: string;
+  total: number;
+  items: DimensionBreakdownItem[];
+}
+
+export interface PerfStatItem {
+  metricName: string;
   count: number;
-  firstSeenAt: string;
-  lastSeenAt: string;
+  avg: number | null;
+  p75: number | null;
+  p90: number | null;
+  p99: number | null;
+  rating: 'good' | 'needs-improvement' | 'poor';
+}
+export interface PerfStats {
+  items: PerfStatItem[];
+}
+
+export interface RealtimeStats {
+  activeUsers: number;
+  pageViewsLast30Min: number;
+  eventsLastMinute: number;
+  topPages: { pagePath: string; pageTitle: string | null; active: number }[];
+  recentEvents: {
+    eventType: UserBehaviorEventType;
+    eventName: string | null;
+    pagePath: string;
+    username: string | null;
+    createdAt: string;
+  }[];
+  perMinute: { minute: string; events: number }[];
+}
+
+export interface EventListItem {
+  id: number;
+  userId: number | null;
+  username: string | null;
+  eventType: UserBehaviorEventType;
+  eventName: string | null;
+  pagePath: string;
+  pageTitle: string | null;
+  elementKey: string | null;
+  elementLabel: string | null;
+  componentArea: string | null;
+  durationMs: number | null;
+  browser: string | null;
+  os: string | null;
+  deviceType: AnalyticsDeviceType | null;
+  region: string | null;
+  sessionId: string | null;
+  createdAt: string;
+}
+export interface EventDetail extends EventListItem {
+  distinctId: string | null;
+  anonymousId: string | null;
+  scrollDepth: number | null;
+  properties: Record<string, unknown> | null;
+  referrer: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  browserVersion: string | null;
+  osVersion: string | null;
+  screenW: number | null;
+  screenH: number | null;
+  language: string | null;
+  userAgent: string | null;
+  ip: string | null;
+  country: string | null;
+  city: string | null;
+  metricName: string | null;
+  metricValue: number | null;
+}
+
+export interface AnalyticsRollupItem {
+  statDate: string;
+  pv: number;
+  uv: number;
+  sessions: number;
+  events: number;
+  bounceSessions: number;
+  totalDwellMs: number;
 }
 
 // ─── 公告 ──────────────────────────────────────────────────

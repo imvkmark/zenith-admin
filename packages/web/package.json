@@ -58,7 +58,8 @@
 		"recharts": "^3.8.1",
 		"rehype-highlight": "^7.0.2",
 		"remark-gfm": "^4.0.1",
-		"sql-formatter": "^15.8.1"
+		"sql-formatter": "^15.8.1",
+		"web-vitals": "^4.2.4"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

@@ -1249,3 +1249,158 @@ export type MemberSmsCodeInput = z.infer<typeof memberSmsCodeSchema>;
 export type MemberUpdateProfileInput = z.infer<typeof memberUpdateProfileSchema>;
 export type MemberChangePasswordInput = z.infer<typeof memberChangePasswordSchema>;
 export type MemberResetPasswordInput = z.infer<typeof memberResetPasswordSchema>;
+
+// ════════════════════════════════════════════════════════════════════════════
+// 数据分析 / 埋点 / 错误监控
+// ════════════════════════════════════════════════════════════════════════════
+
+export const userBehaviorEventTypeEnum = z.enum([
+  'page_view', 'page_leave', 'feature_use', 'area_click', 'custom', 'perf', 'api_request', 'identify',
+]);
+
+// ─── 埋点事件上报 ─────────────────────────────────────────────────────────────
+export const trackEventInputSchema = z.object({
+  sessionId: z.string().max(36),
+  anonymousId: z.string().max(64).optional(),
+  distinctId: z.string().max(64).optional(),
+  eventType: userBehaviorEventTypeEnum,
+  eventName: z.string().max(128).optional(),
+  pagePath: z.string().max(256),
+  pageTitle: z.string().max(128).optional(),
+  elementKey: z.string().max(128).optional(),
+  elementLabel: z.string().max(128).optional(),
+  componentArea: z.string().max(64).optional(),
+  clickX: z.number().min(0).max(100).optional(),
+  clickY: z.number().min(0).max(100).optional(),
+  scrollDepth: z.number().int().min(0).max(100).optional(),
+  durationMs: z.number().int().min(0).max(86_400_000).optional(),
+  properties: z.record(z.string(), z.unknown()).optional(),
+  referrer: z.string().max(512).optional(),
+  utmSource: z.string().max(128).optional(),
+  utmMedium: z.string().max(128).optional(),
+  utmCampaign: z.string().max(128).optional(),
+  utmTerm: z.string().max(128).optional(),
+  utmContent: z.string().max(128).optional(),
+  screenW: z.number().int().min(0).max(100_000).optional(),
+  screenH: z.number().int().min(0).max(100_000).optional(),
+  language: z.string().max(16).optional(),
+  metricName: z.string().max(32).optional(),
+  metricValue: z.number().optional(),
+});
+
+export const batchTrackEventsSchema = z.object({
+  events: z.array(trackEventInputSchema).min(1).max(100),
+});
+
+// ─── 错误上报 ─────────────────────────────────────────────────────────────────
+export const errorBreadcrumbSchema = z.object({
+  type: z.enum(['navigation', 'click', 'http', 'console', 'custom']),
+  message: z.string().max(512),
+  level: z.enum(['fatal', 'error', 'warning', 'info']).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+  timestamp: z.string().max(32),
+});
+
+export const errorReportSchema = z.object({
+  errorType: z.enum(['js_error', 'promise_rejection', 'resource_error', 'console_error', 'http_error', 'white_screen', 'crash']),
+  level: z.enum(['fatal', 'error', 'warning', 'info']).optional(),
+  message: z.string().min(1).max(2000),
+  stack: z.string().max(16_000).optional(),
+  sourceUrl: z.string().max(512).optional(),
+  lineNo: z.number().int().optional(),
+  colNo: z.number().int().optional(),
+  pageUrl: z.string().max(512).optional(),
+  release: z.string().max(64).optional(),
+  sessionId: z.string().max(36).optional(),
+  breadcrumbs: z.array(errorBreadcrumbSchema).max(50).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
+  httpStatus: z.number().int().optional(),
+  httpMethod: z.string().max(16).optional(),
+  httpUrl: z.string().max(512).optional(),
+});
+
+// ─── 错误处理（后台）─────────────────────────────────────────────────────────
+export const updateErrorGroupSchema = z.object({
+  status: z.enum(['unresolved', 'resolved', 'ignored', 'muted']).optional(),
+  level: z.enum(['fatal', 'error', 'warning', 'info']).optional(),
+  assigneeId: z.number().int().positive().nullable().optional(),
+  note: z.string().max(2000).nullable().optional(),
+});
+
+// ─── 告警规则 ─────────────────────────────────────────────────────────────────
+export const createErrorAlertRuleSchema = z.object({
+  name: z.string().min(1).max(128),
+  errorType: z.enum(['js_error', 'promise_rejection', 'resource_error', 'console_error', 'http_error', 'white_screen', 'crash']).nullable().optional(),
+  level: z.enum(['fatal', 'error', 'warning', 'info']).nullable().optional(),
+  condition: z.enum(['new_error', 'threshold', 'spike']).default('threshold'),
+  thresholdCount: z.number().int().min(1).max(100_000).default(10),
+  windowMinutes: z.number().int().min(1).max(10_080).default(60),
+  channels: z.array(z.enum(['email', 'webhook', 'inapp'])).default([]),
+  webhookUrl: z.string().max(512).nullable().optional(),
+  recipients: z.array(z.string().max(128)).default([]),
+  enabled: z.boolean().default(true),
+});
+export const updateErrorAlertRuleSchema = createErrorAlertRuleSchema.partial();
+
+// ─── 事件元数据 ───────────────────────────────────────────────────────────────
+export const analyticsEventPropertyDefSchema = z.object({
+  key: z.string().max(64),
+  type: z.string().max(32),
+  description: z.string().max(256).optional(),
+});
+export const createAnalyticsEventMetaSchema = z.object({
+  eventName: z.string().min(1).max(128),
+  displayName: z.string().max(128).nullable().optional(),
+  category: z.string().max(64).nullable().optional(),
+  description: z.string().max(1000).nullable().optional(),
+  propertySchema: z.array(analyticsEventPropertyDefSchema).nullable().optional(),
+  status: z.enum(['active', 'deprecated', 'blocked']).default('active'),
+});
+export const updateAnalyticsEventMetaSchema = createAnalyticsEventMetaSchema.partial();
+
+// ─── 采集设置 ─────────────────────────────────────────────────────────────────
+export const updateAnalyticsSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  sampleRate: z.number().min(0).max(1).optional(),
+  trackPageviews: z.boolean().optional(),
+  trackClicks: z.boolean().optional(),
+  trackPerformance: z.boolean().optional(),
+  trackErrors: z.boolean().optional(),
+  trackApi: z.boolean().optional(),
+  maskInputs: z.boolean().optional(),
+  respectDnt: z.boolean().optional(),
+  blacklistPaths: z.array(z.string().max(256)).optional(),
+  retentionDays: z.number().int().min(1).max(3650).optional(),
+  errorRetentionDays: z.number().int().min(1).max(3650).optional(),
+  sessionTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+});
+
+// ─── 漏斗 / 路径分析查询 ──────────────────────────────────────────────────────
+export const funnelStepSchema = z.object({
+  eventType: userBehaviorEventTypeEnum.optional(),
+  eventName: z.string().max(128).optional(),
+  pagePath: z.string().max(256).optional(),
+  elementKey: z.string().max(128).optional(),
+  label: z.string().max(64),
+});
+export const funnelQuerySchema = z.object({
+  days: z.number().int().min(1).max(365).default(30),
+  steps: z.array(funnelStepSchema).min(2).max(10),
+});
+
+export const sourceMapUploadSchema = z.object({
+  release: z.string().min(1).max(64),
+  fileName: z.string().min(1).max(256),
+  content: z.string().min(1),
+});
+
+export type TrackEventInputZod = z.infer<typeof trackEventInputSchema>;
+export type ErrorReportInput = z.infer<typeof errorReportSchema>;
+export type UpdateErrorGroupInput = z.infer<typeof updateErrorGroupSchema>;
+export type CreateErrorAlertRuleInput = z.infer<typeof createErrorAlertRuleSchema>;
+export type UpdateErrorAlertRuleInput = z.infer<typeof updateErrorAlertRuleSchema>;
+export type CreateAnalyticsEventMetaInput = z.infer<typeof createAnalyticsEventMetaSchema>;
+export type UpdateAnalyticsEventMetaInput = z.infer<typeof updateAnalyticsEventMetaSchema>;
+export type UpdateAnalyticsSettingsInput = z.infer<typeof updateAnalyticsSettingsSchema>;
+export type FunnelQueryInput = z.infer<typeof funnelQuerySchema>;
+export type SourceMapUploadInput = z.infer<typeof sourceMapUploadSchema>;
