@@ -197,6 +197,7 @@ export function mapNotifyLog(row: PaymentNotifyLogRow): PaymentNotifyLog {
     message: row.message ?? null,
     ip: row.ip ?? null,
     rawBody: row.rawBody ?? null,
+    headers: row.headers ?? null,
     createdAt: formatDateTime(row.createdAt),
   };
 }
@@ -529,7 +530,10 @@ export interface ListOrdersQuery {
   keyword?: string;
   status?: PaymentOrderStatus;
   channel?: PaymentChannel;
+  payMethod?: PaymentOrderRow['payMethod'];
   bizType?: string;
+  minAmount?: number;
+  maxAmount?: number;
   startTime?: string;
   endTime?: string;
 }
@@ -548,7 +552,10 @@ export async function buildOrdersWhere(q: ListOrdersQuery) {
   }
   if (q.status) conditions.push(eq(paymentOrders.status, q.status));
   if (q.channel) conditions.push(eq(paymentOrders.channel, q.channel));
+  if (q.payMethod) conditions.push(eq(paymentOrders.payMethod, q.payMethod));
   if (q.bizType) conditions.push(eq(paymentOrders.bizType, q.bizType));
+  if (q.minAmount != null) conditions.push(gte(paymentOrders.amount, q.minAmount));
+  if (q.maxAmount != null) conditions.push(lte(paymentOrders.amount, q.maxAmount));
   const startTime = parseDateTimeInput(q.startTime);
   const endTime = parseDateTimeInput(q.endTime);
   if (startTime) conditions.push(gte(paymentOrders.createdAt, startTime));
@@ -597,6 +604,8 @@ export interface ListRefundsQuery {
   keyword?: string;
   status?: 'pending' | 'processing' | 'success' | 'failed';
   channel?: PaymentChannel;
+  startTime?: string;
+  endTime?: string;
 }
 
 export function buildRefundsWhere(q: ListRefundsQuery) {
@@ -606,6 +615,10 @@ export function buildRefundsWhere(q: ListRefundsQuery) {
   }
   if (q.status) conditions.push(eq(paymentRefunds.status, q.status));
   if (q.channel) conditions.push(eq(paymentRefunds.channel, q.channel));
+  const startTime = parseDateTimeInput(q.startTime);
+  const endTime = parseDateTimeInput(q.endTime);
+  if (startTime) conditions.push(gte(paymentRefunds.createdAt, startTime));
+  if (endTime) conditions.push(lte(paymentRefunds.createdAt, endTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   return mergeWhere(where, tenantCondition(paymentRefunds, currentUser()));
 }
@@ -628,11 +641,53 @@ export async function getRefundDetail(id: number): Promise<PaymentRefund> {
   return mapRefund(row);
 }
 
+/** 主动向渠道查询退款状态并同步本地（供后台「退款查单」与对账复用） */
+export async function refreshRefundById(id: number): Promise<PaymentRefund> {
+  const tc = tenantCondition(paymentRefunds, currentUser());
+  const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
+  if (!refundRow) throw new HTTPException(404, { message: '退款记录不存在' });
+  if (refundRow.status === 'success') return mapRefund(refundRow);
+
+  const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, refundRow.orderNo)).limit(1);
+  if (!order) throw new HTTPException(404, { message: '原支付订单不存在' });
+  const config = await loadOrderConfig(order);
+  if (!config) throw new HTTPException(400, { message: '支付渠道配置不存在，无法查单' });
+
+  let res;
+  try {
+    res = await getAdapter(refundRow.channel).queryRefund(buildAdapterContext(config), refundRow, order);
+  } catch (err) {
+    logger.warn('[payment] query refund failed', { refundNo: refundRow.refundNo, err: errMessage(err) });
+    throw new HTTPException(502, { message: `退款查单失败：${errMessage(err)}` });
+  }
+
+  if (res.status === 'success') {
+    const updated = await db
+      .update(paymentRefunds)
+      .set({ status: 'success', refundedAt: res.refundedAt ?? new Date(), channelRefundNo: res.channelRefundNo ?? refundRow.channelRefundNo })
+      .where(and(eq(paymentRefunds.id, refundRow.id), ne(paymentRefunds.status, 'success')))
+      .returning();
+    if (updated.length > 0) await finalizeRefund(order, refundRow.refundNo, refundRow.refundAmount);
+  } else if (res.status === 'failed') {
+    await db.update(paymentRefunds).set({ status: 'failed' }).where(and(eq(paymentRefunds.id, refundRow.id), ne(paymentRefunds.status, 'success')));
+    await db.update(paymentOrders).set({ status: 'success' }).where(and(eq(paymentOrders.id, order.id), eq(paymentOrders.status, 'refunding')));
+  } else if (res.channelRefundNo && res.channelRefundNo !== refundRow.channelRefundNo) {
+    await db.update(paymentRefunds).set({ channelRefundNo: res.channelRefundNo }).where(eq(paymentRefunds.id, refundRow.id));
+  }
+
+  const [latest] = await db.select().from(paymentRefunds).where(eq(paymentRefunds.id, refundRow.id)).limit(1);
+  return mapRefund(latest ?? refundRow);
+}
+
 export interface ListNotifyLogsQuery {
   page?: number;
   pageSize?: number;
   keyword?: string;
   channel?: PaymentChannel;
+  scene?: string;
+  signatureValid?: boolean;
+  startTime?: string;
+  endTime?: string;
 }
 
 export async function listNotifyLogs(q: ListNotifyLogsQuery) {
@@ -641,6 +696,12 @@ export async function listNotifyLogs(q: ListNotifyLogsQuery) {
   const conditions = [];
   if (q.keyword) conditions.push(like(paymentNotifyLogs.orderNo, `%${escapeLike(q.keyword)}%`));
   if (q.channel) conditions.push(eq(paymentNotifyLogs.channel, q.channel));
+  if (q.scene) conditions.push(eq(paymentNotifyLogs.scene, q.scene));
+  if (q.signatureValid != null) conditions.push(eq(paymentNotifyLogs.signatureValid, q.signatureValid));
+  const startTime = parseDateTimeInput(q.startTime);
+  const endTime = parseDateTimeInput(q.endTime);
+  if (startTime) conditions.push(gte(paymentNotifyLogs.createdAt, startTime));
+  if (endTime) conditions.push(lte(paymentNotifyLogs.createdAt, endTime));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const finalWhere = mergeWhere(where, tenantCondition(paymentNotifyLogs, currentUser()));
   const [total, list] = await Promise.all([

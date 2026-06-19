@@ -94,6 +94,8 @@ export const PaymentNotifyLogDTO = z
     result: z.string().nullable().optional(),
     message: z.string().nullable().optional(),
     ip: z.string().nullable().optional(),
+    rawBody: z.string().nullable().optional(),
+    headers: z.string().nullable().optional(),
     createdAt: z.string(),
   })
   .openapi('PaymentNotifyLog');
@@ -130,13 +132,27 @@ export const PaymentStatsDTO = z
   .object({
     totalAmount: z.number().openapi({ description: '累计成功金额（分）' }),
     todayAmount: z.number().openapi({ description: '今日成功金额（分）' }),
+    todayCount: z.number().openapi({ description: '今日成功订单数' }),
     orderCount: z.number(),
     successCount: z.number(),
     refundAmount: z.number().openapi({ description: '累计退款金额（分）' }),
+    refundCount: z.number().openapi({ description: '成功退款笔数' }),
+    successRate: z.number().openapi({ description: '支付成功率（0-100）' }),
+    refundRate: z.number().openapi({ description: '退款率（0-100）' }),
+    avgAmount: z.number().openapi({ description: '成功订单笔均金额（分）' }),
     byChannel: z.array(z.object({ channel: z.string(), count: z.number(), amount: z.number() })),
     byStatus: z.array(z.object({ status: z.string(), count: z.number() })),
   })
   .openapi('PaymentStats');
+
+export const PaymentTrendPointDTO = z
+  .object({
+    date: z.string().openapi({ description: '日期 YYYY-MM-DD' }),
+    amount: z.number().openapi({ description: '当日成功金额（分）' }),
+    count: z.number().openapi({ description: '当日成功订单数' }),
+    refundAmount: z.number().openapi({ description: '当日退款金额（分）' }),
+  })
+  .openapi('PaymentTrendPoint');
 
 
 export const ChannelConnectivityResultDTO = z

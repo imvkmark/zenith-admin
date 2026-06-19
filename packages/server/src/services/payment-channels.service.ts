@@ -172,3 +172,22 @@ export async function deleteChannelConfig(id: number): Promise<void> {
   await ensureChannelConfigExists(id);
   await db.delete(paymentChannelConfigs).where(eq(paymentChannelConfigs.id, id));
 }
+
+/** 将指定渠道配置设为该渠道的默认（同租户同渠道内互斥），并自动启用 */
+export async function setChannelAsDefault(id: number): Promise<PaymentChannelConfig> {
+  const user = currentUser();
+  const existing = await ensureChannelConfigExists(id);
+  return db.transaction(async (tx) => {
+    await tx
+      .update(paymentChannelConfigs)
+      .set({ isDefault: false })
+      .where(and(eq(paymentChannelConfigs.channel, existing.channel), tenantCondition(paymentChannelConfigs, user)));
+    const [row] = await tx
+      .update(paymentChannelConfigs)
+      .set({ isDefault: true, status: 'enabled' })
+      .where(and(eq(paymentChannelConfigs.id, id), tenantCondition(paymentChannelConfigs, user)))
+      .returning();
+    if (!row) throw new HTTPException(404, { message: '支付渠道配置不存在' });
+    return mapChannelConfig(row);
+  });
+}

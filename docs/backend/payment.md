@@ -208,10 +208,20 @@ sequenceDiagram
 
 | 页面 | 路径 | 功能 |
 | --- | --- | --- |
-| 支付渠道配置 | `/payment/channels` | CRUD + 密钥掩码 + 沙箱开关 |
-| 支付订单 | `/payment/orders` | 列表/详情/查单/手动退款，状态筛选 |
-| 退款记录 | `/payment/refunds` | 列表/详情/退款查询 |
-| 回调日志 | `/payment/logs` | 排查回调与验签问题 |
+| 支付渠道配置 | `/payment/channels` | CRUD + 密钥掩码 + 沙箱开关 + 连通性测试 + **一键设为默认** |
+| 支付订单 | `/payment/orders` | 列表/详情/查单/手动退款；**渠道·方式·状态·金额区间·创建时间范围**多维筛选；**订单详情含复制单号、交易时间轴、关联退款明细**；**「统计分析」Tab：收款趋势图 + 渠道/状态分布 + 成功率/退款率/笔均** |
+| 退款记录 | `/payment/refunds` | 列表/详情；**时间范围筛选**；**退款查单同步**（处理中→成功/失败，回调兜底） |
+| 回调日志 | `/payment/logs` | 排查回调与验签问题；**渠道·场景·验签结果·时间范围筛选**；详情展示**请求头 + 原始 Body** |
+
+### 统计与导出接口
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/payment/stats` | 概览：累计/今日成功金额、成功率、退款率、笔均、渠道/状态分布 |
+| `GET /api/payment/trend?days=N` | 收款趋势（近 N 天，按天聚合成功金额/笔数/退款金额，缺口补 0） |
+| `POST /api/payment/channels/{id}/default` | 设为该渠道默认（同租户同渠道互斥，自动启用） |
+| `POST /api/payment/refunds/{id}/query` | 退款主动查单并同步本地状态 |
+| `GET /api/payment/{orders,refunds}/export[/csv]` | Excel / CSV 导出（随筛选条件） |
 
 ---
 

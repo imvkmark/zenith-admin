@@ -7,6 +7,7 @@ import { paymentOrders, paymentRefunds } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { tenantCondition } from '../lib/tenant';
 import { mergeWhere } from '../lib/where-helpers';
+import { APP_TIME_ZONE, formatDate } from '../lib/datetime';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel, type ExcelColumn } from '../lib/excel-export';
 import {
   PAYMENT_CHANNEL_LABELS,
@@ -14,23 +15,12 @@ import {
   PAYMENT_ORDER_STATUS_LABELS,
   PAYMENT_REFUND_STATUS_LABELS,
 } from '@zenith/shared';
-import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus } from '@zenith/shared';
+import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentStats, PaymentTrendPoint } from '@zenith/shared';
 import { buildOrdersWhere, buildRefundsWhere, type ListOrdersQuery, type ListRefundsQuery } from './payment.service';
 
 const EXPORT_LIMIT = 50000;
 
-export interface PaymentStats {
-  /** 累计成功金额（分） */
-  totalAmount: number;
-  /** 今日成功金额（分） */
-  todayAmount: number;
-  orderCount: number;
-  successCount: number;
-  /** 累计退款金额（分） */
-  refundAmount: number;
-  byChannel: { channel: string; count: number; amount: number }[];
-  byStatus: { status: string; count: number }[];
-}
+const round1 = (n: number): number => Math.round(n * 10) / 10;
 
 export async function getPaymentStats(): Promise<PaymentStats> {
   const user = currentUser();
@@ -50,7 +40,10 @@ export async function getPaymentStats(): Promise<PaymentStats> {
       .from(paymentOrders)
       .where(tc),
     db
-      .select({ amount: sql<number>`coalesce(sum(${paymentOrders.amount}),0)` })
+      .select({
+        amount: sql<number>`coalesce(sum(${paymentOrders.amount}),0)`,
+        count: sql<number>`count(*)`,
+      })
       .from(paymentOrders)
       .where(mergeWhere(and(inArray(paymentOrders.status, [...PAID_STATUSES]), gte(paymentOrders.paidAt, todayStart)), tc)),
     db.select({ status: paymentOrders.status, count: sql<number>`count(*)` }).from(paymentOrders).where(tc).groupBy(paymentOrders.status),
@@ -63,18 +56,77 @@ export async function getPaymentStats(): Promise<PaymentStats> {
       .from(paymentOrders)
       .where(tc)
       .groupBy(paymentOrders.channel),
-    db.select({ amount: sql<number>`coalesce(sum(${paymentRefunds.refundAmount}),0)` }).from(paymentRefunds).where(mergeWhere(eq(paymentRefunds.status, 'success'), rtc)),
+    db
+      .select({
+        amount: sql<number>`coalesce(sum(${paymentRefunds.refundAmount}),0)`,
+        count: sql<number>`count(*)`,
+      })
+      .from(paymentRefunds)
+      .where(mergeWhere(eq(paymentRefunds.status, 'success'), rtc)),
   ]);
 
+  const totalAmount = Number(totals[0]?.totalAmount ?? 0);
+  const orderCount = Number(totals[0]?.orderCount ?? 0);
+  const successCount = Number(totals[0]?.successCount ?? 0);
+  const refundAmount = Number(refundTotal[0]?.amount ?? 0);
+
   return {
-    totalAmount: Number(totals[0]?.totalAmount ?? 0),
+    totalAmount,
     todayAmount: Number(todayRow[0]?.amount ?? 0),
-    orderCount: Number(totals[0]?.orderCount ?? 0),
-    successCount: Number(totals[0]?.successCount ?? 0),
-    refundAmount: Number(refundTotal[0]?.amount ?? 0),
+    todayCount: Number(todayRow[0]?.count ?? 0),
+    orderCount,
+    successCount,
+    refundAmount,
+    refundCount: Number(refundTotal[0]?.count ?? 0),
+    successRate: orderCount > 0 ? round1((successCount / orderCount) * 100) : 0,
+    refundRate: totalAmount > 0 ? round1((refundAmount / totalAmount) * 100) : 0,
+    avgAmount: successCount > 0 ? Math.round(totalAmount / successCount) : 0,
     byChannel: byChannelRows.map((r) => ({ channel: r.channel, count: Number(r.count), amount: Number(r.amount) })),
     byStatus: byStatusRows.map((r) => ({ status: r.status, count: Number(r.count) })),
   };
+}
+
+/** 收款趋势（近 N 天，按天聚合成功金额/笔数/退款金额，缺口补 0） */
+export async function getPaymentTrend(days = 30): Promise<PaymentTrendPoint[]> {
+  const user = currentUser();
+  const tc = tenantCondition(paymentOrders, user);
+  const rtc = tenantCondition(paymentRefunds, user);
+  const safeDays = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
+
+  // 覆盖下界：多回溯 1 天，避免时区边界漏数据（多余日期不在序列内会被忽略）
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - safeDays);
+
+  const PAID_STATUSES = ['success', 'refunding', 'refunded'] as const;
+  const orderDay = sql<string>`to_char(timezone(${APP_TIME_ZONE}, ${paymentOrders.paidAt}), 'YYYY-MM-DD')`;
+  const refundDay = sql<string>`to_char(timezone(${APP_TIME_ZONE}, coalesce(${paymentRefunds.refundedAt}, ${paymentRefunds.createdAt})), 'YYYY-MM-DD')`;
+
+  const [orderRows, refundRows] = await Promise.all([
+    db
+      .select({ date: orderDay, amount: sql<number>`coalesce(sum(${paymentOrders.amount}),0)`, count: sql<number>`count(*)` })
+      .from(paymentOrders)
+      .where(mergeWhere(and(inArray(paymentOrders.status, [...PAID_STATUSES]), gte(paymentOrders.paidAt, start)), tc))
+      .groupBy(orderDay),
+    db
+      .select({ date: refundDay, amount: sql<number>`coalesce(sum(${paymentRefunds.refundAmount}),0)` })
+      .from(paymentRefunds)
+      .where(mergeWhere(and(eq(paymentRefunds.status, 'success'), gte(sql`coalesce(${paymentRefunds.refundedAt}, ${paymentRefunds.createdAt})`, start)), rtc))
+      .groupBy(refundDay),
+  ]);
+
+  const orderMap = new Map(orderRows.map((r) => [r.date, { amount: Number(r.amount), count: Number(r.count) }]));
+  const refundMap = new Map(refundRows.map((r) => [r.date, Number(r.amount)]));
+
+  const result: PaymentTrendPoint[] = [];
+  const dayMs = 86_400_000;
+  const firstDay = Date.now() - (safeDays - 1) * dayMs;
+  for (let i = 0; i < safeDays; i++) {
+    const key = formatDate(new Date(firstDay + i * dayMs));
+    const o = orderMap.get(key);
+    result.push({ date: key, amount: o?.amount ?? 0, count: o?.count ?? 0, refundAmount: refundMap.get(key) ?? 0 });
+  }
+  return result;
 }
 
 const yuan = (v: unknown): string => ((Number(v) || 0) / 100).toFixed(2);

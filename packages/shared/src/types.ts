@@ -2220,7 +2220,47 @@ export interface PaymentNotifyLog {
   ip?: string | null;
   /** 原始回调 body（最多 8000 字节），用于排查验签/对账争议 */
   rawBody?: string | null;
+  /** 回调请求头（JSON 字符串），用于排查验签/来源 */
+  headers?: string | null;
   createdAt: string;
+}
+
+/** 支付统计概览（金额单位：分） */
+export interface PaymentStats {
+  /** 累计成功金额（分） */
+  totalAmount: number;
+  /** 今日成功金额（分） */
+  todayAmount: number;
+  /** 今日成功订单数 */
+  todayCount: number;
+  /** 订单总数 */
+  orderCount: number;
+  /** 成功订单数（含退款中/已退款） */
+  successCount: number;
+  /** 累计退款金额（分） */
+  refundAmount: number;
+  /** 退款笔数（成功） */
+  refundCount: number;
+  /** 支付成功率（0-100，保留 1 位小数） */
+  successRate: number;
+  /** 退款率（退款金额/成功金额，0-100） */
+  refundRate: number;
+  /** 成功订单笔均金额（分） */
+  avgAmount: number;
+  byChannel: { channel: string; count: number; amount: number }[];
+  byStatus: { status: string; count: number }[];
+}
+
+/** 收款趋势单点（按天） */
+export interface PaymentTrendPoint {
+  /** 日期 YYYY-MM-DD */
+  date: string;
+  /** 当日成功金额（分） */
+  amount: number;
+  /** 当日成功订单数 */
+  count: number;
+  /** 当日退款金额（分） */
+  refundAmount: number;
 }
 
 /** 下单返回给前端的支付参数（按支付方式不同而不同） */

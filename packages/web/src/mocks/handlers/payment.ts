@@ -8,7 +8,7 @@ import {
   getNextPaymentRefundId,
   mockPaymentLogs,
 } from '@/mocks/data/payment';
-import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { mockDateTime, mockDateTimeOffset, mockDate } from '@/mocks/utils/date';
 import { PAYMENT_METHOD_CHANNEL } from '@zenith/shared';
 import type { PaymentChannelConfig, PaymentMethod, PaymentOrder, PaymentRefund } from '@zenith/shared';
 
@@ -24,7 +24,10 @@ export const paymentHandlers = [
     const isPaid = (s: string) => s === 'success' || s === 'refunding' || s === 'refunded';
     const paid = mockPaymentOrders.filter((o) => isPaid(o.status));
     const totalAmount = paid.reduce((s, o) => s + o.amount, 0);
-    const refundAmount = mockPaymentRefunds.filter((r) => r.status === 'success').reduce((s, r) => s + r.refundAmount, 0);
+    const successRefunds = mockPaymentRefunds.filter((r) => r.status === 'success');
+    const refundAmount = successRefunds.reduce((s, r) => s + r.refundAmount, 0);
+    const orderCount = mockPaymentOrders.length;
+    const successCount = paid.length;
     const byChannel = ['wechat', 'alipay']
       .map((channel) => {
         const list = mockPaymentOrders.filter((o) => o.channel === channel);
@@ -34,19 +37,42 @@ export const paymentHandlers = [
       .filter((c) => c.count > 0);
     const statusMap = new Map<string, number>();
     for (const o of mockPaymentOrders) statusMap.set(o.status, (statusMap.get(o.status) ?? 0) + 1);
+    const round1 = (n: number) => Math.round(n * 10) / 10;
     return HttpResponse.json({
       code: 0,
       message: 'ok',
       data: {
         totalAmount,
         todayAmount: 0,
-        orderCount: mockPaymentOrders.length,
-        successCount: paid.length,
+        todayCount: 0,
+        orderCount,
+        successCount,
         refundAmount,
+        refundCount: successRefunds.length,
+        successRate: orderCount > 0 ? round1((successCount / orderCount) * 100) : 0,
+        refundRate: totalAmount > 0 ? round1((refundAmount / totalAmount) * 100) : 0,
+        avgAmount: successCount > 0 ? Math.round(totalAmount / successCount) : 0,
         byChannel,
         byStatus: [...statusMap].map(([status, count]) => ({ status, count })),
       },
     });
+  }),
+
+  // ── 收款趋势（Demo 模式生成确定性合成数据，便于图表演示）──
+  http.get('/api/payment/trend', ({ request }) => {
+    const url = new URL(request.url);
+    const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 30, 1), 365);
+    const data = Array.from({ length: days }, (_, i) => {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - (days - 1 - i));
+      const seed = (d.getDate() * 13 + d.getMonth() * 7 + 3) % 17;
+      const count = 3 + (seed % 8);
+      const amount = count * (3900 + (seed % 5) * 1500);
+      const refundAmount = seed % 6 === 0 ? Math.round(amount * 0.12) : 0;
+      return { date: mockDate(d), amount, count, refundAmount };
+    });
+    return HttpResponse.json({ code: 0, message: 'ok', data });
   }),
 
   // ── 渠道配置 ──
@@ -115,6 +141,19 @@ export const paymentHandlers = [
     return HttpResponse.json({ code: 0, message: '操作成功', data: { success: true, message: '连通性测试通过（演示模式）', latencyMs: 48 } });
   }),
 
+  // 设为默认渠道（同渠道互斥）
+  http.post('/api/payment/channels/:id/default', ({ params }) => {
+    const target = mockPaymentChannels.find((x) => x.id === Number(params.id));
+    if (!target) return HttpResponse.json({ code: 404, message: '渠道配置不存在', data: null });
+    const now = mockDateTime();
+    for (const c of mockPaymentChannels) {
+      if (c.channel === target.channel) c.isDefault = c.id === target.id;
+    }
+    target.status = 'enabled';
+    target.updatedAt = now;
+    return HttpResponse.json({ code: 0, message: '已设为默认', data: target });
+  }),
+
   // ── 支付订单 ──
   http.get('/api/payment/orders', ({ request }) => {
     const url = new URL(request.url);
@@ -122,12 +161,22 @@ export const paymentHandlers = [
     const channel = url.searchParams.get('channel') ?? '';
     const status = url.searchParams.get('status') ?? '';
     const bizType = url.searchParams.get('bizType') ?? '';
+    const payMethod = url.searchParams.get('payMethod') ?? '';
+    const minAmount = url.searchParams.get('minAmount');
+    const maxAmount = url.searchParams.get('maxAmount');
+    const startTime = url.searchParams.get('startTime');
+    const endTime = url.searchParams.get('endTime');
     const filtered = mockPaymentOrders.filter(
       (o) =>
         (!keyword || o.orderNo.includes(keyword) || o.subject.includes(keyword)) &&
         (!channel || o.channel === channel) &&
         (!status || o.status === status) &&
-        (!bizType || o.bizType === bizType),
+        (!bizType || o.bizType === bizType) &&
+        (!payMethod || o.payMethod === payMethod) &&
+        (minAmount == null || o.amount >= Number(minAmount)) &&
+        (maxAmount == null || o.amount <= Number(maxAmount)) &&
+        (!startTime || o.createdAt >= startTime) &&
+        (!endTime || o.createdAt <= endTime),
     );
     return HttpResponse.json({ code: 0, message: 'ok', data: paginate(filtered, url) });
   }),
@@ -199,10 +248,30 @@ export const paymentHandlers = [
     const keyword = url.searchParams.get('keyword') ?? '';
     const channel = url.searchParams.get('channel') ?? '';
     const status = url.searchParams.get('status') ?? '';
+    const startTime = url.searchParams.get('startTime');
+    const endTime = url.searchParams.get('endTime');
     const filtered = mockPaymentRefunds.filter(
-      (r) => (!keyword || r.refundNo.includes(keyword) || r.orderNo.includes(keyword)) && (!channel || r.channel === channel) && (!status || r.status === status),
+      (r) =>
+        (!keyword || r.refundNo.includes(keyword) || r.orderNo.includes(keyword)) &&
+        (!channel || r.channel === channel) &&
+        (!status || r.status === status) &&
+        (!startTime || r.createdAt >= startTime) &&
+        (!endTime || r.createdAt <= endTime),
     );
     return HttpResponse.json({ code: 0, message: 'ok', data: paginate(filtered, url) });
+  }),
+  // 退款查单同步（Demo 模式将处理中退款置为成功）
+  http.post('/api/payment/refunds/:id/query', ({ params }) => {
+    const r = mockPaymentRefunds.find((x) => x.id === Number(params.id));
+    if (!r) return HttpResponse.json({ code: 404, message: '退款记录不存在', data: null });
+    if (r.status === 'processing' || r.status === 'pending') {
+      r.status = 'success';
+      r.refundedAt = mockDateTime();
+      r.updatedAt = mockDateTime();
+      const order = mockPaymentOrders.find((o) => o.orderNo === r.orderNo);
+      if (order) order.status = r.refundAmount >= order.amount ? 'refunded' : 'success';
+    }
+    return HttpResponse.json({ code: 0, message: '已同步', data: r });
   }),
   http.get('/api/payment/refunds/export', () => new HttpResponse('\uFEFF退款单号,金额(元)\nREF1700000000003,19.00\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8' } })),
   http.get('/api/payment/refunds/export/csv', () => new HttpResponse('\uFEFF退款单号,金额(元)\nREF1700000000003,19.00\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8' } })),
@@ -216,7 +285,19 @@ export const paymentHandlers = [
     const url = new URL(request.url);
     const keyword = url.searchParams.get('keyword') ?? '';
     const channel = url.searchParams.get('channel') ?? '';
-    const filtered = mockPaymentLogs.filter((l) => (!keyword || (l.orderNo ?? '').includes(keyword)) && (!channel || l.channel === channel));
+    const scene = url.searchParams.get('scene') ?? '';
+    const signatureValid = url.searchParams.get('signatureValid');
+    const startTime = url.searchParams.get('startTime');
+    const endTime = url.searchParams.get('endTime');
+    const filtered = mockPaymentLogs.filter(
+      (l) =>
+        (!keyword || (l.orderNo ?? '').includes(keyword)) &&
+        (!channel || l.channel === channel) &&
+        (!scene || l.scene === scene) &&
+        (signatureValid == null || l.signatureValid === (signatureValid === 'true')) &&
+        (!startTime || l.createdAt >= startTime) &&
+        (!endTime || l.createdAt <= endTime),
+    );
     return HttpResponse.json({ code: 0, message: 'ok', data: paginate(filtered, url) });
   }),
 ];

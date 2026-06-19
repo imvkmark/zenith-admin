@@ -12,6 +12,7 @@ export const DATE_FORMAT = 'YYYY-MM-DD';
 export const FILE_TIMESTAMP_FORMAT = 'YYYYMMDD_HHmmss';
 
 const APP_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TZ || 'Asia/Shanghai';
+export { APP_TIME_ZONE };
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 type DateInput = Date | string | number;

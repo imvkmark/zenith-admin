@@ -25,6 +25,7 @@ import {
   CreatePaymentResponseDTO,
   PaymentRefundResultDTO,
   PaymentStatsDTO,
+  PaymentTrendPointDTO,
   ChannelConnectivityResultDTO,
 } from '../lib/openapi-dtos';
 import { getClientIp } from '../lib/request-helpers';
@@ -35,6 +36,7 @@ import {
   createChannelConfig,
   updateChannelConfig,
   deleteChannelConfig,
+  setChannelAsDefault,
 } from '../services/payment-channels.service';
 import {
   listOrders,
@@ -45,10 +47,11 @@ import {
   refund,
   listRefunds,
   getRefundDetail,
+  refreshRefundById,
   listNotifyLogs,
   testChannelConnectivity,
 } from '../services/payment.service';
-import { getPaymentStats, exportOrders, exportOrdersCsv, exportRefunds, exportRefundsCsv } from '../services/payment-stats.service';
+import { getPaymentStats, getPaymentTrend, exportOrders, exportOrdersCsv, exportRefunds, exportRefundsCsv } from '../services/payment-stats.service';
 
 const paymentRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -100,7 +103,10 @@ const listQuery = PaginationQuery.extend({
   keyword: z.string().optional(),
   channel: channelEnum.optional(),
   status: z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']).optional(),
+  payMethod: payMethodEnum.optional(),
   bizType: z.string().optional(),
+  minAmount: z.coerce.number().int().nonnegative().optional(),
+  maxAmount: z.coerce.number().int().nonnegative().optional(),
   startTime: z.string().optional(),
   endTime: z.string().optional(),
 });
@@ -109,6 +115,17 @@ const refundsQuery = z.object({
   keyword: z.string().optional(),
   channel: channelEnum.optional(),
   status: z.enum(['pending', 'processing', 'success', 'failed']).optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+});
+
+const logsQuery = PaginationQuery.extend({
+  keyword: z.string().optional(),
+  channel: channelEnum.optional(),
+  scene: z.enum(['payment', 'refund']).optional(),
+  signatureValid: z.enum(['true', 'false']).optional().transform((v) => (v == null ? undefined : v === 'true')),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
 });
 
 // ─── 渠道配置 ───────────────────────────────────────────────────────────────────
@@ -203,6 +220,22 @@ const channelTestRoute = defineOpenAPIRoute({
   },
 });
 
+const channelSetDefaultRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/channels/{id}/default', tags: ['支付中心'], summary: '设为默认渠道',
+    description: '将指定渠道配置设为该渠道（微信/支付宝）的默认，并自动启用；同渠道内其他配置取消默认。',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:channel:update', audit: { description: '设为默认支付渠道', module: '支付中心' } })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(PaymentChannelConfigDTO, '设置成功'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getChannelConfig(id));
+    return c.json(okBody(await setChannelAsDefault(id), '已设为默认'), 200);
+  },
+});
+
 // ─── 支付订单 ─────────────────────────────────────────────────────────────
 const ordersListRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -281,7 +314,7 @@ const refundsListRoute = defineOpenAPIRoute({
     method: 'get', path: '/refunds', tags: ['支付中心'], summary: '退款记录列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'payment:refund:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), channel: channelEnum.optional(), status: z.enum(['pending', 'processing', 'success', 'failed']).optional() }) },
+    request: { query: PaginationQuery.merge(refundsQuery) },
     responses: { ...okPaginated(PaymentRefundDTO, '退款列表'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await listRefunds(c.req.valid('query'))), 200),
@@ -298,13 +331,25 @@ const refundGetRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getRefundDetail(c.req.valid('param').id)), 200),
 });
 
+const refundQueryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/refunds/{id}/query', tags: ['支付中心'], summary: '主动查询并同步退款状态',
+    description: '向支付渠道发起退款查单，纠正本地退款单状态（处理中→成功/失败），回调兜底。',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:refund:list' })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(PaymentRefundDTO, '最新退款状态'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await refreshRefundById(c.req.valid('param').id), '已同步'), 200),
+});
+
 // ─── 回调日志 ─────────────────────────────────────────────────────────────────────
 const logsListRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get', path: '/logs', tags: ['支付中心'], summary: '支付回调日志',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'payment:log:list' })] as const,
-    request: { query: PaginationQuery.extend({ keyword: z.string().optional(), channel: channelEnum.optional() }) },
+    request: { query: logsQuery },
     responses: { ...okPaginated(PaymentNotifyLogDTO, '回调日志'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await listNotifyLogs(c.req.valid('query'))), 200),
@@ -320,6 +365,17 @@ const statsRoute = defineOpenAPIRoute({
     responses: { ...ok(PaymentStatsDTO, '统计概览'), ...commonErrorResponses },
   }),
   handler: async (c) => c.json(okBody(await getPaymentStats()), 200),
+});
+
+const trendRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/trend', tags: ['支付中心'], summary: '收款趋势（近 N 天）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'payment:order:list' })] as const,
+    request: { query: z.object({ days: z.coerce.number().int().min(1).max(365).optional().default(30) }) },
+    responses: { ...ok(z.array(PaymentTrendPointDTO), '收款趋势'), ...commonErrorResponses },
+  }),
+  handler: async (c) => c.json(okBody(await getPaymentTrend(c.req.valid('query').days)), 200),
 });
 
 const ordersExportRoute = defineOpenAPIRoute({
@@ -368,6 +424,7 @@ const refundsExportCsvRoute = defineOpenAPIRoute({
 
 paymentRouter.openapiRoutes([
   statsRoute,
+  trendRoute,
   channelsAllRoute,
   channelsListRoute,
   channelGetRoute,
@@ -375,6 +432,7 @@ paymentRouter.openapiRoutes([
   channelUpdateRoute,
   channelDeleteRoute,
   channelTestRoute,
+  channelSetDefaultRoute,
   ordersListRoute,
   orderCreateRoute,
   ordersExportRoute,
@@ -387,6 +445,7 @@ paymentRouter.openapiRoutes([
   refundsExportRoute,
   refundsExportCsvRoute,
   refundGetRoute,
+  refundQueryRoute,
   logsListRoute,
 ] as const);
 

@@ -38,6 +38,7 @@ export default function PaymentChannelsPage() {
   const [formChannel, setFormChannel] = useState<PaymentChannel>('wechat');
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [testingIds, setTestingIds] = useState<Set<number>>(new Set());
+  const [defaultingIds, setDefaultingIds] = useState<Set<number>>(new Set());
 
   const fetchList = useCallback(
     async (p = page, ps = pageSize, params?: SearchParams) => {
@@ -184,6 +185,21 @@ export default function PaymentChannelsPage() {
       .finally(() => setTestingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
   }
 
+  function handleSetDefault(record: PaymentChannelConfig) {
+    setDefaultingIds((prev) => new Set(prev).add(record.id));
+    request
+      .post(`/api/payment/channels/${record.id}/default`, {})
+      .then((res) => {
+        if (res.code === 0) {
+          Toast.success(`已将「${record.name}」设为默认${PAYMENT_CHANNEL_LABELS[record.channel]}渠道`);
+          void fetchList();
+        } else {
+          Toast.error(`设置失败：${res.message}`);
+        }
+      })
+      .finally(() => setDefaultingIds((prev) => { const s = new Set(prev); s.delete(record.id); return s; }));
+  }
+
   const columns: ColumnProps<PaymentChannelConfig>[] = [
     { title: '名称', dataIndex: 'name', width: 180 },
     { title: '渠道', dataIndex: 'channel', width: 110, render: (v: PaymentChannel) => <Tag color={v === 'wechat' ? 'green' : 'blue'}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
@@ -197,9 +213,10 @@ export default function PaymentChannelsPage() {
       ),
     },
     {
-      title: '操作', fixed: 'right', width: 180,
+      title: '操作', fixed: 'right', width: 250,
       render: (_: unknown, r: PaymentChannelConfig) => (
         <Space>
+          {hasPermission('payment:channel:update') && !r.isDefault && <Button theme="borderless" size="small" loading={defaultingIds.has(r.id)} onClick={() => handleSetDefault(r)}>设为默认</Button>}
           {hasPermission('payment:channel:update') && <Button theme="borderless" size="small" icon={<Wifi size={12} />} loading={testingIds.has(r.id)} onClick={() => handleTest(r)}>测试</Button>}
           {hasPermission('payment:channel:update') && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
           {hasPermission('payment:channel:delete') && (
