@@ -93,7 +93,6 @@ function MappingEditor({
         <Typography.Text type="tertiary" size="small">暂无映射，点击下方按钮添加</Typography.Text>
       )}
       {pairs.map(([k, val], idx) => (
-        // eslint-disable-next-line react/no-array-index-key
         <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Select
             value={k || undefined}
