@@ -738,13 +738,13 @@ export default function FrontendErrorsPage() {
     {
       title: '首次',
       dataIndex: 'firstSeenAt',
-      width: 170,
+      width: 180,
       render: (value) => formatDateTime(String(value)),
     },
     {
       title: '最近',
       dataIndex: 'lastSeenAt',
-      width: 170,
+      width: 180,
       render: (value) => formatDateTime(String(value)),
     },
     {
@@ -757,7 +757,7 @@ export default function FrontendErrorsPage() {
     {
       title: '操作',
       key: 'operation',
-      width: 210,
+      width: 240,
       fixed: 'right',
       render: (_value, record) => (
         <Space spacing={2}>
@@ -793,7 +793,7 @@ export default function FrontendErrorsPage() {
       width: 260,
       render: (_value, record) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 230 }}>{record.pageUrl || '–'}</Text>,
     },
-    { title: '时间', dataIndex: 'createdAt', width: 170, render: (value) => formatDateTime(String(value)) },
+    { title: '时间', dataIndex: 'createdAt', width: 180, render: (value) => formatDateTime(String(value)) },
   ], []);
 
   const sourceMapColumns = useMemo<ColumnProps<SourceMapItem>[]>(() => [
