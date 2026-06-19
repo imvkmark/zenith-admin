@@ -363,6 +363,86 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   color: #fff;
 }
 
+/* ─── 运行态节点卡片（实例详情流程图叠加状态） ─────────────────────── */
+
+.fd-node-card--rt {
+  cursor: default;
+  width: 240px;
+}
+
+/* 左侧状态色条 + 描边 */
+.fd-node-card--rt-approved { box-shadow: 0 0 0 1px var(--semi-color-success); }
+.fd-node-card--rt-rejected { box-shadow: 0 0 0 1px var(--semi-color-danger); }
+.fd-node-card--rt-pending  { box-shadow: 0 0 0 2px var(--semi-color-primary); }
+.fd-node-card--rt-waiting  { box-shadow: 0 0 0 1px var(--semi-color-border); }
+.fd-node-card--rt-skipped  { opacity: 0.75; }
+
+/* 头部状态徽标 */
+.fd-node-card__rt-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.fd-node-card__body--rt {
+  display: block;
+  padding: 8px 10px;
+}
+
+.fd-node-card__rt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fd-node-card__rt-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fd-node-card__rt-name {
+  font-size: 13px;
+  color: var(--semi-color-text-0);
+  max-width: 78px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-node-card__rt-status {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 18px;
+}
+
+.fd-node-card__rt-status--approved { color: var(--semi-color-success); background: var(--semi-color-success-light-default); }
+.fd-node-card__rt-status--rejected { color: var(--semi-color-danger); background: var(--semi-color-danger-light-default); }
+.fd-node-card__rt-status--pending  { color: var(--semi-color-primary); background: var(--semi-color-primary-light-default); }
+.fd-node-card__rt-status--waiting  { color: var(--semi-color-text-2); background: var(--semi-color-fill-1); }
+.fd-node-card__rt-status--skipped  { color: var(--semi-color-text-2); background: var(--semi-color-fill-1); }
+
+.fd-node-card__rt-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+}
+
+/* 未命中分支置灰 */
+.fd-branch-col--dimmed {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+}
+
 /* 每条分支列 */
 .fd-branch-col {
   display: flex;
