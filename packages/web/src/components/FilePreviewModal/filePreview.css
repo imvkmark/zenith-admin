@@ -73,6 +73,32 @@
   height: auto;
 }
 
+/*
+ * 关键：播放器自带的文字/图标色基于 --semi-color-bg-0（暗色模式下≈纯黑），
+ * 背景透明后会糊在深色播放条上不可读。统一改用语义文字色，明暗主题均清晰。
+ */
+.zenith-audio-dock .semi-audio-player-info-title {
+  color: var(--semi-color-text-0);
+}
+
+.zenith-audio-dock .semi-audio-player-info-time {
+  color: var(--semi-color-text-2);
+}
+
+.zenith-audio-dock .semi-audio-player-control-button-icon {
+  color: var(--semi-color-text-1);
+}
+
+/* 播放键改用主色实心圆，明暗主题都醒目、对比清晰 */
+.zenith-audio-dock .semi-audio-player-control-button-play {
+  background: var(--semi-color-primary) !important;
+  color: #fff !important;
+}
+
+.zenith-audio-dock .semi-audio-player-control-button-play:hover {
+  background: var(--semi-color-primary-hover) !important;
+}
+
 .zenith-audio-preview .semi-audio-player-info-container,
 .zenith-audio-preview .semi-audio-player-info {
   flex: 1 1 auto;
