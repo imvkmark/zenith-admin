@@ -588,7 +588,7 @@ export default function FilesPage() {
     <div className="page-container">
       <Tabs defaultActiveKey="list" type="line">
         <TabPane tab="文件列表" itemKey="list">
-      <SearchToolbar className="files-toolbar">
+      <SearchToolbar>
           <Input
             prefix={<Search size={14} />}
             placeholder="搜索文件名 / 对象键 / 文件服务"
