@@ -1,4 +1,4 @@
-import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus } from './constants';
+import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentRefundApprovalStatus, PaymentReconStatus, PaymentReconResult, PaymentWebhookDeliveryStatus, PaymentLedgerDirection, PaymentLedgerType, MemberStatus, PointTxType, WalletTxType, CouponType, CouponValidType, CouponTemplateStatus, MemberCouponStatus } from './constants';
 
 export type EntityStatus = 'enabled' | 'disabled';
 
@@ -3089,11 +3089,90 @@ export interface PaymentRefund {
   totalAmount: number; // 分
   reason?: string | null;
   status: PaymentRefundStatus;
+  approvalStatus: PaymentRefundApprovalStatus;
+  appliedById?: number | null;
+  approverId?: number | null;
+  approvedAt?: string | null;
+  approvalRemark?: string | null;
   operatorId?: number | null;
   refundedAt?: string | null;
   errorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PaymentReconBatch {
+  id: number;
+  batchNo: string;
+  channel: PaymentChannel;
+  billDate: string;
+  status: PaymentReconStatus;
+  localCount: number;
+  localAmount: number;
+  channelCount: number;
+  channelAmount: number;
+  matchedCount: number;
+  diffCount: number;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentReconItem {
+  id: number;
+  batchId: number;
+  orderNo?: string | null;
+  channelTradeNo?: string | null;
+  localAmount?: number | null;
+  channelAmount?: number | null;
+  localStatus?: string | null;
+  channelStatus?: string | null;
+  result: PaymentReconResult;
+  remark?: string | null;
+  createdAt: string;
+}
+
+export interface PaymentWebhookEndpoint {
+  id: number;
+  name: string;
+  url: string;
+  bizType?: string | null;
+  events: string[];
+  status: 'enabled' | 'disabled';
+  hasSecret?: boolean;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentWebhookDelivery {
+  id: number;
+  endpointId: number;
+  endpointName?: string | null;
+  eventType: string;
+  orderNo?: string | null;
+  payload?: string | null;
+  status: PaymentWebhookDeliveryStatus;
+  attempts: number;
+  httpStatus?: number | null;
+  responseBody?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentLedgerEntry {
+  id: number;
+  entryNo: string;
+  direction: PaymentLedgerDirection;
+  type: PaymentLedgerType;
+  amount: number;
+  orderNo?: string | null;
+  refundNo?: string | null;
+  channel?: PaymentChannel | null;
+  bizType?: string | null;
+  remark?: string | null;
+  createdAt: string;
 }
 
 export interface PaymentNotifyLog {

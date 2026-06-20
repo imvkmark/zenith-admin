@@ -102,6 +102,43 @@ export const PAYMENT_REFUND_STATUS_LABELS: Record<PaymentRefundStatus, string> =
   failed: '退款失败',
 };
 
+// ─── 支付中心扩展 · A 档（退款审批 / 对账 / Webhook / 资金台账）────────────────
+export const PAYMENT_REFUND_APPROVAL_STATUSES = ['none', 'pending', 'approved', 'rejected'] as const;
+export type PaymentRefundApprovalStatus = typeof PAYMENT_REFUND_APPROVAL_STATUSES[number];
+export const PAYMENT_REFUND_APPROVAL_STATUS_LABELS: Record<PaymentRefundApprovalStatus, string> = {
+  none: '无需审批', pending: '待审批', approved: '已批准', rejected: '已驳回',
+};
+
+export const PAYMENT_RECON_STATUSES = ['pending', 'comparing', 'done', 'failed'] as const;
+export type PaymentReconStatus = typeof PAYMENT_RECON_STATUSES[number];
+export const PAYMENT_RECON_STATUS_LABELS: Record<PaymentReconStatus, string> = {
+  pending: '待对账', comparing: '比对中', done: '已完成', failed: '失败',
+};
+
+export const PAYMENT_RECON_RESULTS = ['matched', 'local_only', 'channel_only', 'amount_diff', 'status_diff'] as const;
+export type PaymentReconResult = typeof PAYMENT_RECON_RESULTS[number];
+export const PAYMENT_RECON_RESULT_LABELS: Record<PaymentReconResult, string> = {
+  matched: '一致', local_only: '本地有渠道无', channel_only: '渠道有本地无', amount_diff: '金额不一致', status_diff: '状态不一致',
+};
+
+export const PAYMENT_WEBHOOK_DELIVERY_STATUSES = ['pending', 'success', 'failed'] as const;
+export type PaymentWebhookDeliveryStatus = typeof PAYMENT_WEBHOOK_DELIVERY_STATUSES[number];
+export const PAYMENT_WEBHOOK_DELIVERY_STATUS_LABELS: Record<PaymentWebhookDeliveryStatus, string> = {
+  pending: '待投递', success: '成功', failed: '失败',
+};
+
+export const PAYMENT_LEDGER_DIRECTIONS = ['in', 'out'] as const;
+export type PaymentLedgerDirection = typeof PAYMENT_LEDGER_DIRECTIONS[number];
+export const PAYMENT_LEDGER_DIRECTION_LABELS: Record<PaymentLedgerDirection, string> = {
+  in: '收入', out: '支出',
+};
+
+export const PAYMENT_LEDGER_TYPES = ['payment', 'refund', 'fee', 'settlement', 'adjust'] as const;
+export type PaymentLedgerType = typeof PAYMENT_LEDGER_TYPES[number];
+export const PAYMENT_LEDGER_TYPE_LABELS: Record<PaymentLedgerType, string> = {
+  payment: '收款', refund: '退款', fee: '手续费', settlement: '结算', adjust: '调整',
+};
+
 // ─── 会员中心（Member Center）────────────────────────────────────────
 /** 会员前台 token 的 localStorage key（与管理员 zenith_token 隔离）*/
 export const MEMBER_TOKEN_KEY = 'zenith_member_token';

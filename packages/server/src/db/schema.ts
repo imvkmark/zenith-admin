@@ -1769,6 +1769,9 @@ export const paymentOrderStatusEnum = pgEnum('payment_order_status', [
 export const paymentRefundStatusEnum = pgEnum('payment_refund_status', [
   'pending', 'processing', 'success', 'failed',
 ]);
+export const paymentRefundApprovalStatusEnum = pgEnum('payment_refund_approval_status', [
+  'none', 'pending', 'approved', 'rejected',
+]);
 
 // ─── 支付渠道配置表（密钥字段以 encryptField 加密存储）─────────────────────────
 export const paymentChannelConfigs = pgTable('payment_channel_configs', {
@@ -1854,6 +1857,11 @@ export const paymentRefunds = pgTable('payment_refunds', {
   totalAmount: integer('total_amount').notNull(),
   reason: varchar('reason', { length: 256 }),
   status: paymentRefundStatusEnum('status').notNull().default('pending'),
+  approvalStatus: paymentRefundApprovalStatusEnum('approval_status').notNull().default('none'),
+  appliedById: integer('applied_by_id').references(() => users.id, { onDelete: 'set null' }),
+  approverId: integer('approver_id').references(() => users.id, { onDelete: 'set null' }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  approvalRemark: varchar('approval_remark', { length: 256 }),
   operatorId: integer('operator_id').references(() => users.id, { onDelete: 'set null' }),
   refundedAt: timestamp('refunded_at', { withTimezone: true }),
   notifyData: text('notify_data'),
@@ -1920,6 +1928,124 @@ export const paymentOrdersRelations = relations(paymentOrders, ({ one, many }) =
 }));
 export const paymentRefundsRelations = relations(paymentRefunds, ({ one }) => ({
   order: one(paymentOrders, { fields: [paymentRefunds.orderId], references: [paymentOrders.id] }),
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 支付中心扩展 · A 档（对账 / Webhook / 资金台账）
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── 对账中心 ─────────────────────────────────────────────────────────────────
+export const paymentReconStatusEnum = pgEnum('payment_recon_status', ['pending', 'comparing', 'done', 'failed']);
+export const paymentReconResultEnum = pgEnum('payment_recon_result', ['matched', 'local_only', 'channel_only', 'amount_diff', 'status_diff']);
+
+export const paymentReconBatches = pgTable('payment_recon_batches', {
+  id: serial('id').primaryKey(),
+  batchNo: varchar('batch_no', { length: 64 }).notNull().unique(),
+  channel: paymentChannelEnum('channel').notNull(),
+  billDate: varchar('bill_date', { length: 10 }).notNull(),
+  status: paymentReconStatusEnum('status').notNull().default('pending'),
+  localCount: integer('local_count').notNull().default(0),
+  localAmount: integer('local_amount').notNull().default(0),
+  channelCount: integer('channel_count').notNull().default(0),
+  channelAmount: integer('channel_amount').notNull().default(0),
+  matchedCount: integer('matched_count').notNull().default(0),
+  diffCount: integer('diff_count').notNull().default(0),
+  remark: varchar('remark', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [index('payment_recon_batches_date_idx').on(t.billDate)]);
+export type PaymentReconBatchRow = typeof paymentReconBatches.$inferSelect;
+export type NewPaymentReconBatch = typeof paymentReconBatches.$inferInsert;
+
+export const paymentReconItems = pgTable('payment_recon_items', {
+  id: serial('id').primaryKey(),
+  batchId: integer('batch_id').notNull().references(() => paymentReconBatches.id, { onDelete: 'cascade' }),
+  orderNo: varchar('order_no', { length: 64 }),
+  channelTradeNo: varchar('channel_trade_no', { length: 128 }),
+  localAmount: integer('local_amount'),
+  channelAmount: integer('channel_amount'),
+  localStatus: varchar('local_status', { length: 32 }),
+  channelStatus: varchar('channel_status', { length: 32 }),
+  result: paymentReconResultEnum('result').notNull(),
+  remark: varchar('remark', { length: 256 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('payment_recon_items_batch_idx').on(t.batchId)]);
+export type PaymentReconItemRow = typeof paymentReconItems.$inferSelect;
+export type NewPaymentReconItem = typeof paymentReconItems.$inferInsert;
+
+// ─── 业务方 Webhook ───────────────────────────────────────────────────────────
+export const paymentWebhookDeliveryStatusEnum = pgEnum('payment_webhook_delivery_status', ['pending', 'success', 'failed']);
+
+export const paymentWebhookEndpoints = pgTable('payment_webhook_endpoints', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  url: varchar('url', { length: 512 }).notNull(),
+  secretEncrypted: text('secret_encrypted'),
+  bizType: varchar('biz_type', { length: 64 }),
+  events: jsonb('events').$type<string[]>().default([]).notNull(),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: varchar('remark', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type PaymentWebhookEndpointRow = typeof paymentWebhookEndpoints.$inferSelect;
+export type NewPaymentWebhookEndpoint = typeof paymentWebhookEndpoints.$inferInsert;
+
+export const paymentWebhookDeliveries = pgTable('payment_webhook_deliveries', {
+  id: serial('id').primaryKey(),
+  endpointId: integer('endpoint_id').notNull().references(() => paymentWebhookEndpoints.id, { onDelete: 'cascade' }),
+  eventType: varchar('event_type', { length: 32 }).notNull(),
+  orderNo: varchar('order_no', { length: 64 }),
+  payload: text('payload').notNull(),
+  status: paymentWebhookDeliveryStatusEnum('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  httpStatus: integer('http_status'),
+  responseBody: varchar('response_body', { length: 1024 }),
+  lastError: varchar('last_error', { length: 512 }),
+  nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [index('payment_webhook_deliveries_endpoint_idx').on(t.endpointId), index('payment_webhook_deliveries_status_idx').on(t.status)]);
+export type PaymentWebhookDeliveryRow = typeof paymentWebhookDeliveries.$inferSelect;
+export type NewPaymentWebhookDelivery = typeof paymentWebhookDeliveries.$inferInsert;
+
+// ─── 资金流水台账 ─────────────────────────────────────────────────────────────
+export const paymentLedgerDirectionEnum = pgEnum('payment_ledger_direction', ['in', 'out']);
+export const paymentLedgerTypeEnum = pgEnum('payment_ledger_type', ['payment', 'refund', 'fee', 'settlement', 'adjust']);
+
+export const paymentLedgerEntries = pgTable('payment_ledger_entries', {
+  id: serial('id').primaryKey(),
+  entryNo: varchar('entry_no', { length: 64 }).notNull().unique(),
+  direction: paymentLedgerDirectionEnum('direction').notNull(),
+  type: paymentLedgerTypeEnum('type').notNull(),
+  amount: integer('amount').notNull(),
+  orderNo: varchar('order_no', { length: 64 }),
+  refundNo: varchar('refund_no', { length: 64 }),
+  channel: paymentChannelEnum('channel'),
+  bizType: varchar('biz_type', { length: 64 }),
+  remark: varchar('remark', { length: 256 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('payment_ledger_order_idx').on(t.orderNo), index('payment_ledger_type_idx').on(t.type)]);
+export type PaymentLedgerEntryRow = typeof paymentLedgerEntries.$inferSelect;
+export type NewPaymentLedgerEntry = typeof paymentLedgerEntries.$inferInsert;
+
+export const paymentReconBatchesRelations = relations(paymentReconBatches, ({ many }) => ({
+  items: many(paymentReconItems),
+}));
+export const paymentReconItemsRelations = relations(paymentReconItems, ({ one }) => ({
+  batch: one(paymentReconBatches, { fields: [paymentReconItems.batchId], references: [paymentReconBatches.id] }),
+}));
+export const paymentWebhookEndpointsRelations = relations(paymentWebhookEndpoints, ({ many }) => ({
+  deliveries: many(paymentWebhookDeliveries),
+}));
+export const paymentWebhookDeliveriesRelations = relations(paymentWebhookDeliveries, ({ one }) => ({
+  endpoint: one(paymentWebhookEndpoints, { fields: [paymentWebhookDeliveries.endpointId], references: [paymentWebhookEndpoints.id] }),
 }));
 
 // ─── 关系声明（Drizzle Relational Query API）──────────────────────────────────

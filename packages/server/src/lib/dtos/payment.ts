@@ -7,6 +7,12 @@ const channelEnum = z.enum(['wechat', 'alipay']);
 const payMethodEnum = z.enum(['wechat_native', 'wechat_jsapi', 'wechat_h5', 'alipay_page', 'alipay_wap', 'alipay_app']);
 const orderStatusEnum = z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']);
 const refundStatusEnum = z.enum(['pending', 'processing', 'success', 'failed']);
+const refundApprovalEnum = z.enum(['none', 'pending', 'approved', 'rejected']);
+const reconStatusEnum = z.enum(['pending', 'comparing', 'done', 'failed']);
+const reconResultEnum = z.enum(['matched', 'local_only', 'channel_only', 'amount_diff', 'status_diff']);
+const webhookDeliveryStatusEnum = z.enum(['pending', 'success', 'failed']);
+const ledgerDirectionEnum = z.enum(['in', 'out']);
+const ledgerTypeEnum = z.enum(['payment', 'refund', 'fee', 'settlement', 'adjust']);
 
 export const PaymentChannelConfigDTO = z
   .object({
@@ -76,6 +82,11 @@ export const PaymentRefundDTO = z
     totalAmount: z.number().int().openapi({ description: '原订单金额（分）' }),
     reason: z.string().nullable().optional(),
     status: refundStatusEnum,
+    approvalStatus: refundApprovalEnum,
+    appliedById: z.number().int().nullable().optional(),
+    approverId: z.number().int().nullable().optional(),
+    approvedAt: z.string().nullable().optional(),
+    approvalRemark: z.string().nullable().optional(),
     operatorId: z.number().int().nullable().optional(),
     refundedAt: z.string().nullable().optional(),
     errorMessage: z.string().nullable().optional(),
@@ -162,3 +173,88 @@ export const ChannelConnectivityResultDTO = z
     latencyMs: z.number().openapi({ description: '探测耗时（毫秒）' }),
   })
   .openapi('ChannelConnectivityResult');
+
+// ─── A 档：对账 / Webhook / 资金台账 ─────────────────────────────────────────
+export const PaymentReconBatchDTO = z
+  .object({
+    id: z.number().int(),
+    batchNo: z.string(),
+    channel: channelEnum,
+    billDate: z.string(),
+    status: reconStatusEnum,
+    localCount: z.number().int(),
+    localAmount: z.number().int(),
+    channelCount: z.number().int(),
+    channelAmount: z.number().int(),
+    matchedCount: z.number().int(),
+    diffCount: z.number().int(),
+    remark: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentReconBatch');
+
+export const PaymentReconItemDTO = z
+  .object({
+    id: z.number().int(),
+    batchId: z.number().int(),
+    orderNo: z.string().nullable().optional(),
+    channelTradeNo: z.string().nullable().optional(),
+    localAmount: z.number().int().nullable().optional(),
+    channelAmount: z.number().int().nullable().optional(),
+    localStatus: z.string().nullable().optional(),
+    channelStatus: z.string().nullable().optional(),
+    result: reconResultEnum,
+    remark: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .openapi('PaymentReconItem');
+
+export const PaymentWebhookEndpointDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    url: z.string(),
+    bizType: z.string().nullable().optional(),
+    events: z.array(z.string()),
+    status: z.enum(['enabled', 'disabled']),
+    hasSecret: z.boolean().optional(),
+    remark: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentWebhookEndpoint');
+
+export const PaymentWebhookDeliveryDTO = z
+  .object({
+    id: z.number().int(),
+    endpointId: z.number().int(),
+    endpointName: z.string().nullable().optional(),
+    eventType: z.string(),
+    orderNo: z.string().nullable().optional(),
+    payload: z.string().nullable().optional(),
+    status: webhookDeliveryStatusEnum,
+    attempts: z.number().int(),
+    httpStatus: z.number().int().nullable().optional(),
+    responseBody: z.string().nullable().optional(),
+    lastError: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PaymentWebhookDelivery');
+
+export const PaymentLedgerEntryDTO = z
+  .object({
+    id: z.number().int(),
+    entryNo: z.string(),
+    direction: ledgerDirectionEnum,
+    type: ledgerTypeEnum,
+    amount: z.number().int(),
+    orderNo: z.string().nullable().optional(),
+    refundNo: z.string().nullable().optional(),
+    channel: channelEnum.nullable().optional(),
+    bizType: z.string().nullable().optional(),
+    remark: z.string().nullable().optional(),
+    createdAt: z.string(),
+  })
+  .openapi('PaymentLedgerEntry');
