@@ -1289,6 +1289,22 @@ export const setConversationSystemPromptSchema = z.object({
   systemPrompt: z.string().max(5000).nullable(),
 });
 
+export const aiFeedbackReasonEnum = z.enum(['inaccurate', 'irrelevant', 'harmful', 'other']);
+export const aiFeedbackStatusEnum = z.enum(['pending', 'resolved', 'ignored']);
+
+export const submitAiFeedbackSchema = z.object({
+  feedback: z.union([z.literal(1), z.literal(-1), z.null()]),
+  reason: z.string().max(200).nullable().optional(),
+});
+
+export const updateAiFeedbackStatusSchema = z.object({
+  status: aiFeedbackStatusEnum,
+  remark: z.string().max(500).nullable().optional(),
+});
+
+export type SubmitAiFeedbackInput = z.infer<typeof submitAiFeedbackSchema>;
+export type UpdateAiFeedbackStatusInput = z.infer<typeof updateAiFeedbackStatusSchema>;
+
 // ─── 数据脱敏配置 Schema ──────────────────────────────────────────────────────
 
 export const maskTypeValues = ['phone', 'email', 'id_card', 'name', 'bank_card', 'custom'] as const;

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
-import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox } from 'lucide-react';
+import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox, Download } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { useAuth } from '@/hooks/useAuth';
@@ -66,6 +66,20 @@ function MessageEditWidget({ msgId, defaultText, onSubmit, onCancel }: MessageEd
 const AI_AVATAR = 'https://lf3-static.bytednsdoc.com/obj/eden-cn/ptlz_zlp/ljhwZthlaukjlkulzlp/other/logo.png';
 
 const DEFAULT_MODEL_OPTIONS: { value: string; label: string; source: 'system' | 'user' }[] = [];
+
+const SUGGESTED_QUESTIONS = [
+  '介绍一下你能做什么',
+  '帮我写一封简短的请假邮件',
+  '用一句话解释什么是 RBAC 权限模型',
+  '把这段话翻译成英文：今天天气很好',
+];
+
+const DISLIKE_REASONS: { value: string; label: string }[] = [
+  { value: 'inaccurate', label: '不准确' },
+  { value: 'irrelevant', label: '不相关' },
+  { value: 'harmful', label: '有害信息' },
+  { value: 'other', label: '其他' },
+];
 
 let msgIdCounter = 1000;
 function nextMsgId() {
@@ -217,6 +231,7 @@ export default function AIChatPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState<AiPromptTemplate[]>([]);
   const didInitConvRef = useRef(false);
+  const [dislikeMsgId, setDislikeMsgId] = useState<number | null>(null);
 
   // Load AI provider configs + user configs as model options
   const loadModelOptions = useCallback((providers: AiProviderConfig[], userConfigs: UserAiConfig[]) => {
@@ -647,6 +662,19 @@ export default function AIChatPage() {
     }
   };
 
+  const handleExportConversation = (id: number, title: string, format: 'md' | 'json') => {
+    void request.download(`/api/ai/conversations/${id}/export?format=${format}`, `${title || '对话'}.${format}`);
+  };
+
+  const submitDislikeReason = useCallback((reason: string | null) => {
+    const dbId = dislikeMsgId;
+    setDislikeMsgId(null);
+    if (!dbId || !activeConvId || !reason) return;
+    void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1, reason })
+      .then(() => Toast.success('感谢反馈，已记录'))
+      .catch(() => {});
+  }, [dislikeMsgId, activeConvId]);
+
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
   return (
@@ -716,6 +744,12 @@ export default function AIChatPage() {
                           {conv.isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
                           {conv.isArchived ? '取消归档' : '归档'}
                         </span>
+                      </Dropdown.Item>
+                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); handleExportConversation(conv.id, conv.title, 'md'); }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={13} />导出 Markdown</span>
+                      </Dropdown.Item>
+                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); handleExportConversation(conv.id, conv.title, 'json'); }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={13} />导出 JSON</span>
                       </Dropdown.Item>
                       <Dropdown.Divider />
                       <Dropdown.Item type="danger" onClick={(e) => { (e as React.MouseEvent).stopPropagation(); Modal.confirm({ title: '确定要删除这个会话吗？', okButtonProps: { type: 'danger', theme: 'solid' }, onOk: () => handleDeleteConversation(conv.id) }); }}>
@@ -840,6 +874,17 @@ export default function AIChatPage() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                       <Spin size="large" />
                     </div>
+                  ) : messages.length === 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 14, padding: 24, textAlign: 'center' }}>
+                      <Sparkles size={40} color="var(--semi-color-primary)" />
+                      <Title heading={4} style={{ margin: 0 }}>有什么可以帮您？</Title>
+                      <Typography.Text type="tertiary">选择下面的问题快速开始，或在下方输入框直接提问</Typography.Text>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 560, marginTop: 4 }}>
+                        {SUGGESTED_QUESTIONS.map((q) => (
+                          <Button key={q} theme="light" type="primary" onClick={() => void handleMessageSend({ text: q })}>{q}</Button>
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <AIChatDialogue
                       ref={dialogueRef}
@@ -860,8 +905,8 @@ export default function AIChatPage() {
                         if (!msg) return;
                         const dbId = String(msg.id).startsWith('api-') ? Number(String(msg.id).replace('api-', '')) : null;
                         if (!dbId || !activeConvId) { Toast.info('感谢您的反馈，我们会持续改进'); return; }
-                        void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1 })
-                          .then(() => Toast.info('感谢您的反馈，我们会持续改进'));
+                        void request.put(`/api/ai/conversations/${activeConvId}/messages/${dbId}/feedback`, { feedback: -1 }).catch(() => {});
+                        setDislikeMsgId(dbId);
                       }}
                       messageEditRender={renderMessageEdit}
                       onMessageDelete={(msg) => {
@@ -985,6 +1030,23 @@ export default function AIChatPage() {
         onEnterPress={() => void handleRenameConv()}
         autoFocus
       />
+    </Modal>
+    <Modal
+      title="可以告诉我们哪里需要改进吗？"
+      visible={dislikeMsgId !== null}
+      footer={null}
+      onCancel={() => setDislikeMsgId(null)}
+      closeOnEsc
+      width={380}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {DISLIKE_REASONS.map((r) => (
+          <Button key={r.value} onClick={() => submitDislikeReason(r.value)}>{r.label}</Button>
+        ))}
+      </div>
+      <div style={{ marginTop: 16, textAlign: 'right' }}>
+        <Button theme="borderless" type="tertiary" onClick={() => setDislikeMsgId(null)}>跳过</Button>
+      </div>
     </Modal>
     </>
   );

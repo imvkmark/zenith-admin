@@ -2647,12 +2647,19 @@ export interface AiMessage {
   conversationId: number;
   role: AiMessageRole;
   content: string;
+  model: string | null;
   tokensInput: number;
   tokensOutput: number;
   /** 1 = 点赞, -1 = 点踩, null = 未反馈 */
   feedback: number | null;
+  feedbackReason: string | null;
+  feedbackStatus: AiFeedbackStatus | null;
+  feedbackRemark: string | null;
+  feedbackHandledAt: string | null;
   createdAt: string;
 }
+
+export type AiFeedbackStatus = 'pending' | 'resolved' | 'ignored';
 
 export interface UserAiConfig {
   id: number;

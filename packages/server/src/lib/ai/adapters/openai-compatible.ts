@@ -21,8 +21,13 @@ export type StreamChunk =
 
 /**
  * OpenAI 兼容格式的流式聊天适配器（覆盖 OpenAI、DeepSeek、Qwen、Kimi、GLM、Ollama 等）
- * 使用 httpRequest 发送请求，通过 res.raw.body 读取 SSE 流
+ * 使用 httpRequest 发送请求，通过 res.raw.body 读取 SSE 流。
+ * - 连接阶段失败自动重试（AI_STREAM_CONNECT_RETRIES，默认 2）
+ * - 读流空闲超时中断（AI_STREAM_IDLE_TIMEOUT_MS，默认 90s）
  */
+const STREAM_IDLE_TIMEOUT_MS = Number(process.env.AI_STREAM_IDLE_TIMEOUT_MS) || 90000;
+const STREAM_CONNECT_RETRIES = Number(process.env.AI_STREAM_CONNECT_RETRIES ?? 2);
+
 export async function* streamChatOpenAICompatible(
   config: StreamChatConfig,
   messages: ChatMessage[],
@@ -32,8 +37,27 @@ export async function* streamChatOpenAICompatible(
     ? [{ role: 'system', content: config.systemPrompt }, ...messages]
     : messages;
 
+  // 内部 controller：合并外部中断信号 + 空闲超时，用于中断上游请求
+  const ac = new AbortController();
+  let idleTimedOut = false;
+  const onExternalAbort = () => ac.abort();
+  if (signal) {
+    if (signal.aborted) ac.abort();
+    else signal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const armIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idleTimedOut = true; ac.abort(); }, STREAM_IDLE_TIMEOUT_MS);
+  };
+  const cleanup = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
+  };
+
   let res;
   try {
+    armIdle();
     res = await httpRequest(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -49,18 +73,22 @@ export async function* streamChatOpenAICompatible(
         temperature: Number.parseFloat(config.temperature) || 0.7,
       }),
       timeout: 0,
-      retries: 0,
-      signal,
+      retries: STREAM_CONNECT_RETRIES,
+      signal: ac.signal,
     });
   } catch (err: unknown) {
+    cleanup();
     // 用户主动中断：静默结束，由上层保存已生成内容
-    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+    if (signal?.aborted) return;
+    if (idleTimedOut) { yield { type: 'error', error: '连接 AI 服务超时，请重试' }; return; }
+    if (err instanceof Error && err.name === 'AbortError') return;
     yield { type: 'error', error: err instanceof Error ? err.message : 'LLM API 调用失败' };
     return;
   }
 
   const body = res.raw.body;
   if (!body) {
+    cleanup();
     yield { type: 'error', error: '响应体为空' };
     return;
   }
@@ -73,6 +101,7 @@ export async function* streamChatOpenAICompatible(
 
   try {
     while (true) {
+      armIdle();
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -108,10 +137,13 @@ export async function* streamChatOpenAICompatible(
     }
   } catch (err: unknown) {
     // 用户主动中断读流：静默结束，保留已产出的 delta
-    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+    if (signal?.aborted) return;
+    if (idleTimedOut) { yield { type: 'error', error: 'AI 响应超时，请重试' }; return; }
+    if (err instanceof Error && err.name === 'AbortError') return;
     yield { type: 'error', error: err instanceof Error ? err.message : '读取响应流失败' };
     return;
   } finally {
+    cleanup();
     reader.releaseLock();
   }
 

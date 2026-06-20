@@ -2,10 +2,11 @@ import { eq, desc, and, or, ilike, inArray, isNotNull, gte } from 'drizzle-orm';
 import { db } from '../db';
 import { aiConversations, aiMessages } from '../db/schema';
 import { currentUser } from '../lib/context';
-import { formatDateTime } from '../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 import { truncateHistoryByBudget } from '../lib/ai/tokens';
-import { escapeLike } from '../lib/where-helpers';
+import { escapeLike, withPagination } from '../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
+import type { AiFeedbackStatus } from '@zenith/shared';
 
 function mapConversation(row: typeof aiConversations.$inferSelect) {
   return {
@@ -28,9 +29,14 @@ function mapMessage(row: typeof aiMessages.$inferSelect) {
     conversationId: row.conversationId,
     role: row.role,
     content: row.content,
+    model: row.model,
     tokensInput: row.tokensInput,
     tokensOutput: row.tokensOutput,
     feedback: row.feedback,
+    feedbackReason: row.feedbackReason,
+    feedbackStatus: row.feedbackStatus,
+    feedbackRemark: row.feedbackRemark,
+    feedbackHandledAt: formatNullableDateTime(row.feedbackHandledAt),
     createdAt: formatDateTime(row.createdAt),
   };
 }
@@ -150,6 +156,44 @@ export async function setConversationSystemPrompt(id: number, systemPrompt: stri
   return value;
 }
 
+/** 导出对话为 Markdown / JSON（仅会话所有者） */
+export async function exportConversation(id: number, format: 'md' | 'json') {
+  const conv = await ensureConversationOwner(id);
+  const rows = await db
+    .select()
+    .from(aiMessages)
+    .where(eq(aiMessages.conversationId, id))
+    .orderBy(aiMessages.createdAt);
+  const safeTitle = (conv.title || '对话').replace(/[\\/:*?"<>|]/g, '_').slice(0, 50);
+
+  if (format === 'json') {
+    const content = JSON.stringify(
+      {
+        id: conv.id,
+        title: conv.title,
+        createdAt: formatDateTime(conv.createdAt),
+        messages: rows.map((m) => ({
+          role: m.role,
+          content: m.content,
+          model: m.model,
+          createdAt: formatDateTime(m.createdAt),
+        })),
+      },
+      null,
+      2,
+    );
+    return { content, filename: `${safeTitle}.json`, contentType: 'application/json; charset=utf-8' };
+  }
+
+  const lines: string[] = [`# ${conv.title}`, '', `> 导出时间：${formatDateTime(new Date())}`, ''];
+  for (const m of rows) {
+    const label = m.role === 'user' ? '🧑 用户' : m.role === 'assistant' ? '🤖 助手' : '⚙️ 系统';
+    const suffix = m.model ? `（${m.model}）` : '';
+    lines.push(`## ${label}${suffix}`, '', m.content, '');
+  }
+  return { content: lines.join('\n'), filename: `${safeTitle}.md`, contentType: 'text/markdown; charset=utf-8' };
+}
+
 export async function saveMessages(
   conversationId: number,
   userContent: string,
@@ -160,7 +204,7 @@ export async function saveMessages(
 ) {
   const [, assistantRow] = await db.insert(aiMessages).values([
     { conversationId, role: 'user', content: userContent, tokensInput: 0, tokensOutput: 0 },
-    { conversationId, role: 'assistant', content: assistantContent, tokensInput, tokensOutput },
+    { conversationId, role: 'assistant', content: assistantContent, model: snapshot?.model ?? null, tokensInput, tokensOutput },
   ]).returning({ id: aiMessages.id });
   if (snapshot) {
     await db.update(aiConversations).set({ providerSnapshot: snapshot }).where(eq(aiConversations.id, conversationId));
@@ -219,7 +263,7 @@ export async function deleteMessageCascade(conversationId: number, messageId: nu
  * 给 assistant 消息提交用户反馈（点赞 +1 / 点踩 -1 / 撤销 null）。
  * 只允许对 assistant 消息打分；会话所有者限制。
  */
-export async function submitMessageFeedback(conversationId: number, messageId: number, feedback: 1 | -1 | null) {
+export async function submitMessageFeedback(conversationId: number, messageId: number, feedback: 1 | -1 | null, reason?: string | null) {
   await ensureConversationOwner(conversationId);
   const [msg] = await db
     .select()
@@ -227,33 +271,48 @@ export async function submitMessageFeedback(conversationId: number, messageId: n
     .where(and(eq(aiMessages.id, messageId), eq(aiMessages.conversationId, conversationId)));
   if (!msg) throw new HTTPException(404, { message: '消息不存在' });
   if (msg.role !== 'assistant') throw new HTTPException(400, { message: '只能对 AI 回复打分' });
-  await db.update(aiMessages).set({ feedback }).where(eq(aiMessages.id, messageId));
+  const isDislike = feedback === -1;
+  await db.update(aiMessages).set({
+    feedback,
+    feedbackReason: isDislike ? (reason?.trim() || null) : null,
+    feedbackStatus: isDislike ? 'pending' : null,
+    feedbackRemark: null,
+    feedbackHandledAt: null,
+  }).where(eq(aiMessages.id, messageId));
 }
 
 /**
- * 管理员：列出所有有反馈的 assistant 消息（分页）。
+ * 管理员：更新反馈处理状态与备注（处理闭环）。
  */
-export async function listFeedbackMessages(page: number, pageSize: number) {
-  const offset = (page - 1) * pageSize;
-  const base = and(isNotNull(aiMessages.feedback), eq(aiMessages.role, 'assistant'));
+export async function updateFeedbackStatus(messageId: number, status: AiFeedbackStatus, remark?: string | null) {
+  const [msg] = await db.select().from(aiMessages).where(eq(aiMessages.id, messageId));
+  if (!msg) throw new HTTPException(404, { message: '消息不存在' });
+  if (msg.feedback === null) throw new HTTPException(400, { message: '该消息没有用户反馈' });
+  await db.update(aiMessages).set({
+    feedbackStatus: status,
+    feedbackRemark: remark?.trim() || null,
+    feedbackHandledAt: new Date(),
+  }).where(eq(aiMessages.id, messageId));
+}
+
+/**
+ * 管理员：列出所有有反馈的 assistant 消息（分页，支持按反馈类型/处理状态筛选）。
+ */
+export async function listFeedbackMessages(params: {
+  page: number;
+  pageSize: number;
+  feedback?: 1 | -1;
+  status?: AiFeedbackStatus;
+}) {
+  const { page, pageSize, feedback, status } = params;
+  const conds = [isNotNull(aiMessages.feedback), eq(aiMessages.role, 'assistant')];
+  if (feedback === 1 || feedback === -1) conds.push(eq(aiMessages.feedback, feedback));
+  if (status) conds.push(eq(aiMessages.feedbackStatus, status));
+  const where = and(...conds);
+  const listQuery = db.select().from(aiMessages).where(where).orderBy(desc(aiMessages.createdAt));
   const [total, list] = await Promise.all([
-    db.$count(aiMessages, base),
-    db
-      .select({
-        id: aiMessages.id,
-        conversationId: aiMessages.conversationId,
-        role: aiMessages.role,
-        content: aiMessages.content,
-        tokensInput: aiMessages.tokensInput,
-        tokensOutput: aiMessages.tokensOutput,
-        feedback: aiMessages.feedback,
-        createdAt: aiMessages.createdAt,
-      })
-      .from(aiMessages)
-      .where(base)
-      .orderBy(desc(aiMessages.createdAt))
-      .limit(pageSize)
-      .offset(offset),
+    db.$count(aiMessages, where),
+    withPagination(listQuery.$dynamic(), page, pageSize),
   ]);
   return { total, list: list.map(mapMessage), page, pageSize };
 }

@@ -46,9 +46,14 @@ export const AiMessageDTO = z
     conversationId: z.number().openapi({ description: '对话 ID' }),
     role: z.enum(['system', 'user', 'assistant']).openapi({ description: '消息角色' }),
     content: z.string().openapi({ description: '消息内容' }),
+    model: z.string().nullable().openapi({ description: '生成所用模型' }),
     tokensInput: z.number().openapi({ description: '输入 token 数' }),
     tokensOutput: z.number().openapi({ description: '输出 token 数' }),
     feedback: z.number().nullable().openapi({ description: '用户反馈：1=点赞, -1=点踩, null=未反馈' }),
+    feedbackReason: z.string().nullable().openapi({ description: '点踩原因' }),
+    feedbackStatus: z.enum(['pending', 'resolved', 'ignored']).nullable().openapi({ description: '反馈处理状态' }),
+    feedbackRemark: z.string().nullable().openapi({ description: '处理备注' }),
+    feedbackHandledAt: z.string().nullable().openapi({ description: '处理时间' }),
     createdAt: z.string().openapi({ description: '创建时间' }),
   })
   .openapi('AiMessage');

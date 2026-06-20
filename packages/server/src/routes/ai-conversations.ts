@@ -9,6 +9,8 @@ import {
   IdParam,
   okBody,
   okPaginated,
+  okFile,
+  fileBody,
   PaginationQuery,
 } from '../lib/openapi-schemas';
 import { AiConversationDTO, AiMessageDTO } from '../lib/openapi-dtos';
@@ -26,8 +28,10 @@ import {
   togglePinConversation,
   toggleArchiveConversation,
   setConversationSystemPrompt,
+  updateFeedbackStatus,
+  exportConversation,
 } from '../services/ai-conversations.service';
-import { createAiConversationSchema } from '@zenith/shared';
+import { createAiConversationSchema, submitAiFeedbackSchema, updateAiFeedbackStatusSchema } from '@zenith/shared';
 import { guard } from '../middleware/guard';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -123,10 +127,6 @@ const getMessages = defineOpenAPIRoute({
   },
 });
 
-const feedbackSchema = z.object({
-  feedback: z.union([z.literal(1), z.literal(-1), z.null()]).openapi({ description: '1=点赞, -1=点踩, null=撤销' }),
-});
-
 const submitFeedback = defineOpenAPIRoute({
   route: createRoute({
     method: 'put',
@@ -137,16 +137,21 @@ const submitFeedback = defineOpenAPIRoute({
     middleware: [authMiddleware] as const,
     request: {
       params: z.object({ id: z.coerce.number(), msgId: z.coerce.number() }),
-      body: { content: jsonContent(feedbackSchema), required: true },
+      body: { content: jsonContent(submitAiFeedbackSchema), required: true },
     },
     responses: { ...commonErrorResponses, ...okMsg('反馈成功') },
   }),
   handler: async (c) => {
     const { id, msgId } = c.req.valid('param');
-    const { feedback } = c.req.valid('json');
-    await submitMessageFeedback(id, msgId, feedback);
+    const { feedback, reason } = c.req.valid('json');
+    await submitMessageFeedback(id, msgId, feedback, reason);
     return c.json(okBody(null, '反馈成功'), 200);
   },
+});
+
+const FeedbackListQuery = PaginationQuery.extend({
+  feedback: z.enum(['1', '-1']).optional().openapi({ description: '反馈类型：1=点赞, -1=点踩' }),
+  status: z.enum(['pending', 'resolved', 'ignored']).optional().openapi({ description: '处理状态筛选' }),
 });
 
 const adminFeedbackList = defineOpenAPIRoute({
@@ -157,12 +162,56 @@ const adminFeedbackList = defineOpenAPIRoute({
     summary: '管理员获取消息反馈列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'ai:feedback:view' })] as const,
-    request: { query: PaginationQuery },
+    request: { query: FeedbackListQuery },
     responses: { ...commonErrorResponses, ...okPaginated(AiMessageDTO, '反馈列表') },
   }),
   handler: async (c) => {
-    const { page, pageSize } = c.req.valid('query');
-    return c.json(okBody(await listFeedbackMessages(page, pageSize)), 200);
+    const { page, pageSize, feedback, status } = c.req.valid('query');
+    return c.json(
+      okBody(await listFeedbackMessages({ page, pageSize, feedback: feedback ? (Number(feedback) as 1 | -1) : undefined, status })),
+      200,
+    );
+  },
+});
+
+const updateFeedback = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/admin/feedback/{msgId}',
+    tags: ['AI'],
+    summary: '管理员处理消息反馈（更新状态/备注）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'ai:feedback:handle' })] as const,
+    request: {
+      params: z.object({ msgId: z.coerce.number() }),
+      body: { content: jsonContent(updateAiFeedbackStatusSchema), required: true },
+    },
+    responses: { ...commonErrorResponses, ...okMsg('处理成功') },
+  }),
+  handler: async (c) => {
+    const { msgId } = c.req.valid('param');
+    const { status, remark } = c.req.valid('json');
+    await updateFeedbackStatus(msgId, status, remark);
+    return c.json(okBody(null, '处理成功'), 200);
+  },
+});
+
+const exportConv = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/{id}/export',
+    tags: ['AI'],
+    summary: '导出对话（Markdown / JSON）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam, query: z.object({ format: z.enum(['md', 'json']).default('md') }) },
+    responses: { ...commonErrorResponses, ...okFile('对话文件') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { format } = c.req.valid('query');
+    const { content, filename, contentType } = await exportConversation(id, format);
+    return fileBody(content, filename, contentType);
   },
 });
 
@@ -282,6 +331,6 @@ const setSystemPrompt = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, create, getOne, remove, getMessages, rename, togglePin, toggleArchive, setSystemPrompt, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList] as const);
+router.openapiRoutes([list, create, getOne, remove, getMessages, rename, togglePin, toggleArchive, setSystemPrompt, exportConv, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList, updateFeedback] as const);
 
 export default router;

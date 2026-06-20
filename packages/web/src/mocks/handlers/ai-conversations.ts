@@ -111,6 +111,44 @@ export const aiConversationsHandlers = [
     return HttpResponse.json({ code: 0, message: 'ok', data: msgs });
   }),
 
+  // 导出对话（Markdown / JSON）
+  http.get('/api/ai/conversations/:id/export', ({ params, request }) => {
+    const id = Number(params.id);
+    const conv = convStore.find((c) => c.id === id);
+    if (!conv) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    const url = new URL(request.url);
+    const format = url.searchParams.get('format') === 'json' ? 'json' : 'md';
+    const msgs = msgStore[id] ?? [];
+    const safeTitle = (conv.title || '对话').replace(/[\\/:*?"<>|]/g, '_').slice(0, 50);
+    let content: string;
+    let contentType: string;
+    let ext: string;
+    if (format === 'json') {
+      content = JSON.stringify(
+        { id: conv.id, title: conv.title, messages: msgs.map((m) => ({ role: m.role, content: m.content, model: m.model })) },
+        null,
+        2,
+      );
+      contentType = 'application/json; charset=utf-8';
+      ext = 'json';
+    } else {
+      const lines = [`# ${conv.title}`, ''];
+      for (const m of msgs) {
+        const label = m.role === 'user' ? '🧑 用户' : m.role === 'assistant' ? '🤖 助手' : '⚙️ 系统';
+        lines.push(`## ${label}`, '', m.content, '');
+      }
+      content = lines.join('\n');
+      contentType = 'text/markdown; charset=utf-8';
+      ext = 'md';
+    }
+    return new HttpResponse(content, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(`${safeTitle}.${ext}`)}"`,
+      },
+    });
+  }),
+
   // SSE 聊天 (模拟流式响应)
   http.post('/api/ai/conversations/:id/chat', async ({ params, request }) => {
     const id = Number(params.id);
@@ -124,9 +162,14 @@ export const aiConversationsHandlers = [
       conversationId: id,
       role: 'user',
       content: userText,
+      model: null,
       tokensInput: Math.floor(userText.length / 4),
       tokensOutput: 0,
       feedback: null,
+      feedbackReason: null,
+      feedbackStatus: null,
+      feedbackRemark: null,
+      feedbackHandledAt: null,
       createdAt: now,
     };
     if (!msgStore[id]) msgStore[id] = [];
@@ -164,9 +207,14 @@ export const aiConversationsHandlers = [
       conversationId: id,
       role: 'assistant',
       content: replyText,
+      model: 'qwen (demo)',
       tokensInput: 0,
       tokensOutput: Math.floor(replyText.length / 4),
       feedback: null,
+      feedbackReason: null,
+      feedbackStatus: null,
+      feedbackRemark: null,
+      feedbackHandledAt: null,
       createdAt: now,
     };
     msgStore[id].push(assistantMsg);
@@ -209,6 +257,7 @@ export const aiConversationsHandlers = [
     const page = Number(url.searchParams.get('page')) || 1;
     const pageSize = Number(url.searchParams.get('pageSize')) || 10;
     const feedbackParam = url.searchParams.get('feedback');
+    const statusParam = url.searchParams.get('status');
 
     // 收集所有带反馈的消息
     let allMsgs: AiMessage[] = Object.values(msgStore).flat().filter((m) => m.feedback !== null);
@@ -216,22 +265,44 @@ export const aiConversationsHandlers = [
       const fb = Number(feedbackParam);
       allMsgs = allMsgs.filter((m) => m.feedback === fb);
     }
+    if (statusParam) {
+      allMsgs = allMsgs.filter((m) => m.feedbackStatus === statusParam);
+    }
+    allMsgs = allMsgs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
     const total = allMsgs.length;
     const list = allMsgs.slice((page - 1) * pageSize, page * pageSize);
     return HttpResponse.json({ code: 0, message: 'ok', data: { list, total, page, pageSize } });
   }),
 
+  // 管理员处理反馈（更新状态/备注）
+  http.put('/api/ai/conversations/admin/feedback/:msgId', async ({ params, request }) => {
+    const msgId = Number(params.msgId);
+    const body = await request.json() as { status?: 'pending' | 'resolved' | 'ignored'; remark?: string | null };
+    const msg = Object.values(msgStore).flat().find((m) => m.id === msgId);
+    if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    if (msg.feedback === null) return HttpResponse.json({ code: 400, message: '该消息没有用户反馈', data: null }, { status: 400 });
+    msg.feedbackStatus = body.status ?? 'resolved';
+    msg.feedbackRemark = body.remark?.trim() || null;
+    msg.feedbackHandledAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '处理成功', data: null });
+  }),
+
   // 消息反馈（点赞/点踩）
   http.put('/api/ai/conversations/:convId/messages/:msgId/feedback', async ({ params, request }) => {
     const convId = Number(params.convId);
     const msgId = Number(params.msgId);
-    const body = await request.json() as { feedback: number | null };
+    const body = await request.json() as { feedback: number | null; reason?: string | null };
     const msgs = msgStore[convId];
     if (!msgs) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
     const msg = msgs.find((m) => m.id === msgId);
     if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    const isDislike = body.feedback === -1;
     msg.feedback = body.feedback ?? null;
+    msg.feedbackReason = isDislike ? (body.reason ?? null) : null;
+    msg.feedbackStatus = isDislike ? 'pending' : null;
+    msg.feedbackRemark = null;
+    msg.feedbackHandledAt = null;
     return HttpResponse.json({ code: 0, message: 'ok', data: msg });
   }),
 ];

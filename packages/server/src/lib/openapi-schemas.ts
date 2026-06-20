@@ -171,6 +171,30 @@ export function csvStreamBody(c: Context<any>, stream: ReadableStream, filename:
   return new Response(stream) as never;
 }
 
+/** 通用文件下载响应（OpenAPI responses 块） */
+export function okFile(description = '文件') {
+  return {
+    200: {
+      content: {
+        'application/octet-stream': {
+          schema: z.string().openapi({ format: 'binary' }),
+        },
+      },
+      description,
+    },
+  } as const;
+}
+
+/** 设置下载响应头并以字符串内容返回文件 */
+export function fileBody(content: string, filename: string, contentType: string): never {
+  return new Response(content, {
+    headers: {
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+    },
+  }) as never;
+}
+
 /** 批量 ID 操作请求体（批量删除 / 批量更新等） */
 export const BatchIdsBody = z.object({
   ids: z.array(z.number().int()),

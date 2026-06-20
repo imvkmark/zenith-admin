@@ -18,7 +18,7 @@ function messageRangeConds(range: UsageRange) {
   return conds;
 }
 
-const MODEL_EXPR = sql<string>`coalesce(${aiConversations.providerSnapshot}->>'model', '未知')`;
+const MODEL_EXPR = sql<string>`coalesce(${aiMessages.model}, ${aiConversations.providerSnapshot}->>'model', '未知')`;
 const TOTAL_TOKENS_EXPR = sql<number>`coalesce(sum(${aiMessages.tokensInput} + ${aiMessages.tokensOutput}),0)::int`;
 
 export async function getUsageOverview(range: UsageRange) {

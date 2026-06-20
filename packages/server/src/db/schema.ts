@@ -2169,6 +2169,7 @@ export const inAppMessagesRelations = relations(inAppMessages, ({ one }) => ({
 
 export const aiProviderEnum = pgEnum('ai_provider', ['openai_compatible', 'anthropic', 'gemini', 'baidu']);
 export const aiMessageRoleEnum = pgEnum('ai_message_role', ['system', 'user', 'assistant']);
+export const aiFeedbackStatusEnum = pgEnum('ai_feedback_status', ['pending', 'resolved', 'ignored']);
 
 export const aiProviderConfigs = pgTable('ai_provider_configs', {
   id: serial('id').primaryKey(),
@@ -2211,10 +2212,20 @@ export const aiMessages = pgTable('ai_messages', {
   conversationId: integer('conversation_id').notNull().references(() => aiConversations.id, { onDelete: 'cascade' }),
   role: aiMessageRoleEnum('role').notNull(),
   content: text('content').notNull(),
+  /** 该条 assistant 消息生成时所用的模型（user 消息为 null） */
+  model: varchar('model', { length: 100 }),
   tokensInput: integer('tokens_input').notNull().default(0),
   tokensOutput: integer('tokens_output').notNull().default(0),
   /** 用户反馈：1 = 👍 点赞，-1 = 👎 点踩，null = 未反馈 */
   feedback: integer('feedback'),
+  /** 点踩原因（如 不准确/不相关/有害/其他） */
+  feedbackReason: varchar('feedback_reason', { length: 200 }),
+  /** 反馈处理状态：pending 待处理 / resolved 已处理 / ignored 已忽略 */
+  feedbackStatus: aiFeedbackStatusEnum('feedback_status'),
+  /** 管理员处理备注 */
+  feedbackRemark: varchar('feedback_remark', { length: 500 }),
+  /** 反馈处理时间 */
+  feedbackHandledAt: timestamp('feedback_handled_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
