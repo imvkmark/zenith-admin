@@ -9,9 +9,9 @@
 | 密钥存储 | API V3 Key / 商户私钥 / 支付宝应用私钥一律 `encryptField()` 存密文，字段名 `xxxEncrypted` |
 | 响应脱敏 | 列表 / 详情 DTO 用 `hasXxx` 布尔位标识是否已配置，**永不返回密文或明文** |
 | 回调验签 | 微信：按 `Wechatpay-Serial` 自动下载平台证书（12h 缓存，应对轮换）RSA-SHA256 验签 + AES-256-GCM 解密；支付宝：`RSA2` / `RSA` 验签，配置 `alipayPublicKey` 时校验同步响应签名。处理幂等 + 原子，重放无害 |
-| 幂等 | 下单 / 退款挂 [`idempotencyGuard`](../idempotency)（Redis `SET NX EX`）；回调去重靠 `markOrderPaid` / `finalizeRefund` 的**原子条件更新**（非中间件）；Outbox at-least-once 投递要求业务订阅者自身幂等 |
+| 幂等 | 下单 / 退款挂 [`idempotencyGuard`](../backend/idempotency)（Redis `SET NX EX`）；回调去重靠 `markOrderPaid` / `finalizeRefund` 的**原子条件更新**（非中间件）；Outbox at-least-once 投递要求业务订阅者自身幂等 |
 | 金额 | 全链路整数分；退款金额 ≤ 原单可退余额（事务内 `SELECT ... FOR UPDATE` 锁单校验） |
-| 外呼 | 全部走 [`http-client`](../http-client)（熔断 + Header 脱敏 + 结构化日志） |
+| 外呼 | 全部走 [`http-client`](../backend/http-client)（熔断 + Header 脱敏 + 结构化日志） |
 | 权限 / 审计 | `payment:*` 权限码 + `guard({ audit })` 写操作日志；退款按权限控制并记录操作审计 |
 | 取证 | `payment_notify_logs` 留存回调原文与请求头，争议时可复核 |
 
@@ -29,7 +29,7 @@
 
 ## 3. 幂等防重复
 
-- **下单 / 退款**：后台下单 / 退款路由挂 [`idempotencyGuard`](../idempotency)（15s 窗口，Redis `SET NX EX`，支持客户端 `X-Idempotency-Key` 或服务端自动指纹）；会员钱包充值路由使用 10s 窗口；
+- **下单 / 退款**：后台下单 / 退款路由挂 [`idempotencyGuard`](../backend/idempotency)（15s 窗口，Redis `SET NX EX`，支持客户端 `X-Idempotency-Key` 或服务端自动指纹）；会员钱包充值路由使用 10s 窗口；
 - **回调处理**：靠 `markOrderPaid` / `finalizeRefund` 原子条件更新去重；
 - **业务订阅者**：须自身幂等，应对 Outbox at-least-once 投递（见 [异步通知与对账](./callback)）。
 

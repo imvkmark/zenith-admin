@@ -68,7 +68,7 @@ flowchart TB
 
 ## 2. 关键工程决策
 
-1. **不引入官方 SDK**。项目硬性约定「所有外呼必须走 [`http-client`](../http-client)，禁止裸 `fetch()`」。`alipay-sdk` / `wechatpay-node-v3` 会用各自的 HTTP 客户端绕过该约定（同时绕过熔断、Header 脱敏、结构化日志）。因此用 Node 原生 `crypto` 实现真实签名/验签，HTTP 调用统一走 `lib/http-client.ts`：
+1. **不引入官方 SDK**。项目硬性约定「所有外呼必须走 [`http-client`](../backend/http-client)，禁止裸 `fetch()`」。`alipay-sdk` / `wechatpay-node-v3` 会用各自的 HTTP 客户端绕过该约定（同时绕过熔断、Header 脱敏、结构化日志）。因此用 Node 原生 `crypto` 实现真实签名/验签，HTTP 调用统一走 `lib/http-client.ts`：
    - **支付宝**：`RSA2`（`SHA256withRSA`）/ `RSA`（`SHA1withRSA`）`crypto.createSign` 生成签名、`crypto.createVerify` 验签。
    - **微信支付 v3**：`RSA-SHA256` 请求签名（Authorization 头）+ `AES-256-GCM` 解密回调 `resource` + 平台证书验签。
 2. **适配层用接口 + 注册表**，而非 `file-storage.ts` 的平铺 if-else——支付每渠道有约 6 个操作，接口更清晰、扩展更稳。配置表则沿用 `file_storage_configs` 的「大平铺」风格保持一致。

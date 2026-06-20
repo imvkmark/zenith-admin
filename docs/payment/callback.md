@@ -56,7 +56,7 @@ flowchart LR
 | `paymentReconciliation` | 对创建超过 2 分钟且仍 `paying` 的订单主动查单（`queryPayment`），纠正状态（回调兜底） |
 | `dispatchPaymentEvents` | 补投 Outbox 中遗留的 `pending` 履约事件 |
 
-后台「系统管理 → 定时任务」UI 即可配置 Cron 表达式，无需改调度框架。详见 [定时任务](../cron-jobs)。
+后台「系统管理 → 定时任务」UI 即可配置 Cron 表达式，无需改调度框架。详见 [定时任务](../backend/cron-jobs)。
 
 ## 4. 回调日志取证
 

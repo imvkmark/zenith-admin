@@ -30,7 +30,7 @@ export interface PaymentChannelAdapter {
 }
 ```
 
-`AdapterContext` 持有**已解密**的渠道配置（私钥、API V3 Key 等）与解析好的 `notifyUrl`。适配器内部所有外呼走 [`httpGet` / `httpPost`](../http-client)，签名 / 验签封装在适配器内，门面与业务层完全不可见。
+`AdapterContext` 持有**已解密**的渠道配置（私钥、API V3 Key 等）与解析好的 `notifyUrl`。适配器内部所有外呼走 [`httpGet` / `httpPost`](../backend/http-client)，签名 / 验签封装在适配器内，门面与业务层完全不可见。
 
 ```ts
 interface AdapterContext {

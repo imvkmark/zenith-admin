@@ -19,7 +19,7 @@ closePayment(orderNo: string): Promise<void>;
 
 - 业务模块直接 `import { createPayment } from '../services/payment.service'`，**无需 HTTP 往返**；
 - 同时提供后台 HTTP 路由 `/api/payment/*`（发起、查询、手动退款），供后台运营使用；
-- 下单 / 退款接口挂 [`idempotencyGuard`](../idempotency)（15s 窗口，自动指纹或客户端 `X-Idempotency-Key`）防重复提交。
+- 下单 / 退款接口挂 [`idempotencyGuard`](../backend/idempotency)（15s 窗口，自动指纹或客户端 `X-Idempotency-Key`）防重复提交。
 
 ### 字段约定
 
