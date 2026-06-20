@@ -2004,6 +2004,8 @@ export interface WorkflowTaskUrge {
   createdAt: string;
 }
 
+export type WorkflowInstancePriority = 'low' | 'normal' | 'high' | 'urgent';
+
 export interface WorkflowInstance {
   id: number;
   definitionId: number;
@@ -2013,6 +2015,8 @@ export interface WorkflowInstance {
   title: string;
   /** 业务编号/流水号（按流程定义编号规则在发起时生成） */
   serialNo?: string | null;
+  /** 加急/优先级 */
+  priority?: WorkflowInstancePriority;
   formData: Record<string, unknown> | null;
   /** 发起时的表单结构快照（冻结历史，渲染只读/审批表单时使用） */
   formSnapshot?: WorkflowFormField[] | null;

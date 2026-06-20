@@ -1397,6 +1397,8 @@ export const workflowInstances = pgTable('workflow_instances', {
   serialNo: varchar('serial_no', { length: 64 }),
   formData: jsonb('form_data'), // 填写的表单数据
   status: workflowInstanceStatusEnum('status').default('draft').notNull(),
+  /** 加急/优先级：low/normal/high/urgent（发起人设置，审批列表据此置顶） */
+  priority: varchar('priority', { length: 16 }).notNull().default('normal'),
   currentNodeKey: varchar('current_node_key', { length: 64 }),
   initiatorId: integer('initiator_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),

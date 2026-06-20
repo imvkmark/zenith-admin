@@ -30,6 +30,7 @@ import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceD
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
 import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
+import WorkflowPriorityTag, { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -372,6 +373,8 @@ export default function MyApplicationsPage() {
   const [searchParams, setSearchParams] = useState<{ status: string }>({ status: '' });
   const searchParamsRef = useRef<{ status: string }>({ status: '' });
   searchParamsRef.current = searchParams;
+  const [priorityFilter, setPriorityFilter] = useState<string>('');
+  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [applyVisible, setApplyVisible] = useState(false);

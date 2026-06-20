@@ -59,6 +59,7 @@ export function mapInstance(
     categoryName: extras.categoryName ?? null,
     title: row.title,
     serialNo: row.serialNo ?? null,
+    priority: (row.priority ?? 'normal') as import('@zenith/shared').WorkflowInstancePriority,
     formData: row.formData,
     formSnapshot: (row.formSnapshot ?? null) as WorkflowFormField[] | null,
     status: row.status,
@@ -1240,13 +1241,17 @@ async function checkNodeCompletion(
 
 type InstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
 
-export async function listMyInstances(query: { page?: number; pageSize?: number; status?: string }) {
+/** 优先级排序：urgent > high > normal > low（用于审批/申请列表置顶加急） */
+const priorityRankOrder = sql`CASE ${workflowInstances.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
+
+export async function listMyInstances(query: { page?: number; pageSize?: number; status?: string; priority?: string }) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, status } = query;
+  const { page = 1, pageSize = 20, status, priority } = query;
   const tc = tenantCondition(workflowInstances, user);
   const conditions = [eq(workflowInstances.initiatorId, user.userId)];
   if (tc) conditions.push(tc);
   if (status) conditions.push(eq(workflowInstances.status, status as InstanceStatus));
+  if (priority) conditions.push(eq(workflowInstances.priority, priority));
   const where = and(...conditions);
   const [total, rows] = await Promise.all([
     db.$count(workflowInstances, where),
@@ -1256,7 +1261,7 @@ export async function listMyInstances(query: { page?: number; pageSize?: number;
         definition: { columns: { name: true } },
         initiator: { columns: { nickname: true, avatar: true } },
       },
-      orderBy: desc(workflowInstances.id),
+      orderBy: [priorityRankOrder, desc(workflowInstances.id)],
       limit: pageSize,
       offset: pageOffset(page, pageSize),
     }),
@@ -1301,7 +1306,7 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
         .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
         .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
         .where(where)
-        .orderBy(desc(workflowTasks.createdAt))
+        .orderBy(priorityRankOrder, desc(workflowTasks.createdAt))
         .$dynamic(),
       page, pageSize,
     ),
@@ -1528,9 +1533,9 @@ export async function listMyHandled(query: { page?: number; pageSize?: number; k
   };
 }
 
-export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string; categoryId?: number; initiatorKeyword?: string }) {
+export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string; categoryId?: number; initiatorKeyword?: string; priority?: string }) {
   const user = currentUser();
-  const { page = 1, pageSize = 20, status, keyword, categoryId, initiatorKeyword } = query;
+  const { page = 1, pageSize = 20, status, keyword, categoryId, initiatorKeyword, priority } = query;
   const conditions = [];
   const tc = tenantCondition(workflowInstances, user);
   if (tc) conditions.push(tc);
@@ -1548,6 +1553,7 @@ export async function listAllInstances(query: { page?: number; pageSize?: number
   }
   if (categoryId !== undefined) conditions.push(eq(workflowDefinitions.categoryId, categoryId));
   if (initiatorKeyword) conditions.push(ilike(users.nickname, `%${escapeLike(initiatorKeyword)}%`));
+  if (priority) conditions.push(eq(workflowInstances.priority, priority));
   const where = and(...conditions);
   const statWhere = scopeCond ? (tc ? and(tc, scopeCond) : scopeCond) : tc;
   const [statRows, [{ total }], rows] = await Promise.all([
@@ -1576,7 +1582,7 @@ export async function listAllInstances(query: { page?: number; pageSize?: number
         .leftJoin(workflowCategories, eq(workflowDefinitions.categoryId, workflowCategories.id))
         .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
         .where(where)
-        .orderBy(desc(workflowInstances.id))
+        .orderBy(priorityRankOrder, desc(workflowInstances.id))
         .$dynamic(),
       page, pageSize,
     ),
@@ -1679,7 +1685,7 @@ export async function getWorkflowTaskBeforeAudit(taskId: number) {
   return getWorkflowInstanceBeforeAudit(task.instanceId);
 }
 
-export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
+export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared').WorkflowInstancePriority; ccUserIds?: number[] }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
   const user = callerOverride
     ? { userId: callerOverride.userId, username: callerOverride.username, roles: callerOverride.roles ?? [], tenantId: callerOverride.tenantId }
     : currentUser();
@@ -1721,6 +1727,7 @@ export async function createInstance(data: { definitionId: number; title: string
       formData,
       formSnapshot: formSnapshot?.fields ?? null,
       status: 'draft',
+      priority: data.priority ?? 'normal',
       currentNodeKey: null,
       initiatorId: user.userId,
       tenantId: getCreateTenantId(user),
@@ -1744,6 +1751,7 @@ export async function createInstance(data: { definitionId: number; title: string
       formData,
       formSnapshot: formSnapshot?.fields ?? null,
       status: 'running',
+      priority: data.priority ?? 'normal',
       currentNodeKey: null,
       initiatorId: user.userId,
       tenantId: getCreateTenantId(user),
@@ -1766,6 +1774,30 @@ export async function createInstance(data: { definitionId: number; title: string
   const instanceDto = mapInstance(instance);
   const actor = { userId: user.userId, name: user.username };
   emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
+  // 发起时自选抄送：插入 ccNode 任务（去重，跳过已存在的抄送人）
+  const ccIds = Array.from(new Set((data.ccUserIds ?? []).filter((v) => Number.isInteger(v) && v > 0)));
+  if (ccIds.length > 0) {
+    const existing = await db.select({ assigneeId: workflowTasks.assigneeId }).from(workflowTasks)
+      .where(and(eq(workflowTasks.instanceId, instance.id), eq(workflowTasks.nodeType, 'ccNode')));
+    const existingSet = new Set(existing.map((r) => r.assigneeId).filter((v): v is number => typeof v === 'number'));
+    const toAdd = ccIds.filter((uid) => !existingSet.has(uid));
+    if (toAdd.length > 0) {
+      const ccRows = toAdd.map((uid) => ({
+        instanceId: instance.id,
+        nodeKey: '__initiator_cc__',
+        nodeName: '发起抄送',
+        nodeType: 'ccNode' as const,
+        assigneeId: uid,
+        status: 'skipped' as const,
+        comment: `[发起抄送] 由 ${user.username ?? '系统'} 指定`,
+        actionAt: null,
+      }));
+      const insertedCc = await db.insert(workflowTasks).values(ccRows).returning();
+      for (const t of insertedCc) {
+        emitTaskEvent('task.created', mapTask(t), { definitionId: instance.definitionId, tenantId: instance.tenantId, actor });
+      }
+    }
+  }
   return instanceDto;
 }
 
@@ -2808,12 +2840,13 @@ async function loadOwnDraft(id: number) {
   return inst;
 }
 
-export async function updateInstanceDraft(id: number, input: { title?: string; formData?: Record<string, unknown> | null }) {
+export async function updateInstanceDraft(id: number, input: { title?: string; formData?: Record<string, unknown> | null; priority?: import('@zenith/shared').WorkflowInstancePriority }) {
   const inst = await loadOwnDraft(id);
   if (inst.status !== 'draft') throw new HTTPException(400, { message: '仅草稿可编辑' });
   const patch: Partial<typeof workflowInstances.$inferInsert> = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.formData !== undefined) patch.formData = input.formData ?? {};
+  if (input.priority !== undefined) patch.priority = input.priority;
   const [row] = await db.update(workflowInstances).set(patch).where(eq(workflowInstances.id, id)).returning();
   return mapInstance(row);
 }

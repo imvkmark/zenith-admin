@@ -203,6 +203,7 @@ export const WorkflowInstanceDTO = z
     categoryName: z.string().nullable().optional(),
     title: z.string(),
     serialNo: z.string().nullable().optional(),
+    priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
     formData: z.unknown().nullable(),
     formSnapshot: z.unknown().nullable().optional(),
     status: z.enum(['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']),

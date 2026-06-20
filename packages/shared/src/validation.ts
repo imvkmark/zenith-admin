@@ -916,10 +916,16 @@ export const forwardInstanceSchema = z.object({
 export type ForwardInstanceInput = z.infer<typeof forwardInstanceSchema>;
 
 
+export const workflowPriorityEnum = z.enum(['low', 'normal', 'high', 'urgent']);
+
 export const createWorkflowInstanceSchema = z.object({
   definitionId: z.number().int().positive('请选择流程'),
   title: z.string().min(1, '申请标题不能为空').max(128),
   formData: z.record(z.string(), z.unknown()).nullable().optional(),
+  /** 加急/优先级（默认 normal） */
+  priority: workflowPriorityEnum.optional(),
+  /** 发起时自选抄送人（提交后立即抄送，与流程内 ccNode 并存） */
+  ccUserIds: z.array(z.number().int().positive()).max(50).optional(),
 });
 
 export const approveWorkflowTaskSchema = z.object({
@@ -985,6 +991,7 @@ export const createWorkflowInstanceWithDraftSchema = createWorkflowInstanceSchem
 export const updateWorkflowInstanceSchema = z.object({
   title: z.string().min(1, '申请标题不能为空').max(128).optional(),
   formData: z.record(z.string(), z.unknown()).nullable().optional(),
+  priority: workflowPriorityEnum.optional(),
 });
 
 // ── 批量审批 ──
