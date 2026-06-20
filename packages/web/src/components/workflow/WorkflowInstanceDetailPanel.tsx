@@ -3,11 +3,14 @@
  * 在 MyApplications / WorkflowMonitor / PendingApprovals 中复用
  */
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Descriptions, Empty, Spin, Tabs, TabPane, Tag, Typography, Button,
+  Avatar, TextArea, Select, Toast,
 } from '@douyinfe/semi-ui';
-import { CornerUpLeft } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowInstance, WorkflowFormField } from '@zenith/shared';
+import { CornerUpLeft, Send } from 'lucide-react';
+import type { WorkflowDefinition, WorkflowInstance, WorkflowFormField, WorkflowComment } from '@zenith/shared';
+import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
@@ -32,6 +35,101 @@ interface Props {
   extraActions?: ReactNode;
   /** 跳转到关联的父 / 子流程实例详情 */
   onOpenInstance?: (id: number) => void;
+}
+
+/** 流程沟通时间线（自由评论 + @提及），自管理状态与请求 */
+function InstanceComments({ instance }: Readonly<{ instance: WorkflowInstance }>) {
+  const [comments, setComments] = useState<WorkflowComment[]>(instance.comments ?? []);
+  const [content, setContent] = useState('');
+  const [mentions, setMentions] = useState<number[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => { setComments(instance.comments ?? []); }, [instance.id, instance.comments]);
+
+  // @提及候选：发起人 + 各任务处理人（去重）
+  const mentionOptions = (() => {
+    const map = new Map<number, string>();
+    if (instance.initiatorId) map.set(instance.initiatorId, instance.initiatorName ?? `用户#${instance.initiatorId}`);
+    for (const t of instance.tasks ?? []) {
+      if (t.assigneeId) map.set(t.assigneeId, t.assigneeName ?? `用户#${t.assigneeId}`);
+    }
+    return [...map.entries()].map(([value, label]) => ({ value, label }));
+  })();
+
+  const submit = async () => {
+    const text = content.trim();
+    if (!text) { Toast.warning('请输入评论内容'); return; }
+    setSubmitting(true);
+    try {
+      const res = await request.post<WorkflowComment>(`/api/workflows/instances/${instance.id}/comments`, { content: text, mentions });
+      if (res.code === 0 && res.data) {
+        setComments((prev) => [...prev, res.data as WorkflowComment]);
+        setContent('');
+        setMentions([]);
+      } else {
+        Toast.error(res.message || '评论失败');
+      }
+    } catch {
+      Toast.error('评论失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {comments.length === 0 ? (
+        <Empty title="暂无沟通记录" style={{ padding: '24px 0' }} />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {comments.map((c) => (
+            <div key={c.id} style={{ display: 'flex', gap: 8 }}>
+              <Avatar size="small" src={c.userAvatar ?? undefined} style={{ flexShrink: 0 }}>
+                {(c.userName ?? 'U').slice(0, 1)}
+              </Avatar>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Typography.Text strong>{c.userName ?? `用户#${c.userId}`}</Typography.Text>
+                  <Typography.Text type="tertiary" size="small">{formatDateTime(c.createdAt)}</Typography.Text>
+                </div>
+                <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 2 }}>{c.content}</div>
+                {c.mentionNames && c.mentionNames.length > 0 && (
+                  <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {c.mentionNames.map((n) => <Tag key={n} size="small" color="light-blue">@{n}</Tag>)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ borderTop: '1px solid var(--semi-color-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <TextArea
+          value={content}
+          onChange={setContent}
+          placeholder="发表评论，与流程相关人员沟通…"
+          autosize={{ minRows: 2, maxRows: 5 }}
+          maxCount={2000}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+          <Select
+            multiple
+            filter
+            placeholder="提醒谁（@提及）"
+            value={mentions}
+            onChange={(v) => setMentions((v as number[]) ?? [])}
+            optionList={mentionOptions}
+            maxTagCount={3}
+            style={{ flex: 1, minWidth: 0 }}
+            showClear
+          />
+          <Button theme="solid" type="primary" icon={<Send size={14} />} loading={submitting} onClick={submit}>
+            发送
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function WorkflowInstanceDetailPanel({
@@ -93,6 +191,12 @@ export default function WorkflowInstanceDetailPanel({
         </div>
         {/* 元信息行：流程 · 发起人 · 时间 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--semi-color-text-2)', flexWrap: 'wrap' }}>
+          {instance.serialNo && (
+            <>
+              <Tag size="small" color="grey" style={{ cursor: 'default' }}>{instance.serialNo}</Tag>
+              <span>·</span>
+            </>
+          )}
           <span>{instance.definitionName ?? '—'}</span>
           {definition?.categoryName && (
             <>
@@ -140,6 +244,9 @@ export default function WorkflowInstanceDetailPanel({
             instanceStatus={instance.status}
             finishedAt={instance.updatedAt}
           />
+        </TabPane>
+        <TabPane tab={`沟通${instance.comments && instance.comments.length > 0 ? ` (${instance.comments.length})` : ''}`} itemKey="comments">
+          <InstanceComments key={instance.id} instance={instance} />
         </TabPane>
         {childInstances.length > 0 && (
           <TabPane tab={`子流程 (${childInstances.length})`} itemKey="children">

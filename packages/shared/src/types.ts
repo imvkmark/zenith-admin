@@ -579,6 +579,74 @@ export interface ErrorAlertRule {
   updatedAt: string;
 }
 
+// ─── 系统监控告警 ─────────────────────────────────────────────────────────────
+export type MonitorMetric =
+  | 'cpu' | 'memory' | 'disk' | 'swap' | 'load1' | 'procCpu' | 'heap'
+  | 'loopLag' | 'qps' | 'errorRate' | 'netRxBps' | 'netTxBps' | 'diskReadBps' | 'diskWriteBps';
+export type MonitorAlertOperator = 'gt' | 'gte' | 'lt' | 'lte';
+export type MonitorAlertLevel = 'info' | 'warning' | 'critical';
+export type MonitorAlertState = 'ok' | 'firing';
+export type MonitorAlertEventStatus = 'firing' | 'resolved';
+
+export interface MonitorAlertRule {
+  id: number;
+  name: string;
+  metric: MonitorMetric;
+  operator: MonitorAlertOperator;
+  threshold: number;
+  durationMinutes: number;
+  level: MonitorAlertLevel;
+  channels: string[];
+  webhookUrl: string | null;
+  recipients: string[];
+  silenceMinutes: number;
+  enabled: boolean;
+  state: MonitorAlertState;
+  lastTriggeredAt: string | null;
+  lastValue: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonitorAlertEvent {
+  id: number;
+  ruleId: number | null;
+  ruleName: string;
+  metric: MonitorMetric;
+  level: MonitorAlertLevel;
+  operator: MonitorAlertOperator;
+  threshold: number;
+  value: number;
+  status: MonitorAlertEventStatus;
+  message: string;
+  triggeredAt: string;
+  resolvedAt: string | null;
+}
+
+export interface MonitorHistoryPoint {
+  t: string;
+  cpu: number;
+  memory: number;
+  disk: number;
+  swap: number;
+  load1: number;
+  procCpu: number;
+  heap: number;
+  loopLag: number;
+  qps: number;
+  errorRate: number;
+  netRxBps: number;
+  netTxBps: number;
+  diskReadBps: number;
+  diskWriteBps: number;
+}
+
+export interface MonitorHistory {
+  range: string;
+  bucketSec: number;
+  points: MonitorHistoryPoint[];
+}
+
 // ─── 用户行为采集（埋点）──────────────────────────────────────────────────────
 export type AnalyticsDeviceType = 'desktop' | 'mobile' | 'tablet' | 'bot' | 'unknown';
 
@@ -1450,12 +1518,29 @@ export interface WorkflowEdge {
   isDefault?: boolean;
 }
 
+/** 业务编号 / 流水号生成规则 */
+export interface WorkflowSerialNoConfig {
+  enabled: boolean;
+  /** 固定前缀，如 'BX-' */
+  prefix?: string;
+  /** 日期段格式（拼接在前缀后） */
+  dateFormat?: 'none' | 'YYYYMMDD' | 'YYYYMM' | 'YYYY';
+  /** 序号位数（左补零），默认 4 */
+  seqLength?: number;
+  /** 序号重置周期 */
+  resetPeriod?: 'never' | 'daily' | 'monthly' | 'yearly';
+}
+
 export interface WorkflowAdvancedSettings {
   allowWithdraw: boolean;
   allowResubmit: boolean;
   notifyInitiator: boolean;
   autoApproveIfSameUser: boolean;
   timeoutAction: 'none' | 'auto-approve' | 'auto-reject' | 'notify';
+  /** 是否允许在实例下自由评论（默认 true） */
+  allowComment?: boolean;
+  /** 业务编号生成规则 */
+  serialNo?: WorkflowSerialNoConfig;
 }
 
 export interface WorkflowFlowData {
@@ -1766,6 +1851,8 @@ export interface WorkflowInstance {
   categoryId?: number | null;
   categoryName?: string | null;
   title: string;
+  /** 业务编号/流水号（按流程定义编号规则在发起时生成） */
+  serialNo?: string | null;
   formData: Record<string, unknown> | null;
   /** 发起时的表单结构快照（冻结历史，渲染只读/审批表单时使用） */
   formSnapshot?: WorkflowFormField[] | null;
@@ -1784,8 +1871,124 @@ export interface WorkflowInstance {
   /** 子流程：本实例发起的子实例摘要列表（仅详情场景填充） */
   childInstances?: WorkflowChildInstanceSummary[] | null;
   tasks?: WorkflowTask[];
+  /** 沟通评论（仅详情场景填充） */
+  comments?: WorkflowComment[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** 流程评论 / 沟通时间线条目 */
+export interface WorkflowComment {
+  id: number;
+  instanceId: number;
+  taskId?: number | null;
+  userId: number;
+  userName?: string | null;
+  userAvatar?: string | null;
+  content: string;
+  /** @ 提及的用户 ID */
+  mentions: number[];
+  /** @ 提及的用户名（展示用） */
+  mentionNames?: string[] | null;
+  attachments: Array<{ name: string; url: string; size?: number }>;
+  createdAt: string;
+}
+
+/** 审批意见常用语 */
+export interface WorkflowQuickPhrase {
+  id: number;
+  /** null = 系统预置（所有人可见） */
+  userId: number | null;
+  content: string;
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 审批代理 / 离岗委托规则 */
+export interface WorkflowDelegation {
+  id: number;
+  principalId: number;
+  principalName?: string | null;
+  delegateId: number;
+  delegateName?: string | null;
+  /** null = 对全部流程生效 */
+  definitionId: number | null;
+  definitionName?: string | null;
+  reason?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  enabled: boolean;
+  /** 当前是否处于生效区间（由后端计算） */
+  active?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── 流程数据分析 ─────────────────────────────────────────────────────────────
+export interface WorkflowAnalyticsStatusCount {
+  status: WorkflowInstanceStatus;
+  count: number;
+}
+
+export interface WorkflowAnalyticsDefinitionStat {
+  definitionId: number;
+  definitionName: string;
+  total: number;
+  running: number;
+  approved: number;
+  rejected: number;
+  /** 已完结实例的平均耗时（秒） */
+  avgDurationSec: number | null;
+}
+
+export interface WorkflowAnalyticsNodeBottleneck {
+  definitionId: number;
+  definitionName: string;
+  nodeKey: string;
+  nodeName: string;
+  /** 该节点已完成任务的平均处理时长（秒） */
+  avgHandleSec: number | null;
+  /** 当前仍挂起的任务数 */
+  pendingCount: number;
+  /** 已完成任务数 */
+  doneCount: number;
+}
+
+export interface WorkflowAnalyticsApproverWorkload {
+  userId: number;
+  userName: string;
+  pendingCount: number;
+  /** 最早待办的等待时长（秒） */
+  oldestPendingSec: number | null;
+}
+
+export interface WorkflowAnalyticsTrendPoint {
+  date: string;
+  created: number;
+  completed: number;
+}
+
+export interface WorkflowAnalytics {
+  statusCounts: WorkflowAnalyticsStatusCount[];
+  total: number;
+  /** 全部已完结实例平均耗时（秒） */
+  avgDurationSec: number | null;
+  /** 当前挂起任务总数 */
+  pendingTaskCount: number;
+  /** 近 7 天发起数 */
+  recentCreated: number;
+  definitionStats: WorkflowAnalyticsDefinitionStat[];
+  nodeBottlenecks: WorkflowAnalyticsNodeBottleneck[];
+  approverWorkloads: WorkflowAnalyticsApproverWorkload[];
+  trend: WorkflowAnalyticsTrendPoint[];
+}
+
+/** 批量审批结果（逐条返回成功/失败） */
+export interface WorkflowBatchActionResult {
+  taskId: number;
+  success: boolean;
+  message?: string;
 }
 
 /** 子流程子实例摘要（用于父实例详情展示与跳转） */

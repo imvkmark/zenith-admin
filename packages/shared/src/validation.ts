@@ -915,6 +915,72 @@ export const addInstanceCcSchema = z.object({
   userIds: z.array(z.number().int().positive()).min(1, '请选择抄送人'),
 });
 
+// ── 草稿 / 重新提交 ──
+export const createWorkflowInstanceWithDraftSchema = createWorkflowInstanceSchema.extend({
+  /** true = 保存为草稿（不进入审批流转） */
+  asDraft: z.boolean().optional(),
+});
+
+export const updateWorkflowInstanceSchema = z.object({
+  title: z.string().min(1, '申请标题不能为空').max(128).optional(),
+  formData: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
+// ── 批量审批 ──
+export const batchApproveWorkflowTaskSchema = z.object({
+  taskIds: z.array(z.number().int().positive()).min(1, '请选择任务').max(200),
+  comment: z.string().max(500).optional(),
+});
+
+export const batchRejectWorkflowTaskSchema = z.object({
+  taskIds: z.array(z.number().int().positive()).min(1, '请选择任务').max(200),
+  comment: z.string().min(1, '驳回原因不能为空').max(500),
+});
+
+// ── 流程评论 ──
+export const createWorkflowCommentSchema = z.object({
+  content: z.string().min(1, '评论内容不能为空').max(2000),
+  taskId: z.number().int().positive().nullable().optional(),
+  mentions: z.array(z.number().int().positive()).max(50).optional(),
+  attachments: z.array(z.object({
+    name: z.string().max(255),
+    url: z.string().max(1024),
+    size: z.number().int().nonnegative().optional(),
+  })).max(20).optional(),
+});
+
+// ── 审批意见常用语 ──
+export const createWorkflowQuickPhraseSchema = z.object({
+  content: z.string().min(1, '内容不能为空').max(255),
+  sort: z.number().int().nonnegative().default(0),
+});
+export const updateWorkflowQuickPhraseSchema = createWorkflowQuickPhraseSchema.partial();
+
+// ── 审批代理 / 离岗委托 ──
+export const createWorkflowDelegationSchema = z.object({
+  /** 委托人（被代理人）；不传则默认当前登录用户 */
+  principalId: z.number().int().positive().optional(),
+  delegateId: z.number().int().positive('请选择代理人'),
+  definitionId: z.number().int().positive().nullable().optional(),
+  reason: z.string().max(255).nullable().optional(),
+  startAt: z.string().max(32).nullable().optional(),
+  endAt: z.string().max(32).nullable().optional(),
+  enabled: z.boolean().default(true),
+});
+export const updateWorkflowDelegationSchema = createWorkflowDelegationSchema.partial();
+
+// ── 管理员强制操作 ──
+export const jumpWorkflowInstanceSchema = z.object({
+  /** 强制跳转到的目标节点 key */
+  targetNodeKey: z.string().min(1, '请选择目标节点'),
+  comment: z.string().max(500).optional(),
+});
+
+export const reassignWorkflowTaskSchema = z.object({
+  targetUserId: z.number().int().positive('请选择新的处理人'),
+  comment: z.string().max(500).optional(),
+});
+
 export type CreateWorkflowDefinitionInput = z.infer<typeof createWorkflowDefinitionSchema>;
 export type UpdateWorkflowDefinitionInput = z.infer<typeof updateWorkflowDefinitionSchema>;
 export type CreateWorkflowInstanceInput = z.infer<typeof createWorkflowInstanceSchema>;
@@ -927,6 +993,17 @@ export type ReduceSignWorkflowTaskInput = z.infer<typeof reduceSignWorkflowTaskS
 export type ReturnWorkflowTaskInput = z.infer<typeof returnWorkflowTaskSchema>;
 export type UrgeWorkflowTaskInput = z.infer<typeof urgeWorkflowTaskSchema>;
 export type AddInstanceCcInput = z.infer<typeof addInstanceCcSchema>;
+export type CreateWorkflowInstanceWithDraftInput = z.infer<typeof createWorkflowInstanceWithDraftSchema>;
+export type UpdateWorkflowInstanceInput = z.infer<typeof updateWorkflowInstanceSchema>;
+export type BatchApproveWorkflowTaskInput = z.infer<typeof batchApproveWorkflowTaskSchema>;
+export type BatchRejectWorkflowTaskInput = z.infer<typeof batchRejectWorkflowTaskSchema>;
+export type CreateWorkflowCommentInput = z.infer<typeof createWorkflowCommentSchema>;
+export type CreateWorkflowQuickPhraseInput = z.infer<typeof createWorkflowQuickPhraseSchema>;
+export type UpdateWorkflowQuickPhraseInput = z.infer<typeof updateWorkflowQuickPhraseSchema>;
+export type CreateWorkflowDelegationInput = z.infer<typeof createWorkflowDelegationSchema>;
+export type UpdateWorkflowDelegationInput = z.infer<typeof updateWorkflowDelegationSchema>;
+export type JumpWorkflowInstanceInput = z.infer<typeof jumpWorkflowInstanceSchema>;
+export type ReassignWorkflowTaskInput = z.infer<typeof reassignWorkflowTaskSchema>;
 
 // ─── 聊天 ─────────────────────────────────────────────────────────────────────
 export const chatLinkPreviewSchema = z.object({
@@ -1341,6 +1418,44 @@ export const createErrorAlertRuleSchema = z.object({
   enabled: z.boolean().default(true),
 });
 export const updateErrorAlertRuleSchema = createErrorAlertRuleSchema.partial();
+
+// ─── 系统监控告警规则 ─────────────────────────────────────────────────────────
+export const monitorMetricValues = [
+  'cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps',
+] as const;
+
+export const createMonitorAlertRuleSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(128),
+  metric: z.enum(monitorMetricValues),
+  operator: z.enum(['gt', 'gte', 'lt', 'lte']).default('gt'),
+  threshold: z.number(),
+  durationMinutes: z.number().int().min(0).max(1440).default(0),
+  level: z.enum(['info', 'warning', 'critical']).default('warning'),
+  channels: z.array(z.enum(['email', 'webhook', 'inapp'])).default([]),
+  webhookUrl: z.string().max(512).nullable().optional(),
+  recipients: z.array(z.string().max(128)).default([]),
+  silenceMinutes: z.number().int().min(0).max(10_080).default(30),
+  enabled: z.boolean().default(true),
+});
+export const updateMonitorAlertRuleSchema = createMonitorAlertRuleSchema.partial();
+
+export const monitorAlertEventQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  metric: z.enum(monitorMetricValues).optional(),
+  level: z.enum(['info', 'warning', 'critical']).optional(),
+  status: z.enum(['firing', 'resolved']).optional(),
+  ruleId: z.coerce.number().int().positive().optional(),
+});
+
+export const monitorHistoryQuerySchema = z.object({
+  range: z.enum(['1h', '6h', '24h', '7d', '30d']).default('1h'),
+});
+
+export type CreateMonitorAlertRuleInput = z.infer<typeof createMonitorAlertRuleSchema>;
+export type UpdateMonitorAlertRuleInput = z.infer<typeof updateMonitorAlertRuleSchema>;
+export type MonitorAlertEventQuery = z.infer<typeof monitorAlertEventQuerySchema>;
+export type MonitorHistoryQuery = z.infer<typeof monitorHistoryQuerySchema>;
 
 // ─── 事件元数据 ───────────────────────────────────────────────────────────────
 export const analyticsEventPropertyDefSchema = z.object({

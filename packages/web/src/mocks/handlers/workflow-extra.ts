@@ -1,0 +1,280 @@
+import { http, HttpResponse } from 'msw';
+import type {
+  WorkflowComment, WorkflowQuickPhrase, WorkflowDelegation, WorkflowAnalytics,
+  WorkflowInstanceStatus,
+} from '@zenith/shared';
+import { mockWorkflowInstances, mockWorkflowTasks, getNextInstanceId } from '@/mocks/data/workflow';
+import { mockDateTime } from '@/mocks/utils/date';
+
+function ok<T>(data: T, message = 'ok') {
+  return HttpResponse.json({ code: 0, message, data });
+}
+function err(message: string, code = 400) {
+  return HttpResponse.json({ code, message });
+}
+
+// ── 内存态数据 ──
+const mockComments: WorkflowComment[] = [];
+let nextCommentId = 1;
+
+const mockQuickPhrases: WorkflowQuickPhrase[] = [
+  { id: 1, userId: null, content: '同意，请继续推进。', sort: 0, createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 2, userId: null, content: '情况属实，予以通过。', sort: 1, createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 3, userId: null, content: '材料不齐，请补充后再提交。', sort: 2, createdAt: mockDateTime(), updatedAt: mockDateTime() },
+];
+let nextPhraseId = 100;
+
+const mockDelegations: WorkflowDelegation[] = [];
+let nextDelegationId = 1;
+
+function buildAnalytics(): WorkflowAnalytics {
+  const insts = mockWorkflowInstances;
+  const statusMap = new Map<string, number>();
+  for (const i of insts) statusMap.set(i.status, (statusMap.get(i.status) ?? 0) + 1);
+  const statusCounts = [...statusMap.entries()].map(([status, count]) => ({ status: status as WorkflowInstanceStatus, count }));
+  const pending = mockWorkflowTasks.filter((t) => t.status === 'pending');
+
+  // 各流程定义统计
+  const defMap = new Map<number, { name: string; total: number; running: number; approved: number; rejected: number }>();
+  for (const i of insts) {
+    const e = defMap.get(i.definitionId) ?? { name: i.definitionName ?? `流程#${i.definitionId}`, total: 0, running: 0, approved: 0, rejected: 0 };
+    e.total += 1;
+    if (i.status === 'running') e.running += 1;
+    if (i.status === 'approved') e.approved += 1;
+    if (i.status === 'rejected') e.rejected += 1;
+    defMap.set(i.definitionId, e);
+  }
+  const definitionStats = [...defMap.entries()].map(([definitionId, e]) => ({
+    definitionId, definitionName: e.name, total: e.total, running: e.running, approved: e.approved, rejected: e.rejected,
+    avgDurationSec: 3600 * 6,
+  }));
+
+  // 节点瓶颈
+  const nodeMap = new Map<string, { nodeName: string; pending: number; done: number }>();
+  for (const t of mockWorkflowTasks) {
+    const e = nodeMap.get(t.nodeKey) ?? { nodeName: t.nodeName, pending: 0, done: 0 };
+    if (t.status === 'pending') e.pending += 1;
+    if (t.status === 'approved' || t.status === 'rejected') e.done += 1;
+    nodeMap.set(t.nodeKey, e);
+  }
+  const nodeBottlenecks = [...nodeMap.entries()].slice(0, 10).map(([nodeKey, e]) => ({
+    definitionId: 0, definitionName: '—', nodeKey, nodeName: e.nodeName,
+    avgHandleSec: 3600 * 2, pendingCount: e.pending, doneCount: e.done,
+  }));
+
+  // 审批人工作量
+  const approverMap = new Map<number, { name: string; count: number }>();
+  for (const t of pending) {
+    if (t.assigneeId == null) continue;
+    const e = approverMap.get(t.assigneeId) ?? { name: t.assigneeName ?? `用户#${t.assigneeId}`, count: 0 };
+    e.count += 1;
+    approverMap.set(t.assigneeId, e);
+  }
+  const approverWorkloads = [...approverMap.entries()].map(([userId, e]) => ({
+    userId, userName: e.name, pendingCount: e.count, oldestPendingSec: 3600 * 12,
+  }));
+
+  // 近 14 天趋势
+  const trend = Array.from({ length: 14 }, (_, idx) => {
+    const date = new Date(Date.now() - (13 - idx) * 86400000).toISOString().slice(0, 10);
+    return { date, created: Math.floor(Math.random() * 4), completed: Math.floor(Math.random() * 3) };
+  });
+
+  return {
+    statusCounts,
+    total: insts.length,
+    avgDurationSec: 3600 * 8,
+    pendingTaskCount: pending.length,
+    recentCreated: insts.length,
+    definitionStats,
+    nodeBottlenecks,
+    approverWorkloads,
+    trend,
+  };
+}
+
+export const workflowExtraHandlers = [
+  // ── 数据分析（必须在 /instances/:id 之前注册）──
+  http.get('/api/workflows/instances/analytics', () => ok(buildAnalytics())),
+
+  // ── 流程评论 ──
+  http.get('/api/workflows/instances/:id/comments', ({ params }) => {
+    const list = mockComments.filter((c) => c.instanceId === Number(params.id));
+    return ok(list);
+  }),
+  http.post('/api/workflows/instances/:id/comments', async ({ params, request }) => {
+    const body = await request.json() as { content: string; mentions?: number[]; taskId?: number | null };
+    const comment: WorkflowComment = {
+      id: nextCommentId++,
+      instanceId: Number(params.id),
+      taskId: body.taskId ?? null,
+      userId: 1,
+      userName: '张三',
+      userAvatar: null,
+      content: body.content,
+      mentions: body.mentions ?? [],
+      mentionNames: (body.mentions ?? []).map((m) => `用户#${m}`),
+      attachments: [],
+      createdAt: mockDateTime(),
+    };
+    mockComments.push(comment);
+    return ok(comment, '已评论');
+  }),
+
+  // ── 草稿：编辑 / 提交 / 重新提交 ──
+  http.put('/api/workflows/instances/:id/draft', async ({ params, request }) => {
+    const body = await request.json() as { title?: string; formData?: Record<string, unknown> };
+    const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
+    if (!inst) return err('流程实例不存在', 404);
+    if (inst.status !== 'draft') return err('仅草稿可编辑');
+    if (body.title !== undefined) inst.title = body.title;
+    if (body.formData !== undefined) inst.formData = body.formData;
+    inst.updatedAt = mockDateTime();
+    return ok(inst, '草稿已保存');
+  }),
+  http.post('/api/workflows/instances/:id/submit', ({ params }) => {
+    const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
+    if (!inst) return err('流程实例不存在', 404);
+    if (inst.status !== 'draft') return err('仅草稿可提交');
+    inst.status = 'running';
+    inst.updatedAt = mockDateTime();
+    return ok(inst, '申请已提交');
+  }),
+  http.post('/api/workflows/instances/:id/resubmit', ({ params }) => {
+    const src = mockWorkflowInstances.find((i) => i.id === Number(params.id));
+    if (!src) return err('流程实例不存在', 404);
+    const now = mockDateTime();
+    const clone = {
+      ...src,
+      id: getNextInstanceId(),
+      serialNo: null,
+      status: 'draft' as const,
+      currentNodeKey: null,
+      tasks: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockWorkflowInstances.push(clone);
+    return ok(clone, '已生成草稿');
+  }),
+
+  // ── 管理员强制操作 ──
+  http.post('/api/workflows/instances/:id/jump', async ({ params, request }) => {
+    const body = await request.json() as { targetNodeKey: string };
+    const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
+    if (!inst) return err('流程实例不存在', 404);
+    if (inst.status !== 'running') return err('仅审批中的流程可强制跳转');
+    mockWorkflowTasks.filter((t) => t.instanceId === inst.id && (t.status === 'pending' || t.status === 'waiting'))
+      .forEach((t) => { t.status = 'skipped'; t.actionAt = mockDateTime(); });
+    inst.currentNodeKey = body.targetNodeKey;
+    inst.updatedAt = mockDateTime();
+    return ok(inst, '已跳转');
+  }),
+  http.post('/api/workflows/tasks/:taskId/reassign', async ({ params, request }) => {
+    const body = await request.json() as { targetUserId: number };
+    const task = mockWorkflowTasks.find((t) => t.id === Number(params.taskId));
+    if (!task) return err('任务不存在', 404);
+    task.assigneeId = body.targetUserId;
+    task.assigneeName = `用户#${body.targetUserId}`;
+    return ok(task, '已改派');
+  }),
+
+  // ── 批量审批 ──
+  http.post('/api/workflows/tasks/batch-approve', async ({ request }) => {
+    const { taskIds, comment } = await request.json() as { taskIds: number[]; comment?: string };
+    const results = taskIds.map((taskId) => {
+      const task = mockWorkflowTasks.find((t) => t.id === taskId);
+      if (task && task.status === 'pending') {
+        task.status = 'approved'; task.comment = comment ?? null; task.actionAt = mockDateTime();
+        return { taskId, success: true };
+      }
+      return { taskId, success: false, message: '任务不存在或已处理' };
+    });
+    const succeeded = results.filter((r) => r.success).length;
+    return ok({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条`);
+  }),
+  http.post('/api/workflows/tasks/batch-reject', async ({ request }) => {
+    const { taskIds, comment } = await request.json() as { taskIds: number[]; comment: string };
+    const results = taskIds.map((taskId) => {
+      const task = mockWorkflowTasks.find((t) => t.id === taskId);
+      if (task && task.status === 'pending') {
+        task.status = 'rejected'; task.comment = comment; task.actionAt = mockDateTime();
+        const inst = mockWorkflowInstances.find((i) => i.id === task.instanceId);
+        if (inst) { inst.status = 'rejected'; inst.updatedAt = mockDateTime(); }
+        return { taskId, success: true };
+      }
+      return { taskId, success: false, message: '任务不存在或已处理' };
+    });
+    const succeeded = results.filter((r) => r.success).length;
+    return ok({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条`);
+  }),
+
+  // ── 审批意见常用语 ──
+  http.get('/api/workflows/quick-phrases', () => ok(mockQuickPhrases)),
+  http.post('/api/workflows/quick-phrases', async ({ request }) => {
+    const body = await request.json() as { content: string; sort?: number };
+    const phrase: WorkflowQuickPhrase = { id: nextPhraseId++, userId: 1, content: body.content, sort: body.sort ?? 0, createdAt: mockDateTime(), updatedAt: mockDateTime() };
+    mockQuickPhrases.push(phrase);
+    return ok(phrase, '已新增');
+  }),
+  http.put('/api/workflows/quick-phrases/:id', async ({ params, request }) => {
+    const body = await request.json() as { content?: string; sort?: number };
+    const p = mockQuickPhrases.find((x) => x.id === Number(params.id));
+    if (!p) return err('常用语不存在', 404);
+    if (body.content !== undefined) p.content = body.content;
+    if (body.sort !== undefined) p.sort = body.sort;
+    p.updatedAt = mockDateTime();
+    return ok(p, '已更新');
+  }),
+  http.delete('/api/workflows/quick-phrases/:id', ({ params }) => {
+    const idx = mockQuickPhrases.findIndex((x) => x.id === Number(params.id));
+    if (idx === -1) return err('常用语不存在', 404);
+    mockQuickPhrases.splice(idx, 1);
+    return ok(null, '已删除');
+  }),
+
+  // ── 审批代理 / 离岗委托 ──
+  http.get('/api/workflows/delegations', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? 1);
+    const pageSize = Number(url.searchParams.get('pageSize') ?? 20);
+    const list = mockDelegations.slice((page - 1) * pageSize, page * pageSize);
+    return ok({ list, total: mockDelegations.length, page, pageSize });
+  }),
+  http.post('/api/workflows/delegations', async ({ request }) => {
+    const body = await request.json() as Partial<WorkflowDelegation> & { delegateId: number };
+    const now = mockDateTime();
+    const row: WorkflowDelegation = {
+      id: nextDelegationId++,
+      principalId: body.principalId ?? 1,
+      principalName: '张三',
+      delegateId: body.delegateId,
+      delegateName: `用户#${body.delegateId}`,
+      definitionId: body.definitionId ?? null,
+      definitionName: body.definitionId ? `流程#${body.definitionId}` : null,
+      reason: body.reason ?? null,
+      startAt: body.startAt ?? null,
+      endAt: body.endAt ?? null,
+      enabled: body.enabled ?? true,
+      active: body.enabled ?? true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockDelegations.push(row);
+    return ok(row, '已新增');
+  }),
+  http.put('/api/workflows/delegations/:id', async ({ params, request }) => {
+    const body = await request.json() as Partial<WorkflowDelegation>;
+    const row = mockDelegations.find((x) => x.id === Number(params.id));
+    if (!row) return err('委托规则不存在', 404);
+    Object.assign(row, body, { updatedAt: mockDateTime() });
+    if (body.enabled !== undefined) row.active = body.enabled;
+    return ok(row, '已更新');
+  }),
+  http.delete('/api/workflows/delegations/:id', ({ params }) => {
+    const idx = mockDelegations.findIndex((x) => x.id === Number(params.id));
+    if (idx === -1) return err('委托规则不存在', 404);
+    mockDelegations.splice(idx, 1);
+    return ok(null, '已删除');
+  }),
+];

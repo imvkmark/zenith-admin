@@ -1327,6 +1327,8 @@ export const workflowInstances = pgTable('workflow_instances', {
   definitionSnapshot: jsonb('definition_snapshot').notNull(), // 发起时的定义快照
   formSnapshot: jsonb('form_snapshot'), // 发起时的表单结构快照（WorkflowFormField[]），冻结历史不受表单修改影响
   title: varchar('title', { length: 128 }).notNull(),
+  /** 业务编号/流水号（按流程定义的编号规则在发起时生成，如 BX-20260620-0001） */
+  serialNo: varchar('serial_no', { length: 64 }),
   formData: jsonb('form_data'), // 填写的表单数据
   status: workflowInstanceStatusEnum('status').default('draft').notNull(),
   currentNodeKey: varchar('current_node_key', { length: 64 }),
@@ -1474,6 +1476,78 @@ export const workflowTriggerExecutions = pgTable('workflow_trigger_executions', 
 
 export type WorkflowTriggerExecutionRow = typeof workflowTriggerExecutions.$inferSelect;
 export type NewWorkflowTriggerExecution = typeof workflowTriggerExecutions.$inferInsert;
+
+// ─── 流程评论 / 沟通时间线 ────────────────────────────────────────────────────
+// 审批人 / 抄送人 / 发起人均可在实例下自由留言（不影响审批流转），支持 @ 提及
+export const workflowComments = pgTable('workflow_comments', {
+  id: serial('id').primaryKey(),
+  instanceId: integer('instance_id').notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  /** 关联的任务（在某审批任务上下文中评论时填写，可为空） */
+  taskId: integer('task_id').references(() => workflowTasks.id, { onDelete: 'set null' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  /** @ 提及的用户 ID 列表 */
+  mentions: jsonb('mentions').$type<number[]>().default([]).notNull(),
+  /** 附件列表（{ name, url, size? }[]） */
+  attachments: jsonb('attachments').$type<Array<{ name: string; url: string; size?: number }>>().default([]).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type WorkflowCommentRow = typeof workflowComments.$inferSelect;
+export type NewWorkflowComment = typeof workflowComments.$inferInsert;
+
+// ─── 审批意见常用语 ───────────────────────────────────────────────────────────
+// userId 为 null 表示系统预置（所有人可见）；否则为个人常用语
+export const workflowQuickPhrases = pgTable('workflow_quick_phrases', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  content: varchar('content', { length: 255 }).notNull(),
+  sort: integer('sort').default(0).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type WorkflowQuickPhraseRow = typeof workflowQuickPhrases.$inferSelect;
+export type NewWorkflowQuickPhrase = typeof workflowQuickPhrases.$inferInsert;
+
+// ─── 审批代理 / 离岗委托 ──────────────────────────────────────────────────────
+// principal 在 [startAt, endAt] 区间内（或永久）将其待审批任务自动转交给 delegate
+export const workflowDelegations = pgTable('workflow_delegations', {
+  id: serial('id').primaryKey(),
+  /** 委托人（被代理人）：其待办将被转交 */
+  principalId: integer('principal_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 代理人（受托人）：接收待办 */
+  delegateId: integer('delegate_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 限定的流程定义（为 null 表示对全部流程生效） */
+  definitionId: integer('definition_id').references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+  reason: varchar('reason', { length: 255 }),
+  /** 生效开始时间（为 null 表示立即生效） */
+  startAt: timestamp('start_at', { withTimezone: true }),
+  /** 生效结束时间（为 null 表示长期有效） */
+  endAt: timestamp('end_at', { withTimezone: true }),
+  enabled: boolean('enabled').default(true).notNull(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type WorkflowDelegationRow = typeof workflowDelegations.$inferSelect;
+export type NewWorkflowDelegation = typeof workflowDelegations.$inferInsert;
+
+// ─── 业务编号计数器 ───────────────────────────────────────────────────────────
+// 每个流程定义 + 周期键（如 '20260620' / 'ALL'）维护一个自增序列，原子自增防并发
+export const workflowSerialCounters = pgTable('workflow_serial_counters', {
+  id: serial('id').primaryKey(),
+  definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+  periodKey: varchar('period_key', { length: 16 }).notNull(),
+  seq: integer('seq').default(0).notNull(),
+}, (t) => [unique('workflow_serial_counters_def_period_uniq').on(t.definitionId, t.periodKey)]);
+
+export type WorkflowSerialCounterRow = typeof workflowSerialCounters.$inferSelect;
+export type NewWorkflowSerialCounter = typeof workflowSerialCounters.$inferInsert;
 
 // ─── 聊天会话表 ───────────────────────────────────────────────────────────────
 export const chatConversationTypeEnum = pgEnum('chat_conversation_type', ['direct', 'group']);
@@ -1902,6 +1976,23 @@ export const workflowDefinitionVersionsRelations = relations(workflowDefinitionV
   definition: one(workflowDefinitions, { fields: [workflowDefinitionVersions.definitionId], references: [workflowDefinitions.id] }),
   publishedByUser: one(users, { fields: [workflowDefinitionVersions.publishedBy], references: [users.id] }),
   tenant: one(tenants, { fields: [workflowDefinitionVersions.tenantId], references: [tenants.id] }),
+}));
+
+export const workflowCommentsRelations = relations(workflowComments, ({ one }) => ({
+  instance: one(workflowInstances, { fields: [workflowComments.instanceId], references: [workflowInstances.id] }),
+  task: one(workflowTasks, { fields: [workflowComments.taskId], references: [workflowTasks.id] }),
+  user: one(users, { fields: [workflowComments.userId], references: [users.id] }),
+}));
+
+export const workflowQuickPhrasesRelations = relations(workflowQuickPhrases, ({ one }) => ({
+  user: one(users, { fields: [workflowQuickPhrases.userId], references: [users.id] }),
+}));
+
+export const workflowDelegationsRelations = relations(workflowDelegations, ({ one }) => ({
+  principal: one(users, { fields: [workflowDelegations.principalId], references: [users.id], relationName: 'delegationPrincipal' }),
+  delegate: one(users, { fields: [workflowDelegations.delegateId], references: [users.id], relationName: 'delegationDelegate' }),
+  definition: one(workflowDefinitions, { fields: [workflowDelegations.definitionId], references: [workflowDefinitions.id] }),
+  tenant: one(tenants, { fields: [workflowDelegations.tenantId], references: [tenants.id] }),
 }));
 
 export const workflowInstancesRelations = relations(workflowInstances, ({ one, many }) => ({
@@ -2608,4 +2699,104 @@ export const membersRelations = relations(members, ({ one, many }) => ({
   walletTransactions: many(memberWalletTransactions),
   memberCoupons: many(memberCoupons),
   checkins: many(memberCheckins),
+}));
+
+// ─── 系统监控指标采样（时序持久化，追加型）──────────────────────────────────────
+// 由 pg-boss 定时任务（默认每分钟）将 metricsSampler 最新快照落库，用于历史趋势与容量规划。
+// 各百分比字段范围 0-100；*Bps 字段为字节/秒。
+export const systemMetricSamples = pgTable('system_metric_samples', {
+  id: serial('id').primaryKey(),
+  sampledAt: timestamp('sampled_at', { withTimezone: true }).notNull().defaultNow(),
+  cpu: real('cpu').notNull().default(0),
+  memory: real('memory').notNull().default(0),
+  disk: real('disk').notNull().default(0),
+  swap: real('swap').notNull().default(0),
+  load1: real('load1').notNull().default(0),
+  procCpu: real('proc_cpu').notNull().default(0),
+  heap: real('heap').notNull().default(0),
+  loopLag: real('loop_lag').notNull().default(0),
+  qps: real('qps').notNull().default(0),
+  errorRate: real('error_rate').notNull().default(0),
+  netRxBps: real('net_rx_bps').notNull().default(0),
+  netTxBps: real('net_tx_bps').notNull().default(0),
+  diskReadBps: real('disk_read_bps').notNull().default(0),
+  diskWriteBps: real('disk_write_bps').notNull().default(0),
+}, (t) => [
+  index('system_metric_samples_at_idx').on(t.sampledAt),
+]);
+export type SystemMetricSampleRow = typeof systemMetricSamples.$inferSelect;
+export type NewSystemMetricSample = typeof systemMetricSamples.$inferInsert;
+
+// ─── 监控告警规则 ──────────────────────────────────────────────────────────────
+// 可监控的指标维度（与 system_metric_samples 字段对应）
+export const monitorMetricEnum = pgEnum('monitor_metric', [
+  'cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps',
+]);
+export const monitorAlertOperatorEnum = pgEnum('monitor_alert_operator', ['gt', 'gte', 'lt', 'lte']);
+export const monitorAlertLevelEnum = pgEnum('monitor_alert_level', ['info', 'warning', 'critical']);
+export const monitorAlertStateEnum = pgEnum('monitor_alert_state', ['ok', 'firing']);
+export const monitorAlertEventStatusEnum = pgEnum('monitor_alert_event_status', ['firing', 'resolved']);
+
+export const monitorAlertRules = pgTable('monitor_alert_rules', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 128 }).notNull(),
+  metric: monitorMetricEnum('metric').notNull(),
+  operator: monitorAlertOperatorEnum('operator').notNull().default('gt'),
+  threshold: real('threshold').notNull(),
+  /** 持续达标分钟数（0=瞬时触发，>0=持续超阈才触发，抑制毛刺）*/
+  durationMinutes: integer('duration_minutes').notNull().default(0),
+  level: monitorAlertLevelEnum('level').notNull().default('warning'),
+  channels: jsonb('channels').$type<string[]>().notNull().default([]),
+  webhookUrl: varchar('webhook_url', { length: 512 }),
+  recipients: jsonb('recipients').$type<string[]>().notNull().default([]),
+  /** 静默期分钟数：触发后该时间内不重复通知 */
+  silenceMinutes: integer('silence_minutes').notNull().default(30),
+  enabled: boolean('enabled').notNull().default(true),
+  /** 运行态：ok / firing */
+  state: monitorAlertStateEnum('state').notNull().default('ok'),
+  breachingSince: timestamp('breaching_since', { withTimezone: true }),
+  lastTriggeredAt: timestamp('last_triggered_at', { withTimezone: true }),
+  lastValue: real('last_value'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => [
+  index('monitor_alert_rules_tenant_idx').on(t.tenantId),
+  index('monitor_alert_rules_enabled_idx').on(t.enabled),
+]);
+export type MonitorAlertRuleRow = typeof monitorAlertRules.$inferSelect;
+export type NewMonitorAlertRule = typeof monitorAlertRules.$inferInsert;
+
+// ─── 监控告警记录（追加型日志）────────────────────────────────────────────────
+export const monitorAlertEvents = pgTable('monitor_alert_events', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ruleId: integer('rule_id').references((): AnyPgColumn => monitorAlertRules.id, { onDelete: 'set null' }),
+  ruleName: varchar('rule_name', { length: 128 }).notNull(),
+  metric: monitorMetricEnum('metric').notNull(),
+  level: monitorAlertLevelEnum('level').notNull().default('warning'),
+  operator: monitorAlertOperatorEnum('operator').notNull(),
+  threshold: real('threshold').notNull(),
+  value: real('value').notNull(),
+  status: monitorAlertEventStatusEnum('status').notNull().default('firing'),
+  message: text('message').notNull(),
+  notified: boolean('notified').notNull().default(false),
+  triggeredAt: timestamp('triggered_at', { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+}, (t) => [
+  index('monitor_alert_events_rule_idx').on(t.ruleId),
+  index('monitor_alert_events_status_idx').on(t.status),
+  index('monitor_alert_events_triggered_idx').on(t.triggeredAt),
+  index('monitor_alert_events_tenant_idx').on(t.tenantId),
+]);
+export type MonitorAlertEventRow = typeof monitorAlertEvents.$inferSelect;
+export type NewMonitorAlertEvent = typeof monitorAlertEvents.$inferInsert;
+
+export const monitorAlertRulesRelations = relations(monitorAlertRules, ({ many }) => ({
+  events: many(monitorAlertEvents),
+}));
+
+export const monitorAlertEventsRelations = relations(monitorAlertEvents, ({ one }) => ({
+  rule: one(monitorAlertRules, { fields: [monitorAlertEvents.ruleId], references: [monitorAlertRules.id] }),
 }));

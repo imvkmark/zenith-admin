@@ -11,6 +11,7 @@ import { announcementsHandlers } from './announcements';
 import { filesHandlers } from './files';
 import { cronJobsHandlers } from './cron-jobs';
 import { monitorHandlers } from './monitor';
+import { monitorAlertsHandlers } from './monitor-alerts';
 import { loginLogsHandlers } from './login-logs';
 import { operationLogsHandlers } from './operation-logs';
 import { sessionsHandlers } from './sessions';
@@ -25,6 +26,7 @@ import { apiTokensHandlers } from './api-tokens';
 import { tenantsHandlers } from './tenants';
 import { cacheHandlers } from './cache';
 import { workflowHandlers } from './workflow';
+import { workflowExtraHandlers } from './workflow-extra';
 import { workflowFormsHandlers } from './workflow-forms';
 import { workflowAutomationsHandlers } from './workflow-automations';
 import { chatHandlers } from './chat';
@@ -69,6 +71,7 @@ export const handlers = [
   ...filesHandlers,
   ...cronJobsHandlers,
   ...monitorHandlers,
+  ...monitorAlertsHandlers,
   ...loginLogsHandlers,
   ...operationLogsHandlers,
   ...sessionsHandlers,
@@ -82,6 +85,7 @@ export const handlers = [
   ...apiTokensHandlers,
   ...tenantsHandlers,
   ...cacheHandlers,
+  ...workflowExtraHandlers,
   ...workflowHandlers,
   ...workflowFormsHandlers,
   ...workflowAutomationsHandlers,

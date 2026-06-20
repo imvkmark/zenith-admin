@@ -324,20 +324,28 @@ export const workflowHandlers = [
     return ok({ ...inst, tasks, childInstances });
   }),
 
-  // 发起流程申请
+  // 发起流程申请（支持保存草稿 asDraft）
   http.post('/api/workflows/instances', async ({ request }) => {
-    const body = await request.json() as { definitionId: number; title: string; formData: Record<string, unknown> };
+    const body = await request.json() as { definitionId: number; title: string; formData: Record<string, unknown>; asDraft?: boolean };
     const def = mockWorkflowDefinitions.find(d => d.id === body.definitionId);
     if (!def) return err('流程定义不存在');
     if (def.status !== 'published') return err('该流程未发布，无法发起申请');
 
     const now = mockDateTime();
     const instanceId = getNextInstanceId();
+    const isDraft = body.asDraft === true;
 
-    // 创建初始审批任务（取第一个 approve 节点）
+    // 业务编号：仅正式发起时生成
+    const serialCfg = (def.flowData?.settings as { serialNo?: { enabled?: boolean; prefix?: string; seqLength?: number } } | undefined)?.serialNo;
+    let serialNo: string | null = null;
+    if (!isDraft && serialCfg?.enabled) {
+      serialNo = `${serialCfg.prefix ?? ''}${String(instanceId).padStart(serialCfg.seqLength ?? 4, '0')}`;
+    }
+
+    // 创建初始审批任务（取第一个 approve 节点）；草稿不创建任务
     const firstApproveNode = def.flowData?.nodes.find(n => n.data.type === 'approve');
     const newTasks: WorkflowTask[] = [];
-    if (firstApproveNode) {
+    if (!isDraft && firstApproveNode) {
       newTasks.push({
         id: getNextTaskId(),
         instanceId,
@@ -359,10 +367,11 @@ export const workflowHandlers = [
       definitionId: body.definitionId,
       definitionName: def.name,
       title: body.title,
+      serialNo,
       formData: body.formData,
       formSnapshot: resolveDefinitionFormFields(def),
-      status: 'running',
-      currentNodeKey: firstApproveNode?.data.key ?? null,
+      status: isDraft ? 'draft' : 'running',
+      currentNodeKey: isDraft ? null : (firstApproveNode?.data.key ?? null),
       initiatorId: 1,
       initiatorName: '张三',
       initiatorAvatar: null,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Form,
@@ -20,8 +20,6 @@ import dayjs from 'dayjs';
 import { FileInput, Plus, RotateCcw, Search } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowInstance, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { usePageTracker } from '@/hooks/usePageTracker';
-import { trackFeature } from '@/utils/tracker';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -46,6 +44,104 @@ const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   cancelled: { text: '已取消', color: 'purple' },
 };
 
+const TASK_STATUS_TEXT: Record<string, string> = {
+  pending: '待处理',
+  approved: '已通过',
+  rejected: '已驳回',
+  skipped: '已跳过',
+  waiting: '等待中',
+};
+
+const LAYOUT_ONLY_TYPES = new Set(['divider', 'description', 'group', 'row']);
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildPrintHtml(instance: WorkflowInstance): string {
+  const statusText = INSTANCE_STATUS_MAP[instance.status]?.text ?? instance.status;
+  const formFields = instance.formSnapshot ?? [];
+  const formData = instance.formData ?? {};
+
+  const formRows = formFields.length > 0
+    ? formFields
+        .filter(f => !LAYOUT_ONLY_TYPES.has(f.type) && f.key)
+        .map(f => {
+          const val = formData[f.key];
+          const display = val === null || val === undefined ? ''
+            : typeof val === 'object' ? escapeHtml(JSON.stringify(val))
+            : escapeHtml(String(val));
+          return `<tr>
+            <td style="width:160px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">${escapeHtml(f.label ?? f.key)}</td>
+            <td style="padding:8px 12px;border:1px solid #ddd;">${display}</td>
+          </tr>`;
+        }).join('')
+    : Object.entries(formData).map(([k, v]) => {
+        const display = typeof v === 'object' ? escapeHtml(JSON.stringify(v)) : escapeHtml(String(v ?? ''));
+        return `<tr>
+          <td style="width:160px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">${escapeHtml(k)}</td>
+          <td style="padding:8px 12px;border:1px solid #ddd;">${display}</td>
+        </tr>`;
+      }).join('');
+
+  const tasks = instance.tasks ?? [];
+  const taskRows = tasks.map(t =>
+    `<tr>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(t.nodeName)}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(t.assigneeName ?? '—')}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${TASK_STATUS_TEXT[t.status] ?? t.status}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(t.comment ?? '')}</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${t.actionAt ? formatDateTime(t.actionAt) : '—'}</td>
+    </tr>`
+  ).join('');
+
+  return `<!DOCTYPE html>
+<html><head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(instance.title)} - 审批单</title>
+  <style>
+    body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; color: #333; padding: 20px; max-width: 860px; margin: 0 auto; }
+    h1 { font-size: 22px; text-align: center; margin: 0 0 4px; }
+    .subtitle { text-align: center; color: #888; font-size: 12px; margin-bottom: 20px; }
+    h2 { font-size: 15px; border-bottom: 2px solid #333; padding-bottom: 4px; margin: 20px 0 10px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    th { background: #f5f5f5; font-weight: bold; text-align: left; padding: 8px 12px; border: 1px solid #ddd; }
+    @media print { @page { margin: 1.5cm; } }
+  </style>
+</head><body>
+  <h1>${escapeHtml(instance.title)}</h1>
+  <div class="subtitle">${instance.serialNo ? `业务编号：${escapeHtml(instance.serialNo)}` : '&nbsp;'}</div>
+  <h2>基本信息</h2>
+  <table>
+    <tr>
+      <td style="width:120px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">流程名称</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(instance.definitionName ?? '—')}</td>
+      <td style="width:120px;background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">发起人</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(instance.initiatorName ?? '—')}</td>
+    </tr>
+    <tr>
+      <td style="background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">发起时间</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${formatDateTime(instance.createdAt)}</td>
+      <td style="background:#f9f9f9;font-weight:bold;padding:8px 12px;border:1px solid #ddd;">状态</td>
+      <td style="padding:8px 12px;border:1px solid #ddd;">${statusText}</td>
+    </tr>
+  </table>
+  <h2>表单内容</h2>
+  <table>
+    ${formRows || '<tr><td colspan="2" style="text-align:center;color:#888;padding:12px;border:1px solid #ddd;">无表单数据</td></tr>'}
+  </table>
+  <h2>审批记录</h2>
+  ${tasks.length > 0
+    ? `<table>
+        <thead><tr>
+          <th>节点</th><th>处理人</th><th>状态</th><th>审批意见</th><th>处理时间</th>
+        </tr></thead>
+        <tbody>${taskRows}</tbody>
+      </table>`
+    : '<p style="color:#888;">无审批记录</p>'}
+</body></html>`;
+}
+
 function InstanceDetailDrawer({
   instanceId,
   visible,
@@ -60,7 +156,6 @@ function InstanceDetailDrawer({
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WorkflowInstance | null>(null);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
-  // 当前查看的实例 id（支持在父 / 子流程之间跳转）
   const [viewId, setViewId] = useState<number | null>(instanceId);
 
   useEffect(() => {
@@ -94,6 +189,20 @@ function InstanceDetailDrawer({
     }
   };
 
+  const handlePrint = () => {
+    if (!data) return;
+    const html = buildPrintHtml(data);
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (!win) {
+      Toast.warning('请允许浏览器弹出窗口以打印');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  };
+
   const [urgeVisible, setUrgeVisible] = useState(false);
   const [urgeMessage, setUrgeMessage] = useState('');
   const [urgeLoading, setUrgeLoading] = useState(false);
@@ -114,7 +223,6 @@ function InstanceDetailDrawer({
     }
   };
 
-  // 动态补加抄送
   const ccNodeOptions = (definition?.flowData?.nodes ?? [])
     .filter((n) => n.data.type === 'ccNode')
     .map((n) => ({ label: n.data.label, value: n.data.key }));
@@ -154,6 +262,12 @@ function InstanceDetailDrawer({
     }
   };
 
+  const printAction = data ? (
+    <Button theme="borderless" size="small" onClick={handlePrint}>
+      打印审批单
+    </Button>
+  ) : null;
+
   return (
     <SideSheet
       title="申请详情"
@@ -178,7 +292,13 @@ function InstanceDetailDrawer({
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
       ) : (
-        <WorkflowInstanceDetailPanel instance={data} definition={definition} loading={loading} onOpenInstance={(id) => setViewId(id)} />
+        <WorkflowInstanceDetailPanel
+          instance={data}
+          definition={definition}
+          loading={loading}
+          onOpenInstance={(id) => setViewId(id)}
+          extraActions={printAction}
+        />
       )}
       <AppModal
         title="催办"
@@ -235,7 +355,6 @@ function InstanceDetailDrawer({
 }
 
 export default function MyApplicationsPage() {
-  usePageTracker('我的申请');
   const { user } = useAuth();
   const formApi = useRef<FormApi | null>(null);
   const dynamicFormApi = useRef<FormApi | null>(null);
@@ -251,8 +370,13 @@ export default function MyApplicationsPage() {
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [applyCategoryId, setApplyCategoryId] = useState<number | null>(null);
   const { categories } = useWorkflowCategories();
+  // draft editing state
+  const [editingDraft, setEditingDraft] = useState<WorkflowInstance | null>(null);
+  const [dynamicFormInitValues, setDynamicFormInitValues] = useState<Record<string, unknown>>({});
+  const [formKey, setFormKey] = useState(0);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, params?: { status: string }) => {
     const { status: activeStatus } = params ?? searchParamsRef.current;
@@ -277,9 +401,13 @@ export default function MyApplicationsPage() {
     void fetchList();
   }, [fetchList]);
 
-  const loadDefinitions = async () => {
+  const loadDefinitions = async (): Promise<WorkflowDefinition[]> => {
     const res = await request.get<WorkflowDefinition[]>('/api/workflows/definitions/published');
-    if (res.code === 0 && res.data) setDefinitions(res.data);
+    if (res.code === 0 && res.data) {
+      setDefinitions(res.data);
+      return res.data;
+    }
+    return definitions;
   };
 
   const handleSearch = () => {
@@ -298,21 +426,53 @@ export default function MyApplicationsPage() {
     setDetailVisible(true);
   };
 
+  const closeApply = () => {
+    setApplyVisible(false);
+    setEditingDraft(null);
+    setSelectedDef(null);
+    setApplyCategoryId(null);
+    setDynamicFormInitValues({});
+  };
+
   const openApply = async () => {
+    setEditingDraft(null);
+    setDynamicFormInitValues({});
+    setFormKey(k => k + 1);
     await loadDefinitions();
     setApplyVisible(true);
   };
 
-  const handleSubmitApply = async () => {
-    if (!formApi.current) return;
+  const openEditDraft = async (record: WorkflowInstance) => {
+    const defs = await loadDefinitions();
+    const def = defs.find(d => d.id === record.definitionId) ?? null;
+    setEditingDraft(record);
+    setSelectedDef(def);
+    setApplyCategoryId(def?.categoryId ?? null);
+    setDynamicFormInitValues((record.formData as Record<string, unknown>) ?? {});
+    setFormKey(k => k + 1);
+    setApplyVisible(true);
+  };
+
+  const collectFormData = async () => {
+    if (!formApi.current) return null;
     try {
       const values = await formApi.current.validate() as Record<string, unknown>;
       let formData: Record<string, unknown> = {};
       if (dynamicFormApi.current && selectedDef?.formFields && selectedDef.formFields.length > 0) {
-        const dyn = await dynamicFormApi.current.validate();
-        formData = dyn;
+        formData = await dynamicFormApi.current.validate() as Record<string, unknown>;
       }
-      setSubmitting(true);
+      return { values, formData };
+    } catch {
+      return null;
+    }
+  };
+
+  const handleSubmitApply = async () => {
+    const result = await collectFormData();
+    if (!result) return;
+    const { values, formData } = result;
+    setSubmitting(true);
+    try {
       const res = await request.post('/api/workflows/instances', {
         definitionId: values.definitionId,
         title: values.title,
@@ -320,14 +480,101 @@ export default function MyApplicationsPage() {
       });
       if (res.code === 0) {
         Toast.success('申请已提交');
-        setApplyVisible(false);
-        setSelectedDef(null);
+        closeApply();
         void fetchList();
       }
-    } catch {
-      // validation failed
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    const result = await collectFormData();
+    if (!result) return;
+    const { values, formData } = result;
+    setSavingDraft(true);
+    try {
+      const res = await request.post('/api/workflows/instances', {
+        definitionId: values.definitionId,
+        title: values.title,
+        formData,
+        asDraft: true,
+      });
+      if (res.code === 0) {
+        Toast.success('草稿已保存');
+        closeApply();
+        void fetchList();
+      }
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleUpdateDraft = async () => {
+    if (!editingDraft) return;
+    const result = await collectFormData();
+    if (!result) return;
+    const { values, formData } = result;
+    setSavingDraft(true);
+    try {
+      const res = await request.put(`/api/workflows/instances/${editingDraft.id}/draft`, {
+        title: values.title,
+        formData,
+      });
+      if (res.code === 0) {
+        Toast.success('草稿已更新');
+        closeApply();
+        void fetchList();
+      }
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleSaveAndSubmitDraft = async () => {
+    if (!editingDraft) return;
+    const result = await collectFormData();
+    if (!result) return;
+    const { values, formData } = result;
+    setSubmitting(true);
+    try {
+      const updateRes = await request.put(`/api/workflows/instances/${editingDraft.id}/draft`, {
+        title: values.title,
+        formData,
+      });
+      if (updateRes.code !== 0) return;
+      const submitRes = await request.post(`/api/workflows/instances/${editingDraft.id}/submit`, {});
+      if (submitRes.code === 0) {
+        Toast.success('申请已提交');
+        closeApply();
+        void fetchList();
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDirectSubmitDraft = async (id: number) => {
+    const res = await request.post(`/api/workflows/instances/${id}/submit`, {});
+    if (res.code === 0) {
+      Toast.success('申请已提交');
+      void fetchList();
+    }
+  };
+
+  const handleDeleteDraft = async (id: number) => {
+    const res = await request.delete(`/api/workflows/instances/${id}`);
+    if (res.code === 0) {
+      Toast.success('已删除');
+      void fetchList();
+    }
+  };
+
+  const handleResubmit = async (id: number) => {
+    const res = await request.post<WorkflowInstance>(`/api/workflows/instances/${id}/resubmit`, {});
+    if (res.code === 0) {
+      Toast.success('已生成草稿，请在草稿箱中编辑提交');
+      void fetchList();
     }
   };
 
@@ -337,6 +584,12 @@ export default function MyApplicationsPage() {
       dataIndex: 'title',
       width: 200,
       render: renderEllipsis,
+    },
+    {
+      title: '业务编号',
+      dataIndex: 'serialNo',
+      width: 130,
+      render: (v: string | null) => v ?? '—',
     },
     {
       title: '流程名称',
@@ -363,17 +616,56 @@ export default function MyApplicationsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 200,
       fixed: 'right',
-      render: (_: unknown, record: WorkflowInstance) => (
-        <Space>
-          <Button theme="borderless" size="small" onClick={() => openDetail(record.id)}>
-            详情
-          </Button>
-        </Space>
-      ),
+      render: (_: unknown, record: WorkflowInstance) => {
+        if (record.status === 'draft') {
+          return (
+            <Space>
+              <Button theme="borderless" size="small" onClick={() => void openEditDraft(record)}>编辑</Button>
+              <Popconfirm title="确定要提交此草稿吗？" onConfirm={() => void handleDirectSubmitDraft(record.id)}>
+                <Button theme="borderless" size="small">提交</Button>
+              </Popconfirm>
+              <Popconfirm title="确定要删除此草稿吗？" onConfirm={() => void handleDeleteDraft(record.id)}>
+                <Button theme="borderless" size="small" type="danger">删除</Button>
+              </Popconfirm>
+            </Space>
+          );
+        }
+        if (record.status === 'rejected' || record.status === 'withdrawn') {
+          return (
+            <Space>
+              <Button theme="borderless" size="small" onClick={() => openDetail(record.id)}>详情</Button>
+              <Popconfirm title="将生成新草稿，确定要重新提交吗？" onConfirm={() => void handleResubmit(record.id)}>
+                <Button theme="borderless" size="small">重新提交</Button>
+              </Popconfirm>
+            </Space>
+          );
+        }
+        return (
+          <Space>
+            <Button theme="borderless" size="small" onClick={() => openDetail(record.id)}>详情</Button>
+          </Space>
+        );
+      },
     },
   ];
+
+  const applySheetTitle = editingDraft ? '编辑草稿' : '发起申请';
+
+  const applySheetFooter = editingDraft ? (
+    <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+      <Button onClick={closeApply}>取消</Button>
+      <Button loading={savingDraft} onClick={() => void handleUpdateDraft()}>保存</Button>
+      <Button type="primary" loading={submitting} onClick={() => void handleSaveAndSubmitDraft()}>保存并提交</Button>
+    </Space>
+  ) : (
+    <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+      <Button onClick={closeApply}>取消</Button>
+      <Button loading={savingDraft} onClick={() => void handleSaveDraft()}>保存草稿</Button>
+      <Button type="primary" loading={submitting} onClick={() => void handleSubmitApply()}>提交</Button>
+    </Space>
+  );
 
   return (
     <div className="page-container">
@@ -389,9 +681,9 @@ export default function MyApplicationsPage() {
               <Select.Option key={k} value={k}>{s.text}</Select.Option>
             ))}
           </Select>
-          <Button type="primary" icon={<Search size={14} />} onClick={() => { trackFeature('search-btn', '查询', 'search-toolbar'); handleSearch(); }}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { trackFeature('reset-btn', '重置', 'search-toolbar'); handleReset(); }}>重置</Button>
-          <Button type="primary" icon={<Plus size={14} />} onClick={() => { trackFeature('create-btn', '发起申请', 'search-toolbar'); void openApply(); }}>
+          <Button type="primary" icon={<Search size={14} />} onClick={() => { handleSearch(); }}>查询</Button>
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { handleReset(); }}>重置</Button>
+          <Button type="primary" icon={<Plus size={14} />} onClick={() => { void openApply(); }}>
             发起申请
           </Button>
       </SearchToolbar>
@@ -414,21 +706,16 @@ export default function MyApplicationsPage() {
         onRefresh={() => void fetchList()}
       />
 
-      {/* 发起申请抽屉 */}
+      {/* 发起 / 编辑草稿 */}
       <SideSheet
-        title="发起申请"
+        title={applySheetTitle}
         visible={applyVisible}
-        onCancel={() => { setApplyVisible(false); setSelectedDef(null); }}
+        onCancel={closeApply}
         width={720}
         bodyStyle={{ padding: 16 }}
-        footer={(
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={() => { setApplyVisible(false); setSelectedDef(null); }}>取消</Button>
-            <Button type="primary" loading={submitting} onClick={() => void handleSubmitApply()}>提交</Button>
-          </Space>
-        )}
+        footer={applySheetFooter}
       >
-        <Form getFormApi={api => { formApi.current = api; }}>
+        <Form key={formKey} getFormApi={api => { formApi.current = api; }}>
           <Form.Select
             field="categoryId"
             label="流程分类"
@@ -436,12 +723,15 @@ export default function MyApplicationsPage() {
             showClear
             style={{ width: '100%' }}
             initValue={applyCategoryId ?? undefined}
+            disabled={editingDraft !== null}
             onChange={v => {
               const next = typeof v === 'number' ? v : null;
               setApplyCategoryId(next);
-              setSelectedDef(null);
-              formApi.current?.setValue('definitionId', undefined);
-              formApi.current?.setValue('title', '');
+              if (!editingDraft) {
+                setSelectedDef(null);
+                formApi.current?.setValue('definitionId', undefined);
+                formApi.current?.setValue('title', '');
+              }
             }}
             optionList={categories.map(c => ({ value: c.id, label: c.name }))}
           />
@@ -451,12 +741,15 @@ export default function MyApplicationsPage() {
             placeholder="请选择要发起的流程"
             rules={[{ required: true, message: '请选择流程' }]}
             style={{ width: '100%' }}
+            initValue={editingDraft?.definitionId}
+            disabled={editingDraft !== null}
             optionList={definitions
               .filter(d => applyCategoryId === null || d.categoryId === applyCategoryId)
               .map(d => ({ value: d.id, label: d.name }))}
             onChange={v => {
               const def = definitions.find(d => d.id === v) ?? null;
               setSelectedDef(def);
+              setDynamicFormInitValues({});
               if (def) {
                 const who = user?.nickname || user?.username || '我';
                 const auto = `${def.name} - ${who} - ${dayjs().format('YYYY-MM-DD')}`;
@@ -469,6 +762,7 @@ export default function MyApplicationsPage() {
             label="申请标题"
             placeholder="选择流程后自动生成，可手动修改"
             rules={[{ required: true, message: '请填写申请标题' }]}
+            initValue={editingDraft?.title}
           />
           {selectedDef?.description && (
             <div style={{ padding: '8px 0', color: 'var(--semi-color-text-2)', fontSize: 13 }}>
@@ -483,7 +777,9 @@ export default function MyApplicationsPage() {
               <TabPane tab="填写表单" itemKey="form">
                 {selectedDef.formFields && selectedDef.formFields.length > 0 ? (
                   <WorkflowFormRenderer
+                    key={`form-${formKey}-${selectedDef.id}`}
                     fields={selectedDef.formFields}
+                    initValues={dynamicFormInitValues}
                     getFormApi={api => { dynamicFormApi.current = api; }}
                   />
                 ) : (

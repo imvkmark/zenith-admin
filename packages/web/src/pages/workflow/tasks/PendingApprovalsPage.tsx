@@ -5,22 +5,22 @@ import {
   Button,
   Form,
   Input,
-  Modal,
+  Popconfirm,
   Select,
   SideSheet,
   Space,
   Spin,
+  Tag,
+  TextArea,
   Toast,
   Typography,
   Upload,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RotateCcw, Search } from 'lucide-react';
-import type { WorkflowInstance, WorkflowDefinition, PaginatedResponse, WorkflowTask, WorkflowActionButtonKey, WorkflowActionButtonConfig } from '@zenith/shared';
+import { Plus, RotateCcw, Search } from 'lucide-react';
+import type { WorkflowInstance, WorkflowDefinition, PaginatedResponse, WorkflowTask, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowQuickPhrase } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { usePageTracker } from '@/hooks/usePageTracker';
-import { trackFeature } from '@/utils/tracker';
 import { config } from '@/config';
 import { formatDateTime } from '@/utils/date';
 import { resolveRejectTargetHint } from '@/utils/workflow-reject';
@@ -61,7 +61,6 @@ function resolveButton(
 interface UploadedFile { name: string; url: string; size?: number }
 
 export default function PendingApprovalsPage() {
-  usePageTracker('待我审批');
   const approveFormApi = useRef<FormApi | null>(null);
   const rejectFormApi = useRef<FormApi | null>(null);
   const transferFormApi = useRef<FormApi | null>(null);
@@ -95,6 +94,15 @@ export default function PendingApprovalsPage() {
   const [approveAttachments, setApproveAttachments] = useState<UploadedFile[]>([]);
   const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
   const [selectedNextApprovers, setSelectedNextApprovers] = useState<number[]>([]);
+  // 批量审批
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [batchMode, setBatchMode] = useState<'approve' | 'reject' | null>(null);
+  const [batchComment, setBatchComment] = useState('');
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  // 审批意见常用语
+  const [quickPhrases, setQuickPhrases] = useState<WorkflowQuickPhrase[]>([]);
+  const [phraseManageVisible, setPhraseManageVisible] = useState(false);
+  const [newPhrase, setNewPhrase] = useState('');
 
   const currentTask: WorkflowTask | null = useMemo(() => {
     if (!detail || !selectedItem) return null;
@@ -163,6 +171,74 @@ export default function PendingApprovalsPage() {
     }
   }, [userOptions.length]);
 
+  const loadQuickPhrases = useCallback(async () => {
+    try {
+      const res = await request.get<WorkflowQuickPhrase[]>('/api/workflows/quick-phrases');
+      if (res.code === 0) setQuickPhrases(res.data ?? []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const appendPhrase = (formApi: FormApi | null, text: string) => {
+    if (!formApi) return;
+    const cur = (formApi.getValue('comment') as string | undefined) ?? '';
+    formApi.setValue('comment', cur ? `${cur} ${text}` : text);
+  };
+
+  const handleAddPhrase = async () => {
+    const text = newPhrase.trim();
+    if (!text) return;
+    const res = await request.post('/api/workflows/quick-phrases', { content: text, sort: 0 });
+    if (res.code === 0) { setNewPhrase(''); void loadQuickPhrases(); }
+    else Toast.error(res.message || '新增失败');
+  };
+
+  const handleDeletePhrase = async (id: number) => {
+    const res = await request.delete(`/api/workflows/quick-phrases/${id}`);
+    if (res.code === 0) void loadQuickPhrases();
+    else Toast.error(res.message || '删除失败');
+  };
+
+  const handleBatch = async () => {
+    const taskIds = (data?.list ?? [])
+      .filter((it) => selectedRowKeys.includes(it.id))
+      .map((it) => it.pendingTaskId)
+      .filter((v): v is number => typeof v === 'number');
+    if (taskIds.length === 0) { Toast.warning('请先选择待审批项'); return; }
+    if (batchMode === 'reject' && !batchComment.trim()) { Toast.error('请填写驳回原因'); return; }
+    setBatchSubmitting(true);
+    try {
+      const path = batchMode === 'approve' ? 'batch-approve' : 'batch-reject';
+      const res = await request.post<{ succeeded: number; failed: number }>(
+        `/api/workflows/tasks/${path}`,
+        { taskIds, comment: batchComment.trim() || undefined },
+      );
+      if (res.code === 0) {
+        Toast.success(res.message || '批量处理完成');
+        setBatchMode(null);
+        setBatchComment('');
+        setSelectedRowKeys([]);
+        void fetchList();
+      } else {
+        Toast.error(res.message || '批量处理失败');
+      }
+    } finally {
+      setBatchSubmitting(false);
+    }
+  };
+
+  const renderPhraseBar = (onPick: (text: string) => void) => (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+      {quickPhrases.map((p) => (
+        <Tag key={p.id} color="white" style={{ cursor: 'pointer', border: '1px solid var(--semi-color-border)' }} onClick={() => onPick(p.content)}>
+          {p.content}
+        </Tag>
+      ))}
+      <Button theme="borderless" size="small" onClick={() => setPhraseManageVisible(true)}>管理常用语</Button>
+    </div>
+  );
+
   const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const { keyword: kw, definitionId: did } = params ?? searchParamsRef.current;
     setLoading(true);
@@ -185,9 +261,10 @@ export default function PendingApprovalsPage() {
 
   useEffect(() => {
     void fetchList();
+    void loadQuickPhrases();
     request.get<WorkflowDefinition[]>('/api/workflows/definitions/published')
       .then((res) => { if (res.code === 0 && res.data) setDefinitions(res.data); });
-  }, [fetchList]);
+  }, [fetchList, loadQuickPhrases]);
 
   // 当审批弹窗打开且下游存在 approverSelect 节点，预加载用户列表
   useEffect(() => {
@@ -396,7 +473,7 @@ export default function PendingApprovalsPage() {
             theme="borderless"
             size="small"
             type="primary"
-            onClick={() => { trackFeature('approve-btn', '通过', 'table-actions'); setSelectedItem(record); setApproveVisible(true); }}
+            onClick={() => { setSelectedItem(record); setApproveVisible(true); }}
           >
             通过
           </Button>
@@ -404,7 +481,7 @@ export default function PendingApprovalsPage() {
             theme="borderless"
             size="small"
             type="danger"
-            onClick={() => { trackFeature('reject-btn', '驳回', 'table-actions'); void openReject(record); }}
+            onClick={() => { void openReject(record); }}
           >
             驳回
           </Button>
@@ -436,8 +513,18 @@ export default function PendingApprovalsPage() {
             <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>
           ))}
         </Select>
-        <Button type="primary" icon={<Search size={14} />} onClick={() => { trackFeature('search-btn', '查询', 'search-toolbar'); setPage(1); void fetchList(1, pageSize); }}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { trackFeature('reset-btn', '重置', 'search-toolbar'); setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}>重置</Button>
+        <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchList(1, pageSize); }}>查询</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchList(1, pageSize, defaultSearchParams); }}>重置</Button>
+        {selectedRowKeys.length > 0 && (
+          <>
+            <Button type="primary" theme="solid" icon={<Plus size={14} />} onClick={() => { setBatchComment(''); setBatchMode('approve'); }}>
+              批量通过（{selectedRowKeys.length}）
+            </Button>
+            <Button type="danger" theme="solid" onClick={() => { setBatchComment(''); setBatchMode('reject'); }}>
+              批量驳回（{selectedRowKeys.length}）
+            </Button>
+          </>
+        )}
       </SearchToolbar>
       <ConfigurableTable
         bordered
@@ -448,6 +535,10 @@ export default function PendingApprovalsPage() {
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
         pagination={buildPagination(data?.total ?? 0, fetchList)}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
+        }}
       />
 
       {/* 申请详情弹窗 */}
@@ -526,6 +617,7 @@ export default function PendingApprovalsPage() {
             rows={3}
           />
         </Form>
+        {renderPhraseBar((t) => appendPhrase(approveFormApi.current, t))}
         <div style={{ marginTop: 12 }}>
           <Typography.Text strong>
             附件{btnApprove.uploadRequired ? <span style={{ color: 'var(--semi-color-danger)' }}> *</span> : null}
@@ -596,6 +688,7 @@ export default function PendingApprovalsPage() {
             rows={3}
           />
         </Form>
+        {renderPhraseBar((t) => appendPhrase(rejectFormApi.current, t))}
       </AppModal>
 
       {/* 转办弹窗 */}
@@ -732,6 +825,65 @@ export default function PendingApprovalsPage() {
             rows={3}
           />
         </Form>
+      </AppModal>
+
+      {/* 批量审批弹窗 */}
+      <AppModal
+        title={batchMode === 'approve' ? `批量通过（${selectedRowKeys.length}）` : `批量驳回（${selectedRowKeys.length}）`}
+        visible={!!batchMode}
+        onCancel={() => setBatchMode(null)}
+        onOk={() => void handleBatch()}
+        okButtonProps={{ loading: batchSubmitting, type: batchMode === 'approve' ? 'primary' : 'danger' }}
+        okText="确认"
+        style={{ width: 480 }}
+      >
+        <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 8 }}>
+          将对选中的 {selectedRowKeys.length} 条待办执行{batchMode === 'approve' ? '通过' : '驳回'}操作（逐条处理，失败项会单独提示）。
+        </Typography.Text>
+        <TextArea
+          value={batchComment}
+          onChange={setBatchComment}
+          placeholder={batchMode === 'approve' ? '批量审批意见（可选）' : '批量驳回原因（必填）'}
+          autosize={{ minRows: 2, maxRows: 4 }}
+          maxCount={500}
+        />
+        <div style={{ marginTop: 8 }}>{renderPhraseBar((t) => setBatchComment((c) => (c ? `${c} ${t}` : t)))}</div>
+      </AppModal>
+
+      {/* 常用语管理弹窗 */}
+      <AppModal
+        title="管理审批常用语"
+        visible={phraseManageVisible}
+        onCancel={() => setPhraseManageVisible(false)}
+        footer={null}
+        style={{ width: 480 }}
+      >
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <Input
+            value={newPhrase}
+            onChange={setNewPhrase}
+            placeholder="输入新的常用语"
+            onEnterPress={() => void handleAddPhrase()}
+            maxLength={255}
+            showClear
+          />
+          <Button type="primary" icon={<Plus size={14} />} onClick={() => void handleAddPhrase()}>新增</Button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflow: 'auto' }}>
+          {quickPhrases.length === 0 && <Typography.Text type="tertiary">暂无常用语，添加后可在审批时一键填入。</Typography.Text>}
+          {quickPhrases.map((p) => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px', border: '1px solid var(--semi-color-border)', borderRadius: 6 }}>
+              <Typography.Text ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{p.content}</Typography.Text>
+              {p.userId === null
+                ? <Tag size="small" color="grey">系统预置</Tag>
+                : (
+                  <Popconfirm title="删除该常用语？" onConfirm={() => void handleDeletePhrase(p.id)}>
+                    <Button theme="borderless" type="danger" size="small">删除</Button>
+                  </Popconfirm>
+                )}
+            </div>
+          ))}
+        </div>
       </AppModal>
     </div>
   );

@@ -40,6 +40,7 @@ export function mapInstance(
     currentNodeName?: string | null;
     tasks?: ReturnType<typeof mapTask>[];
     childInstances?: Array<{ id: number; title: string; status: typeof workflowInstances.$inferSelect['status']; parentTaskNodeKey?: string | null; createdAt: string }>;
+    comments?: import('@zenith/shared').WorkflowComment[];
   } = {},
 ) {
   return {
@@ -49,6 +50,7 @@ export function mapInstance(
     categoryId: extras.categoryId ?? null,
     categoryName: extras.categoryName ?? null,
     title: row.title,
+    serialNo: row.serialNo ?? null,
     formData: row.formData,
     formSnapshot: (row.formSnapshot ?? null) as WorkflowFormField[] | null,
     status: row.status,
@@ -62,6 +64,7 @@ export function mapInstance(
     parentTaskId: row.parentTaskId ?? null,
     childInstances: extras.childInstances ?? null,
     tasks: extras.tasks ?? null,
+    comments: extras.comments,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -84,16 +87,19 @@ import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowStarterContext } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowStarterContext, WorkflowBatchActionResult } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { resolveAssigneeIds, buildStarterContext } from './workflow-assignee-resolver.service';
 import { resolveFormSnapshot } from './workflow-forms.service';
 import type { DbExecutor } from '../db/types';
-import { workflowEventBus } from '../lib/workflow-event-bus';
 import { randomBytes } from 'node:crypto';
 import { delayScheduler } from '../lib/delay-scheduler';
 import { computeTimeoutAt } from '../lib/workflow-timeout';
+import { workflowEventBus } from '../lib/workflow-event-bus';
+import { generateSerialNo } from './workflow-serial.service';
+import { resolveActiveDelegate } from './workflow-delegations.service';
+import { loadInstanceCommentsForDetail } from './workflow-comments.service';
 import dayjs from 'dayjs';
 import logger from '../lib/logger';
 
@@ -741,6 +747,33 @@ async function expandTasksToRows(
   const autoApprovedNodeKeys: string[] = [];
   let autoRejectedNodeKey: string | null = null;
 
+  // 审批代理（离岗委托）：按需懒加载本实例的 definitionId，将待办自动转交给代理人
+  let cachedDefinitionId: number | null = null;
+  const resolveDefinitionId = async (): Promise<number> => {
+    if (cachedDefinitionId == null) {
+      const [r] = await ctx.executor
+        .select({ definitionId: workflowInstances.definitionId })
+        .from(workflowInstances)
+        .where(eq(workflowInstances.id, ctx.instanceId))
+        .limit(1);
+      cachedDefinitionId = r?.definitionId ?? 0;
+    }
+    return cachedDefinitionId;
+  };
+  const applyDelegations = async (userIds: number[]): Promise<Array<{ assigneeId: number; delegatedFromId: number | null }>> => {
+    const definitionId = await resolveDefinitionId();
+    const result: Array<{ assigneeId: number; delegatedFromId: number | null }> = [];
+    const seen = new Set<number>();
+    for (const uid of userIds) {
+      const delegate = definitionId ? await resolveActiveDelegate(ctx.executor, uid, definitionId) : null;
+      const finalId = delegate ?? uid;
+      if (seen.has(finalId)) continue;
+      seen.add(finalId);
+      result.push({ assigneeId: finalId, delegatedFromId: delegate ? uid : null });
+    }
+    return result;
+  };
+
   const pushAutoRow = (task: TaskAction, status: 'approved' | 'rejected') => {
     rows.push({
       instanceId: ctx.instanceId,
@@ -915,19 +948,21 @@ async function expandTasksToRows(
       ? Math.min(100, Math.max(1, t.nodeConfig.approveRatio ?? 51))
       : null;
     const timeoutAt = computeTimeoutAt(t.nodeConfig.timeout);
-    effectiveUserIds.forEach((uid, idx) => {
+    const assignList = await applyDelegations(effectiveUserIds);
+    assignList.forEach(({ assigneeId, delegatedFromId }, idx) => {
       const isPending = !(method === 'sequential' && idx > 0);
       rows.push({
         instanceId: ctx.instanceId,
         nodeKey: t.nodeKey,
         nodeName: t.nodeName,
         nodeType: t.nodeType,
-        assigneeId: uid,
+        assigneeId,
+        delegatedFromId,
         // 顺序会签：只有第一人 pending，其余 waiting
         status: method === 'sequential' && idx > 0 ? 'waiting' as const : 'pending' as const,
         taskOrder: method === 'sequential' ? idx : null,
-        approveMethod: effectiveUserIds.length > 1 ? method : null,
-        approveRatio: effectiveUserIds.length > 1 ? ratioPct : null,
+        approveMethod: assignList.length > 1 ? method : null,
+        approveRatio: assignList.length > 1 ? ratioPct : null,
         // 仅给 pending 的任务设置 timeoutAt；waiting 的在提升时重算
         timeoutAt: isPending ? timeoutAt : null,
       });
@@ -1266,12 +1301,14 @@ export async function getInstanceDetail(id: number) {
     parentTaskNodeKey: c.parentTaskId != null ? (taskNodeKeyById.get(c.parentTaskId) ?? null) : null,
     createdAt: formatDateTime(c.createdAt),
   }));
+  const comments = await loadInstanceCommentsForDetail(id);
   return mapInstance(row, {
     definitionName: row.definition?.name ?? null,
     initiatorName: row.initiator?.nickname ?? null,
     initiatorAvatar: row.initiator?.avatar ?? null,
     tasks,
     childInstances,
+    comments,
   });
 }
 
@@ -1294,7 +1331,7 @@ export async function getWorkflowTaskBeforeAudit(taskId: number) {
   return getWorkflowInstanceBeforeAudit(task.instanceId);
 }
 
-export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
+export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
   const user = callerOverride
     ? { userId: callerOverride.userId, username: callerOverride.username, roles: callerOverride.roles ?? [], tenantId: callerOverride.tenantId }
     : currentUser();
@@ -1326,16 +1363,36 @@ export async function createInstance(data: { definitionId: number; title: string
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
   const formData: Record<string, unknown> = data.formData ?? {};
   const formSnapshot = await resolveFormSnapshot(def.formId);
+
+  // 草稿：仅保存表单，不进入流转、不生成业务编号、不触发事件
+  if (data.asDraft) {
+    const [draft] = await db.insert(workflowInstances).values({
+      definitionId: def.id,
+      definitionSnapshot: def,
+      title: data.title,
+      formData,
+      formSnapshot: formSnapshot?.fields ?? null,
+      status: 'draft',
+      currentNodeKey: null,
+      initiatorId: user.userId,
+      tenantId: getCreateTenantId(user),
+    }).returning();
+    return mapInstance(draft);
+  }
+
   const starter = await buildStarterContext(user.userId);
   const initialResult = getInitialTasks(flowData, formData, starter);
   if (initialResult.tasksToCreate.length === 0 && !initialResult.finished && !initialResult.rejected) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
+  const serialConfig = flowData.settings?.serialNo;
   const { instance, createdTasks } = await db.transaction(async (tx) => {
+    const serialNo = await generateSerialNo(tx, def.id, serialConfig);
     const [createdInstance] = await tx.insert(workflowInstances).values({
       definitionId: def.id,
       definitionSnapshot: def,
       title: data.title,
+      serialNo,
       formData,
       formSnapshot: formSnapshot?.fields ?? null,
       status: 'running',
@@ -1360,6 +1417,17 @@ export async function createInstance(data: { definitionId: number; title: string
   });
   const instanceDto = mapInstance(instance);
   const actor = { userId: user.userId, name: user.username };
+  emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
+  return instanceDto;
+}
+
+/** 实例进入流转后统一触发事件 + 调度延迟/子流程（createInstance 与草稿提交共用） */
+function emitInstanceStartEvents(
+  instanceDto: ReturnType<typeof mapInstance>,
+  instance: typeof workflowInstances.$inferSelect,
+  createdTasks: typeof workflowTasks.$inferSelect[],
+  actor: { userId: number; name: string },
+): void {
   emitInstanceEvent('instance.created', instanceDto, actor);
   for (const t of createdTasks) {
     emitNodeEvent('node.entered', { instanceId: instance.id, definitionId: instance.definitionId, tenantId: instance.tenantId, actor, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
@@ -1384,7 +1452,6 @@ export async function createInstance(data: { definitionId: number; title: string
   }
   if (instance.status === 'approved') emitInstanceEvent('instance.approved', instanceDto, actor);
   if (instance.status === 'rejected') emitInstanceEvent('instance.rejected', instanceDto, actor);
-  return instanceDto;
 }
 
 export async function withdrawInstance(id: number) {
@@ -2333,4 +2400,199 @@ export async function returnTask(taskId: number, targetNodeKeys: string[], comme
     ? `[退回多节点: ${targets.map((t) => t.data.label ?? t.data.key).join('、')}] ${comment}`
     : comment;
   return rejectTaskCore(task, instOverridden, mergedComment, actor);
+}
+
+// ─── 草稿 / 提交 / 重新提交 ──────────────────────────────────────────────────
+async function loadOwnDraft(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conds = [eq(workflowInstances.id, id)];
+  if (tc) conds.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只能操作自己的草稿' });
+  return inst;
+}
+
+export async function updateInstanceDraft(id: number, input: { title?: string; formData?: Record<string, unknown> | null }) {
+  const inst = await loadOwnDraft(id);
+  if (inst.status !== 'draft') throw new HTTPException(400, { message: '仅草稿可编辑' });
+  const patch: Partial<typeof workflowInstances.$inferInsert> = {};
+  if (input.title !== undefined) patch.title = input.title;
+  if (input.formData !== undefined) patch.formData = input.formData ?? {};
+  const [row] = await db.update(workflowInstances).set(patch).where(eq(workflowInstances.id, id)).returning();
+  return mapInstance(row);
+}
+
+export async function submitDraftInstance(id: number) {
+  const user = currentUser();
+  const inst = await loadOwnDraft(id);
+  if (inst.status !== 'draft') throw new HTTPException(400, { message: '仅草稿可提交' });
+  const [def] = await db.select().from(workflowDefinitions)
+    .where(and(eq(workflowDefinitions.id, inst.definitionId), eq(workflowDefinitions.status, 'published'))).limit(1);
+  if (!def) throw new HTTPException(400, { message: '流程定义不存在或已停用，无法提交' });
+  const flowData = def.flowData as WorkflowFlowData;
+  if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
+  const validation = validateFlowData(flowData);
+  if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
+  const formData = (inst.formData ?? {}) as Record<string, unknown>;
+  const formSnapshot = await resolveFormSnapshot(def.formId);
+  const starter = await buildStarterContext(user.userId);
+  const initialResult = getInitialTasks(flowData, formData, starter);
+  if (initialResult.tasksToCreate.length === 0 && !initialResult.finished && !initialResult.rejected) {
+    throw new HTTPException(400, { message: '流程定义中无可执行节点' });
+  }
+  const serialConfig = flowData.settings?.serialNo;
+  const { instance, createdTasks } = await db.transaction(async (tx) => {
+    const serialNo = await generateSerialNo(tx, def.id, serialConfig);
+    await tx.update(workflowInstances).set({
+      definitionSnapshot: def,
+      formSnapshot: formSnapshot?.fields ?? null,
+      serialNo,
+      status: 'running',
+      currentNodeKey: null,
+    }).where(eq(workflowInstances.id, id));
+    const materialized = await materializeAdvanceResult(initialResult, {
+      instanceId: id,
+      initiatorId: user.userId,
+      executor: tx,
+      flowData,
+      formData,
+      settings: flowData.settings,
+      starter,
+    });
+    const [updatedInstance] = await tx.update(workflowInstances).set({
+      status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
+      currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
+    }).where(eq(workflowInstances.id, id)).returning();
+    return { instance: updatedInstance, createdTasks: materialized.createdTasks };
+  });
+  const instanceDto = mapInstance(instance);
+  emitInstanceStartEvents(instanceDto, instance, createdTasks, { userId: user.userId, name: user.username });
+  return instanceDto;
+}
+
+/** 重新提交：将已驳回/已撤回的实例克隆为一份新草稿，供发起人编辑后再次提交 */
+export async function resubmitInstance(id: number) {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conds = [eq(workflowInstances.id, id)];
+  if (tc) conds.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  if (inst.initiatorId !== user.userId) throw new HTTPException(403, { message: '只有发起人可以重新提交' });
+  if (inst.status !== 'rejected' && inst.status !== 'withdrawn') {
+    throw new HTTPException(400, { message: '只有已驳回或已撤回的申请可重新提交' });
+  }
+  return createInstance({
+    definitionId: inst.definitionId,
+    title: inst.title,
+    formData: (inst.formData ?? {}) as Record<string, unknown>,
+    asDraft: true,
+  });
+}
+
+// ─── 批量审批 ────────────────────────────────────────────────────────────────
+export async function batchApproveTasks(taskIds: number[], comment?: string): Promise<WorkflowBatchActionResult[]> {
+  const results: WorkflowBatchActionResult[] = [];
+  for (const taskId of taskIds) {
+    try {
+      await approveTask(taskId, comment);
+      results.push({ taskId, success: true });
+    } catch (err) {
+      results.push({ taskId, success: false, message: err instanceof HTTPException ? err.message : '处理失败' });
+    }
+  }
+  return results;
+}
+
+export async function batchRejectTasks(taskIds: number[], comment: string): Promise<WorkflowBatchActionResult[]> {
+  const results: WorkflowBatchActionResult[] = [];
+  for (const taskId of taskIds) {
+    try {
+      await rejectTask(taskId, comment);
+      results.push({ taskId, success: true });
+    } catch (err) {
+      results.push({ taskId, success: false, message: err instanceof HTTPException ? err.message : '处理失败' });
+    }
+  }
+  return results;
+}
+
+// ─── 管理员强制操作 ──────────────────────────────────────────────────────────
+/** 强制跳转：终止当前活动任务，直接推进到指定审批/办理节点 */
+export async function jumpInstance(id: number, targetNodeKey: string, comment?: string) {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conds = [eq(workflowInstances.id, id)];
+  if (tc) conds.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程实例不存在' });
+  if (inst.status !== 'running') throw new HTTPException(400, { message: '仅审批中的流程可强制跳转' });
+  const snapshot = inst.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const flowData = snapshot?.flowData;
+  if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程数据异常' });
+  const targetNode = flowData.nodes.find((n) => n.data.key === targetNodeKey);
+  if (!targetNode) throw new HTTPException(400, { message: '目标节点不存在' });
+  if (targetNode.data.type !== 'approve' && targetNode.data.type !== 'handler') {
+    throw new HTTPException(400, { message: '只能强制跳转到审批/办理节点' });
+  }
+  const formData = (inst.formData ?? {}) as Record<string, unknown>;
+  const starter = await buildStarterContext(inst.initiatorId);
+  const taskAction: TaskAction = {
+    nodeKey: targetNode.data.key,
+    nodeName: targetNode.data.label,
+    nodeType: targetNode.data.type,
+    assigneeId: targetNode.data.assigneeId ?? null,
+    nodeConfig: targetNode.data,
+  };
+  const fakeResult: AdvanceResult = { finished: false, rejected: false, tasksToCreate: [taskAction], currentNodeKeys: [targetNode.data.key] };
+  const note = `[管理员强制跳转至「${targetNode.data.label}」]${comment ? ' ' + comment : ''}`;
+  const { instance, createdTasks } = await db.transaction(async (tx) => {
+    await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
+      .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])));
+    const materialized = await materializeAdvanceResult(fakeResult, {
+      instanceId: id,
+      initiatorId: inst.initiatorId,
+      executor: tx,
+      flowData,
+      formData,
+      settings: flowData.settings,
+      starter,
+    });
+    const [updatedInstance] = await tx.update(workflowInstances).set({
+      status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
+      currentNodeKey: materialized.rejected || materialized.finished ? null : (materialized.currentNodeKeys[0] ?? targetNode.data.key),
+    }).where(eq(workflowInstances.id, id)).returning();
+    return { instance: updatedInstance, createdTasks: materialized.createdTasks };
+  });
+  const actor = { userId: user.userId, name: user.username };
+  const instanceDto = mapInstance(instance);
+  emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
+  return instanceDto;
+}
+
+/** 管理员改派：将未处理任务的处理人替换为指定用户 */
+export async function reassignTask(taskId: number, targetUserId: number, comment?: string) {
+  const user = currentUser();
+  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
+  if (!task) throw new HTTPException(404, { message: '任务不存在' });
+  if (task.status !== 'pending' && task.status !== 'waiting') {
+    throw new HTTPException(400, { message: '仅未处理的任务可改派' });
+  }
+  const [tgt] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId)).limit(1);
+  if (!tgt) throw new HTTPException(400, { message: '目标处理人不存在' });
+  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
+  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  const chain = Array.isArray(task.transferChain) ? task.transferChain : [];
+  const note = `[管理员改派]${comment ? ' ' + comment : ''}`;
+  const [updated] = await db.update(workflowTasks).set({
+    assigneeId: targetUserId,
+    delegatedFromId: null,
+    transferChain: [...new Set([...chain, task.assigneeId].filter((v): v is number => v != null))],
+    comment: note,
+  }).where(eq(workflowTasks.id, taskId)).returning();
+  const actor = { userId: user.userId, name: user.username };
+  emitTaskEvent('task.transferred', mapTask(updated), { definitionId: inst.definitionId, tenantId: inst.tenantId, actor });
+  return mapTask(updated);
 }
