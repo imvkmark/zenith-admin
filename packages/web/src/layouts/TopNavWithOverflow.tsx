@@ -17,6 +17,8 @@ type Props = Readonly<{
   selectedKeys: string[];
   className?: string;
   style?: React.CSSProperties;
+  /** 导航地标的无障碍标签（screen reader 朗读） */
+  ariaLabel?: string;
   /** 覆盖默认导航行为（用于 mixed 模式） */
   onItemClick?: (key: string) => void;
 }>;
@@ -134,7 +136,7 @@ function TopNavButton({
           </Dropdown.Menu>
         }
       >
-        <button type="button" className={cls}>
+        <button type="button" className={cls} aria-current={active ? 'page' : undefined}>
           {content}
         </button>
       </Dropdown>,
@@ -167,7 +169,7 @@ function TopNavButton({
 
   // 非路径非目录（如 mixed 模式的分类 key）：普通按钮
   return wrapBadge(
-    <button type="button" className={cls} onClick={() => onNavigate(item.itemKey)}>
+    <button type="button" className={cls} aria-current={active ? 'page' : undefined} onClick={() => onNavigate(item.itemKey)}>
       {content}
     </button>,
   );
@@ -175,7 +177,7 @@ function TopNavButton({
 
 // ─── 主组件 ────────────────────────────────────────────────────────────────────
 
-export function TopNavWithOverflow({ items, selectedKeys, className, style, onItemClick }: Props) {
+export function TopNavWithOverflow({ items, selectedKeys, className, style, ariaLabel, onItemClick }: Props) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLDivElement>(null);
@@ -253,6 +255,8 @@ export function TopNavWithOverflow({ items, selectedKeys, className, style, onIt
       ref={containerRef}
       className={`topnav-overflow${className ? ' ' + className : ''}`}
       style={style}
+      role="navigation"
+      aria-label={ariaLabel ?? '主导航'}
     >
       {/* 隐藏探测容器：仅用于测量各项宽度 */}
       <div ref={probeRef} className="topnav-overflow__probe" aria-hidden="true">

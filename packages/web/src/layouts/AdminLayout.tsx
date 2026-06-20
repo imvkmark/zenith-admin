@@ -1452,6 +1452,7 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
           )}
           <TopNavWithOverflow
             className="admin-topbar__nav"
+            ariaLabel={navLayout === 'mixed' ? '分类导航' : '主导航'}
             items={navLayout === 'mixed' ? mixedTopNavItems : navItems}
             selectedKeys={topNavSelectedKeys}
             onItemClick={navLayout === 'mixed' ? (key) => handleMixedTopSelect({ itemKey: key }) : undefined}
@@ -1478,26 +1479,27 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
                     <AppLogo size={26} />
                   </button>
                 )}
-                <div className="double-sidebar__rail-list">
+                <div className="double-sidebar__rail-list" role="navigation" aria-label="分组导航">
                   {navItems.map((item) => {
                     const isActive = effectiveTopKey === item.itemKey;
                     return (
-                      <button
-                        key={item.itemKey}
-                        type="button"
-                        className={`double-sidebar__rail-item${isActive ? ' double-sidebar__rail-item--active' : ''}`}
-                        onClick={() => handleDoubleRailClick(item)}
-                        title={item.text}
-                      >
-                        <span className="double-sidebar__rail-icon">
-                          {item.badge && item.badge.count > 0 ? (
-                            <Badge count={item.badge.count} overflowCount={item.badge.overflowCount ?? 99}>
-                              {item.icon}
-                            </Badge>
-                          ) : item.icon}
-                        </span>
-                        <span className="double-sidebar__rail-label">{item.text}</span>
-                      </button>
+                      <Tooltip key={item.itemKey} content={item.text} position="right">
+                        <button
+                          type="button"
+                          className={`double-sidebar__rail-item${isActive ? ' double-sidebar__rail-item--active' : ''}`}
+                          onClick={() => handleDoubleRailClick(item)}
+                          aria-current={isActive ? 'page' : undefined}
+                        >
+                          <span className="double-sidebar__rail-icon">
+                            {item.badge && item.badge.count > 0 ? (
+                              <Badge count={item.badge.count} overflowCount={item.badge.overflowCount ?? 99}>
+                                {item.icon}
+                              </Badge>
+                            ) : item.icon}
+                          </span>
+                          <span className="double-sidebar__rail-label">{item.text}</span>
+                        </button>
+                      </Tooltip>
                     );
                   })}
                 </div>
