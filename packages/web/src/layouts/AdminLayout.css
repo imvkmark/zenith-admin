@@ -80,17 +80,27 @@
   height: 100%;
   align-items: center;
   flex-wrap: nowrap;
+  gap: 4px;
 }
 
-/* 顶级项：胶囊式样式 */
+/* 顶级项：胶囊式样式，flex 居中保证图标+文字垂直对齐（叶子项与目录标题一致）*/
 .admin-topbar__nav .semi-navigation-item,
 .admin-topbar__nav .semi-navigation-sub-title {
+  display: flex;
+  align-items: center;
   height: 36px;
   padding: 0 12px;
-  margin: 0 2px;
   border-radius: 6px;
   font-size: 13px;
   color: var(--color-sidebar-text);
+}
+
+/* 统一项间距：清除 Semi 水平导航默认的不一致 margin（非末项 margin-right 比末项大），改用 list 的 gap */
+.admin-topnav__nav.semi-navigation-horizontal .semi-navigation-list > .semi-navigation-item,
+.admin-topnav__nav.semi-navigation-horizontal .semi-navigation-list > .admin-nav-link-wrapper,
+.admin-topnav__nav.semi-navigation-horizontal .semi-navigation-list .semi-navigation-item {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 /* renderWrapper 在水平方向需 inline-flex（默认 block/100% 会破坏行布局）*/
