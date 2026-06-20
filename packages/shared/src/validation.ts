@@ -1267,6 +1267,28 @@ export const saveUserAiConfigSchema = z.object({
 
 export type SaveUserAiConfigInput = z.infer<typeof saveUserAiConfigSchema>;
 
+// ─── AI 提示词模板 Schema ──────────────────────────────────────────────────────
+export const aiPromptScopeEnum = z.enum(['system', 'user']);
+
+export const createAiPromptTemplateSchema = z.object({
+  name: z.string().min(1, '名称不能为空').max(100),
+  content: z.string().min(1, '提示词内容不能为空').max(5000),
+  description: z.string().max(300).nullable().optional(),
+  category: z.string().max(50).nullable().optional(),
+  scope: aiPromptScopeEnum.default('system'),
+  sort: z.number().int().min(0).default(0),
+  isEnabled: z.boolean().default(true),
+});
+
+export const updateAiPromptTemplateSchema = createAiPromptTemplateSchema.partial();
+
+export type CreateAiPromptTemplateInput = z.infer<typeof createAiPromptTemplateSchema>;
+export type UpdateAiPromptTemplateInput = z.infer<typeof updateAiPromptTemplateSchema>;
+
+export const setConversationSystemPromptSchema = z.object({
+  systemPrompt: z.string().max(5000).nullable(),
+});
+
 // ─── 数据脱敏配置 Schema ──────────────────────────────────────────────────────
 
 export const maskTypeValues = ['phone', 'email', 'id_card', 'name', 'bank_card', 'custom'] as const;

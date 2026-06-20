@@ -39,8 +39,9 @@ router.post('/:id/chat', authMiddleware, async (c) => {
   const { message, configSource, configId } = parsed.data;
 
   // 验证对话归属
+  let conversation: Awaited<ReturnType<typeof ensureConversationOwner>>;
   try {
-    await ensureConversationOwner(id);
+    conversation = await ensureConversationOwner(id);
   } catch (err: unknown) {
     const status = (err as { status?: number }).status ?? 403;
     const msg = (err as { message?: string }).message ?? '无权访问此对话';
@@ -52,15 +53,23 @@ router.post('/:id/chat', authMiddleware, async (c) => {
     let tokensInput = 0;
     let tokensOutput = 0;
     let snapshot: { provider: string; model: string; configId?: number } | null = null;
+    let aborted = false;
+
+    // 客户端断开 / 主动停止生成时，中断上游 LLM 请求（节省 token）
+    const ac = new AbortController();
+    stream.onAbort(() => { aborted = true; ac.abort(); });
+    const rawSignal = c.req.raw.signal;
+    if (rawSignal) {
+      if (rawSignal.aborted) { aborted = true; ac.abort(); }
+      else rawSignal.addEventListener('abort', () => { aborted = true; ac.abort(); });
+    }
 
     try {
-      // 加载历史消息（最近 20 条）
-      const history = await getHistoryMessages(id, 20);
+      // 加载历史消息（按 token 预算裁剪）
+      const history = await getHistoryMessages(id);
       const messages = [...history, { role: 'user' as const, content: message }];
 
-      const resolvedConfigSource = configSource;
-
-      for await (const chunk of streamAiChat(messages, resolvedConfigSource, configId)) {
+      for await (const chunk of streamAiChat(messages, configSource, configId, { signal: ac.signal, systemPromptOverride: conversation.systemPromptOverride })) {
         if (chunk.type === 'delta') {
           assistantContent += chunk.content;
           if ('snapshot' in chunk && chunk.snapshot) {
@@ -89,12 +98,15 @@ router.post('/:id/chat', authMiddleware, async (c) => {
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '对话失败';
-      await stream.writeSSE({ event: 'error', data: JSON.stringify({ message: msg }) });
-      return;
+      // 主动中断：静默结束，下方仍会保存已生成的部分内容
+      if (!aborted && !ac.signal.aborted) {
+        const msg = err instanceof Error ? err.message : '对话失败';
+        await stream.writeSSE({ event: 'error', data: JSON.stringify({ message: msg }) }).catch(() => {});
+        return;
+      }
     }
 
-    // 保存消息 & 更新标题
+    // 保存消息 & 更新标题（即使被中断，也保存已生成的部分回复）
     if (assistantContent) {
       const { assistantMsgId } = await saveMessages(id, message, assistantContent, tokensInput, tokensOutput, snapshot);
 
@@ -103,7 +115,7 @@ router.post('/:id/chat', authMiddleware, async (c) => {
         await stream.writeSSE({
           event: 'saved',
           data: JSON.stringify({ assistantMsgId }),
-        });
+        }).catch(() => {});
       }
 
       // 如果对话还没有自定义标题，用第一条消息的前 30 个字作为标题

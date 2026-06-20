@@ -2637,6 +2637,7 @@ export interface AiConversation {
   providerSnapshot: { provider: string; model: string; configId?: number } | null;
   isArchived: boolean;
   isPinned: boolean;
+  systemPromptOverride: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2664,6 +2665,23 @@ export interface UserAiConfig {
   temperature: string | null;
   maxTokens: number | null;
   systemPrompt: string | null;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AiPromptScope = 'system' | 'user';
+
+export interface AiPromptTemplate {
+  id: number;
+  name: string;
+  content: string;
+  description: string | null;
+  category: string | null;
+  scope: AiPromptScope;
+  userId: number | null;
+  isBuiltin: boolean;
+  sort: number;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;

@@ -24,11 +24,18 @@ import {
   deleteMessageCascade,
   renameConversation,
   togglePinConversation,
+  toggleArchiveConversation,
+  setConversationSystemPrompt,
 } from '../services/ai-conversations.service';
 import { createAiConversationSchema } from '@zenith/shared';
 import { guard } from '../middleware/guard';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+
+const ListQuery = z.object({
+  archived: z.enum(['true', 'false']).optional().openapi({ description: '是否查看已归档对话' }),
+  keyword: z.string().max(100).optional().openapi({ description: '搜索关键词（匹配标题或消息内容）' }),
+});
 
 const list = defineOpenAPIRoute({
   route: createRoute({
@@ -38,9 +45,13 @@ const list = defineOpenAPIRoute({
     summary: '获取对话列表',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware] as const,
+    request: { query: ListQuery },
     responses: { ...commonErrorResponses, ...ok(z.array(AiConversationDTO), '对话列表') },
   }),
-  handler: async (c) => c.json(okBody(await listConversations()), 200),
+  handler: async (c) => {
+    const { archived, keyword } = c.req.valid('query');
+    return c.json(okBody(await listConversations({ archived: archived === 'true', keyword })), 200);
+  },
 });
 
 const create = defineOpenAPIRoute({
@@ -231,6 +242,46 @@ const togglePin = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([list, create, getOne, remove, getMessages, rename, togglePin, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList] as const);
+const toggleArchive = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/{id}/archive',
+    tags: ['AI'],
+    summary: '归档/取消归档对话',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(z.object({ isArchived: z.boolean() }), '操作成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const isArchived = await toggleArchiveConversation(id);
+    return c.json(okBody({ isArchived }), 200);
+  },
+});
+
+const setSystemPrompt = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put',
+    path: '/{id}/system-prompt',
+    tags: ['AI'],
+    summary: '设置对话级提示词（角色模板）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ systemPrompt: z.string().max(5000).nullable() })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(z.object({ systemPromptOverride: z.string().nullable() }), '设置成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { systemPrompt } = c.req.valid('json');
+    const value = await setConversationSystemPrompt(id, systemPrompt);
+    return c.json(okBody({ systemPromptOverride: value }), 200);
+  },
+});
+
+router.openapiRoutes([list, create, getOne, remove, getMessages, rename, togglePin, toggleArchive, setSystemPrompt, submitFeedback, deleteMsg, deleteMsgCascade, adminFeedbackList] as const);
 
 export default router;

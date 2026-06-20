@@ -13,6 +13,7 @@ export function streamChat(
   provider: AiProvider,
   config: StreamChatConfig,
   messages: ChatMessage[],
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamChunk> {
   switch (provider) {
     case 'openai_compatible':
@@ -25,6 +26,6 @@ export function streamChat(
     case 'baidu':
     /* falls through */
     default:
-      return streamChatOpenAICompatible(config, messages);
+      return streamChatOpenAICompatible(config, messages, signal);
   }
 }

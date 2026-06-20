@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { AIChatDialogue, AIChatInput, Typography, Button, RadioGroup, Radio, Select, Tag, Toast, Tooltip, Spin, TextArea, Dropdown, Input, Modal } from '@douyinfe/semi-ui';
 import type { Message as AIChatMessage } from '@douyinfe/semi-ui/lib/es/aiChatDialogue';
 import type { RenderActionProps } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
-import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff } from 'lucide-react';
+import { MessageSquarePlus, Trash2, AlignLeft, AlignJustify, FileText, Settings, MoreHorizontal, Pencil, Pin, PinOff, Archive, ArchiveRestore, Sparkles, Inbox } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,7 +11,7 @@ import UserAiConfigModal from '../components/UserAiConfigModal';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
-import type { AiConversation, AiMessage, AiProviderConfig, UserAiConfig, SystemConfig } from '@zenith/shared';
+import type { AiConversation, AiMessage, AiProviderConfig, UserAiConfig, SystemConfig, AiPromptTemplate } from '@zenith/shared';
 
 const { Configure } = AIChatInput;
 const { Title } = Typography;
@@ -213,6 +213,10 @@ export default function AIChatPage() {
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const providersRef = useRef<AiProviderConfig[]>([]);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [promptTemplates, setPromptTemplates] = useState<AiPromptTemplate[]>([]);
+  const didInitConvRef = useRef(false);
 
   // Load AI provider configs + user configs as model options
   const loadModelOptions = useCallback((providers: AiProviderConfig[], userConfigs: UserAiConfig[]) => {
@@ -246,14 +250,33 @@ export default function AIChatPage() {
     })();
   }, [loadModelOptions]);
 
-  // Load conversations on mount
-  useEffect(() => {
+  // 加载会话列表（支持搜索 + 归档筛选）
+  const loadConversations = useCallback((opts?: { keyword?: string; archived?: boolean }) => {
+    const keyword = (opts?.keyword ?? '').trim();
+    const archived = opts?.archived ?? false;
+    const params = new URLSearchParams();
+    if (keyword) params.set('keyword', keyword);
+    if (archived) params.set('archived', 'true');
+    const qs = params.toString();
     setConvsLoading(true);
-    void request.get<AiConversation[]>('/api/ai/conversations').then((res) => {
+    return request.get<AiConversation[]>(`/api/ai/conversations${qs ? `?${qs}` : ''}`).then((res) => {
       const list = res.data ?? [];
       setConversations(list);
-      if (list.length > 0) setActiveConvId(list[0].id);
+      if (!didInitConvRef.current && list.length > 0) setActiveConvId(list[0].id);
+      didInitConvRef.current = true;
     }).catch(() => {}).finally(() => setConvsLoading(false));
+  }, []);
+
+  // 搜索 / 归档切换时重新加载（防抖）
+  useEffect(() => {
+    const t = setTimeout(() => { void loadConversations({ keyword: searchKeyword, archived: showArchived }); }, 300);
+    return () => clearTimeout(t);
+  }, [searchKeyword, showArchived, loadConversations]);
+
+  // 加载可用提示词模板（角色）
+  useEffect(() => {
+    void request.get<AiPromptTemplate[]>('/api/ai/prompt-templates/available')
+      .then((r) => setPromptTemplates(r.data ?? [])).catch(() => {});
   }, []);
 
   // Load messages when active conversation changes
@@ -547,6 +570,7 @@ export default function AIChatPage() {
 
   const handleNewConversation = async () => {
     try {
+      setShowArchived(false);
       const res = await request.post<AiConversation>('/api/ai/conversations', { title: '新对话' });
       const newConv = res.data;
       setConversations((prev) => [newConv, ...prev]);
@@ -599,6 +623,30 @@ export default function AIChatPage() {
     }
   };
 
+  const handleToggleArchive = async (id: number) => {
+    try {
+      const res = await request.put<{ isArchived: boolean }>(`/api/ai/conversations/${id}/archive`, {});
+      const archived = res.data?.isArchived ?? false;
+      // 归档状态改变后，会话从当前视图（与归档状态相反）移除
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (activeConvId === id) { setActiveConvId(null); setMessages([]); }
+      Toast.success(archived ? '已归档' : '已取消归档');
+    } catch {
+      Toast.error('操作失败');
+    }
+  };
+
+  const handleApplyTemplate = async (content: string | null) => {
+    if (!activeConvId) { Toast.warning('请先选择或创建对话'); return; }
+    try {
+      await request.put(`/api/ai/conversations/${activeConvId}/system-prompt`, { systemPrompt: content });
+      setConversations((prev) => prev.map((c) => c.id === activeConvId ? { ...c, systemPromptOverride: content } : c));
+      Toast.success(content ? '已应用角色' : '已清除角色');
+    } catch {
+      Toast.error('操作失败');
+    }
+  };
+
   const activeConv = conversations.find((c) => c.id === activeConvId);
 
   return (
@@ -613,18 +661,32 @@ export default function AIChatPage() {
       master={(
         <NavListPanel
           headerExtra={
-            <Button
-              theme="solid"
-              type="primary"
-              size="small"
-              icon={<MessageSquarePlus size={14} />}
-              onClick={() => void handleNewConversation()}
-            >
-              新建对话
-            </Button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Tooltip content={showArchived ? '返回对话列表' : '查看已归档'}>
+                <Button
+                  theme="borderless"
+                  size="small"
+                  type={showArchived ? 'primary' : 'tertiary'}
+                  icon={showArchived ? <Inbox size={14} /> : <Archive size={14} />}
+                  onClick={() => setShowArchived((v) => !v)}
+                />
+              </Tooltip>
+              {!showArchived && (
+                <Button
+                  theme="solid"
+                  type="primary"
+                  size="small"
+                  icon={<MessageSquarePlus size={14} />}
+                  onClick={() => void handleNewConversation()}
+                >
+                  新建对话
+                </Button>
+              )}
+            </div>
           }
+          search={{ value: searchKeyword, onChange: setSearchKeyword, placeholder: '搜索对话 / 消息内容' }}
           loading={convsLoading}
-          emptyText="暂无对话"
+          emptyText={showArchived ? '暂无已归档对话' : (searchKeyword ? '未找到匹配的对话' : '暂无对话')}
           dataSource={conversations}
           renderItem={(conv) => (
             <NavListItem
@@ -647,6 +709,12 @@ export default function AIChatPage() {
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           {conv.isPinned ? <PinOff size={13} /> : <Pin size={13} />}
                           {conv.isPinned ? '取消置顶' : '置顶'}
+                        </span>
+                      </Dropdown.Item>
+                      <Dropdown.Item onClick={(e) => { (e as React.MouseEvent).stopPropagation(); void handleToggleArchive(conv.id); }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {conv.isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                          {conv.isArchived ? '取消归档' : '归档'}
                         </span>
                       </Dropdown.Item>
                       <Dropdown.Divider />
@@ -673,6 +741,44 @@ export default function AIChatPage() {
           <MasterDetailLayout.Header
             extra={
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Dropdown
+                  trigger="click"
+                  position="bottomLeft"
+                  clickToHide
+                  render={
+                    <Dropdown.Menu>
+                      {promptTemplates.length === 0 && <Dropdown.Item disabled>暂无可用角色模板</Dropdown.Item>}
+                      {promptTemplates.map((t) => (
+                        <Dropdown.Item
+                          key={t.id}
+                          active={activeConv?.systemPromptOverride === t.content}
+                          onClick={() => void handleApplyTemplate(t.content)}
+                        >
+                          {t.name}
+                        </Dropdown.Item>
+                      ))}
+                      {activeConv?.systemPromptOverride && (
+                        <>
+                          <Dropdown.Divider />
+                          <Dropdown.Item type="danger" onClick={() => void handleApplyTemplate(null)}>清除角色</Dropdown.Item>
+                        </>
+                      )}
+                    </Dropdown.Menu>
+                  }
+                >
+                  <Tooltip content="选择角色 / 提示词模板（作用于当前对话）">
+                    <Button
+                      theme={activeConv?.systemPromptOverride ? 'light' : 'borderless'}
+                      type="primary"
+                      size="small"
+                      icon={<Sparkles size={14} />}
+                    >
+                      {activeConv?.systemPromptOverride
+                        ? (promptTemplates.find((t) => t.content === activeConv.systemPromptOverride)?.name ?? '自定义角色')
+                        : '角色'}
+                    </Button>
+                  </Tooltip>
+                </Dropdown>
                 {pdfFile && (
                   <Tooltip content={pdfFileUrl ? '点击关闭预览（已上传）' : '点击关闭预览（上传中…）'}>
                     <Button

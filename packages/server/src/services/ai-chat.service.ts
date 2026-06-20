@@ -79,6 +79,7 @@ export async function* streamAiChat(
   messages: ChatMessage[],
   configSource?: 'system' | 'user',
   configId?: number,
+  options?: { signal?: AbortSignal; systemPromptOverride?: string | null },
 ): AsyncGenerator<StreamChunk & { snapshot?: { provider: string; model: string; configId?: number } }> {
   let resolved: ResolvedStreamConfig;
   if (configSource === 'user' && configId) {
@@ -91,8 +92,14 @@ export async function* streamAiChat(
     resolved = await resolveStreamConfig();
   }
 
+  // 对话级提示词模板：覆盖服务商配置中的 systemPrompt
+  const override = options?.systemPromptOverride;
+  if (typeof override === 'string' && override.trim()) {
+    resolved.config.systemPrompt = override;
+  }
+
   let isFirst = true;
-  for await (const chunk of streamChat(resolved.provider, resolved.config, messages)) {
+  for await (const chunk of streamChat(resolved.provider, resolved.config, messages, options?.signal)) {
     if (isFirst && chunk.type === 'delta') {
       yield { ...chunk, snapshot: resolved.snapshot };
       isFirst = false;

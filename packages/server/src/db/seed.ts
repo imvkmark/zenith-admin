@@ -1,12 +1,12 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, workflowForms } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, workflowForms, aiPromptTemplates } from './schema';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_WORKFLOW_FORMS } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_WORKFLOW_FORMS, SEED_AI_PROMPT_TEMPLATES } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
 
@@ -328,6 +328,13 @@ async function seedRest() {
     SEED_INAPP_TEMPLATES.map(({ name, code, title, content, type, variables, status, remark }) => ({ name, code, title, content, type, variables, status, remark })),
   ).onConflictDoNothing({ target: inAppTemplates.code });
   logger.info('  ✔ In-app templates seeded (onConflictDoNothing)');
+
+  // ─── AI 提示词模板内置预设（数据来源：@zenith/shared SEED_AI_PROMPT_TEMPLATES）─────
+  await db.insert(aiPromptTemplates).values(
+    SEED_AI_PROMPT_TEMPLATES.map(({ id, name, content, description, category, scope, userId, isBuiltin, sort, isEnabled }) => ({ id, name, content, description, category, scope, userId, isBuiltin, sort, isEnabled })),
+  ).onConflictDoNothing({ target: aiPromptTemplates.id });
+  await db.execute(sql`SELECT setval('ai_prompt_templates_id_seq', GREATEST((SELECT MAX(id) FROM ai_prompt_templates), 1))`);
+  logger.info('  ✔ AI prompt templates seeded (onConflictDoNothing)');
 
   // ── 标签 ────────────────────────────────────────────────────────────────────
   await db.insert(tags).values(

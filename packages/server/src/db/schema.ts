@@ -2198,6 +2198,7 @@ export const aiConversations = pgTable('ai_conversations', {
   providerSnapshot: jsonb('provider_snapshot').$type<{ provider: string; model: string; configId?: number }>(),
   isArchived: boolean('is_archived').notNull().default(false),
   isPinned: boolean('is_pinned').notNull().default(false),
+  systemPromptOverride: text('system_prompt_override'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
 });
@@ -2239,6 +2240,27 @@ export const userAiConfigs = pgTable('user_ai_configs', {
 export type UserAiConfigRow = typeof userAiConfigs.$inferSelect;
 export type NewUserAiConfig = typeof userAiConfigs.$inferInsert;
 
+export const aiPromptScopeEnum = pgEnum('ai_prompt_scope', ['system', 'user']);
+
+export const aiPromptTemplates = pgTable('ai_prompt_templates', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  content: text('content').notNull(),
+  description: varchar('description', { length: 300 }),
+  category: varchar('category', { length: 50 }),
+  scope: aiPromptScopeEnum('scope').notNull().default('system'),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  isBuiltin: boolean('is_builtin').notNull().default(false),
+  sort: integer('sort').notNull().default(0),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type AiPromptTemplateRow = typeof aiPromptTemplates.$inferSelect;
+export type NewAiPromptTemplate = typeof aiPromptTemplates.$inferInsert;
+
 export const aiProviderConfigsRelations = relations(aiProviderConfigs, ({ one }) => ({
   createdByUser: one(users, { fields: [aiProviderConfigs.createdBy], references: [users.id] }),
 }));
@@ -2255,6 +2277,11 @@ export const aiMessagesRelations = relations(aiMessages, ({ one }) => ({
 
 export const userAiConfigsRelations = relations(userAiConfigs, ({ one }) => ({
   user: one(users, { fields: [userAiConfigs.userId], references: [users.id] }),
+}));
+
+export const aiPromptTemplatesRelations = relations(aiPromptTemplates, ({ one }) => ({
+  user: one(users, { fields: [aiPromptTemplates.userId], references: [users.id] }),
+  createdByUser: one(users, { fields: [aiPromptTemplates.createdBy], references: [users.id] }),
 }));
 
 // ─── 数据脱敏配置 ─────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ export type StreamChunk =
 export async function* streamChatOpenAICompatible(
   config: StreamChatConfig,
   messages: ChatMessage[],
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamChunk> {
   const allMessages: ChatMessage[] = config.systemPrompt
     ? [{ role: 'system', content: config.systemPrompt }, ...messages]
@@ -49,8 +50,11 @@ export async function* streamChatOpenAICompatible(
       }),
       timeout: 0,
       retries: 0,
+      signal,
     });
   } catch (err: unknown) {
+    // 用户主动中断：静默结束，由上层保存已生成内容
+    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return;
     yield { type: 'error', error: err instanceof Error ? err.message : 'LLM API 调用失败' };
     return;
   }
@@ -102,6 +106,11 @@ export async function* streamChatOpenAICompatible(
         }
       }
     }
+  } catch (err: unknown) {
+    // 用户主动中断读流：静默结束，保留已产出的 delta
+    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+    yield { type: 'error', error: err instanceof Error ? err.message : '读取响应流失败' };
+    return;
   } finally {
     reader.releaseLock();
   }

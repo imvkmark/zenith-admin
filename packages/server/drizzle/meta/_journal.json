@@ -862,6 +862,13 @@
       "when": 1781920167594,
       "tag": "0122_amusing_prodigy",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1781945496166,
+      "tag": "0123_opposite_spiral",
+      "breakpoints": true
     }
   ]
 }

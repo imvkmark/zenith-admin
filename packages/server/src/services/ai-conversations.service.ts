@@ -1,8 +1,10 @@
-import { eq, desc, and, isNotNull, gte } from 'drizzle-orm';
+import { eq, desc, and, or, ilike, inArray, isNotNull, gte } from 'drizzle-orm';
 import { db } from '../db';
 import { aiConversations, aiMessages } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { formatDateTime } from '../lib/datetime';
+import { truncateHistoryByBudget } from '../lib/ai/tokens';
+import { escapeLike } from '../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 
 function mapConversation(row: typeof aiConversations.$inferSelect) {
@@ -14,6 +16,7 @@ function mapConversation(row: typeof aiConversations.$inferSelect) {
     providerSnapshot: row.providerSnapshot,
     isArchived: row.isArchived,
     isPinned: row.isPinned,
+    systemPromptOverride: row.systemPromptOverride,
     createdAt: formatDateTime(row.createdAt),
     updatedAt: formatDateTime(row.updatedAt),
   };
@@ -32,12 +35,30 @@ function mapMessage(row: typeof aiMessages.$inferSelect) {
   };
 }
 
-export async function listConversations() {
+export async function listConversations(opts: { archived?: boolean; keyword?: string } = {}) {
   const user = currentUser();
+  const archived = opts.archived ?? false;
+  const keyword = opts.keyword?.trim();
+
+  const conds = [
+    eq(aiConversations.userId, user.userId),
+    eq(aiConversations.isArchived, archived),
+  ];
+
+  if (keyword) {
+    const kw = `%${escapeLike(keyword)}%`;
+    // 命中条件：对话标题匹配，或对话内存在内容匹配的消息
+    const matchedConvIds = db
+      .select({ id: aiMessages.conversationId })
+      .from(aiMessages)
+      .where(ilike(aiMessages.content, kw));
+    conds.push(or(ilike(aiConversations.title, kw), inArray(aiConversations.id, matchedConvIds))!);
+  }
+
   const rows = await db
     .select()
     .from(aiConversations)
-    .where(and(eq(aiConversations.userId, user.userId), eq(aiConversations.isArchived, false)))
+    .where(and(...conds))
     .orderBy(desc(aiConversations.isPinned), desc(aiConversations.updatedAt));
   return rows.map(mapConversation);
 }
@@ -109,6 +130,26 @@ export async function togglePinConversation(id: number) {
   return !row.isPinned;
 }
 
+export async function toggleArchiveConversation(id: number) {
+  const row = await ensureConversationOwner(id);
+  await db
+    .update(aiConversations)
+    .set({ isArchived: !row.isArchived, isPinned: false })
+    .where(eq(aiConversations.id, id));
+  return !row.isArchived;
+}
+
+/** 设置 / 清除对话级提示词（角色模板），传 null 清除 */
+export async function setConversationSystemPrompt(id: number, systemPrompt: string | null) {
+  await ensureConversationOwner(id);
+  const value = systemPrompt?.trim() ? systemPrompt.trim().slice(0, 5000) : null;
+  await db
+    .update(aiConversations)
+    .set({ systemPromptOverride: value })
+    .where(eq(aiConversations.id, id));
+  return value;
+}
+
 export async function saveMessages(
   conversationId: number,
   userContent: string,
@@ -127,15 +168,19 @@ export async function saveMessages(
   return { assistantMsgId: assistantRow?.id ?? null };
 }
 
-export async function getHistoryMessages(conversationId: number, limit = 20) {
+export async function getHistoryMessages(
+  conversationId: number,
+  options: { maxTokens?: number; maxCount?: number } = {},
+) {
+  const maxCount = options.maxCount ?? 50;
   const rows = await db
-    .select()
+    .select({ role: aiMessages.role, content: aiMessages.content })
     .from(aiMessages)
     .where(eq(aiMessages.conversationId, conversationId))
     .orderBy(desc(aiMessages.createdAt))
-    .limit(limit);
-  // 按时间升序返回
-  return [...rows].reverse().map((r: typeof rows[0]) => ({ role: r.role, content: r.content }));
+    .limit(maxCount);
+  // rows 为时间倒序；按 token 预算裁剪后返回时间升序
+  return truncateHistoryByBudget(rows, { maxTokens: options.maxTokens });
 }
 
 /**

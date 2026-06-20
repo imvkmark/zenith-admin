@@ -6,9 +6,21 @@ const convStore: AiConversation[] = [...mockAiConversations];
 const msgStore: Record<number, AiMessage[]> = { ...mockAiMessages };
 
 export const aiConversationsHandlers = [
-  // 列表
-  http.get('/api/ai/conversations', () => {
-    const sorted = [...convStore].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  // 列表（支持 archived / keyword 筛选）
+  http.get('/api/ai/conversations', ({ request }) => {
+    const url = new URL(request.url);
+    const archived = url.searchParams.get('archived') === 'true';
+    const keyword = (url.searchParams.get('keyword') ?? '').trim().toLowerCase();
+    let list = convStore.filter((c) => c.isArchived === archived);
+    if (keyword) {
+      list = list.filter((c) =>
+        c.title.toLowerCase().includes(keyword) ||
+        (msgStore[c.id] ?? []).some((m) => m.content.toLowerCase().includes(keyword)),
+      );
+    }
+    const sorted = [...list].sort((a, b) =>
+      (Number(b.isPinned) - Number(a.isPinned)) || b.updatedAt.localeCompare(a.updatedAt),
+    );
     return HttpResponse.json({ code: 0, message: 'ok', data: sorted });
   }),
 
@@ -24,12 +36,54 @@ export const aiConversationsHandlers = [
       providerSnapshot: null,
       isArchived: false,
       isPinned: false,
+      systemPromptOverride: null,
       createdAt: now,
       updatedAt: now,
     };
     convStore.unshift(newConv);
     msgStore[newConv.id] = [];
     return HttpResponse.json({ code: 0, message: '创建成功', data: newConv });
+  }),
+
+  // 重命名对话
+  http.put('/api/ai/conversations/:id/rename', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = await request.json() as { title?: string };
+    const conv = convStore.find((c) => c.id === id);
+    if (!conv) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    conv.title = (body.title ?? '').trim().slice(0, 200) || '新对话';
+    conv.updatedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '重命名成功', data: null });
+  }),
+
+  // 置顶 / 取消置顶
+  http.put('/api/ai/conversations/:id/pin', ({ params }) => {
+    const id = Number(params.id);
+    const conv = convStore.find((c) => c.id === id);
+    if (!conv) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    conv.isPinned = !conv.isPinned;
+    return HttpResponse.json({ code: 0, message: 'ok', data: { isPinned: conv.isPinned } });
+  }),
+
+  // 归档 / 取消归档
+  http.put('/api/ai/conversations/:id/archive', ({ params }) => {
+    const id = Number(params.id);
+    const conv = convStore.find((c) => c.id === id);
+    if (!conv) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    conv.isArchived = !conv.isArchived;
+    if (conv.isArchived) conv.isPinned = false;
+    return HttpResponse.json({ code: 0, message: 'ok', data: { isArchived: conv.isArchived } });
+  }),
+
+  // 设置 / 清除对话级提示词（角色模板）
+  http.put('/api/ai/conversations/:id/system-prompt', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = await request.json() as { systemPrompt?: string | null };
+    const conv = convStore.find((c) => c.id === id);
+    if (!conv) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    const value = body.systemPrompt?.trim() ? body.systemPrompt.trim().slice(0, 5000) : null;
+    conv.systemPromptOverride = value;
+    return HttpResponse.json({ code: 0, message: 'ok', data: { systemPromptOverride: value } });
   }),
 
   // 获取单条对话
@@ -102,6 +156,7 @@ export const aiConversationsHandlers = [
       sseBody += `event: delta\ndata: ${JSON.stringify({ content: chunk })}\n\n`;
     }
     sseBody += `event: done\ndata: ${JSON.stringify({ tokensInput: Math.floor(userText.length / 4), tokensOutput: Math.floor(replyText.length / 4) })}\n\n`;
+    sseBody += `event: saved\ndata: ${JSON.stringify({ assistantMsgId })}\n\n`;
 
     // Save assistant message
     const assistantMsg: AiMessage = {
@@ -125,6 +180,28 @@ export const aiConversationsHandlers = [
     });
   }),
 
+  // 删除消息及其之后所有消息（级联）
+  http.delete('/api/ai/conversations/:convId/messages/:msgId/cascade', ({ params }) => {
+    const convId = Number(params.convId);
+    const msgId = Number(params.msgId);
+    const msgs = msgStore[convId];
+    if (!msgs) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    const idx = msgs.findIndex((m) => m.id === msgId);
+    if (idx === -1) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    msgStore[convId] = msgs.slice(0, idx);
+    return HttpResponse.json({ code: 0, message: '删除成功', data: null });
+  }),
+
+  // 删除单条 assistant 消息（用于重新生成）
+  http.delete('/api/ai/conversations/:convId/messages/:msgId', ({ params }) => {
+    const convId = Number(params.convId);
+    const msgId = Number(params.msgId);
+    const msgs = msgStore[convId];
+    if (!msgs) return HttpResponse.json({ code: 404, message: '对话不存在', data: null }, { status: 404 });
+    msgStore[convId] = msgs.filter((m) => m.id !== msgId);
+    return HttpResponse.json({ code: 0, message: '删除成功', data: null });
+  }),
+
   // ── 管理员反馈列表（/api/ai/conversations/admin/feedback）────────────────
   // 注意：必须在 /:id 路由之前注册，以避免 "admin" 被当成 id
   http.get('/api/ai/conversations/admin/feedback', ({ request }) => {
@@ -146,7 +223,7 @@ export const aiConversationsHandlers = [
   }),
 
   // 消息反馈（点赞/点踩）
-  http.post('/api/ai/conversations/:convId/messages/:msgId/feedback', async ({ params, request }) => {
+  http.put('/api/ai/conversations/:convId/messages/:msgId/feedback', async ({ params, request }) => {
     const convId = Number(params.convId);
     const msgId = Number(params.msgId);
     const body = await request.json() as { feedback: number | null };

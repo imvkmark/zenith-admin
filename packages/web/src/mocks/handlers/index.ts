@@ -41,6 +41,8 @@ import { smsTemplatesHandlers } from './sms-templates';
 import { smsSendLogsHandlers } from './sms-send-logs';
 import { aiProvidersHandlers } from './ai-providers';
 import { aiConversationsHandlers } from './ai-conversations';
+import { aiPromptTemplatesHandlers } from './ai-prompt-templates';
+import { aiUsageHandlers } from './ai-usage';
 import { userAiConfigHandlers } from './user-ai-config';
 import { oauth2AppsHandlers } from './oauth2-apps';
 import { oauth2AuthHandlers } from './oauth2-auth';
@@ -111,6 +113,8 @@ export const handlers = [
   ...dbQueryFavoritesHandlers,
   ...aiProvidersHandlers,
   ...aiConversationsHandlers,
+  ...aiPromptTemplatesHandlers,
+  ...aiUsageHandlers,
   ...userAiConfigHandlers,
   ...oauth2AppsHandlers,
   ...oauth2AuthHandlers,
