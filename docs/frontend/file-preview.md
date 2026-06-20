@@ -1,6 +1,6 @@
 # 文件预览组件
 
-`FilePreviewModal` 是全站统一的文件预览弹窗，支持图片、PDF、音频、视频、Excel/CSV 表格、Word 文档、Markdown、纯文本和 ZIP 压缩包九种格式。调用方只需传入文件元数据，无需自行判断格式或引入额外组件。
+`FilePreviewModal` 是全站统一的文件预览弹窗，支持图片、PDF、音频、视频、Excel/CSV 表格、Word 文档、Markdown、纯文本、JSON、SVG、代码文件和 ZIP 压缩包。调用方只需传入文件元数据，无需自行判断格式或引入额外组件。
 
 **文件位置**：`packages/web/src/components/FilePreviewModal/index.tsx`
 
@@ -10,7 +10,7 @@
 
 | 格式 | MIME 类型 | 渲染方式 | 需要 `fileId` |
 | --- | --- | --- | --- |
-| 图片 | `image/*` | Semi Design `ImagePreview`（由调用方处理） | 否 |
+| 图片 | `image/*` | 普通图片回退给调用方的 Semi Design `ImagePreview`；SVG 由弹窗内 `<img>` 渲染 | 否 |
 | PDF | `application/pdf` | `@embedpdf/react-pdf-viewer`（`PDFPreviewPanel`） | 否 |
 | 音频 | `audio/*` | Semi Design `AudioPlayer` | 否 |
 | 视频 | `video/*` | Semi Design `VideoPlayer` | 否 |
@@ -18,10 +18,13 @@
 | CSV | `text/csv` / `application/csv` | 后端解析转为 IWorkbookData，前端 Univer 渲染（同 Excel 路径） | **是** |
 | Word | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `docx-preview` 渲染为 HTML（`DocxPreviewPanel`，懒加载） | 否 |
 | Markdown | `text/markdown` / `text/x-markdown` | `react-markdown` 渲染（`MarkdownPreviewPanel`，懒加载） | 否 |
-| 纯文本 | `text/plain` | `<pre>` 原文本展示（复用 `MarkdownPreviewPanel`，`rawText=true`） | 否 |
-| ZIP | `application/zip` / `application/x-zip-compressed` | JSZip 解析 + Semi Design `Tree` 目录树（`ZipPreviewPanel`，懒加载） | 否 |
+| 纯文本 | `text/plain` | Monaco Editor 只读展示（`MonacoPreviewPanel`，懒加载） | 否 |
+| JSON | `application/json` / `text/json` | Semi Design `JsonViewer` 只读展示（`JsonPreviewPanel`，懒加载） | 否 |
+| SVG | `image/svg+xml` | 鉴权下载 Blob 后创建 Object URL，用 `<img>` 居中展示 | 否 |
+| 代码/配置 | JavaScript、TypeScript、Python、CSS、HTML、XML、YAML、Shell、SQL 等 MIME 类型 | Monaco Editor 语法高亮只读展示（`MonacoPreviewPanel`，懒加载） | 否 |
+| ZIP | `application/zip` / `application/x-zip-compressed` / `application/x-zip` | JSZip 解析 + Semi Design `Tree` 目录树（`ZipPreviewPanel`，懒加载） | 否 |
 
-> **图片**不在 `FilePreviewModal` 内部渲染。遇到 `image/*` 时组件会立即调用 `onClose` 并回退，由调用方自行打开 `ImagePreview`。
+> **普通图片**不在 `FilePreviewModal` 内部渲染。遇到非 SVG 的 `image/*` 时组件会立即调用 `onClose` 并回退，由调用方自行打开 `ImagePreview`。
 >
 > **Word** 仅支持 `.docx`（OOXML 格式），旧版 `.doc`（二进制格式）不支持预览。
 >
@@ -42,6 +45,7 @@
 | `visible` | `boolean` | ✅ | 控制弹窗显示/隐藏 |
 | `onClose` | `() => void` | ✅ | 关闭回调 |
 | `onFallback` | `(url, name, mime) => void` | 否 | 遇到不支持格式时触发；不传则静默关闭 |
+| `style` | `CSSProperties` | 否 | 预留样式参数 |
 
 ---
 
@@ -98,7 +102,7 @@ const isPreviewable = canPreviewFile(record.mimeType);
 </Button>
 ```
 
-`canPreviewFile` 覆盖全部五种可预览格式（image / audio / video / PDF / xlsx），调用方无需手动枚举 MIME 类型。
+`canPreviewFile` 覆盖全部可预览格式（image / audio / video / PDF / xlsx / csv / docx / markdown / text / json / svg / code / zip），调用方无需手动枚举 MIME 类型。
 
 ---
 
