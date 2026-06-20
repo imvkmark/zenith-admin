@@ -586,7 +586,7 @@ export default function DataMaskPage() {
               }}
               dataSource={scanResults}
               pagination={false}
-              scroll={{ y: 400, x: 'max-content' }}
+              scroll={{ y: 400, x: 1050 }}
               columns={[
                 {
                   title: '表名', dataIndex: 'tableName', width: 160,
@@ -616,7 +616,7 @@ export default function DataMaskPage() {
                 {
                   title: <span>字段标签 <Typography.Text type="quaternary" size="small">（可编辑）</Typography.Text></span>,
                   dataIndex: 'suggestedLabel',
-                  width: 140,
+                  width: 160,
                   render: (_: unknown, record: SensitiveField) => (
                     <Input
                       size="small"
