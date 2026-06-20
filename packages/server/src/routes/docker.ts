@@ -28,6 +28,11 @@ import {
   createVolume,
   listContainerFiles,
   readContainerFile,
+  pruneContainers,
+  pruneImages,
+  pruneNetworks,
+  pruneVolumes,
+  pruneSystem,
 } from '../services/docker.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -404,12 +409,75 @@ const readContainerFileRoute = defineOpenAPIRoute({
   },
 });
 
+const PruneResultDTO = z.object({
+  containersDeleted: z.number().optional(),
+  imagesDeleted: z.number().optional(),
+  networksDeleted: z.number().optional(),
+  volumesDeleted: z.number().optional(),
+  spaceReclaimed: z.number().optional(),
+});
+
+const pruneContainersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/prune/containers', summary: '清理已停止容器', tags: ['Docker'],
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '清理已停止 Docker 容器', module: '系统运维' } })] as const,
+    responses: { ...commonErrorResponses, ...ok(PruneResultDTO, '清理结果') },
+  }),
+  handler: async (c) => c.json(okBody(await pruneContainers(), '清理完成'), 200),
+});
+
+const pruneImagesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/prune/images', summary: '清理镜像（悬空/全部未用）', tags: ['Docker'],
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '清理 Docker 镜像', module: '系统运维' } })] as const,
+    request: { query: z.object({ all: z.enum(['true', 'false']).optional() }) },
+    responses: { ...commonErrorResponses, ...ok(PruneResultDTO, '清理结果') },
+  }),
+  handler: async (c) => {
+    const all = c.req.valid('query').all === 'true';
+    return c.json(okBody(await pruneImages(all), '清理完成'), 200);
+  },
+});
+
+const pruneNetworksRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/prune/networks', summary: '清理未使用网络', tags: ['Docker'],
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '清理 Docker 网络', module: '系统运维' } })] as const,
+    responses: { ...commonErrorResponses, ...ok(PruneResultDTO, '清理结果') },
+  }),
+  handler: async (c) => c.json(okBody(await pruneNetworks(), '清理完成'), 200),
+});
+
+const pruneVolumesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/prune/volumes', summary: '清理未使用存储卷', tags: ['Docker'],
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: '清理 Docker 存储卷', module: '系统运维' } })] as const,
+    responses: { ...commonErrorResponses, ...ok(PruneResultDTO, '清理结果') },
+  }),
+  handler: async (c) => c.json(okBody(await pruneVolumes(), '清理完成'), 200),
+});
+
+const pruneSystemRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/prune/system', summary: '系统清理（容器+悬空镜像+网络）', tags: ['Docker'],
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: PERM, audit: { description: 'Docker 系统清理', module: '系统运维' } })] as const,
+    responses: { ...commonErrorResponses, ...ok(PruneResultDTO, '清理结果') },
+  }),
+  handler: async (c) => c.json(okBody(await pruneSystem(), '清理完成'), 200),
+});
+
 router.openapiRoutes([
   listRoute, startRoute, stopRoute, restartRoute, logsRoute, statsRoute, inspectRoute,
   listImagesRoute, removeImageRoute, pullImageRoute,
   listNetworksRoute, removeNetworkRoute, createNetworkRoute,
   listVolumesRoute, removeVolumeRoute, createVolumeRoute,
   listContainerFilesRoute, readContainerFileRoute,
+  pruneContainersRoute, pruneImagesRoute, pruneNetworksRoute, pruneVolumesRoute, pruneSystemRoute,
 ] as const);
 
 export default router;

@@ -40,6 +40,10 @@ export interface MetricsSample {
   netRxBps: number;
   /** 汇总网络写字节/秒 */
   netTxBps: number;
+  /** 磁盘读字节/秒（汇总物理设备）*/
+  diskReadBps: number;
+  /** 磁盘写字节/秒（汇总物理设备）*/
+  diskWriteBps: number;
 }
 
 export interface PerCoreCpu {
@@ -212,6 +216,8 @@ class MetricsSampler {
   private latestPerCore: PerCoreCpu[] = [];
   private latestNetwork: NetIfaceStats[] = [];
   private lastNet: { at: number; ifaces: Record<string, NetSnapshot> } | null = null;
+  private latestDiskIo: { readBps: number; writeBps: number } = { readBps: 0, writeBps: 0 };
+  private lastDisk: { at: number; readBytes: number; writeBytes: number } | null = null;
   private readonly series = new RingBuffer<MetricsSample>(TIMESERIES_CAPACITY);
   /** SSE 订阅者：每个连接一个回调 */
   private readonly subscribers = new Set<(s: MetricsSample) => void>();
@@ -250,6 +256,7 @@ class MetricsSampler {
     this.lastProcCpuUsage = process.cpuUsage();
     this.lastProcCpuTime = performance.now();
     this.lastNet = { at: Date.now(), ifaces: readNetSnapshot() };
+    this.lastDisk = readDiskSnapshot();
 
     this.timer = setInterval(() => {
       try {
@@ -331,6 +338,20 @@ class MetricsSampler {
     this.latestNetwork = ifaces;
     this.lastNet = { at: tNow, ifaces: netNow };
 
+    // Disk IO throughput (Linux /proc/diskstats delta)
+    const diskNow = readDiskSnapshot();
+    let diskReadBps = 0;
+    let diskWriteBps = 0;
+    if (diskNow && this.lastDisk) {
+      const elapsedSec = (diskNow.at - this.lastDisk.at) / 1000;
+      if (elapsedSec > 0) {
+        diskReadBps = Math.max(0, Math.round((diskNow.readBytes - this.lastDisk.readBytes) / elapsedSec));
+        diskWriteBps = Math.max(0, Math.round((diskNow.writeBytes - this.lastDisk.writeBytes) / elapsedSec));
+      }
+    }
+    this.latestDiskIo = { readBps: diskReadBps, writeBps: diskWriteBps };
+    if (diskNow) this.lastDisk = diskNow;
+
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const memPercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
@@ -355,6 +376,8 @@ class MetricsSampler {
       errorRate: httpWindow.errorRate,
       netRxBps: totalRxBps,
       netTxBps: totalTxBps,
+      diskReadBps,
+      diskWriteBps,
     };
     this.latest = sample;
     this.series.push(sample);
@@ -377,6 +400,11 @@ class MetricsSampler {
   /** 最新网络接口吞吐 */
   getNetwork(): NetIfaceStats[] {
     return this.latestNetwork;
+  }
+
+  /** 最新磁盘 IO 吞吐（字节/秒） */
+  getDiskIo(): { readBps: number; writeBps: number } {
+    return this.latestDiskIo;
   }
 
   /** 立刻读最新一帧；如尚未采样则返回 null */
@@ -521,6 +549,32 @@ function readNetSnapshot(): Record<string, NetSnapshot> {
     return result;
   } catch {
     return {};
+  }
+}
+
+/**
+ * 读取磁盘 IO 累计字节。Linux 从 /proc/diskstats 读取（扇区 512B），汇总物理整盘设备
+ * （排除分区/loop/ram/dm 等）；其他平台返回 null（不支持 IO 采集）。
+ * /proc/diskstats 列：major minor name reads rd_merged sectors_read ms_read writes wr_merged sectors_written ...
+ */
+function readDiskSnapshot(): { at: number; readBytes: number; writeBytes: number } | null {
+  if (process.platform !== 'linux') return null;
+  try {
+    const text = fs.readFileSync(path.join('/proc', 'diskstats'), 'utf8');
+    let readSectors = 0;
+    let writeSectors = 0;
+    const wholeDisk = /^(sd[a-z]+|nvme\d+n\d+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|mmcblk\d+)$/;
+    for (const line of text.split('\n')) {
+      const cols = line.trim().split(/\s+/);
+      if (cols.length < 10) continue;
+      const name = cols[2];
+      if (!wholeDisk.test(name)) continue;
+      readSectors += Number(cols[5]) || 0;
+      writeSectors += Number(cols[9]) || 0;
+    }
+    return { at: Date.now(), readBytes: readSectors * 512, writeBytes: writeSectors * 512 };
+  } catch {
+    return null;
   }
 }
 

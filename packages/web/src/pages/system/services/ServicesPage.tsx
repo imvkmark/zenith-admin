@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  Button, Tag, Toast, SideSheet, Typography, Input, Empty,
+  Button, Tag, Toast, SideSheet, Typography, Input, Empty, Select, Dropdown,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RefreshCw, Search, Play, Square, FileText } from 'lucide-react';
+import { RefreshCw, Search, Play, Square, FileText, MoreHorizontal } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { request } from '@/utils/request';
@@ -17,6 +17,11 @@ interface ServiceInfo {
   activeState: string;
   subState: string;
 }
+
+type ServiceAction = 'start' | 'stop' | 'restart' | 'enable' | 'disable' | 'mask' | 'unmask';
+const ACTION_MSG: Record<ServiceAction, string> = {
+  start: '已启动', stop: '已停止', restart: '已重启', enable: '已设为开机自启', disable: '已取消开机自启', mask: '已屏蔽', unmask: '已取消屏蔽',
+};
 
 const STATE_COLOR: Record<string, 'green' | 'grey' | 'red' | 'orange'> = {
   active: 'green', inactive: 'grey', failed: 'red', activating: 'orange',
@@ -47,6 +52,7 @@ export default function ServicesPage() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
+  const [stateFilter, setStateFilter] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [logsService, setLogsService] = useState<ServiceInfo | null>(null);
   const [logs, setLogs] = useState('');
@@ -75,13 +81,12 @@ export default function ServicesPage() {
 
   useEffect(() => { void fetchServices(); }, [fetchServices]);
 
-  const handleAction = async (name: string, action: 'start' | 'stop' | 'restart') => {
+  const handleAction = async (name: string, action: ServiceAction) => {
     setActionLoading((p) => ({ ...p, [name]: true }));
     const res = await request.post(`/api/systemd/${name}/${action}`, {});
     setActionLoading((p) => ({ ...p, [name]: false }));
     if (res.code === 0) {
-      const msg = { start: '已启动', stop: '已停止', restart: '已重启' }[action];
-      Toast.success({ content: msg, duration: 2 });
+      Toast.success({ content: ACTION_MSG[action], duration: 2 });
       void fetchServices();
     }
   };
@@ -120,12 +125,13 @@ export default function ServicesPage() {
     }
   };
 
-  const filtered = keyword
-    ? services.filter((s) =>
-        s.name.toLowerCase().includes(keyword.toLowerCase()) ||
-        s.description.toLowerCase().includes(keyword.toLowerCase()),
-      )
-    : services;
+  const kw = keyword.trim().toLowerCase();
+  const filtered = services.filter((s) => {
+    if (stateFilter && s.activeState !== stateFilter) return false;
+    if (!kw) return true;
+    return s.name.toLowerCase().includes(kw) || s.description.toLowerCase().includes(kw);
+  });
+  const failedCount = services.filter((s) => s.activeState === 'failed').length;
 
   const columns: ColumnProps<ServiceInfo>[] = [
     {
@@ -156,18 +162,34 @@ export default function ServicesPage() {
       render: (v: string) => <Tag size="small" color={v === 'loaded' ? 'blue' : 'grey'}>{v}</Tag>,
     },
     {
-      title: '操作', width: 200, fixed: 'right' as const,
+      title: '操作', width: 230, fixed: 'right' as const,
       render: (_: unknown, r: ServiceInfo) => {
         const busy = !!actionLoading[r.name];
         const isActive = r.activeState === 'active';
         return (
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             {isActive
               ? <Button size="small" theme="borderless" type="danger" loading={busy} onClick={() => void handleAction(r.name, 'stop')}>停止</Button>
               : <Button size="small" theme="borderless" loading={busy} onClick={() => void handleAction(r.name, 'start')}>启动</Button>
             }
             <Button size="small" theme="borderless" loading={busy} onClick={() => void handleAction(r.name, 'restart')}>重启</Button>
             <Button size="small" theme="borderless" icon={<FileText size={13} />} onClick={() => void openLogs(r)}>日志</Button>
+            <Dropdown
+              trigger="click"
+              clickToHide
+              position="bottomRight"
+              render={(
+                <Dropdown.Menu>
+                  <Dropdown.Item onClick={() => void handleAction(r.name, 'enable')}>设为开机自启</Dropdown.Item>
+                  <Dropdown.Item onClick={() => void handleAction(r.name, 'disable')}>取消开机自启</Dropdown.Item>
+                  <Dropdown.Divider />
+                  <Dropdown.Item type="danger" onClick={() => void handleAction(r.name, 'mask')}>屏蔽服务</Dropdown.Item>
+                  <Dropdown.Item onClick={() => void handleAction(r.name, 'unmask')}>取消屏蔽</Dropdown.Item>
+                </Dropdown.Menu>
+              )}
+            >
+              <Button size="small" theme="borderless" icon={<MoreHorizontal size={14} />} />
+            </Dropdown>
           </div>
         );
       },
@@ -189,7 +211,19 @@ export default function ServicesPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="搜索服务名 / 描述" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
+        <Input prefix={<Search size={14} />} placeholder="搜索服务名 / 描述" showClear value={keyword} onChange={setKeyword} style={{ width: 240 }} />
+        <Select placeholder="全部状态" value={stateFilter || undefined} onChange={(v) => setStateFilter((v as string) ?? '')} showClear style={{ width: 130 }}
+          optionList={[
+            { label: '运行中', value: 'active' },
+            { label: '已停止', value: 'inactive' },
+            { label: '失败', value: 'failed' },
+            { label: '激活中', value: 'activating' },
+          ]} />
+        {failedCount > 0 && (
+          <Button size="default" type={stateFilter === 'failed' ? 'primary' : 'tertiary'} theme={stateFilter === 'failed' ? 'solid' : 'light'} onClick={() => setStateFilter(stateFilter === 'failed' ? '' : 'failed')}>
+            失败服务 {failedCount}
+          </Button>
+        )}
         <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchServices()}>刷新</Button>
       </SearchToolbar>
       <ConfigurableTable

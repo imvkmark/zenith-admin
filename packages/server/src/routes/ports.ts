@@ -5,9 +5,11 @@ import {
   validationHook,
   commonErrorResponses,
   ok,
+  okMsg,
   okBody,
 } from '../lib/openapi-schemas';
 import { getListeningPorts } from '../services/ports.service';
+import { killProcess } from '../services/processes.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -18,6 +20,7 @@ const PortEntryDTO = z.object({
   state: z.string(),
   pid: z.number().int().nullable(),
   processName: z.string().nullable(),
+  serviceName: z.string().nullable(),
 });
 
 const listRoute = defineOpenAPIRoute({
@@ -33,6 +36,21 @@ const listRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute] as const);
+const killRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/{pid}', tags: ['Ports'], summary: '结束占用端口的进程',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:process:kill', audit: { description: '结束端口占用进程', module: '系统运维' } })] as const,
+    request: { params: z.object({ pid: z.coerce.number().int().positive() }) },
+    responses: { ...commonErrorResponses, ...okMsg('进程已结束') },
+  }),
+  handler: async (c) => {
+    const { pid } = c.req.valid('param');
+    await killProcess(pid, 'SIGTERM');
+    return c.json(okBody(null, '进程已结束'), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, killRoute] as const);
 
 export default router;

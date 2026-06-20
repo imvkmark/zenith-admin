@@ -3,7 +3,7 @@ import { Button, Descriptions, Progress, Skeleton, Tabs, TabPane, Toast, Typogra
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi } from 'lucide-react';
+import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree } from 'lucide-react';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { config } from '@/config';
@@ -67,6 +67,11 @@ interface DiskItem {
   filesystem: string; total: number; used: number; free: number; usagePercent: number; mount: string;
 }
 
+interface TopProcessItem { pid: number; name: string; cpu: number; memPercent: number; memBytes: number; }
+interface TopProcesses { byCpu: TopProcessItem[]; byMemory: TopProcessItem[]; }
+interface TemperatureSensor { label: string; celsius: number; }
+interface TemperatureInfo { cpu: number | null; sensors: TemperatureSensor[]; }
+
 interface LinuxMemDetail {
   memTotal: number; memFree: number; memAvailable: number;
   buffers: number; cached: number; shared: number;
@@ -80,7 +85,10 @@ interface MonitorData {
   memory: { total: number; used: number; free: number; usagePercent: number; detail?: LinuxMemDetail | null };
   disk: { total: number; used: number; free: number; usagePercent: number; mount?: string } | null;
   disks?: DiskItem[];
+  diskIo?: { readBps: number; writeBps: number };
   network?: NetIfaceStats[];
+  topProcesses?: TopProcesses | null;
+  temperature?: TemperatureInfo | null;
   node: {
     version: string; uptime: number; pid: number;
     memoryUsage: { rss: number; heapTotal: number; heapUsed: number; external: number; arrayBuffers?: number };
@@ -98,9 +106,24 @@ interface MonitorData {
 interface TimeseriesPoint {
   t: number; cpu: number; mem: number; procCpu: number; heap: number;
   loopLagMean: number; loopLagP99: number; qps: number; errorRate: number;
-  netRxBps?: number; netTxBps?: number;
+  netRxBps?: number; netTxBps?: number; diskReadBps?: number; diskWriteBps?: number;
 }
 interface TimeseriesData { intervalSec: number; capacity: number; points: TimeseriesPoint[]; }
+
+interface HistoryPoint {
+  t: string; cpu: number; memory: number; disk: number; swap: number; load1: number;
+  procCpu: number; heap: number; loopLag: number; qps: number; errorRate: number;
+  netRxBps: number; netTxBps: number; diskReadBps: number; diskWriteBps: number;
+}
+interface HistoryData { range: string; bucketSec: number; points: HistoryPoint[]; }
+
+const HISTORY_RANGES: { label: string; value: string }[] = [
+  { label: '近 1 小时', value: '1h' },
+  { label: '近 6 小时', value: '6h' },
+  { label: '近 24 小时', value: '24h' },
+  { label: '近 7 天', value: '7d' },
+  { label: '近 30 天', value: '30d' },
+];
 
 interface WsConnection {
   tokenId: string;
@@ -209,6 +232,10 @@ export default function MonitorPage() {
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshInterval, setRefreshInterval] = useState<number>(30000);
+  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [historyRange, setHistoryRange] = useState<string>('1h');
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   /** SSE 连接状态，仅在 SSE 模式下展示 */
   const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'open' | 'error'>('idle');
   const sseAbortRef = useRef<AbortController | null>(null);
@@ -348,6 +375,28 @@ export default function MonitorPage() {
     [series],
   );
 
+  const fetchHistory = useCallback(async (range: string) => {
+    setHistoryLoading(true);
+    try {
+      const res = await request.get<HistoryData>(`/api/monitor/history?range=${range}`, { silent: true });
+      if (res.code === 0 && res.data) setHistory(res.data.points);
+    } catch {
+      // 静默
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  // 进入「历史趋势」标签或切换时间范围时拉取历史数据
+  useEffect(() => {
+    if (activeTab === 'history') fetchHistory(historyRange);
+  }, [activeTab, historyRange, fetchHistory]);
+
+  const historyChartData = useMemo(
+    () => history.map((p) => ({ ...p, time: p.t.length > 10 ? p.t.slice(5, 16) : p.t })),
+    [history],
+  );
+
   function renderSkeleton() {
     return (
       <Skeleton active loading placeholder={
@@ -399,6 +448,110 @@ export default function MonitorPage() {
               ))}
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  }
+
+  function renderHistoryChart(title: string, lines: { dataKey: keyof HistoryPoint; label: string; color: string }[], opts?: { unit?: string; bytes?: boolean }) {
+    return (
+      <div className="monitor-chart-card">
+        <div className="monitor-chart-card__header">
+          <span className="monitor-chart-card__title"><Activity size={14} />{title}</span>
+        </div>
+        <div style={{ width: '100%', height: 240 }}>
+          <ResponsiveContainer>
+            <LineChart data={historyChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+              <XAxis dataKey="time" tick={{ fontSize: 11 }} minTickGap={48} />
+              <YAxis tick={{ fontSize: 11 }} unit={opts?.unit} tickFormatter={opts?.bytes ? (v) => formatBytes(Number(v)) : undefined} width={opts?.bytes ? 64 : undefined} />
+              <Tooltip formatter={opts?.bytes ? (value) => `${formatBytes(Number(value))}/s` : undefined} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              {lines.map((l) => (
+                <Line key={l.dataKey as string} type="monotone" dataKey={l.dataKey as string} name={l.label} stroke={l.color} strokeWidth={2} dot={false} isAnimationActive={false} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  }
+
+  function renderHistoryTab() {
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <Text type="tertiary" size="small">
+            持久化历史趋势（每分钟采样落库），可用于容量规划与回溯分析
+          </Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Select
+              value={historyRange}
+              onChange={(v) => setHistoryRange(v as string)}
+              optionList={HISTORY_RANGES}
+              style={{ width: 130 }}
+              size="small"
+            />
+            <Button size="small" icon={<RefreshCw size={14} />} onClick={() => fetchHistory(historyRange)} loading={historyLoading}>刷新</Button>
+          </div>
+        </div>
+        {history.length === 0 ? (
+          <div style={{ padding: '48px 0', textAlign: 'center' }}>
+            <Text type="tertiary">{historyLoading ? '加载中…' : '暂无历史数据（采样任务每分钟落库，请稍后再试）'}</Text>
+          </div>
+        ) : (
+          <div className="monitor-history-grid">
+            {renderHistoryChart('CPU / 内存 / 磁盘 / Swap 使用率', [
+              { dataKey: 'cpu', label: 'CPU', color: '#3b82f6' },
+              { dataKey: 'memory', label: '内存', color: '#22c55e' },
+              { dataKey: 'disk', label: '磁盘', color: '#f59e0b' },
+              { dataKey: 'swap', label: 'Swap', color: '#a855f7' },
+            ], { unit: '%' })}
+            {renderHistoryChart('系统负载 / 进程 CPU / 堆内存', [
+              { dataKey: 'load1', label: '负载(1m)', color: '#ef4444' },
+              { dataKey: 'procCpu', label: '进程CPU%', color: '#06b6d4' },
+              { dataKey: 'heap', label: '堆内存%', color: '#8b5cf6' },
+            ])}
+            {renderHistoryChart('网络吞吐', [
+              { dataKey: 'netRxBps', label: '下行', color: '#3b82f6' },
+              { dataKey: 'netTxBps', label: '上行', color: '#f97316' },
+            ], { bytes: true })}
+            {renderHistoryChart('磁盘 IO', [
+              { dataKey: 'diskReadBps', label: '读取', color: '#22c55e' },
+              { dataKey: 'diskWriteBps', label: '写入', color: '#ef4444' },
+            ], { bytes: true })}
+            {renderHistoryChart('请求 QPS / 错误率', [
+              { dataKey: 'qps', label: 'QPS', color: '#3b82f6' },
+              { dataKey: 'errorRate', label: '错误率%', color: '#ef4444' },
+            ])}
+            {renderHistoryChart('事件循环延迟', [
+              { dataKey: 'loopLag', label: '延迟(ms)', color: '#a855f7' },
+            ], { unit: 'ms' })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderTopProcesses(tp?: TopProcesses | null) {
+    if (!tp) return <Text type="tertiary">暂无进程数据</Text>;
+    const cpuCols = [
+      { title: '进程', dataIndex: 'name', render: (v: string, r: TopProcessItem) => <span><Text strong>{v}</Text> <Text type="tertiary" size="small">#{r.pid}</Text></span> },
+      { title: 'CPU%', dataIndex: 'cpu', width: 90, align: 'right' as const, render: (v: number) => `${v}%` },
+    ];
+    const memCols = [
+      { title: '进程', dataIndex: 'name', render: (v: string, r: TopProcessItem) => <span><Text strong>{v}</Text> <Text type="tertiary" size="small">#{r.pid}</Text></span> },
+      { title: '内存', dataIndex: 'memBytes', width: 130, align: 'right' as const, render: (v: number, r: TopProcessItem) => `${formatBytes(v)} (${r.memPercent}%)` },
+    ];
+    return (
+      <div className="monitor-topproc-grid">
+        <div>
+          <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 6 }}>CPU 占用 Top 5</Text>
+          <Table size="small" pagination={false} dataSource={tp.byCpu} columns={cpuCols} rowKey="pid" />
+        </div>
+        <div>
+          <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 6 }}>内存占用 Top 5</Text>
+          <Table size="small" pagination={false} dataSource={tp.byMemory} columns={memCols} rowKey="pid" />
         </div>
       </div>
     );
@@ -478,8 +631,16 @@ export default function MonitorPage() {
   }
 
   function renderDiskTab(d: MonitorData) {
+    const io = d.diskIo ? (
+      <div className="monitor-diskio-row">
+        <div className="monitor-diskio-item"><Text type="tertiary" size="small">磁盘读取</Text><Text strong>{formatBytes(d.diskIo.readBps)}/s</Text></div>
+        <div className="monitor-diskio-item"><Text type="tertiary" size="small">磁盘写入</Text><Text strong>{formatBytes(d.diskIo.writeBps)}/s</Text></div>
+      </div>
+    ) : null;
     if (d.disks && d.disks.length > 0) {
       return (
+        <>
+        {io}
         <table className="monitor-slow-table monitor-disk-table">
           <thead>
             <tr>
@@ -503,10 +664,13 @@ export default function MonitorPage() {
             ))}
           </tbody>
         </table>
+        </>
       );
     }
     if (d.disk) {
       return (
+        <>
+        {io}
         <Descriptions
           data={[
             { key: '挂载点', value: d.disk.mount ?? '/' },
@@ -519,6 +683,7 @@ export default function MonitorPage() {
           layout="horizontal"
           align="left"
         />
+        </>
       );
     }
     return <Text type="tertiary">磁盘信息不可用</Text>;
@@ -534,7 +699,7 @@ export default function MonitorPage() {
       : 0;
 
     return (
-      <Tabs type="line">
+      <Tabs type="line" activeKey={activeTab} onChange={setActiveTab}>
           {/* ===== 总览 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />总览</span>} itemKey="overview">
             <div className="monitor-overview-grid">
@@ -605,6 +770,16 @@ export default function MonitorPage() {
                 align="left"
               />
             </div>
+
+            {data.topProcesses && (<>
+              <div className="monitor-section-title"><ListTree size={14} style={{ marginRight: 4, verticalAlign: '-2px' }} />资源占用 Top 进程</div>
+              {renderTopProcesses(data.topProcesses)}
+            </>)}
+          </TabPane>
+
+          {/* ===== 历史趋势 ===== */}
+          <TabPane tab={<span className="monitor-tab-label"><History size={14} />历史趋势</span>} itemKey="history">
+            {renderHistoryTab()}
           </TabPane>
 
           {/* ===== CPU ===== */}
@@ -643,6 +818,19 @@ export default function MonitorPage() {
                   </div>
                 ))}
               </div>
+            </>)}
+
+            {data.temperature && (data.temperature.cpu !== null || data.temperature.sensors.length > 0) && (<>
+              <div className="monitor-section-title"><Thermometer size={14} style={{ marginRight: 4, verticalAlign: '-2px' }} />温度传感器</div>
+              <Descriptions
+                data={[
+                  ...(data.temperature.cpu !== null ? [{ key: 'CPU 温度', value: `${data.temperature.cpu} °C` }] : []),
+                  ...data.temperature.sensors.slice(0, 7).map((s) => ({ key: s.label, value: `${s.celsius} °C` })),
+                ]}
+                column={2}
+                layout="horizontal"
+                align="left"
+              />
             </>)}
 
             {chartData.length > 1 && renderTrendChart('CPU 使用率趋势', [

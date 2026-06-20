@@ -11,6 +11,28 @@ export interface PortEntry {
   state: string;
   pid: number | null;
   processName: string | null;
+  serviceName: string | null;
+}
+
+/** 常见端口 → 服务名映射，便于快速识别端口用途 */
+const COMMON_PORTS: Record<number, string> = {
+  20: 'FTP-DATA', 21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+  67: 'DHCP', 68: 'DHCP', 69: 'TFTP', 80: 'HTTP', 110: 'POP3', 111: 'RPC',
+  123: 'NTP', 135: 'MSRPC', 139: 'NetBIOS', 143: 'IMAP', 161: 'SNMP', 179: 'BGP',
+  389: 'LDAP', 443: 'HTTPS', 445: 'SMB', 465: 'SMTPS', 514: 'Syslog', 587: 'SMTP',
+  636: 'LDAPS', 873: 'rsync', 989: 'FTPS', 990: 'FTPS', 993: 'IMAPS', 995: 'POP3S',
+  1080: 'SOCKS', 1433: 'MSSQL', 1521: 'Oracle', 1883: 'MQTT', 2049: 'NFS',
+  2181: 'ZooKeeper', 2375: 'Docker', 2376: 'Docker-TLS', 2379: 'etcd', 27017: 'MongoDB',
+  3000: 'Node/Dev', 3001: 'Node/Dev', 3306: 'MySQL', 3389: 'RDP', 4222: 'NATS',
+  5000: 'Dev/Flask', 5432: 'PostgreSQL', 5601: 'Kibana', 5672: 'RabbitMQ', 5900: 'VNC',
+  6379: 'Redis', 6380: 'Redis', 7001: 'WebLogic', 8000: 'HTTP-Alt', 8025: 'MailHog',
+  8080: 'HTTP-Proxy', 8081: 'HTTP-Alt', 8443: 'HTTPS-Alt', 8848: 'Nacos', 9000: 'HTTP-Alt',
+  9090: 'Prometheus', 9092: 'Kafka', 9200: 'Elasticsearch', 9300: 'Elasticsearch',
+  11211: 'Memcached', 15672: 'RabbitMQ-UI', 5173: 'Vite', 3300: 'Zenith-API',
+};
+
+function serviceNameForPort(port: number): string | null {
+  return COMMON_PORTS[port] ?? null;
 }
 
 /**
@@ -20,25 +42,21 @@ export interface PortEntry {
  */
 export async function getListeningPorts(): Promise<PortEntry[]> {
   const platform = os.platform();
-  if (platform === 'win32') {
-    return getPortsWindows();
-  }
-  return getPortsUnix();
+  const entries = platform === 'win32' ? await getPortsWindows() : await getPortsUnix();
+  for (const e of entries) e.serviceName = serviceNameForPort(e.localPort);
+  return entries;
 }
 
 async function getPortsUnix(): Promise<PortEntry[]> {
-  let output = '';
   try {
     // 优先使用 ss（更现代，性能更好）
     const { stdout } = await execFileAsync('ss', ['-tlnp'], { timeout: 5000 });
-    output = stdout;
-    return parseSsOutput(output);
+    return parseSsOutput(stdout);
   } catch {
     // 回退到 netstat
     try {
       const { stdout } = await execFileAsync('netstat', ['-tlnp'], { timeout: 5000 });
-      output = stdout;
-      return parseNetstatOutput(output);
+      return parseNetstatOutput(stdout);
     } catch {
       return [];
     }
@@ -78,7 +96,7 @@ function parseSsOutput(output: string): PortEntry[] {
       if (nameMatch) processName = nameMatch[1];
       if (pidMatch) pid = Number.parseInt(pidMatch[1], 10);
     }
-    entries.push({ protocol: proto.replace(/\d$/, ''), localAddress: localAddr, localPort, state: 'LISTEN', pid, processName });
+    entries.push({ protocol: proto.replace(/\d$/, ''), localAddress: localAddr, localPort, state: 'LISTEN', pid, processName, serviceName: null });
   }
   return entries;
 }
@@ -103,7 +121,7 @@ function parseNetstatOutput(output: string): PortEntry[] {
     const pidMatch = /^(\d+)\/(.+)/.exec(pidInfo);
     const pid = pidMatch ? Number.parseInt(pidMatch[1], 10) : null;
     const processName = pidMatch ? pidMatch[2] : null;
-    entries.push({ protocol: proto.replace(/\d$/, ''), localAddress: localAddr, localPort, state, pid, processName });
+    entries.push({ protocol: proto.replace(/\d$/, ''), localAddress: localAddr, localPort, state, pid, processName, serviceName: null });
   }
   return entries;
 }
@@ -124,7 +142,7 @@ function parseNetstatWindowsOutput(output: string): PortEntry[] {
     const localPort = Number.parseInt(local.slice(colonIdx + 1), 10);
     if (Number.isNaN(localPort)) continue;
     const pid = pidStr ? Number.parseInt(pidStr, 10) : null;
-    entries.push({ protocol: proto.toLowerCase().replace(/\d$/, ''), localAddress: localAddr, localPort, state: 'LISTEN', pid, processName: null });
+    entries.push({ protocol: proto.toLowerCase().replace(/\d$/, ''), localAddress: localAddr, localPort, state: 'LISTEN', pid, processName: null, serviceName: null });
   }
   return entries;
 }

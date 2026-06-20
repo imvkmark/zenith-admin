@@ -147,6 +147,52 @@ export async function pullImage(repoTag: string): Promise<void> {
   });
 }
 
+// ─── Prune（清理）─────────────────────────────────────────────────────────────
+export interface PruneResult {
+  containersDeleted: number;
+  imagesDeleted: number;
+  networksDeleted: number;
+  volumesDeleted: number;
+  spaceReclaimed: number;
+}
+
+/** 清理已停止的容器 */
+export async function pruneContainers(): Promise<{ containersDeleted: number; spaceReclaimed: number }> {
+  const res = await getDocker().pruneContainers({}) as { ContainersDeleted?: string[]; SpaceReclaimed?: number };
+  return { containersDeleted: (res.ContainersDeleted ?? []).length, spaceReclaimed: res.SpaceReclaimed ?? 0 };
+}
+
+/** 清理镜像。all=false 仅清理悬空（dangling）镜像；all=true 清理所有未被使用的镜像 */
+export async function pruneImages(all = false): Promise<{ imagesDeleted: number; spaceReclaimed: number }> {
+  const filters = JSON.stringify({ dangling: { [all ? 'false' : 'true']: true } });
+  const res = await getDocker().pruneImages({ filters }) as { ImagesDeleted?: unknown[]; SpaceReclaimed?: number };
+  return { imagesDeleted: (res.ImagesDeleted ?? []).length, spaceReclaimed: res.SpaceReclaimed ?? 0 };
+}
+
+/** 清理未使用的网络 */
+export async function pruneNetworks(): Promise<{ networksDeleted: number }> {
+  const res = await getDocker().pruneNetworks({}) as { NetworksDeleted?: string[] };
+  return { networksDeleted: (res.NetworksDeleted ?? []).length };
+}
+
+/** 清理未使用的存储卷 */
+export async function pruneVolumes(): Promise<{ volumesDeleted: number; spaceReclaimed: number }> {
+  const res = await getDocker().pruneVolumes({}) as { VolumesDeleted?: string[]; SpaceReclaimed?: number };
+  return { volumesDeleted: (res.VolumesDeleted ?? []).length, spaceReclaimed: res.SpaceReclaimed ?? 0 };
+}
+
+/** 系统级清理：停止的容器 + 悬空镜像 + 未用网络（不含卷，避免误删数据） */
+export async function pruneSystem(): Promise<PruneResult> {
+  const [c, i, n] = await Promise.all([pruneContainers(), pruneImages(false), pruneNetworks()]);
+  return {
+    containersDeleted: c.containersDeleted,
+    imagesDeleted: i.imagesDeleted,
+    networksDeleted: n.networksDeleted,
+    volumesDeleted: 0,
+    spaceReclaimed: c.spaceReclaimed + i.spaceReclaimed,
+  };
+}
+
 // ─── Networks ─────────────────────────────────────────────────────────────────
 
 export interface NetworkInfo {

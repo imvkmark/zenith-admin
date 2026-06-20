@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth';
 import {
   validationHook, ok, commonErrorResponses, okBody,
 } from '../lib/openapi-schemas';
-import { readLastLines, spawnTailFollow, validateLogPath } from '../services/log-viewer.service';
+import { readLastLines, spawnTailFollow, validateLogPath, openLogForDownload } from '../services/log-viewer.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -31,6 +31,34 @@ router.get('/stream', authMiddleware, async (c) => {
       }
     } catch { /* client disconnected */ } finally {
       kill();
+    }
+  });
+});
+
+// ─── 下载日志文件 ────────────────────────────────────────────────────────────
+router.get('/download', authMiddleware, async (c) => {
+  const filePath = c.req.query('path') ?? '';
+  if (!filePath) {
+    return c.json({ code: 400, message: '参数 path 不能为空', data: null }, 400);
+  }
+  let file: ReturnType<typeof openLogForDownload>;
+  try {
+    validateLogPath(filePath);
+    file = openLogForDownload(filePath);
+  } catch (e) {
+    return c.json({ code: 400, message: (e as Error).message, data: null }, 400);
+  }
+  c.header('Content-Type', 'application/octet-stream');
+  c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(file.filename)}"`);
+  c.header('Content-Length', String(file.size));
+  return stream(c, async (s) => {
+    s.onAbort(() => { file.stream.destroy(); });
+    try {
+      for await (const chunk of file.stream) {
+        await s.write(chunk as Uint8Array);
+      }
+    } catch { /* client disconnected */ } finally {
+      file.stream.destroy();
     }
   });
 });

@@ -83,6 +83,23 @@ export const MonitorDTO = z
         txErrors: z.number(),
       }))
       .optional(),
+    diskIo: z
+      .object({ readBps: z.number(), writeBps: z.number() })
+      .optional(),
+    topProcesses: z
+      .object({
+        byCpu: z.array(z.object({ pid: z.number().int(), name: z.string(), cpu: z.number(), memPercent: z.number(), memBytes: z.number() })),
+        byMemory: z.array(z.object({ pid: z.number().int(), name: z.string(), cpu: z.number(), memPercent: z.number(), memBytes: z.number() })),
+      })
+      .nullable()
+      .optional(),
+    temperature: z
+      .object({
+        cpu: z.number().nullable(),
+        sensors: z.array(z.object({ label: z.string(), celsius: z.number() })),
+      })
+      .nullable()
+      .optional(),
     node: z.object({
       version: z.string(),
       uptime: z.number().int(),
@@ -158,6 +175,8 @@ export const MonitorTimeseriesDTO = z
         errorRate: z.number(),
         netRxBps: z.number().optional(),
         netTxBps: z.number().optional(),
+        diskReadBps: z.number().optional(),
+        diskWriteBps: z.number().optional(),
       }),
     ),
   })
@@ -198,3 +217,93 @@ export const MonitorWsDTO = z
     ),
   })
   .openapi('MonitorWs');
+
+// ─── 历史时序（持久化，按桶聚合）────────────────────────────────────────
+export const MonitorHistoryDTO = z
+  .object({
+    range: z.string(),
+    bucketSec: z.number().int(),
+    points: z.array(
+      z.object({
+        t: z.string(),
+        cpu: z.number(),
+        memory: z.number(),
+        disk: z.number(),
+        swap: z.number(),
+        load1: z.number(),
+        procCpu: z.number(),
+        heap: z.number(),
+        loopLag: z.number(),
+        qps: z.number(),
+        errorRate: z.number(),
+        netRxBps: z.number(),
+        netTxBps: z.number(),
+        diskReadBps: z.number(),
+        diskWriteBps: z.number(),
+      }),
+    ),
+  })
+  .openapi('MonitorHistory');
+
+// ─── 监控告警规则 ───────────────────────────────────────────────────────
+export const MonitorAlertRuleDTO = z
+  .object({
+    id: z.number().int(),
+    name: z.string(),
+    metric: z.string(),
+    operator: z.string(),
+    threshold: z.number(),
+    durationMinutes: z.number().int(),
+    level: z.string(),
+    channels: z.array(z.string()),
+    webhookUrl: z.string().nullable(),
+    recipients: z.array(z.string()),
+    silenceMinutes: z.number().int(),
+    enabled: z.boolean(),
+    state: z.string(),
+    lastTriggeredAt: z.string().nullable(),
+    lastValue: z.number().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MonitorAlertRule');
+
+// ─── 监控告警记录 ───────────────────────────────────────────────────────
+export const MonitorAlertEventDTO = z
+  .object({
+    id: z.number().int(),
+    ruleId: z.number().int().nullable(),
+    ruleName: z.string(),
+    metric: z.string(),
+    level: z.string(),
+    operator: z.string(),
+    threshold: z.number(),
+    value: z.number(),
+    status: z.string(),
+    message: z.string(),
+    triggeredAt: z.string(),
+    resolvedAt: z.string().nullable(),
+  })
+  .openapi('MonitorAlertEvent');
+
+// ─── 请求体 DTO（与 shared validation 保持一致）─────────────────────────
+const monitorMetricEnumDTO = z.enum([
+  'cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps',
+]);
+
+export const CreateMonitorAlertRuleDTO = z
+  .object({
+    name: z.string().min(1).max(128),
+    metric: monitorMetricEnumDTO,
+    operator: z.enum(['gt', 'gte', 'lt', 'lte']).default('gt'),
+    threshold: z.number(),
+    durationMinutes: z.number().int().min(0).max(1440).default(0),
+    level: z.enum(['info', 'warning', 'critical']).default('warning'),
+    channels: z.array(z.enum(['email', 'webhook', 'inapp'])).default([]),
+    webhookUrl: z.string().max(512).nullable().optional(),
+    recipients: z.array(z.string().max(128)).default([]),
+    silenceMinutes: z.number().int().min(0).max(10_080).default(30),
+    enabled: z.boolean().default(true),
+  })
+  .openapi('CreateMonitorAlertRule');
+export const UpdateMonitorAlertRuleDTO = CreateMonitorAlertRuleDTO.partial().openapi('UpdateMonitorAlertRule');

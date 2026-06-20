@@ -2,6 +2,8 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as os from 'node:os';
 import * as net from 'node:net';
+import * as dns from 'node:dns/promises';
+import { httpRequest } from '../lib/http-client';
 
 const execFileAsync = promisify(execFile);
 
@@ -77,4 +79,106 @@ export async function checkPort(
     });
     socket.connect(port, host);
   });
+}
+
+// ─── DNS 记录解析（A/AAAA/MX/TXT/NS/CNAME/SOA）──────────────────────────────
+export type DnsRecordType = 'A' | 'AAAA' | 'MX' | 'TXT' | 'NS' | 'CNAME' | 'SOA';
+
+export async function resolveDns(host: string, type: DnsRecordType): Promise<{ type: DnsRecordType; records: string[] }> {
+  try {
+    let records: string[] = [];
+    switch (type) {
+      case 'A': records = await dns.resolve4(host); break;
+      case 'AAAA': records = await dns.resolve6(host); break;
+      case 'MX': records = (await dns.resolveMx(host)).map((r) => `${r.priority} ${r.exchange}`); break;
+      case 'TXT': records = (await dns.resolveTxt(host)).map((r) => r.join('')); break;
+      case 'NS': records = await dns.resolveNs(host); break;
+      case 'CNAME': records = await dns.resolveCname(host); break;
+      case 'SOA': {
+        const soa = await dns.resolveSoa(host);
+        records = [`nsname=${soa.nsname} hostmaster=${soa.hostmaster} serial=${soa.serial} refresh=${soa.refresh} retry=${soa.retry} expire=${soa.expire} minttl=${soa.minttl}`];
+        break;
+      }
+      default: records = [];
+    }
+    return { type, records };
+  } catch (err) {
+    const e = err as { code?: string };
+    return { type, records: e.code ? [`查询失败: ${e.code}`] : ['查询失败'] };
+  }
+}
+
+/** 反向 DNS（PTR）：IP → 主机名 */
+export async function reverseDns(ip: string): Promise<{ hostnames: string[] }> {
+  if (!net.isIP(ip)) throw new Error('非法 IP 地址');
+  try {
+    const hostnames = await dns.reverse(ip);
+    return { hostnames };
+  } catch (err) {
+    const e = err as { code?: string };
+    return { hostnames: e.code ? [`查询失败: ${e.code}`] : [] };
+  }
+}
+
+/** HTTP(S) 探测：返回状态码、耗时、关键响应头 */
+export async function httpProbe(url: string): Promise<{
+  ok: boolean; status: number; statusText: string; latencyMs: number;
+  server: string | null; contentType: string | null; contentLength: string | null;
+  redirectLocation: string | null; error: string | null;
+}> {
+  const start = Date.now();
+  try {
+    const res = await httpRequest(url, { method: 'GET', timeout: 10000, redirect: 'manual' });
+    const latencyMs = Date.now() - start;
+    const h = res.headers;
+    return {
+      ok: res.status >= 200 && res.status < 400,
+      status: res.status,
+      statusText: res.raw.statusText ?? '',
+      latencyMs,
+      server: h.get('server'),
+      contentType: h.get('content-type'),
+      contentLength: h.get('content-length'),
+      redirectLocation: h.get('location'),
+      error: null,
+    };
+  } catch (err) {
+    return {
+      ok: false, status: 0, statusText: '', latencyMs: Date.now() - start,
+      server: null, contentType: null, contentLength: null, redirectLocation: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** 本机网卡信息 */
+export interface InterfaceInfo {
+  name: string;
+  address: string;
+  netmask: string;
+  family: string;
+  mac: string;
+  internal: boolean;
+  cidr: string | null;
+}
+
+export function getInterfaces(): InterfaceInfo[] {
+  const result: InterfaceInfo[] = [];
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    const addrs = ifaces[name];
+    if (!addrs) continue;
+    for (const a of addrs) {
+      result.push({
+        name,
+        address: a.address,
+        netmask: a.netmask,
+        family: String(a.family).startsWith('IP') ? String(a.family) : `IPv${a.family}`,
+        mac: a.mac,
+        internal: a.internal,
+        cidr: a.cidr ?? null,
+      });
+    }
+  }
+  return result;
 }

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   Button, Input, Tag, Typography, Toast, Select, Switch,
 } from '@douyinfe/semi-ui';
-import { FolderOpen, Play, Square, Search, FileText } from 'lucide-react';
+import { FolderOpen, Play, Square, Search, FileText, Download } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { request } from '@/utils/request';
@@ -18,7 +18,10 @@ function parseAnsi(raw: string): AnsiSpan[] {
   let color: string | undefined;
   let bg: string | undefined;
   let bold = false; let italic = false; let dim = false;
-  const segs = raw.split(/(\x1b\[[0-9;]*m)/);
+  const segs = raw.split(
+    // eslint-disable-next-line no-control-regex
+    /(\x1b\[[0-9;]*m)/,
+  );
   for (const seg of segs) {
     if (seg.startsWith('\x1b[') && seg.endsWith('m')) {
       const codes = seg.slice(2, -1).split(';').map(Number);
@@ -44,14 +47,37 @@ function parseAnsi(raw: string): AnsiSpan[] {
 
 /** 去除所有 ANSI 转义序列（用于关键词匹配） */
 function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
   return s.replaceAll(/\x1b\[[0-9;]*m/g, '');
 }
 
-/** 渲染单行（含 ANSI 颜色） */
-function AnsiLine({ raw, highlight }: { raw: string; highlight: boolean }) {
+type LogLevel = 'error' | 'warn' | 'info' | 'debug';
+const LEVEL_BORDER: Record<LogLevel, string> = { error: '#e74c3c', warn: '#f39c12', info: '#3498db', debug: '#95a5a6' };
+const LEVEL_RE: Record<LogLevel, RegExp> = {
+  error: /\b(error|err|fatal|critical|crit|panic|emerg|fail(ed|ure)?)\b/i,
+  warn: /\b(warn(ing)?)\b/i,
+  info: /\b(info|notice)\b/i,
+  debug: /\b(debug|trace|verbose)\b/i,
+};
+/** 检测一行日志的级别（按优先级 error>warn>info>debug） */
+function detectLevel(line: string): LogLevel | null {
+  const s = stripAnsi(line);
+  if (LEVEL_RE.error.test(s)) return 'error';
+  if (LEVEL_RE.warn.test(s)) return 'warn';
+  if (LEVEL_RE.info.test(s)) return 'info';
+  if (LEVEL_RE.debug.test(s)) return 'debug';
+  return null;
+}
+
+/** 渲染单行（含 ANSI 颜色 + 日志级别高亮） */
+function AnsiLine({ raw, highlight, level }: { raw: string; highlight: boolean; level: LogLevel | null }) {
   const spans = useMemo(() => parseAnsi(raw), [raw]);
+  const levelStyle = level && !highlight
+    ? { display: 'block', borderLeft: `3px solid ${LEVEL_BORDER[level]}`, paddingLeft: 4, background: level === 'error' ? 'rgba(231,76,60,0.07)' : level === 'warn' ? 'rgba(243,156,18,0.06)' : undefined }
+    : undefined;
+  const hlStyle = highlight ? { background: 'rgba(255,230,0,0.25)', display: 'block', borderLeft: '3px solid #f1c40f', paddingLeft: 4 } : undefined;
   return (
-    <span style={highlight ? { background: 'rgba(255,230,0,0.25)', display: 'block', borderLeft: '3px solid #f1c40f', paddingLeft: 4 } : undefined}>
+    <span style={hlStyle ?? levelStyle}>
       {spans.map((s, i) => (
         <span key={i} style={{
           color: s.color,
@@ -106,8 +132,10 @@ export default function LogViewerPage() {
   const [filePath, setFilePath] = useState('');
   const [keyword, setKeyword] = useState('');
   const [filterOnly, setFilterOnly] = useState(false);
+  const [levelFilter, setLevelFilter] = useState<string>('');
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [following, setFollowing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -156,15 +184,25 @@ export default function LogViewerPage() {
     setContent((prev) => `${prev}\n\n⬛ 已停止追踪\n`);
   }, []);
 
-  // 按关键词过滤行（在去除 ANSI 码的文本上匹配）
+  const handleDownload = useCallback(async () => {
+    if (!filePath.trim()) return;
+    setDownloading(true);
+    try {
+      const name = filePath.trim().split('/').pop() ?? 'log.txt';
+      await request.download(`/api/log-viewer/download?path=${encodeURIComponent(filePath.trim())}`, name);
+    } finally {
+      setDownloading(false);
+    }
+  }, [filePath]);
+
+  // 按关键词过滤行（在去除 ANSI 码的文本上匹配）+ 级别过滤 + 级别检测
   const displayLines = useMemo(() => {
     const lines = content.split('\n');
-    if (!keyword.trim()) return lines.map((raw) => ({ raw, highlight: false }));
     const kw = keyword.trim().toLowerCase();
     return lines
-      .filter((raw) => !filterOnly || stripAnsi(raw).toLowerCase().includes(kw))
-      .map((raw) => ({ raw, highlight: stripAnsi(raw).toLowerCase().includes(kw) }));
-  }, [content, keyword, filterOnly]);
+      .map((raw) => ({ raw, level: detectLevel(raw), highlight: kw ? stripAnsi(raw).toLowerCase().includes(kw) : false }))
+      .filter((l) => (!filterOnly || !kw || l.highlight) && (!levelFilter || l.level === levelFilter));
+  }, [content, keyword, filterOnly, levelFilter]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 12 }}>
@@ -205,6 +243,7 @@ export default function LogViewerPage() {
           ? <Button icon={<Play size={13} />} onClick={startFollow} disabled={!filePath.trim()}>追踪末尾</Button>
           : <Button type="danger" icon={<Square size={13} />} onClick={stopFollow}>停止追踪</Button>
         }
+        <Button icon={<Download size={13} />} loading={downloading} onClick={() => void handleDownload()} disabled={!filePath.trim()}>下载</Button>
       </div>
 
       {/* 关键词过滤区 */}
@@ -221,6 +260,13 @@ export default function LogViewerPage() {
           <Typography.Text size="small" type="secondary">仅显示匹配行</Typography.Text>
           <Switch size="small" checked={filterOnly} onChange={setFilterOnly} />
         </div>
+        <Select placeholder="全部级别" value={levelFilter || undefined} onChange={(v) => setLevelFilter((v as string) ?? '')} showClear size="small" style={{ width: 120 }}
+          optionList={[
+            { label: 'ERROR', value: 'error' },
+            { label: 'WARN', value: 'warn' },
+            { label: 'INFO', value: 'info' },
+            { label: 'DEBUG', value: 'debug' },
+          ]} />
         {following && <Tag color="green" size="small">● 实时追踪中</Tag>}
         {content && (
           <Typography.Text size="small" type="tertiary">
@@ -251,7 +297,7 @@ export default function LogViewerPage() {
         >
           {displayLines.length > 0 && content
             ? displayLines.map((line, i) => (
-                <AnsiLine key={i} raw={line.raw} highlight={line.highlight} />
+                <AnsiLine key={i} raw={line.raw} highlight={line.highlight} level={line.level} />
               ))
             : (
               <Typography.Text type="tertiary" style={{ fontStyle: 'italic' }}>

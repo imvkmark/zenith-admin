@@ -3,8 +3,10 @@ import { streamSSE } from 'hono/streaming';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { validationHook, commonErrorResponses, ok, okBody } from '../lib/openapi-schemas';
-import { MonitorDTO, MonitorTimeseriesDTO, MonitorWsDTO } from '../lib/openapi-dtos';
+import { MonitorDTO, MonitorTimeseriesDTO, MonitorWsDTO, MonitorHistoryDTO } from '../lib/openapi-dtos';
 import { getMonitorStatus, getMonitorTimeseries, getWsMetrics } from '../services/monitor.service';
+import { getMonitorHistory } from '../services/monitor-history.service';
+import { monitorHistoryQuerySchema } from '@zenith/shared';
 import { metricsSampler } from '../lib/metrics-sampler';
 
 const monitorRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -35,6 +37,23 @@ const timeseriesRoute = defineOpenAPIRoute({
   handler: (c) => c.json(okBody(getMonitorTimeseries(), 'success'), 200),
 });
 
+const historyRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/history',
+    tags: ['Monitor'],
+    summary: '获取持久化历史监控趋势（按时间范围分桶聚合）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'system:monitor:view' })] as const,
+    request: { query: monitorHistoryQuerySchema },
+    responses: { ...ok(MonitorHistoryDTO, '历史趋势数据'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { range } = c.req.valid('query');
+    return c.json(okBody(await getMonitorHistory(range), 'success'), 200);
+  },
+});
+
 const wsRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get',
@@ -48,7 +67,7 @@ const wsRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getWsMetrics(), 'success'), 200),
 });
 
-monitorRouter.openapiRoutes([statusRoute, timeseriesRoute, wsRoute] as const);
+monitorRouter.openapiRoutes([statusRoute, timeseriesRoute, historyRoute, wsRoute] as const);
 
 /**
  * 计算两个 JSON 对象的浅 diff（递归对象、数组按引用整段替换）

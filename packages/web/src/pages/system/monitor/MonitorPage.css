@@ -293,3 +293,35 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.45; transform: scale(0.7); }
 }
+
+/* ─── 历史趋势 / Top 进程 / 磁盘 IO ─────────────────────────────── */
+.monitor-history-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.monitor-topproc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.monitor-diskio-row {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+.monitor-diskio-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-border, var(--semi-color-border));
+  border-radius: 6px;
+  min-width: 140px;
+}
+@media (max-width: 1100px) {
+  .monitor-history-grid,
+  .monitor-topproc-grid {
+    grid-template-columns: 1fr;
+  }
+}

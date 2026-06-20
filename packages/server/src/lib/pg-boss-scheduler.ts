@@ -122,6 +122,25 @@ handlerRegistry.set('evaluateErrorAlerts', async () => {
   return `错误告警评估：规则 ${r.evaluated} 条，触发 ${r.triggered} 条`;
 });
 
+handlerRegistry.set('sampleSystemMetrics', async () => {
+  const { persistMetricSample } = await import('../services/monitor-history.service');
+  const ok = await persistMetricSample();
+  return ok ? '已记录系统指标采样' : '采样器未预热，跳过';
+});
+
+handlerRegistry.set('evaluateMonitorAlerts', async () => {
+  const { evaluateMonitorAlerts } = await import('../services/monitor-alert.service');
+  const r = await evaluateMonitorAlerts();
+  return `监控告警评估：规则 ${r.evaluated} 条，触发 ${r.fired} 条，恢复 ${r.resolved} 条`;
+});
+
+handlerRegistry.set('cleanupSystemMetrics', async (params) => {
+  const { cleanupMetricSamples } = await import('../services/monitor-history.service');
+  const days = Number(params) || 7;
+  const n = await cleanupMetricSamples(days);
+  return `清理系统指标采样：删除 ${n} 条（保留 ${days} 天）`;
+});
+
 /** 已注册 handler 名称列表（供前端下拉选择） */
 export function getRegisteredHandlers(): string[] {
   return Array.from(handlerRegistry.keys());

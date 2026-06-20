@@ -9,12 +9,19 @@ const TOOL_OPTIONS = [
   { value: 'ping', label: 'Ping', desc: '检测主机连通性和延迟' },
   { value: 'traceroute', label: 'Traceroute', desc: '追踪数据包路由路径' },
   { value: 'nslookup', label: 'NSLookup', desc: 'DNS 正向/反向解析' },
+  { value: 'dns', label: 'DNS 记录', desc: '查询 A/AAAA/MX/TXT/NS/CNAME/SOA 记录' },
+  { value: 'reverse', label: '反向 DNS', desc: 'IP → 主机名（PTR）' },
+  { value: 'http', label: 'HTTP 探测', desc: '检测 URL 状态码、耗时与响应头' },
   { value: 'port-check', label: '端口检测', desc: '检测 TCP 端口是否开放' },
+  { value: 'interfaces', label: '网卡信息', desc: '查看本机网络接口' },
 ] as const;
 
 type ToolType = (typeof TOOL_OPTIONS)[number]['value'];
+type DnsType = 'A' | 'AAAA' | 'MX' | 'TXT' | 'NS' | 'CNAME' | 'SOA';
 
 const STREAMING_TOOLS = new Set<ToolType>(['ping', 'traceroute']);
+/** 无需主机输入的工具 */
+const NO_HOST_TOOLS = new Set<ToolType>(['interfaces']);
 
 // ─── Traceroute 解析 + 可视化 ────────────────────────────────────────────────
 
@@ -148,6 +155,7 @@ export default function NetworkDiagPage() {
   const [tool, setTool] = useState<ToolType>('ping');
   const [host, setHost] = useState('');
   const [port, setPort] = useState(80);
+  const [dnsType, setDnsType] = useState<DnsType>('A');
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState('');
   const abortRef = useRef<AbortController | null>(null);
@@ -161,7 +169,7 @@ export default function NetworkDiagPage() {
   }, [output]);
 
   const handleRun = useCallback(async () => {
-    if (!host.trim()) return;
+    if (!host.trim() && !NO_HOST_TOOLS.has(tool)) return;
     setOutput('');
     setRunning(true);
 
@@ -186,6 +194,59 @@ export default function NetworkDiagPage() {
         `/api/network-diag/nslookup?host=${encodeURIComponent(host.trim())}`,
       );
       setOutput(res.code === 0 && res.data ? res.data.output : '查询失败');
+    } else if (tool === 'dns') {
+      const res = await request.get<{ type: string; records: string[] }>(
+        `/api/network-diag/dns?host=${encodeURIComponent(host.trim())}&type=${dnsType}`,
+      );
+      if (res.code === 0 && res.data) {
+        const { records } = res.data;
+        setOutput(records.length
+          ? `${dnsType} 记录（${host.trim()}）:\n\n${records.map((r) => `  ${r}`).join('\n')}`
+          : `未找到 ${dnsType} 记录`);
+      } else setOutput('查询失败');
+    } else if (tool === 'reverse') {
+      const res = await request.get<{ hostnames: string[] }>(
+        `/api/network-diag/reverse?ip=${encodeURIComponent(host.trim())}`,
+      );
+      if (res.code === 0 && res.data) {
+        setOutput(res.data.hostnames.length
+          ? `${host.trim()} 反查结果:\n\n${res.data.hostnames.map((h) => `  ${h}`).join('\n')}`
+          : '未找到 PTR 记录');
+      } else setOutput(res.message ?? '查询失败');
+    } else if (tool === 'http') {
+      const res = await request.post<{
+        ok: boolean; status: number; statusText: string; latencyMs: number;
+        server: string | null; contentType: string | null; contentLength: string | null;
+        redirectLocation: string | null; error: string | null;
+      }>('/api/network-diag/http-probe', { url: host.trim() });
+      if (res.code === 0 && res.data) {
+        const d = res.data;
+        if (d.error) {
+          setOutput(`❌ 探测失败：${d.error}（耗时 ${d.latencyMs} ms）`);
+        } else {
+          const lines = [
+            `${d.ok ? '✅' : '⚠️'} ${host.trim()}`,
+            ``,
+            `状态码      : ${d.status} ${d.statusText}`,
+            `响应耗时    : ${d.latencyMs} ms`,
+            `Server      : ${d.server ?? '—'}`,
+            `Content-Type: ${d.contentType ?? '—'}`,
+            `内容长度    : ${d.contentLength ?? '—'}`,
+            ...(d.redirectLocation ? [`重定向到    : ${d.redirectLocation}`] : []),
+          ];
+          setOutput(lines.join('\n'));
+        }
+      } else setOutput(res.message ?? '探测失败');
+    } else if (tool === 'interfaces') {
+      const res = await request.get<Array<{ name: string; address: string; netmask: string; family: string; mac: string; internal: boolean; cidr: string | null }>>(
+        '/api/network-diag/interfaces',
+      );
+      if (res.code === 0 && res.data) {
+        const rows = res.data.map((i) =>
+          `${i.name.padEnd(12)} ${i.family.padEnd(6)} ${i.address.padEnd(40)} ${i.internal ? '(internal)' : ''} ${i.mac && i.mac !== '00:00:00:00:00:00' ? i.mac : ''}`.trimEnd(),
+        );
+        setOutput(`本机网卡（${res.data.length} 条）:\n\n${rows.join('\n')}`);
+      } else setOutput('获取失败');
     } else if (tool === 'port-check') {
       const res = await request.post<{ open: boolean; latencyMs: number }>(
         '/api/network-diag/port-check',
@@ -200,7 +261,7 @@ export default function NetworkDiagPage() {
       }
     }
     setRunning(false);
-  }, [tool, host, port]);
+  }, [tool, host, port, dnsType]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -234,17 +295,25 @@ export default function NetworkDiagPage() {
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-            主机名 / IP
+            {tool === 'http' ? 'URL' : tool === 'reverse' ? 'IP 地址' : tool === 'interfaces' ? '（无需输入）' : '主机名 / IP'}
           </Typography.Text>
           <Input
-            placeholder="如 google.com 或 8.8.8.8"
+            placeholder={tool === 'http' ? 'https://example.com' : tool === 'reverse' ? '如 8.8.8.8' : tool === 'interfaces' ? '点击运行查看本机网卡' : '如 google.com 或 8.8.8.8'}
             value={host}
             onChange={setHost}
             prefix={<Search size={13} />}
             showClear
+            disabled={tool === 'interfaces'}
             onEnterPress={() => !running && void handleRun()}
           />
         </div>
+        {tool === 'dns' && (
+          <div>
+            <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>记录类型</Typography.Text>
+            <Select value={dnsType} onChange={(v) => setDnsType(v as DnsType)} style={{ width: 100 }}
+              optionList={['A', 'AAAA', 'MX', 'TXT', 'NS', 'CNAME', 'SOA'].map((t) => ({ value: t, label: t }))} />
+          </div>
+        )}
         {tool === 'port-check' && (
           <div>
             <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>
@@ -257,7 +326,7 @@ export default function NetworkDiagPage() {
           <Button
             type="primary"
             icon={<Play size={14} />}
-            disabled={!host.trim()}
+            disabled={!host.trim() && !NO_HOST_TOOLS.has(tool)}
             onClick={() => void handleRun()}
           >
             运行

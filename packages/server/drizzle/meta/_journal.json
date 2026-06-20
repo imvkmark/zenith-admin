@@ -820,6 +820,20 @@
       "when": 1781888074736,
       "tag": "0116_bouncy_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1781902296606,
+      "tag": "0117_ambiguous_luminals",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1781903422908,
+      "tag": "0118_fearless_paladin",
+      "breakpoints": true
     }
   ]
 }

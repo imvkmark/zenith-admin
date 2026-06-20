@@ -31,11 +31,39 @@ import {
   Plus,
   Download,
   MoreHorizontal,
+  Trash2,
 } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTime } from '@/utils/date';
+
+// ─── Prune（清理）辅助 ──────────────────────────────────────────────────────────
+interface PruneResultData {
+  containersDeleted?: number; imagesDeleted?: number; networksDeleted?: number; volumesDeleted?: number; spaceReclaimed?: number;
+}
+function runPrune(url: string, title: string, content: string, onDone: () => void): void {
+  Modal.confirm({
+    title,
+    content,
+    okText: '确定清理',
+    cancelText: '取消',
+    onOk: async () => {
+      const res = await request.post<PruneResultData>(url);
+      if (res.code === 0 && res.data) {
+        const d = res.data;
+        const parts: string[] = [];
+        if (d.containersDeleted) parts.push(`容器 ${d.containersDeleted}`);
+        if (d.imagesDeleted) parts.push(`镜像 ${d.imagesDeleted}`);
+        if (d.networksDeleted) parts.push(`网络 ${d.networksDeleted}`);
+        if (d.volumesDeleted) parts.push(`卷 ${d.volumesDeleted}`);
+        const space = d.spaceReclaimed ? `，释放 ${(d.spaceReclaimed / 1024 / 1024).toFixed(1)} MB` : '';
+        Toast.success(`${title}完成：${parts.length ? parts.join('、') : '无可清理项'}${space}`);
+        onDone();
+      }
+    },
+  });
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -315,6 +343,15 @@ function ContainersTab() {
             {allExpanded ? '全部折叠' : '全部展开'}
           </Button>
         )}
+        <Dropdown trigger="click" clickToHide position="bottomRight" render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={() => runPrune('/api/docker/prune/containers', '清理停止容器', '将删除所有已停止的容器，确定继续？', () => void fetchContainers())}>清理已停止容器</Dropdown.Item>
+            <Dropdown.Divider />
+            <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/system', '系统清理', '将清理：已停止容器 + 悬空镜像 + 未使用网络（不含数据卷），确定继续？', () => void fetchContainers())}>系统清理</Dropdown.Item>
+          </Dropdown.Menu>
+        )}>
+          <Button icon={<Trash2 size={14} />}>清理</Button>
+        </Dropdown>
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchContainers()} refreshLoading={loading}
@@ -572,6 +609,14 @@ function ImagesTab() {
           </Button>
         )}
         <Button type="primary" icon={<Download size={14} />} onClick={() => setPullVisible(true)}>拉取镜像</Button>
+        <Dropdown trigger="click" clickToHide position="bottomRight" render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={() => runPrune('/api/docker/prune/images', '清理悬空镜像', '将删除所有悬空（dangling）镜像，确定继续？', () => void fetchImages())}>清理悬空镜像</Dropdown.Item>
+            <Dropdown.Item type="danger" onClick={() => runPrune('/api/docker/prune/images?all=true', '清理所有未用镜像', '将删除所有未被容器使用的镜像，确定继续？', () => void fetchImages())}>清理所有未用镜像</Dropdown.Item>
+          </Dropdown.Menu>
+        )}>
+          <Button icon={<Trash2 size={14} />}>清理</Button>
+        </Dropdown>
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="id" dataSource={treeData} columns={columns} loading={loading}
         onRefresh={() => void fetchImages()} refreshLoading={loading}
@@ -675,6 +720,7 @@ function NetworksTab() {
         <Input prefix={<Search size={14} />} placeholder="搜索网络名 / 驱动" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
         <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchNetworks()}>刷新</Button>
         <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>创建网络</Button>
+        <Button icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/networks', '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', () => void fetchNetworks())}>清理</Button>
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchNetworks()} refreshLoading={loading}
@@ -772,6 +818,7 @@ function VolumesTab() {
         <Input prefix={<Search size={14} />} placeholder="搜索卷名 / 驱动" showClear value={keyword} onChange={setKeyword} style={{ width: 260 }} />
         <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchVolumes()}>刷新</Button>
         <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>创建存储卷</Button>
+        <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune('/api/docker/prune/volumes', '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', () => void fetchVolumes())}>清理</Button>
       </SearchToolbar>
       <ConfigurableTable bordered rowKey="name" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchVolumes()} refreshLoading={loading}

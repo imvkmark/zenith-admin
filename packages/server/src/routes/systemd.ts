@@ -6,14 +6,14 @@ import {
   validationHook, ok, commonErrorResponses, okBody, okMsg,
 } from '../lib/openapi-schemas';
 import {
-  isSystemdAvailable, listServices, controlService, getServiceLogs, tailServiceLogs,
+  isSystemdAvailable, listServices, controlService, getServiceLogs, tailServiceLogs, getServiceDetail,
 } from '../services/systemd.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
 /** 验证服务名：只允许合法字符，防止命令注入 */
 function validateServiceName(name: string): void {
-  if (!/^[a-zA-Z0-9_@.\-]{1,128}$/.test(name)) throw new HTTPException(400, { message: '非法服务名称' });
+  if (!/^[a-zA-Z0-9_@.-]{1,128}$/.test(name)) throw new HTTPException(400, { message: '非法服务名称' });
 }
 
 // ─── 流式路由：实时日志 ────────────────────────────────────────────────────────
@@ -72,10 +72,10 @@ const listRoute = defineOpenAPIRoute({
 
 const controlRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'post', path: '/:name/:action', summary: '控制服务（启动/停止/重启）', tags: ['Systemd'],
+    method: 'post', path: '/:name/:action', summary: '控制服务（启停/重启/开机自启/屏蔽）', tags: ['Systemd'],
     middleware: [authMiddleware] as const,
     request: {
-      params: z.object({ name: z.string(), action: z.enum(['start', 'stop', 'restart']) }),
+      params: z.object({ name: z.string(), action: z.enum(['start', 'stop', 'restart', 'reload', 'enable', 'disable', 'mask', 'unmask']) }),
     },
     responses: { ...commonErrorResponses, ...okMsg('操作成功') },
   }),
@@ -84,6 +84,21 @@ const controlRoute = defineOpenAPIRoute({
     validateServiceName(name);
     await controlService(name, action);
     return c.json(okBody(null, '操作成功'), 200);
+  },
+});
+
+const detailRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/:name/detail', summary: '获取服务详情', tags: ['Systemd'],
+    middleware: [authMiddleware] as const,
+    request: { params: z.object({ name: z.string() }) },
+    responses: { ...commonErrorResponses, ...ok(z.record(z.string(), z.string()), '服务详情') },
+  }),
+  handler: async (c) => {
+    const { name } = c.req.valid('param');
+    validateServiceName(name);
+    const detail = await getServiceDetail(name);
+    return c.json(okBody(detail), 200);
   },
 });
 
@@ -102,6 +117,6 @@ const logsRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([checkRoute, listRoute, controlRoute, logsRoute] as const);
+router.openapiRoutes([checkRoute, listRoute, controlRoute, detailRoute, logsRoute] as const);
 
 export default router;

@@ -92,6 +92,32 @@ const baseStatus = {
       rxErrors: 0, txErrors: 0,
     },
   ],
+  diskIo: { readBps: 4_700_000, writeBps: 1_800_000 },
+  topProcesses: {
+    byCpu: [
+      { pid: 12345, name: 'node', cpu: 24.5, memPercent: 3.2, memBytes: 512 * 1024 * 1024 },
+      { pid: 980, name: 'postgres', cpu: 12.1, memPercent: 2.1, memBytes: 340 * 1024 * 1024 },
+      { pid: 651, name: 'redis-server', cpu: 6.4, memPercent: 0.6, memBytes: 96 * 1024 * 1024 },
+      { pid: 1502, name: 'chrome', cpu: 4.2, memPercent: 5.4, memBytes: 870 * 1024 * 1024 },
+      { pid: 222, name: 'systemd', cpu: 1.1, memPercent: 0.3, memBytes: 48 * 1024 * 1024 },
+    ],
+    byMemory: [
+      { pid: 1502, name: 'chrome', cpu: 4.2, memPercent: 5.4, memBytes: 870 * 1024 * 1024 },
+      { pid: 12345, name: 'node', cpu: 24.5, memPercent: 3.2, memBytes: 512 * 1024 * 1024 },
+      { pid: 980, name: 'postgres', cpu: 12.1, memPercent: 2.1, memBytes: 340 * 1024 * 1024 },
+      { pid: 651, name: 'redis-server', cpu: 6.4, memPercent: 0.6, memBytes: 96 * 1024 * 1024 },
+      { pid: 222, name: 'systemd', cpu: 1.1, memPercent: 0.3, memBytes: 48 * 1024 * 1024 },
+    ],
+  },
+  temperature: {
+    cpu: 52.4,
+    sensors: [
+      { label: 'x86_pkg_temp', celsius: 52.4 },
+      { label: 'Core 0', celsius: 50.1 },
+      { label: 'Core 1', celsius: 49.8 },
+      { label: 'acpitz', celsius: 45.0 },
+    ],
+  },
   node: {
     version: 'v20.0.0',
     pid: 12345,
@@ -171,7 +197,7 @@ const baseStatus = {
 function buildSeries(): Array<{
   t: number; cpu: number; mem: number; procCpu: number; heap: number;
   loopLagMean: number; loopLagP99: number; qps: number; errorRate: number;
-  netRxBps: number; netTxBps: number;
+  netRxBps: number; netTxBps: number; diskReadBps: number; diskWriteBps: number;
 }> {
   const now = Date.now();
   const points = [];
@@ -190,9 +216,53 @@ function buildSeries(): Array<{
       errorRate: Math.max(0, +(Math.random() * 1.2).toFixed(2)),
       netRxBps: Math.max(0, Math.round(1_200_000 + wave * 600_000 + Math.random() * 300_000)),
       netTxBps: Math.max(0, Math.round(320_000 + wave * 160_000 + Math.random() * 80_000)),
+      diskReadBps: Math.max(0, Math.round(4_000_000 + wave * 2_000_000 + Math.random() * 1_000_000)),
+      diskWriteBps: Math.max(0, Math.round(1_500_000 + wave * 800_000 + Math.random() * 400_000)),
     });
   }
   return points;
+}
+
+const HISTORY_RANGE_CFG: Record<string, { windowSec: number; bucketSec: number }> = {
+  '1h': { windowSec: 3600, bucketSec: 60 },
+  '6h': { windowSec: 6 * 3600, bucketSec: 120 },
+  '24h': { windowSec: 24 * 3600, bucketSec: 300 },
+  '7d': { windowSec: 7 * 24 * 3600, bucketSec: 1800 },
+  '30d': { windowSec: 30 * 24 * 3600, bucketSec: 7200 },
+};
+
+function pad(n: number): string { return n < 10 ? `0${n}` : `${n}`; }
+function fmtHistoryTime(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function buildHistory(range: string) {
+  const cfg = HISTORY_RANGE_CFG[range] ?? HISTORY_RANGE_CFG['1h'];
+  const count = Math.floor(cfg.windowSec / cfg.bucketSec);
+  const now = Date.now();
+  const points = [];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const t = new Date(now - i * cfg.bucketSec * 1000);
+    const wave = Math.sin(i / 14);
+    points.push({
+      t: fmtHistoryTime(t),
+      cpu: Math.max(0, Math.round((18 + wave * 12 + Math.random() * 6) * 10) / 10),
+      memory: Math.max(0, Math.round((40 + wave * 6 + Math.random() * 3) * 10) / 10),
+      disk: Math.max(0, Math.round((25 + i / count * 8) * 10) / 10),
+      swap: 0,
+      load1: Math.round((0.5 + Math.abs(wave) * 0.8) * 100) / 100,
+      procCpu: Math.max(0, Math.round((5 + wave * 3 + Math.random() * 2) * 10) / 10),
+      heap: Math.max(0, Math.round((58 + wave * 6) * 10) / 10),
+      loopLag: Math.round((0.5 + Math.random() * 0.5) * 100) / 100,
+      qps: Math.round((9 + wave * 5 + Math.random() * 3) * 100) / 100,
+      errorRate: Math.round(Math.random() * 1.5 * 10) / 10,
+      netRxBps: Math.max(0, Math.round(1_200_000 + wave * 700_000 + Math.random() * 300_000)),
+      netTxBps: Math.max(0, Math.round(320_000 + wave * 180_000 + Math.random() * 90_000)),
+      diskReadBps: Math.max(0, Math.round(4_000_000 + wave * 2_000_000 + Math.random() * 800_000)),
+      diskWriteBps: Math.max(0, Math.round(1_500_000 + wave * 900_000 + Math.random() * 400_000)),
+    });
+  }
+  return { range, bucketSec: cfg.bucketSec, points };
 }
 
 export const monitorHandlers = [
@@ -203,6 +273,10 @@ export const monitorHandlers = [
       message: 'success',
       data: { intervalSec: 10, capacity: 360, points: buildSeries() },
     })),
+  http.get('/api/monitor/history', ({ request }) => {
+    const range = new URL(request.url).searchParams.get('range') ?? '1h';
+    return HttpResponse.json({ code: 0, message: 'success', data: buildHistory(range) });
+  }),
   http.get('/api/monitor/ws', () => {
     const now = Date.now();
     return HttpResponse.json({

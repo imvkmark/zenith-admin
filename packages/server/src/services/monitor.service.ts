@@ -9,6 +9,7 @@ import redis from '../lib/redis';
 import logger from '../lib/logger';
 import { metricsSampler } from '../lib/metrics-sampler';
 import { getWsSnapshot } from '../lib/ws-manager';
+import { listProcesses } from './processes.service';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,6 +21,8 @@ const cache: {
   redis?: CacheEntry<RedisInfo | null>;
   disks?: CacheEntry<DiskInfo[] | null>;
   meminfo?: CacheEntry<LinuxMemInfo | null>;
+  topProcs?: CacheEntry<TopProcesses | null>;
+  temperature?: CacheEntry<TemperatureInfo | null>;
 } = {};
 
 function fresh<T>(entry: CacheEntry<T> | undefined): T | undefined {
@@ -35,6 +38,29 @@ export interface DiskInfo {
   free: number;
   usagePercent: number;
   mount: string;
+}
+
+export interface TopProcessItem {
+  pid: number;
+  name: string;
+  cpu: number;
+  memPercent: number;
+  memBytes: number;
+}
+
+export interface TopProcesses {
+  byCpu: TopProcessItem[];
+  byMemory: TopProcessItem[];
+}
+
+export interface TemperatureSensor {
+  label: string;
+  celsius: number;
+}
+
+export interface TemperatureInfo {
+  cpu: number | null;
+  sensors: TemperatureSensor[];
 }
 
 /** Linux /proc/meminfo 中有意义的字段，单位：字节 */
@@ -400,13 +426,75 @@ async function getSlowQueries(): Promise<DbSlowQuery[] | null> {
   }
 }
 
+// ─── Top 进程（按 CPU / 内存）─────────────────────────────────────────
+export async function getTopProcesses(limit = 5): Promise<TopProcesses | null> {
+  const cached = fresh(cache.topProcs);
+  if (cached !== undefined) return cached;
+  try {
+    const { processes } = await listProcesses();
+    const map = (p: typeof processes[number]): TopProcessItem => ({
+      pid: p.pid,
+      name: p.name,
+      cpu: Math.round((p.cpu ?? 0) * 10) / 10,
+      memPercent: Math.round((p.memoryPercent ?? 0) * 10) / 10,
+      memBytes: Math.round(p.memory ?? 0),
+    });
+    const byCpu = [...processes].sort((a, b) => (b.cpu ?? 0) - (a.cpu ?? 0)).slice(0, limit).map(map);
+    const byMemory = [...processes].sort((a, b) => (b.memory ?? 0) - (a.memory ?? 0)).slice(0, limit).map(map);
+    const result: TopProcesses = { byCpu, byMemory };
+    cache.topProcs = { at: Date.now(), value: result };
+    return result;
+  } catch (err) {
+    logger.warn('[monitor] getTopProcesses failed', { err: String(err) });
+    cache.topProcs = { at: Date.now(), value: null };
+    return null;
+  }
+}
+
+// ─── CPU 温度（Linux /sys/class/thermal；其他平台返回 null）────────────
+export async function getCpuTemperature(): Promise<TemperatureInfo | null> {
+  const cached = fresh(cache.temperature);
+  if (cached !== undefined) return cached;
+  if (process.platform !== 'linux') {
+    cache.temperature = { at: Date.now(), value: null };
+    return null;
+  }
+  try {
+    const base = '/sys/class/thermal';
+    const zones = await fs.readdir(base).catch(() => [] as string[]);
+    const sensors: TemperatureSensor[] = [];
+    for (const zone of zones) {
+      if (!zone.startsWith('thermal_zone')) continue;
+      const [tempRaw, typeRaw] = await Promise.all([
+        fs.readFile(`${base}/${zone}/temp`, 'utf8').catch(() => ''),
+        fs.readFile(`${base}/${zone}/type`, 'utf8').catch(() => zone),
+      ]);
+      const milli = Number.parseInt(tempRaw.trim(), 10);
+      if (!Number.isFinite(milli)) continue;
+      sensors.push({ label: typeRaw.trim() || zone, celsius: Math.round((milli / 1000) * 10) / 10 });
+    }
+    // CPU 温度：优先匹配 x86_pkg_temp / coretemp / cpu，否则取最高传感器
+    const cpuSensor = sensors.find((s) => /pkg|core|cpu|k10temp|soc/i.test(s.label));
+    const cpu = cpuSensor?.celsius ?? (sensors.length > 0 ? Math.max(...sensors.map((s) => s.celsius)) : null);
+    const result: TemperatureInfo = { cpu, sensors };
+    cache.temperature = { at: Date.now(), value: result };
+    return result;
+  } catch (err) {
+    logger.warn('[monitor] getCpuTemperature failed', { err: String(err) });
+    cache.temperature = { at: Date.now(), value: null };
+    return null;
+  }
+}
+
 // ─── 主入口 ────────────────────────────────────────────────────────────
 export async function getMonitorStatus() {
-  const [dbInfo, redisInfo, disks, memInfo] = await Promise.all([
+  const [dbInfo, redisInfo, disks, memInfo, topProcesses, temperature] = await Promise.all([
     getDbInfo(),
     getRedisInfo(),
     getDisks(),
     getLinuxMemInfo(),
+    getTopProcesses(),
+    getCpuTemperature(),
   ]);
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -458,7 +546,10 @@ export async function getMonitorStatus() {
         }
       : null,
     disks: disks ?? [],
+    diskIo: metricsSampler.getDiskIo(),
     network,
+    topProcesses,
+    temperature,
     node: {
       version: process.version,
       uptime: Math.floor(process.uptime()),
