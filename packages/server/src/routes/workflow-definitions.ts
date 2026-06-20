@@ -2,11 +2,12 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
-import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO } from '../lib/openapi-dtos';
+import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO, WorkflowDefinitionExportDTO, WorkflowVersionDiffDTO } from '../lib/openapi-dtos';
+import { importWorkflowDefinitionSchema } from '@zenith/shared';
 import {
   listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
   updateDefinition, publishDefinition, disableDefinition, enableDefinition, deleteDefinition, getWorkflowDefinitionBeforeAudit,
-  listVersions, restoreVersion,
+  listVersions, restoreVersion, duplicateDefinition, exportDefinition, importDefinition, diffVersions,
 } from '../services/workflow-definitions.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -222,6 +223,70 @@ const restoreVersionRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, publishedRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, enableRoute, deleteRouteDef, listVersionsRoute, restoreVersionRoute] as const);
+const duplicateRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/duplicate', tags: ['WorkflowDefinitions'], summary: '复制流程',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:definition:create', audit: { description: '复制流程', module: '工作流管理' } })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowDefinitionDTO, '复制成功'),
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await duplicateDefinition(c.req.valid('param').id), '已复制为新草稿'), 200),
+});
+
+const exportRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/export', tags: ['WorkflowDefinitions'], summary: '导出流程定义',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowDefinitionExportDTO, 'ok'),
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await exportDefinition(c.req.valid('param').id)), 200),
+});
+
+const importRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/import', tags: ['WorkflowDefinitions'], summary: '导入流程定义',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:definition:create', audit: { description: '导入流程', module: '工作流管理' } })] as const,
+    request: { body: { content: jsonContent(importWorkflowDefinitionSchema), required: true } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowDefinitionDTO, '导入成功'),
+      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await importDefinition(c.req.valid('json')), '已导入为新草稿'), 200),
+});
+
+const diffVersionsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/{id}/diff', tags: ['WorkflowDefinitions'], summary: '版本对比',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:definition:list' })] as const,
+    request: { params: IdParam, query: z.object({ left: z.coerce.number().int().nonnegative().default(0), right: z.coerce.number().int().nonnegative().default(0) }) },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowVersionDiffDTO, 'ok'),
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { left, right } = c.req.valid('query');
+    return c.json(okBody(await diffVersions(id, left, right)), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, publishedRoute, importRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, enableRoute, deleteRouteDef, listVersionsRoute, restoreVersionRoute, duplicateRoute, exportRoute, diffVersionsRoute] as const);
 
 export default router;

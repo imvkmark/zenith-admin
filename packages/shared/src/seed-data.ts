@@ -231,6 +231,9 @@ export const SEED_MENUS: Menu[] = [
   { id: 462, parentId: 230, title: '流程自动化', name: 'WorkflowAutomations', path: '/workflow/automations', component: 'workflow/automations/WorkflowAutomationsPage', icon: 'Bot', type: 'menu', sort: 8,  status: 'enabled', visible: true,  permission: 'workflow:definition:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 478, parentId: 230, title: '审批代理', name: 'WorkflowDelegations', path: '/workflow/delegations', component: 'workflow/delegations/WorkflowDelegationsPage', icon: 'UserRoundCog', type: 'menu', sort: 9,  status: 'enabled', visible: true,  permission: 'workflow:delegation:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 479, parentId: 478, title: '管理审批代理', name: undefined, path: undefined, component: undefined, icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'workflow:delegation:manage', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 480, parentId: 230, title: '发起工作台', name: 'WorkflowLaunchpad',  path: '/workflow/launchpad', component: 'workflow/launchpad/WorkflowLaunchpadPage', icon: 'LayoutGrid',     type: 'menu', sort: 0, status: 'enabled', visible: true, permission: 'workflow:instance:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 481, parentId: 230, title: '抄送我的',   name: 'WorkflowCcToMe',     path: '/workflow/cc',        component: 'workflow/cc/CcToMePage',                  icon: 'Send',           type: 'menu', sort: 4, status: 'enabled', visible: true, permission: 'workflow:instance:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 482, parentId: 230, title: '我已办',     name: 'WorkflowHandled',    path: '/workflow/handled',   component: 'workflow/handled/HandledPage',            icon: 'CircleCheckBig',  type: 'menu', sort: 4, status: 'enabled', visible: true, permission: 'workflow:task:handle',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
   // ── 消息中心 ─────────────────────────────────────────────────────────────────
   { id: 310, parentId: 0,   title: '消息中心',   name: 'ChatCenter',              path: '/chat',                      component: 'chat/ChatPage',                                  icon: 'MessagesSquare',    type: 'menu',      sort: 7,  status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -741,6 +744,146 @@ export const SEED_WORKFLOW_FORMS: WorkflowForm[] = [
     tenantId: 1,
     createdBy: 2,
     createdByName: '李四',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+// ─── 工作流内置模板 ─────────────────────────────────────────────────────────
+
+export interface SeedWorkflowTemplate {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  categoryName: string | null;
+  icon: string | null;
+  color: string | null;
+  flowData: Record<string, unknown>;
+  formSchema: Record<string, unknown> | null;
+  sort: number;
+  builtin: boolean;
+  tenantId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SeedFlowStep {
+  key: string;
+  name: string;
+  nodeType?: 'approver' | 'handler' | 'cc';
+  props?: Record<string, unknown>;
+}
+
+const APPROVER_DEFAULT_PROPS: Record<string, unknown> = {
+  approvalType: 'manual',
+  approveMethod: 'or',
+  rejectStrategy: 'terminate',
+  emptyStrategy: 'autoApprove',
+  operations: ['approve', 'reject', 'comment'],
+  fieldPermissions: {},
+};
+
+function mapSeedNodeType(t: 'approver' | 'handler' | 'cc'): string {
+  if (t === 'handler') return 'handler';
+  if (t === 'cc') return 'ccNode';
+  return 'approve';
+}
+
+/**
+ * 构造线性流程的 flowData（含设计器 process 树 + 引擎 nodes/edges 扁平结构）。
+ * 与 packages/web 的 designer/utils.ts treeToFlat() 对线性链的输出保持一致：
+ * nodes 顺序固定为 [start, end, ...审批节点]，data.key 即节点 key。
+ */
+function buildLinearFlow(steps: SeedFlowStep[], settings?: Record<string, unknown>): Record<string, unknown> {
+  let child: Record<string, unknown> | undefined;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const s = steps[i];
+    const nodeType = s.nodeType ?? 'approver';
+    const props = nodeType === 'approver' ? { ...APPROVER_DEFAULT_PROPS, ...(s.props ?? {}) } : { ...(s.props ?? {}) };
+    child = { id: s.key, key: s.key, type: nodeType, name: s.name, props, children: child };
+  }
+  const process = {
+    initiator: { id: 'initiator', type: 'initiator', name: '发起人', props: { fieldPermissions: {} }, children: child },
+  };
+
+  const nodes: Array<Record<string, unknown>> = [
+    { id: 'node-start', type: 'workflowNode', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+    { id: 'node-end', type: 'workflowNode', position: { x: 0, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+  ];
+  const edges: Array<Record<string, unknown>> = [];
+  let prevId = 'node-start';
+  for (const s of steps) {
+    const nodeType = s.nodeType ?? 'approver';
+    const flatId = `node-${s.key}`;
+    const props = nodeType === 'approver' ? { ...APPROVER_DEFAULT_PROPS, ...(s.props ?? {}) } : { ...(s.props ?? {}) };
+    nodes.push({ id: flatId, type: 'workflowNode', position: { x: 0, y: 0 }, data: { key: s.key, type: mapSeedNodeType(nodeType), label: s.name, ...props } });
+    edges.push({ id: `e-${prevId}-${flatId}`, source: prevId, target: flatId });
+    prevId = flatId;
+  }
+  edges.push({ id: `e-${prevId}-node-end`, source: prevId, target: 'node-end' });
+
+  const flow: Record<string, unknown> = { process, nodes, edges };
+  if (settings) flow.settings = settings;
+  return flow;
+}
+
+const TEMPLATE_SETTINGS: Record<string, unknown> = { allowWithdraw: true, allowComment: true, serialNo: { enabled: false } };
+
+export const SEED_WORKFLOW_TEMPLATES: SeedWorkflowTemplate[] = [
+  {
+    id: 1,
+    name: '请假审批',
+    code: 'tpl_leave',
+    description: '员工请假申请，提交后由直属主管审批。',
+    categoryName: '人事行政',
+    icon: 'CalendarDays',
+    color: '#52c41a',
+    flowData: buildLinearFlow([
+      { key: 'approve_manager', name: '直属主管审批', props: { assigneeType: 'manager', managerLevel: 1 } },
+    ], TEMPLATE_SETTINGS),
+    formSchema: SEED_WORKFLOW_FORMS[0].schema as unknown as Record<string, unknown>,
+    sort: 1,
+    builtin: true,
+    tenantId: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    id: 2,
+    name: '报销审批',
+    code: 'tpl_expense',
+    description: '费用报销申请，直属主管 + 部门负责人两级审批。',
+    categoryName: '财务报销',
+    icon: 'Receipt',
+    color: '#fa8c16',
+    flowData: buildLinearFlow([
+      { key: 'approve_manager', name: '直属主管审批', props: { assigneeType: 'manager', managerLevel: 1 } },
+      { key: 'approve_dept_head', name: '部门负责人审批', props: { assigneeType: 'department' } },
+    ], TEMPLATE_SETTINGS),
+    formSchema: SEED_WORKFLOW_FORMS[1].schema as unknown as Record<string, unknown>,
+    sort: 2,
+    builtin: true,
+    tenantId: null,
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+  {
+    id: 3,
+    name: '采购申请',
+    code: 'tpl_purchase',
+    description: '物资/设备采购申请，直属主管审批后抄送发起人。',
+    categoryName: '采购审批',
+    icon: 'ShoppingCart',
+    color: '#1890ff',
+    flowData: buildLinearFlow([
+      { key: 'approve_manager', name: '直属主管审批', props: { assigneeType: 'manager', managerLevel: 1 } },
+      { key: 'cc_initiator', name: '抄送发起人', nodeType: 'cc', props: { assigneeType: 'initiator', onlyOnApprove: true, fieldPermissions: {} } },
+    ], TEMPLATE_SETTINGS),
+    formSchema: SEED_WORKFLOW_FORMS[2].schema as unknown as Record<string, unknown>,
+    sort: 3,
+    builtin: true,
+    tenantId: null,
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },

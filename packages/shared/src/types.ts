@@ -1850,7 +1850,7 @@ export interface WorkflowDefinitionVersion {
   tenantId: number | null;
 }
 
-export type WorkflowAutomationTrigger = 'approved' | 'rejected' | 'withdrawn';
+export type WorkflowAutomationTrigger = 'approved' | 'rejected' | 'withdrawn' | 'created';
 
 export interface WorkflowAutomationActionStartWorkflow {
   type: 'startWorkflow';
@@ -1868,9 +1868,24 @@ export interface WorkflowAutomationActionSendMessage {
   buttons?: Array<{ text: string; url: string }>;
 }
 
+export interface WorkflowAutomationActionWebhook {
+  type: 'webhook';
+  url: string;
+  method?: 'GET' | 'POST' | 'PUT';
+  headers?: Record<string, string>;
+  bodyTemplate?: string;
+}
+
+export interface WorkflowAutomationActionUpdateField {
+  type: 'updateField';
+  fields: Record<string, string>;
+}
+
 export type WorkflowAutomationAction =
   | WorkflowAutomationActionStartWorkflow
-  | WorkflowAutomationActionSendMessage;
+  | WorkflowAutomationActionSendMessage
+  | WorkflowAutomationActionWebhook
+  | WorkflowAutomationActionUpdateField;
 
 export interface WorkflowAutomation {
   id: number;
@@ -1957,6 +1972,12 @@ export interface WorkflowInstance {
   comments?: WorkflowComment[];
   /** 协办意见（仅详情场景填充） */
   consults?: WorkflowTaskConsult[];
+  /** 已办视图：我在该实例处理过的任务状态（approved/rejected/...） */
+  myTaskStatus?: WorkflowTaskStatus | null;
+  /** 已办视图：我处理的时间 */
+  myActionAt?: string | null;
+  /** 抄送视图：抄送给我的任务 ID */
+  ccTaskId?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2128,6 +2149,13 @@ export interface WorkflowOverdueTask {
 /** 批量审批结果（逐条返回成功/失败） */
 export interface WorkflowBatchActionResult {
   taskId: number;
+  success: boolean;
+  message?: string;
+}
+
+/** 实例级批量操作结果（批量撤回/批量催办） */
+export interface WorkflowInstanceBatchActionResult {
+  instanceId: number;
   success: boolean;
   message?: string;
 }

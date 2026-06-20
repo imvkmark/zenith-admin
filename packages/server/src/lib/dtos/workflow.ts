@@ -83,6 +83,37 @@ export const WorkflowDefinitionVersionDTO = z
   })
   .openapi('WorkflowDefinitionVersion');
 
+export const WorkflowDefinitionExportDTO = z
+  .object({
+    name: z.string(),
+    description: z.string().nullable(),
+    categoryName: z.string().nullable(),
+    flowData: z.unknown().nullable(),
+    form: z.object({
+      name: z.string(),
+      description: z.string().nullable(),
+      schema: z.unknown().nullable(),
+    }).nullable(),
+    exportedAt: z.string(),
+    schemaVersion: z.number().int(),
+  })
+  .openapi('WorkflowDefinitionExport');
+
+const WorkflowVersionDiffSideDTO = z.object({
+  version: z.number().int(),
+  name: z.string(),
+  label: z.string(),
+  flowData: z.unknown().nullable(),
+  publishedAt: z.string().nullable(),
+});
+
+export const WorkflowVersionDiffDTO = z
+  .object({
+    left: WorkflowVersionDiffSideDTO,
+    right: WorkflowVersionDiffSideDTO,
+  })
+  .openapi('WorkflowVersionDiff');
+
 export const WorkflowTaskDTO = z
   .object({
     id: z.number().int(),
@@ -193,6 +224,9 @@ export const WorkflowInstanceDTO = z
     tasks: z.array(WorkflowTaskDTO).nullable().optional(),
     comments: z.array(WorkflowCommentDTO).optional(),
     consults: z.array(WorkflowTaskConsultDTO).optional(),
+    myTaskStatus: z.enum(['pending', 'approved', 'rejected', 'skipped', 'waiting']).nullable().optional(),
+    myActionAt: z.string().nullable().optional(),
+    ccTaskId: z.number().int().nullable().optional(),
     ...auditFields,
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -223,7 +257,7 @@ export const WorkflowAutomationDTO = z
     definitionId: z.number().int(),
     definitionName: z.string().nullable().optional(),
     name: z.string(),
-    trigger: z.enum(['approved', 'rejected', 'withdrawn']),
+    trigger: z.enum(['approved', 'rejected', 'withdrawn', 'created']),
     actions: z.array(z.unknown()),
     status: z.enum(['enabled', 'disabled']),
     sort: z.number().int(),
@@ -297,6 +331,22 @@ export const WorkflowBatchActionResponseDTO = z
     results: z.array(WorkflowBatchActionResultDTO),
   })
   .openapi('WorkflowBatchActionResponse');
+
+export const WorkflowInstanceBatchActionResultDTO = z
+  .object({
+    instanceId: z.number().int(),
+    success: z.boolean(),
+    message: z.string().optional(),
+  })
+  .openapi('WorkflowInstanceBatchActionResult');
+
+export const WorkflowInstanceBatchActionResponseDTO = z
+  .object({
+    succeeded: z.number().int(),
+    failed: z.number().int(),
+    results: z.array(WorkflowInstanceBatchActionResultDTO),
+  })
+  .openapi('WorkflowInstanceBatchActionResponse');
 
 export const WorkflowAnalyticsDTO = z
   .object({

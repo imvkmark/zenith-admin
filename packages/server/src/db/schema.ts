@@ -1285,8 +1285,8 @@ export const workflowDefinitionVersions = pgTable('workflow_definition_versions'
 export type WorkflowDefinitionVersionRow = typeof workflowDefinitionVersions.$inferSelect;
 export type NewWorkflowDefinitionVersion = typeof workflowDefinitionVersions.$inferInsert;
 
-// 流程级自动化规则：当实例终结（通过/拒绝/撤回）时执行的动作
-export const workflowAutomationTriggerEnum = pgEnum('workflow_automation_trigger', ['approved', 'rejected', 'withdrawn']);
+// 流程级自动化规则：当实例终结（通过/拒绝/撤回）或发起时执行的动作
+export const workflowAutomationTriggerEnum = pgEnum('workflow_automation_trigger', ['approved', 'rejected', 'withdrawn', 'created']);
 
 export interface WorkflowAutomationActionStartWorkflow {
   type: 'startWorkflow';
@@ -1302,9 +1302,24 @@ export interface WorkflowAutomationActionSendMessage {
   recipients?: 'initiator' | { userIds: number[] };
   buttons?: Array<{ text: string; url: string }>;
 }
+export interface WorkflowAutomationActionWebhook {
+  type: 'webhook';
+  url: string;
+  method?: 'GET' | 'POST' | 'PUT';
+  headers?: Record<string, string>;
+  /** 请求体模板，支持 {{form.x}} / {{instance.title}} 等占位 */
+  bodyTemplate?: string;
+}
+export interface WorkflowAutomationActionUpdateField {
+  type: 'updateField';
+  /** 回写到实例 formData 的字段：key=字段 key，value 支持 {{form.x}} 占位或字面量 */
+  fields: Record<string, string>;
+}
 export type WorkflowAutomationActionConfig =
   | WorkflowAutomationActionStartWorkflow
-  | WorkflowAutomationActionSendMessage;
+  | WorkflowAutomationActionSendMessage
+  | WorkflowAutomationActionWebhook
+  | WorkflowAutomationActionUpdateField;
 
 export const workflowAutomations = pgTable('workflow_automations', {
   id: serial('id').primaryKey(),

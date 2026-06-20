@@ -10,6 +10,7 @@ import { db } from '../db';
 import {
   workflowAutomations,
   workflowDefinitions,
+  workflowInstances,
   workflowTasks,
   inAppMessages,
   users,
@@ -22,6 +23,7 @@ import { pageOffset } from '../lib/pagination';
 import { formatDateTime } from '../lib/datetime';
 import { workflowEventBus } from '../lib/workflow-event-bus';
 import { createInstance } from './workflow-instances.service';
+import { httpRequest } from '../lib/http-client';
 import logger from '../lib/logger';
 import type { WorkflowAutomationTrigger, WorkflowInstance } from '@zenith/shared';
 
@@ -237,6 +239,61 @@ async function runSendMessageAction(
   await db.insert(inAppMessages).values(rows);
 }
 
+async function runWebhookAction(
+  action: Extract<WorkflowAutomationActionConfig, { type: 'webhook' }>,
+  ctx: AutomationContext,
+) {
+  const vars = buildTemplateVars(ctx);
+  const url = renderTemplate(action.url, vars);
+  if (!url) return;
+  const method = action.method ?? 'POST';
+  let body: Record<string, unknown> | string | undefined;
+  if (method !== 'GET') {
+    if (action.bodyTemplate) {
+      const rendered = renderTemplate(action.bodyTemplate, vars);
+      try {
+        body = JSON.parse(rendered) as Record<string, unknown>;
+      } catch {
+        body = rendered;
+      }
+    } else {
+      body = {
+        instanceId: ctx.instance.id,
+        title: ctx.instance.title,
+        status: ctx.instance.status,
+        initiatorId: ctx.initiatorId,
+        initiator: ctx.initiatorName,
+        formData: ctx.formData,
+      };
+    }
+  }
+  await httpRequest(url, {
+    method,
+    headers: action.headers,
+    body,
+    timeout: 10000,
+    retries: 1,
+  });
+}
+
+async function runUpdateFieldAction(
+  action: Extract<WorkflowAutomationActionConfig, { type: 'updateField' }>,
+  ctx: AutomationContext,
+) {
+  const entries = Object.entries(action.fields ?? {});
+  if (!entries.length) return;
+  const vars = buildTemplateVars(ctx);
+  const patch: Record<string, unknown> = {};
+  for (const [key, expr] of entries) {
+    patch[key] = renderTemplate(expr, vars);
+  }
+  const nextFormData = { ...ctx.formData, ...patch };
+  ctx.formData = nextFormData;
+  await db.update(workflowInstances)
+    .set({ formData: nextFormData })
+    .where(eq(workflowInstances.id, ctx.instance.id));
+}
+
 async function loadAutomationContext(instance: WorkflowInstance): Promise<AutomationContext> {
   const [initiator] = await db
     .select({ id: users.id, username: users.username, nickname: users.nickname })
@@ -285,6 +342,10 @@ export async function executeAutomationsForInstance(
           await runStartWorkflowAction(action, ctx);
         } else if (action.type === 'sendMessage') {
           await runSendMessageAction(action, ctx);
+        } else if (action.type === 'webhook') {
+          await runWebhookAction(action, ctx);
+        } else if (action.type === 'updateField') {
+          await runUpdateFieldAction(action, ctx);
         }
       } catch (err) {
         logger.error('[workflow-automation] action failed', {
@@ -310,4 +371,5 @@ export function registerWorkflowAutomationSubscribers() {
   workflowEventBus.on('instance.approved', handleTriggerEvent('approved'));
   workflowEventBus.on('instance.rejected', handleTriggerEvent('rejected'));
   workflowEventBus.on('instance.withdrawn', handleTriggerEvent('withdrawn'));
+  workflowEventBus.on('instance.created', handleTriggerEvent('created'));
 }

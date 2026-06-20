@@ -1,0 +1,1 @@
+ALTER TYPE "public"."workflow_automation_trigger" ADD VALUE 'created';

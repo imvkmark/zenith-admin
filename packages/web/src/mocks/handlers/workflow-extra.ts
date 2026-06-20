@@ -2,7 +2,9 @@ import { http, HttpResponse } from 'msw';
 import type {
   WorkflowComment, WorkflowQuickPhrase, WorkflowDelegation, WorkflowAnalytics,
   WorkflowInstanceStatus, WorkflowOverdueTask, WorkflowTemplate, WorkflowTaskConsult,
+  WorkflowInstance,
 } from '@zenith/shared';
+import { SEED_WORKFLOW_TEMPLATES } from '@zenith/shared';
 import { mockWorkflowInstances, mockWorkflowTasks, getNextInstanceId, getNextDefinitionId } from '@/mocks/data/workflow';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
@@ -28,20 +30,21 @@ let nextPhraseId = 100;
 const mockDelegations: WorkflowDelegation[] = [];
 let nextDelegationId = 1;
 
-const mockTemplates: WorkflowTemplate[] = [
-  {
-    id: 1, name: '请假申请（示例模板）', code: 'tpl_leave', description: '员工请假，直属主管审批',
-    categoryName: '人事', icon: 'CalendarDays', color: '#3370ff',
-    flowData: (mockWorkflowDefinitions[0]?.flowData ?? null), formSchema: null,
-    sort: 0, builtin: true, createdAt: mockDateTime(), updatedAt: mockDateTime(),
-  },
-  {
-    id: 2, name: '费用报销（示例模板）', code: 'tpl_expense', description: '报销单，按金额分级审批',
-    categoryName: '财务', icon: 'Receipt', color: '#0dc87c',
-    flowData: (mockWorkflowDefinitions[0]?.flowData ?? null), formSchema: null,
-    sort: 1, builtin: true, createdAt: mockDateTime(), updatedAt: mockDateTime(),
-  },
-];
+const mockTemplates: WorkflowTemplate[] = SEED_WORKFLOW_TEMPLATES.map((t) => ({
+  id: t.id,
+  name: t.name,
+  code: t.code,
+  description: t.description,
+  categoryName: t.categoryName,
+  icon: t.icon,
+  color: t.color,
+  flowData: t.flowData as unknown as WorkflowTemplate['flowData'],
+  formSchema: t.formSchema as unknown as WorkflowTemplate['formSchema'],
+  sort: t.sort,
+  builtin: t.builtin,
+  createdAt: t.createdAt,
+  updatedAt: t.updatedAt,
+}));
 let nextTemplateId = 100;
 
 const mockConsults: WorkflowTaskConsult[] = [];
@@ -139,6 +142,115 @@ function buildOverdueList(): WorkflowOverdueTask[] {
 export const workflowExtraHandlers = [
   // ── 数据分析（必须在 /instances/:id 之前注册）──
   http.get('/api/workflows/instances/analytics', () => ok(buildAnalytics())),
+
+  // ── G1 抄送我的（必须在 /instances/:id 之前注册）──
+  http.get('/api/workflows/instances/cc-mine', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? 1);
+    const pageSize = Number(url.searchParams.get('pageSize') ?? 20);
+    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
+    let all = mockWorkflowInstances.filter((i) => i.status !== 'draft');
+    if (keyword) all = all.filter((i) => i.title.toLowerCase().includes(keyword) || (i.definitionName ?? '').toLowerCase().includes(keyword));
+    const list = all.map((i, idx) => ({ ...i, ccTaskId: 90000 + idx } as WorkflowInstance));
+    return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+
+  // ── G2 我已办（必须在 /instances/:id 之前注册）──
+  http.get('/api/workflows/instances/handled-mine', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? 1);
+    const pageSize = Number(url.searchParams.get('pageSize') ?? 20);
+    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
+    let all = mockWorkflowInstances.filter((i) => i.status === 'approved' || i.status === 'rejected');
+    if (keyword) all = all.filter((i) => i.title.toLowerCase().includes(keyword) || (i.definitionName ?? '').toLowerCase().includes(keyword));
+    const list = all.map((i) => ({
+      ...i,
+      myTaskStatus: i.status === 'approved' ? 'approved' : 'rejected',
+      myActionAt: i.updatedAt,
+    } as WorkflowInstance));
+    return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+
+  // ── G8 批量撤回 / 批量催办（必须在 /instances/:id 之前注册）──
+  http.post('/api/workflows/instances/batch-withdraw', async ({ request }) => {
+    const body = await request.json() as { instanceIds: number[]; comment?: string };
+    const results = (body.instanceIds ?? []).map((instanceId) => {
+      const inst = mockWorkflowInstances.find((i) => i.id === instanceId);
+      if (!inst) return { instanceId, success: false, message: '流程实例不存在' };
+      if (inst.status !== 'running') return { instanceId, success: false, message: '只能撤回进行中的申请' };
+      inst.status = 'withdrawn'; inst.updatedAt = mockDateTime();
+      return { instanceId, success: true };
+    });
+    const succeeded = results.filter((r) => r.success).length;
+    return ok({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条，失败 ${results.length - succeeded} 条`);
+  }),
+  http.post('/api/workflows/instances/batch-urge', async ({ request }) => {
+    const body = await request.json() as { instanceIds: number[]; message?: string };
+    const results = (body.instanceIds ?? []).map((instanceId) => {
+      const inst = mockWorkflowInstances.find((i) => i.id === instanceId);
+      if (!inst) return { instanceId, success: false, message: '流程不存在' };
+      if (inst.status !== 'running') return { instanceId, success: false, message: '流程已结束，无需催办' };
+      return { instanceId, success: true, message: '已催办 1 人' };
+    });
+    const succeeded = results.filter((r) => r.success).length;
+    return ok({ succeeded, failed: results.length - succeeded, results }, `成功 ${succeeded} 条，失败 ${results.length - succeeded} 条`);
+  }),
+
+  // ── G4 复制流程 / G5 导出导入 / G6 版本对比（必须在 /definitions/:id 之前注册）──
+  http.post('/api/workflows/definitions/:id/duplicate', ({ params }) => {
+    const src = mockWorkflowDefinitions.find((d) => d.id === Number(params.id));
+    if (!src) return err('流程定义不存在', 404);
+    const now = mockDateTime();
+    const def = { ...src, id: getNextDefinitionId(), name: `${src.name} 副本`, status: 'draft' as const, version: 0, createdAt: now, updatedAt: now };
+    mockWorkflowDefinitions.push(def as typeof mockWorkflowDefinitions[number]);
+    return ok(def, '已复制为新草稿');
+  }),
+  http.get('/api/workflows/definitions/:id/export', ({ params }) => {
+    const src = mockWorkflowDefinitions.find((d) => d.id === Number(params.id));
+    if (!src) return err('流程定义不存在', 404);
+    return ok({
+      name: src.name,
+      description: src.description ?? null,
+      categoryName: src.categoryName ?? null,
+      flowData: src.flowData ?? null,
+      form: src.formFields ? { name: `${src.name}表单`, description: null, schema: { fields: src.formFields, settings: src.formSettings ?? {} } } : null,
+      exportedAt: mockDateTime(),
+      schemaVersion: 1,
+    });
+  }),
+  http.post('/api/workflows/definitions/import', async ({ request }) => {
+    const body = await request.json() as { name: string; description?: string | null; categoryName?: string | null; flowData?: unknown; form?: { schema?: { fields?: unknown[] } } | null };
+    const now = mockDateTime();
+    const def = {
+      ...(mockWorkflowDefinitions[0] ?? {}),
+      id: getNextDefinitionId(),
+      name: body.name,
+      description: body.description ?? null,
+      status: 'draft' as const,
+      version: 0,
+      flowData: body.flowData ?? null,
+      formFields: body.form?.schema?.fields ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    mockWorkflowDefinitions.push(def as typeof mockWorkflowDefinitions[number]);
+    return ok(def, '已导入为新草稿');
+  }),
+  http.get('/api/workflows/definitions/:id/diff', ({ params, request }) => {
+    const src = mockWorkflowDefinitions.find((d) => d.id === Number(params.id));
+    if (!src) return err('流程定义不存在', 404);
+    const url = new URL(request.url);
+    const leftV = Number(url.searchParams.get('left') ?? 0);
+    const rightV = Number(url.searchParams.get('right') ?? 0);
+    const side = (v: number) => ({
+      version: v === 0 ? (src.version ?? 1) : v,
+      name: src.name,
+      label: v === 0 ? `当前（v${src.version ?? 1}）` : `v${v}`,
+      flowData: src.flowData ?? null,
+      publishedAt: v === 0 ? null : mockDateTime(),
+    });
+    return ok({ left: side(leftV), right: side(rightV) });
+  }),
 
   // ── 我的协办（必须在 /instances/:id 之前注册）──
   http.get('/api/workflows/instances/consults/mine', ({ request }) => {

@@ -39,6 +39,8 @@ interface SearchParams {
 const defaultSearchParams: SearchParams = { keyword: '', definitionId: null };
 
 type PendingItem = WorkflowInstance & { pendingTaskId: number; pendingSignatureRequired?: boolean };
+type AddSignPosition = 'before' | 'after' | 'parallel';
+type AddSignMode = 'and' | 'or';
 
 const DEFAULT_BUTTONS: Record<WorkflowActionButtonKey, WorkflowActionButtonConfig> = {
   approve: { enabled: true, displayName: '同意', opinionName: '审批意见' },
@@ -96,6 +98,8 @@ export default function PendingApprovalsPage() {
   const [approveSignature, setApproveSignature] = useState('');
   const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
   const [selectedNextApprovers, setSelectedNextApprovers] = useState<number[]>([]);
+  const [addSignPosition, setAddSignPosition] = useState<AddSignPosition>('after');
+  const [signMode, setSignMode] = useState<AddSignMode>('and');
   // 批量审批
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const [batchMode, setBatchMode] = useState<'approve' | 'reject' | null>(null);
@@ -455,10 +459,40 @@ export default function PendingApprovalsPage() {
     } catch { /* validation */ }
   };
 
+  const resetAddSignForm = useCallback(() => {
+    setAddSignPosition('after');
+    setSignMode('and');
+    addSignFormApi.current?.setValues({
+      targetUserIds: [],
+      position: 'after',
+      signMode: 'and',
+      comment: '',
+    });
+  }, []);
+
   const handleAddSign = async () => {
     try {
-      const values = await addSignFormApi.current?.validate() as { targetUserIds: number[]; position: 'before' | 'after' | 'parallel'; comment?: string };
-      await submitSimpleAction('add-sign', values, '已加签', () => setAddSignVisible(false));
+      const values = await addSignFormApi.current?.validate() as {
+        targetUserIds: number[];
+        position: AddSignPosition;
+        comment?: string;
+        signMode?: AddSignMode;
+      };
+      const { targetUserIds, position, comment } = values;
+      await submitSimpleAction(
+        'add-sign',
+        {
+          targetUserIds,
+          position,
+          comment,
+          ...(position === 'parallel' ? { signMode } : {}),
+        },
+        '已加签',
+        () => {
+          resetAddSignForm();
+          setAddSignVisible(false);
+        },
+      );
     } catch { /* validation */ }
   };
 
@@ -479,6 +513,11 @@ export default function PendingApprovalsPage() {
   const openUserPickerModal = (opener: () => void) => {
     void loadUserOptions();
     opener();
+  };
+
+  const openAddSignModal = () => {
+    resetAddSignForm();
+    openUserPickerModal(() => setAddSignVisible(true));
   };
 
   const columns: ColumnProps<PendingItem>[] = [
@@ -630,7 +669,7 @@ export default function PendingApprovalsPage() {
                   </Button>
                 )}
                 {btnAddSign.enabled && (
-                  <Button onClick={() => openUserPickerModal(() => setAddSignVisible(true))}>
+                  <Button onClick={openAddSignModal}>
                     {btnAddSign.displayName ?? '加签'}
                   </Button>
                 )}
@@ -804,13 +843,16 @@ export default function PendingApprovalsPage() {
       <AppModal
         title={btnAddSign.displayName ?? '加签'}
         visible={addSignVisible}
-        onCancel={() => setAddSignVisible(false)}
+        onCancel={() => {
+          resetAddSignForm();
+          setAddSignVisible(false);
+        }}
         onOk={() => void handleAddSign()}
         okButtonProps={{ loading: submitting, type: 'primary' }}
         okText="确认"
         style={{ width: 520 }}
       >
-        <Form getFormApi={api => { addSignFormApi.current = api; }} initValues={{ position: 'after' }}>
+        <Form getFormApi={api => { addSignFormApi.current = api; }} initValues={{ position: 'after', signMode: 'and' }}>
           <Form.Select
             field="targetUserIds"
             label="加签人"
@@ -821,11 +863,25 @@ export default function PendingApprovalsPage() {
             rules={[{ required: true, message: '请选择加签人' }]}
             style={{ width: '100%' }}
           />
-          <Form.RadioGroup field="position" label="位置">
+          <Form.RadioGroup
+            field="position"
+            label="位置"
+            onChange={(e) => setAddSignPosition((e.target as HTMLInputElement).value as AddSignPosition)}
+          >
             <Form.Radio value="before">前加签（加签人先审批）</Form.Radio>
             <Form.Radio value="parallel">并加签（与自己同时审批）</Form.Radio>
             <Form.Radio value="after">后加签（自己之后再审批）</Form.Radio>
           </Form.RadioGroup>
+          {addSignPosition === 'parallel' && (
+            <Form.RadioGroup
+              field="signMode"
+              label="会签方式"
+              onChange={(e) => setSignMode((e.target as HTMLInputElement).value as AddSignMode)}
+            >
+              <Form.Radio value="and">会签（全部通过）</Form.Radio>
+              <Form.Radio value="or">或签（一人通过）</Form.Radio>
+            </Form.RadioGroup>
+          )}
           <Form.TextArea field="comment" label={btnAddSign.opinionName ?? '加签说明'} rows={3} />
         </Form>
       </AppModal>

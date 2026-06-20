@@ -1,9 +1,10 @@
 /**
  * 工作流流程级自动化规则管理页面
  *
- * 配置「流程结束」（通过/驳回/撤回）后自动触发的副作用：
+ * 配置流程发起、结束（通过/驳回/撤回）后自动触发的副作用：
  *   - 自动发起另一个流程
  *   - 自动发送站内信
+ *   - Webhook 回调 / 回写表单字段
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -23,6 +24,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
 import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import type {
   PaginatedResponse,
@@ -38,15 +40,32 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 
-const TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string; color: 'green' | 'red' | 'orange' }> = [
+const TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string; color: TagColor }> = [
+  { value: 'created',   label: '流程发起时', color: 'blue' },
   { value: 'approved',  label: '流程通过', color: 'green' },
   { value: 'rejected',  label: '流程驳回', color: 'red' },
   { value: 'withdrawn', label: '流程撤回', color: 'orange' },
 ];
 const TRIGGER_LABEL_MAP = Object.fromEntries(TRIGGER_OPTIONS.map((o) => [o.value, o])) as Record<string, typeof TRIGGER_OPTIONS[number]>;
 
+type ActionType = WorkflowAutomationAction['type'];
+
+const ACTION_TYPE_OPTIONS: Array<{ value: ActionType; label: string }> = [
+  { value: 'startWorkflow', label: '发起流程' },
+  { value: 'sendMessage', label: '发送站内信' },
+  { value: 'webhook', label: 'Webhook 回调' },
+  { value: 'updateField', label: '回写字段' },
+];
+
+const ACTION_TYPE_META: Record<ActionType, { label: string; color: TagColor }> = {
+  startWorkflow: { label: '发起流程', color: 'blue' },
+  sendMessage: { label: '发送站内信', color: 'purple' },
+  webhook: { label: 'Webhook 回调', color: 'cyan' },
+  updateField: { label: '回写字段', color: 'green' },
+};
+
 interface ActionDraft {
-  type: 'startWorkflow' | 'sendMessage';
+  type: ActionType;
   // startWorkflow
   definitionId?: number;
   titleTemplate?: string;
@@ -57,6 +76,14 @@ interface ActionDraft {
   messageType?: 'info' | 'success' | 'warning' | 'error';
   recipientsKind?: 'initiator' | 'users';
   recipientUserIds?: string;
+  buttonsJson?: string;
+  // webhook
+  url?: string;
+  method?: 'GET' | 'POST' | 'PUT';
+  headersJson?: string;
+  bodyTemplate?: string;
+  // updateField
+  fieldsJson?: string;
 }
 
 interface FormValues {
@@ -68,6 +95,39 @@ interface FormValues {
   actions: ActionDraft[];
 }
 
+function createDefaultActionDraft(type: ActionType): ActionDraft {
+  switch (type) {
+    case 'startWorkflow':
+      return { type, titleTemplate: '', formMappingJson: '' };
+    case 'sendMessage':
+      return { type, title: '', content: '', messageType: 'info', recipientsKind: 'initiator', recipientUserIds: '', buttonsJson: '' };
+    case 'webhook':
+      return { type, url: '', method: 'POST', headersJson: '', bodyTemplate: '' };
+    case 'updateField':
+      return { type, fieldsJson: '' };
+    default:
+      return { type };
+  }
+}
+
+type JsonRecordParseResult = { ok: true; value: Record<string, string> } | { ok: false; message: string };
+
+function parseJsonStringRecord(json: string): JsonRecordParseResult {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ok: false, message: 'JSON 格式不正确' };
+    }
+    const entries = Object.entries(parsed);
+    if (entries.some(([key, value]) => !key.trim() || typeof value !== 'string')) {
+      return { ok: false, message: 'JSON 格式不正确' };
+    }
+    return { ok: true, value: Object.fromEntries(entries) as Record<string, string> };
+  } catch {
+    return { ok: false, message: 'JSON 格式不正确' };
+  }
+}
+
 function actionToDraft(a: WorkflowAutomationAction): ActionDraft {
   if (a.type === 'startWorkflow') {
     return {
@@ -75,6 +135,21 @@ function actionToDraft(a: WorkflowAutomationAction): ActionDraft {
       definitionId: a.definitionId,
       titleTemplate: a.titleTemplate ?? '',
       formMappingJson: a.formMapping ? JSON.stringify(a.formMapping, null, 2) : '',
+    };
+  }
+  if (a.type === 'webhook') {
+    return {
+      type: 'webhook',
+      url: a.url,
+      method: a.method ?? 'POST',
+      headersJson: a.headers ? JSON.stringify(a.headers, null, 2) : '',
+      bodyTemplate: a.bodyTemplate ?? '',
+    };
+  }
+  if (a.type === 'updateField') {
+    return {
+      type: 'updateField',
+      fieldsJson: JSON.stringify(a.fields, null, 2),
     };
   }
   const recipientsKind = a.recipients === 'initiator' || a.recipients == null ? 'initiator' : 'users';
@@ -89,10 +164,10 @@ function actionToDraft(a: WorkflowAutomationAction): ActionDraft {
     recipientsKind,
     recipientUserIds: userIds,
     buttonsJson: a.buttons ? JSON.stringify(a.buttons, null, 2) : '',
-  } as ActionDraft & { buttonsJson?: string };
+  };
 }
 
-function draftToAction(d: ActionDraft & { buttonsJson?: string }): WorkflowAutomationAction | { __error: string } {
+function draftToAction(d: ActionDraft): WorkflowAutomationAction | { __error: string } {
   if (d.type === 'startWorkflow') {
     if (!d.definitionId) return { __error: '动作「发起流程」缺少目标流程' };
     let formMapping: Record<string, string> | undefined;
@@ -107,27 +182,53 @@ function draftToAction(d: ActionDraft & { buttonsJson?: string }): WorkflowAutom
       ...(formMapping ? { formMapping } : {}),
     };
   }
-  if (!d.title?.trim()) return { __error: '动作「站内信」标题不能为空' };
-  if (!d.content?.trim()) return { __error: '动作「站内信」内容不能为空' };
-  let buttons: Array<{ text: string; url: string }> | undefined;
-  if (d.buttonsJson?.trim()) {
-    try { buttons = JSON.parse(d.buttonsJson); }
-    catch { return { __error: '按钮配置必须是合法 JSON 数组' }; }
+  if (d.type === 'sendMessage') {
+    if (!d.title?.trim()) return { __error: '动作「站内信」标题不能为空' };
+    if (!d.content?.trim()) return { __error: '动作「站内信」内容不能为空' };
+    let buttons: Array<{ text: string; url: string }> | undefined;
+    if (d.buttonsJson?.trim()) {
+      try { buttons = JSON.parse(d.buttonsJson); }
+      catch { return { __error: '按钮配置必须是合法 JSON 数组' }; }
+    }
+    const recipients = d.recipientsKind === 'users'
+      ? { userIds: (d.recipientUserIds ?? '').split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0) }
+      : 'initiator';
+    if (typeof recipients === 'object' && recipients.userIds.length === 0) {
+      return { __error: '动作「站内信」自定义收件人不能为空' };
+    }
+    return {
+      type: 'sendMessage',
+      title: d.title,
+      content: d.content,
+      messageType: d.messageType ?? 'info',
+      recipients,
+      ...(buttons?.length ? { buttons } : {}),
+    };
   }
-  const recipients = d.recipientsKind === 'users'
-    ? { userIds: (d.recipientUserIds ?? '').split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n) && n > 0) }
-    : 'initiator';
-  if (typeof recipients === 'object' && recipients.userIds.length === 0) {
-    return { __error: '动作「站内信」自定义收件人不能为空' };
+  if (d.type === 'webhook') {
+    if (!d.url?.trim()) return { __error: '动作「Webhook 回调」URL 不能为空' };
+    let headers: Record<string, string> | undefined;
+    if (d.headersJson?.trim()) {
+      const parsed = parseJsonStringRecord(d.headersJson);
+      if (!parsed.ok) return { __error: parsed.message };
+      headers = parsed.value;
+    }
+    return {
+      type: 'webhook',
+      url: d.url.trim(),
+      method: d.method ?? 'POST',
+      ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+      ...(d.bodyTemplate?.trim() ? { bodyTemplate: d.bodyTemplate } : {}),
+    };
   }
-  return {
-    type: 'sendMessage',
-    title: d.title,
-    content: d.content,
-    messageType: d.messageType ?? 'info',
-    recipients,
-    ...(buttons?.length ? { buttons } : {}),
-  };
+  if (d.type === 'updateField') {
+    if (!d.fieldsJson?.trim()) return { __error: '动作「回写字段」字段配置不能为空' };
+    const fields = parseJsonStringRecord(d.fieldsJson);
+    if (!fields.ok) return { __error: fields.message };
+    if (Object.keys(fields.value).length === 0) return { __error: '动作「回写字段」字段配置不能为空' };
+    return { type: 'updateField', fields: fields.value };
+  }
+  return { __error: '未知动作类型' };
 }
 
 export default function WorkflowAutomationsPage() {
@@ -149,7 +250,7 @@ export default function WorkflowAutomationsPage() {
   const [editing, setEditing] = useState<WorkflowAutomation | null>(null);
   const [saving, setSaving] = useState(false);
   const [modalDetailLoading, setModalDetailLoading] = useState(false);
-  const [actions, setActions] = useState<Array<ActionDraft & { buttonsJson?: string }>>([]);
+  const [actions, setActions] = useState<ActionDraft[]>([]);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const { definitionId: did, trigger: trg, status: sts } = params ?? searchParamsRef.current;
@@ -229,16 +330,18 @@ export default function WorkflowAutomationsPage() {
   };
 
   const addAction = (type: ActionDraft['type']) => {
-    setActions((prev) => [...prev, type === 'startWorkflow'
-      ? { type: 'startWorkflow', titleTemplate: '', formMappingJson: '' }
-      : { type: 'sendMessage', title: '', content: '', messageType: 'info', recipientsKind: 'initiator', recipientUserIds: '', buttonsJson: '' }]);
+    setActions((prev) => [...prev, createDefaultActionDraft(type)]);
   };
 
   const removeAction = (idx: number) => {
     setActions((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const patchAction = (idx: number, patch: Partial<ActionDraft & { buttonsJson?: string }>) => {
+  const changeActionType = (idx: number, type: ActionType) => {
+    setActions((prev) => prev.map((a, i) => (i === idx ? (a.type === type ? a : createDefaultActionDraft(type)) : a)));
+  };
+
+  const patchAction = (idx: number, patch: Partial<ActionDraft>) => {
     setActions((prev) => prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)));
   };
 
@@ -364,6 +467,7 @@ export default function WorkflowAutomationsPage() {
         onOk={() => formApi.current?.submitForm()}
         confirmLoading={saving}
         okButtonProps={{ disabled: modalDetailLoading }}
+        closeOnEsc
         width={780}
       >
         <Spin spinning={modalDetailLoading} wrapperClassName="modal-spin-wrapper">
@@ -408,9 +512,16 @@ export default function WorkflowAutomationsPage() {
           {actions.map((a, idx) => (
             <div key={`${a.type}-${idx}`} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 6, padding: 12, marginBottom: 12 }}>
               <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Tag color={a.type === 'startWorkflow' ? 'blue' : 'purple'}>
-                  {a.type === 'startWorkflow' ? '发起流程' : '发送站内信'}
-                </Tag>
+                <Space>
+                  <Tag color={ACTION_TYPE_META[a.type].color}>{ACTION_TYPE_META[a.type].label}</Tag>
+                  <Select
+                    value={a.type}
+                    onChange={(v) => changeActionType(idx, v as ActionType)}
+                    optionList={ACTION_TYPE_OPTIONS}
+                    style={{ width: 150 }}
+                    size="small"
+                  />
+                </Space>
                 <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => removeAction(idx)} />
               </Space>
 
@@ -435,7 +546,7 @@ export default function WorkflowAutomationsPage() {
                     autosize={{ minRows: 2, maxRows: 6 }}
                   />
                 </Space>
-              ) : (
+              ) : a.type === 'sendMessage' ? (
                 <Space vertical align="start" style={{ width: '100%' }}>
                   <Input
                     placeholder="标题（支持模板变量）"
@@ -482,6 +593,45 @@ export default function WorkflowAutomationsPage() {
                     autosize={{ minRows: 2, maxRows: 5 }}
                   />
                 </Space>
+              ) : a.type === 'webhook' ? (
+                <Space vertical align="start" style={{ width: '100%' }}>
+                  <Input
+                    placeholder="Webhook URL（必填）"
+                    value={a.url ?? ''}
+                    onChange={(v) => patchAction(idx, { url: v })}
+                  />
+                  <Select
+                    value={a.method ?? 'POST'}
+                    onChange={(v) => patchAction(idx, { method: v as ActionDraft['method'] })}
+                    style={{ width: 160 }}
+                    optionList={[
+                      { value: 'GET', label: 'GET' },
+                      { value: 'POST', label: 'POST' },
+                      { value: 'PUT', label: 'PUT' },
+                    ]}
+                  />
+                  <TextArea
+                    placeholder={'请求头（可选，JSON 对象）\n例：{\n  "X-Flow-Title": "{{title}}",\n  "Content-Type": "application/json"\n}'}
+                    value={a.headersJson ?? ''}
+                    onChange={(v: string) => patchAction(idx, { headersJson: v })}
+                    autosize={{ minRows: 2, maxRows: 6 }}
+                  />
+                  <TextArea
+                    placeholder={'请求体模板（可选）\n支持 {{title}}、{{initiator}}、{{fieldKey}} 等变量'}
+                    value={a.bodyTemplate ?? ''}
+                    onChange={(v: string) => patchAction(idx, { bodyTemplate: v })}
+                    autosize={{ minRows: 2, maxRows: 6 }}
+                  />
+                </Space>
+              ) : (
+                <Space vertical align="start" style={{ width: '100%' }}>
+                  <TextArea
+                    placeholder={'回写字段（必填，JSON 对象）\n例：{\n  "status": "已处理",\n  "processedBy": "{{initiator}}",\n  "sourceTitle": "{{title}}"\n}'}
+                    value={a.fieldsJson ?? ''}
+                    onChange={(v: string) => patchAction(idx, { fieldsJson: v })}
+                    autosize={{ minRows: 3, maxRows: 8 }}
+                  />
+                </Space>
               )}
             </div>
           ))}
@@ -490,6 +640,8 @@ export default function WorkflowAutomationsPage() {
         <Space>
           <Button icon={<Plus size={14} />} onClick={() => addAction('startWorkflow')}>添加「发起流程」</Button>
           <Button icon={<Plus size={14} />} onClick={() => addAction('sendMessage')}>添加「站内信」</Button>
+          <Button icon={<Plus size={14} />} onClick={() => addAction('webhook')}>添加「Webhook」</Button>
+          <Button icon={<Plus size={14} />} onClick={() => addAction('updateField')}>添加「回写字段」</Button>
         </Space>
         </Spin>
       </AppModal>

@@ -45,6 +45,9 @@ export function mapInstance(
     childInstances?: Array<{ id: number; title: string; status: typeof workflowInstances.$inferSelect['status']; parentTaskNodeKey?: string | null; createdAt: string }>;
     comments?: import('@zenith/shared').WorkflowComment[];
     consults?: import('@zenith/shared').WorkflowTaskConsult[];
+    myTaskStatus?: typeof workflowTasks.$inferSelect['status'] | null;
+    myActionAt?: Date | string | null;
+    ccTaskId?: number | null;
   } = {},
 ) {
   return {
@@ -70,6 +73,9 @@ export function mapInstance(
     tasks: extras.tasks ?? null,
     comments: extras.comments,
     consults: extras.consults,
+    myTaskStatus: extras.myTaskStatus ?? null,
+    myActionAt: extras.myActionAt != null ? formatNullableDateTime(extras.myActionAt as Date) : null,
+    ccTaskId: extras.ccTaskId ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -1310,6 +1316,103 @@ export async function listPendingMine(query: { page?: number; pageSize?: number;
   };
 }
 
+/** G1 抄送我的：nodeType=ccNode 且 assigneeId=当前用户的任务对应的实例 */
+export async function listMyCc(query: { page?: number; pageSize?: number; keyword?: string }) {
+  const user = currentUser();
+  const { page = 1, pageSize = 20, keyword } = query;
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [
+    eq(workflowTasks.assigneeId, user.userId),
+    eq(workflowTasks.nodeType, 'ccNode'),
+  ];
+  if (tc) conditions.push(tc);
+  if (keyword) {
+    const likeValue = `%${escapeLike(keyword)}%`;
+    conditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue))!);
+  }
+  const where = and(...conditions);
+  const [[{ total }], rows] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(workflowTasks)
+      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+      .where(where),
+    withPagination(
+      db
+        .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
+        .from(workflowTasks)
+        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+        .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+        .where(where)
+        .orderBy(desc(workflowTasks.id))
+        .$dynamic(),
+      page, pageSize,
+    ),
+  ]);
+  return {
+    list: rows.map((r) => mapInstance(r.inst, {
+      definitionName: r.definitionName,
+      initiatorName: r.initiatorName,
+      initiatorAvatar: r.initiatorAvatar,
+      ccTaskId: r.task.id,
+    })),
+    total: Number(total),
+    page,
+    pageSize,
+  };
+}
+
+/** G2 已办：当前用户处理过（approved/rejected）的任务对应的实例 */
+export async function listMyHandled(query: { page?: number; pageSize?: number; keyword?: string }) {
+  const user = currentUser();
+  const { page = 1, pageSize = 20, keyword } = query;
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [
+    eq(workflowTasks.assigneeId, user.userId),
+    inArray(workflowTasks.status, ['approved', 'rejected']),
+  ];
+  if (tc) conditions.push(tc);
+  if (keyword) {
+    const likeValue = `%${escapeLike(keyword)}%`;
+    conditions.push(or(ilike(workflowInstances.title, likeValue), ilike(workflowDefinitions.name, likeValue))!);
+  }
+  const where = and(...conditions);
+  const [[{ total }], rows] = await Promise.all([
+    db
+      .select({ total: count() })
+      .from(workflowTasks)
+      .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+      .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+      .where(where),
+    withPagination(
+      db
+        .select({ inst: workflowInstances, definitionName: workflowDefinitions.name, initiatorName: users.nickname, initiatorAvatar: users.avatar, task: workflowTasks })
+        .from(workflowTasks)
+        .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+        .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+        .where(where)
+        .orderBy(desc(workflowTasks.actionAt))
+        .$dynamic(),
+      page, pageSize,
+    ),
+  ]);
+  return {
+    list: rows.map((r) => mapInstance(r.inst, {
+      definitionName: r.definitionName,
+      initiatorName: r.initiatorName,
+      initiatorAvatar: r.initiatorAvatar,
+      myTaskStatus: r.task.status,
+      myActionAt: r.task.actionAt,
+    })),
+    total: Number(total),
+    page,
+    pageSize,
+  };
+}
+
 export async function listAllInstances(query: { page?: number; pageSize?: number; status?: string; keyword?: string; categoryId?: number; initiatorKeyword?: string }) {
   const user = currentUser();
   const { page = 1, pageSize = 20, status, keyword, categoryId, initiatorKeyword } = query;
@@ -2248,6 +2351,7 @@ export async function addSignTask(
   targetUserIds: number[],
   position: 'before' | 'after' | 'parallel',
   comment?: string,
+  signMode?: 'and' | 'or',
 ) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
   if (targetUserIds.length === 0) throw new HTTPException(400, { message: '请选择加签人' });
@@ -2255,17 +2359,29 @@ export async function addSignTask(
   const [sibling] = await db.select().from(workflowTasks)
     .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, task.nodeKey)))
     .limit(1);
-  const approveMethod = sibling?.approveMethod ?? 'and';
+  // 并行加签可指定会签(and)/或签(or)模式，覆盖本节点完成判定；其余沿用同节点既有方式
+  const overrideMethod = position === 'parallel' && signMode ? signMode : null;
+  const approveMethod = overrideMethod ?? sibling?.approveMethod ?? 'and';
   const posLabelMap = { before: '前', after: '后', parallel: '并' } as const;
   const posLabel = posLabelMap[position];
+  const modeLabel = overrideMethod ? (overrideMethod === 'or' ? '或签' : '会签') : '';
   const addSignSuffix = comment ? `：${comment}` : '';
-  const addSignComment = `[加签-${posLabel}] 由 ${actor.name ?? '系统'} 发起${addSignSuffix}`;
+  const addSignComment = `[加签-${posLabel}${modeLabel}] 由 ${actor.name ?? '系统'} 发起${addSignSuffix}`;
 
   const created = await db.transaction(async (tx) => {
     // before：原任务先转为 waiting，加签任务为 pending；待加签人审批通过后由完成回调推进
     // after / parallel：原任务保持 pending，加签任务以 pending 与之并行（共享 approveMethod 判定完成）
     if (position === 'before') {
       await tx.update(workflowTasks).set({ status: 'waiting' }).where(eq(workflowTasks.id, task.id));
+    }
+    // 并行加签指定会签/或签时，同步本节点全部未结束任务的 approveMethod，保证完成判定一致
+    if (overrideMethod) {
+      await tx.update(workflowTasks).set({ approveMethod: overrideMethod })
+        .where(and(
+          eq(workflowTasks.instanceId, inst.id),
+          eq(workflowTasks.nodeKey, task.nodeKey),
+          inArray(workflowTasks.status, ['pending', 'waiting']),
+        ));
     }
     const newRows = await tx.insert(workflowTasks).values(
       targetUserIds.map((uid) => ({
@@ -2668,6 +2784,33 @@ export async function batchRejectTasks(taskIds: number[], comment: string): Prom
       results.push({ taskId, success: true });
     } catch (err) {
       results.push({ taskId, success: false, message: err instanceof HTTPException ? err.message : '处理失败' });
+    }
+  }
+  return results;
+}
+
+// ─── G8 跨实例批量撤回 / 批量催办 ──────────────────────────────────────────────
+export async function batchWithdrawInstances(instanceIds: number[], _comment?: string): Promise<import('@zenith/shared').WorkflowInstanceBatchActionResult[]> {
+  const results: import('@zenith/shared').WorkflowInstanceBatchActionResult[] = [];
+  for (const instanceId of instanceIds) {
+    try {
+      await withdrawInstance(instanceId);
+      results.push({ instanceId, success: true });
+    } catch (err) {
+      results.push({ instanceId, success: false, message: err instanceof HTTPException ? err.message : '撤回失败' });
+    }
+  }
+  return results;
+}
+
+export async function batchUrgeInstances(instanceIds: number[], message?: string): Promise<import('@zenith/shared').WorkflowInstanceBatchActionResult[]> {
+  const results: import('@zenith/shared').WorkflowInstanceBatchActionResult[] = [];
+  for (const instanceId of instanceIds) {
+    try {
+      const r = await urgeInstance(instanceId, message);
+      results.push({ instanceId, success: true, message: r.message });
+    } catch (err) {
+      results.push({ instanceId, success: false, message: err instanceof HTTPException ? err.message : '催办失败' });
     }
   }
   return results;

@@ -1,4 +1,4 @@
-import { workflowDefinitions, workflowDefinitionVersions, workflowForms, users, userRoles } from '../db/schema';
+import { workflowDefinitions, workflowDefinitionVersions, workflowForms, workflowCategories, users, userRoles } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
 import type { WorkflowFormSchema } from '@zenith/shared';
 
@@ -291,6 +291,148 @@ export async function restoreVersion(definitionId: number, versionId: number) {
     status: 'draft',
   }).where(where).returning();
   return getDefinition(updated.id);
+}
+
+// ─── G4 复制流程 / G5 导出导入 / G6 版本对比 ──────────────────────────────────
+
+/** G4 复制流程：克隆定义（及其表单）为新草稿 */
+export async function duplicateDefinition(id: number) {
+  const where = findDefinition(id);
+  const src = await db.query.workflowDefinitions.findFirst({
+    where,
+    with: { form: { columns: { name: true, description: true, schema: true } } },
+  });
+  if (!src) throw new HTTPException(404, { message: '流程定义不存在' });
+  const user = currentUser();
+  const tenantId = getCreateTenantId(user);
+  const newId = await db.transaction(async (tx) => {
+    let newFormId: number | null = null;
+    if (src.formId != null && src.form) {
+      const [newForm] = await tx.insert(workflowForms).values({
+        name: `${src.form.name ?? '表单'} 副本`,
+        code: null,
+        description: src.form.description ?? null,
+        schema: src.form.schema ?? null,
+        status: 'enabled',
+        tenantId,
+      }).returning();
+      newFormId = newForm.id;
+    }
+    const [row] = await tx.insert(workflowDefinitions).values({
+      name: `${src.name} 副本`,
+      description: src.description ?? null,
+      categoryId: src.categoryId ?? null,
+      initiatorScopeType: src.initiatorScopeType ?? 'all',
+      initiatorScopeIds: src.initiatorScopeIds ?? null,
+      flowData: src.flowData ?? null,
+      formId: newFormId,
+      status: 'draft',
+      tenantId,
+    }).returning();
+    return row.id;
+  });
+  return getDefinition(newId);
+}
+
+/** G5 导出流程定义为自包含 JSON（含表单 schema） */
+export async function exportDefinition(id: number) {
+  const row = await db.query.workflowDefinitions.findFirst({
+    where: findDefinition(id),
+    with: {
+      category: { columns: { name: true } },
+      form: { columns: { name: true, description: true, schema: true } },
+    },
+  });
+  if (!row) throw new HTTPException(404, { message: '流程定义不存在' });
+  return {
+    name: row.name,
+    description: row.description ?? null,
+    categoryName: row.category?.name ?? null,
+    flowData: row.flowData ?? null,
+    form: row.form
+      ? { name: row.form.name ?? '表单', description: row.form.description ?? null, schema: row.form.schema ?? null }
+      : null,
+    exportedAt: formatDateTime(new Date()),
+    schemaVersion: 1,
+  };
+}
+
+/** G5 从导出 JSON 导入为新草稿（按分类名匹配既有分类，找不到则忽略） */
+export async function importDefinition(data: {
+  name: string;
+  description?: string | null;
+  categoryName?: string | null;
+  flowData?: unknown;
+  form?: { name: string; description?: string | null; schema?: unknown } | null;
+}) {
+  const user = currentUser();
+  const tenantId = getCreateTenantId(user);
+  let categoryId: number | null = null;
+  if (data.categoryName) {
+    const tc = tenantCondition(workflowCategories, user);
+    const conds = [eq(workflowCategories.name, data.categoryName)];
+    if (tc) conds.push(tc);
+    const [cat] = await db.select({ id: workflowCategories.id }).from(workflowCategories).where(and(...conds)).limit(1);
+    categoryId = cat?.id ?? null;
+  }
+  const newId = await db.transaction(async (tx) => {
+    let newFormId: number | null = null;
+    if (data.form) {
+      const [newForm] = await tx.insert(workflowForms).values({
+        name: data.form.name || '导入表单',
+        code: null,
+        description: data.form.description ?? null,
+        schema: (data.form.schema ?? null) as Record<string, unknown> | null,
+        status: 'enabled',
+        tenantId,
+      }).returning();
+      newFormId = newForm.id;
+    }
+    const [row] = await tx.insert(workflowDefinitions).values({
+      name: data.name,
+      description: data.description ?? null,
+      categoryId,
+      flowData: (data.flowData ?? null) as WorkflowFlowData | null,
+      formId: newFormId,
+      status: 'draft',
+      tenantId,
+    }).returning();
+    return row.id;
+  });
+  return getDefinition(newId);
+}
+
+/** G6 版本对比：返回两个版本的快照供前端 diff（leftId/rightId 任一为 0 表示当前草稿） */
+export async function diffVersions(definitionId: number, leftId: number, rightId: number) {
+  const where = findDefinition(definitionId);
+  const [def] = await db.select().from(workflowDefinitions).where(where).limit(1);
+  if (!def) throw new HTTPException(404, { message: '流程定义不存在' });
+
+  const loadSide = async (versionId: number) => {
+    if (versionId === 0) {
+      return {
+        version: def.version,
+        name: def.name,
+        label: `当前（v${def.version}）`,
+        flowData: def.flowData ?? null,
+        publishedAt: null as string | null,
+      };
+    }
+    const [ver] = await db.select().from(workflowDefinitionVersions)
+      .where(and(eq(workflowDefinitionVersions.id, versionId), eq(workflowDefinitionVersions.definitionId, definitionId)))
+      .limit(1);
+    if (!ver) throw new HTTPException(404, { message: '历史版本不存在' });
+    return {
+      version: ver.version,
+      name: ver.name,
+      label: `v${ver.version}`,
+      flowData: ver.flowData ?? null,
+      publishedAt: formatDateTime(ver.publishedAt),
+    };
+  };
+
+  const [left, right] = await Promise.all([loadSide(leftId), loadSide(rightId)]);
+  return { left, right };
 }
 
 export async function disableDefinition(id: number) {

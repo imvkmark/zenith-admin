@@ -17,7 +17,7 @@ import {
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import dayjs from 'dayjs';
-import { FileInput, Plus, RotateCcw, Search } from 'lucide-react';
+import { FileInput, Megaphone, Plus, RotateCcw, Search, Undo2 } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowInstance, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
@@ -34,6 +34,12 @@ import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
+
+type WorkflowInstanceBatchActionResponse = {
+  succeeded: number;
+  failed: number;
+  results: Array<{ instanceId: number; success: boolean; message?: string }>;
+};
 
 const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
   draft: { text: '草稿', color: 'grey' },
@@ -373,6 +379,13 @@ export default function MyApplicationsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [applyCategoryId, setApplyCategoryId] = useState<number | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [batchWithdrawVisible, setBatchWithdrawVisible] = useState(false);
+  const [batchWithdrawComment, setBatchWithdrawComment] = useState('');
+  const [batchWithdrawLoading, setBatchWithdrawLoading] = useState(false);
+  const [batchUrgeVisible, setBatchUrgeVisible] = useState(false);
+  const [batchUrgeMessage, setBatchUrgeMessage] = useState('');
+  const [batchUrgeLoading, setBatchUrgeLoading] = useState(false);
   const { categories } = useWorkflowCategories();
   // draft editing state
   const [editingDraft, setEditingDraft] = useState<WorkflowInstance | null>(null);
@@ -579,6 +592,74 @@ export default function MyApplicationsPage() {
     }
   };
 
+  const selectedRunningIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running'));
+
+  const openBatchWithdraw = () => {
+    if (selectedRunningIds.length === 0) {
+      Toast.warning('请选择审批中的申请');
+      return;
+    }
+    setBatchWithdrawComment('');
+    setBatchWithdrawVisible(true);
+  };
+
+  const handleBatchWithdraw = async () => {
+    const instanceIds = selectedRunningIds;
+    if (instanceIds.length === 0) {
+      Toast.warning('请选择审批中的申请');
+      return;
+    }
+    setBatchWithdrawLoading(true);
+    try {
+      const res = await request.post<WorkflowInstanceBatchActionResponse>('/api/workflows/instances/batch-withdraw', {
+        instanceIds,
+        comment: batchWithdrawComment.trim() || undefined,
+      });
+      if (res.code === 0) {
+        Toast.success(res.message || `成功 ${res.data.succeeded} 条，失败 ${res.data.failed} 条`);
+        setBatchWithdrawVisible(false);
+        setBatchWithdrawComment('');
+        setSelectedRowKeys([]);
+        void fetchList();
+      }
+    } finally {
+      setBatchWithdrawLoading(false);
+    }
+  };
+
+  const openBatchUrge = () => {
+    if (selectedRunningIds.length === 0) {
+      Toast.warning('请选择审批中的申请');
+      return;
+    }
+    setBatchUrgeMessage('');
+    setBatchUrgeVisible(true);
+  };
+
+  const handleBatchUrge = async () => {
+    const instanceIds = selectedRunningIds;
+    if (instanceIds.length === 0) {
+      Toast.warning('请选择审批中的申请');
+      return;
+    }
+    setBatchUrgeLoading(true);
+    try {
+      const res = await request.post<WorkflowInstanceBatchActionResponse>('/api/workflows/instances/batch-urge', {
+        instanceIds,
+        message: batchUrgeMessage.trim() || undefined,
+      });
+      if (res.code === 0) {
+        Toast.success(res.message || `成功 ${res.data.succeeded} 条，失败 ${res.data.failed} 条`);
+        setBatchUrgeVisible(false);
+        setBatchUrgeMessage('');
+        setSelectedRowKeys([]);
+        void fetchList();
+      }
+    } finally {
+      setBatchUrgeLoading(false);
+    }
+  };
+
   const columns: ColumnProps<WorkflowInstance>[] = [
     {
       title: '申请标题',
@@ -684,6 +765,8 @@ export default function MyApplicationsPage() {
           </Select>
           <Button type="primary" icon={<Search size={14} />} onClick={() => { handleSearch(); }}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { handleReset(); }}>重置</Button>
+          <Button type="tertiary" icon={<Undo2 size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchWithdraw}>批量撤回</Button>
+          <Button type="primary" icon={<Megaphone size={14} />} disabled={selectedRunningIds.length === 0} onClick={openBatchUrge}>批量催办</Button>
           <Button type="primary" icon={<Plus size={14} />} onClick={() => { void openApply(); }}>
             发起申请
           </Button>
@@ -697,6 +780,11 @@ export default function MyApplicationsPage() {
         pagination={buildPagination(data?.total ?? 0, fetchList)}
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
+          getCheckboxProps: (record: WorkflowInstance) => ({ disabled: record.status !== 'running' }),
+        }}
       />
 
       {/* 申请详情 */}
@@ -797,6 +885,44 @@ export default function MyApplicationsPage() {
           </div>
         )}
       </SideSheet>
+
+      <AppModal
+        title="批量撤回"
+        visible={batchWithdrawVisible}
+        onCancel={() => setBatchWithdrawVisible(false)}
+        onOk={() => void handleBatchWithdraw()}
+        confirmLoading={batchWithdrawLoading}
+        okText="确认撤回"
+      >
+        <Typography.Text>确定撤回选中的 {selectedRunningIds.length} 个申请吗？</Typography.Text>
+        <TextArea
+          value={batchWithdrawComment}
+          onChange={setBatchWithdrawComment}
+          placeholder="可选撤回说明（最多 500 个字符）"
+          maxLength={500}
+          rows={3}
+          style={{ marginTop: 12 }}
+        />
+      </AppModal>
+
+      <AppModal
+        title="批量催办"
+        visible={batchUrgeVisible}
+        onCancel={() => setBatchUrgeVisible(false)}
+        onOk={() => void handleBatchUrge()}
+        confirmLoading={batchUrgeLoading}
+        okText="发送催办"
+      >
+        <Typography.Text type="tertiary" size="small">将对选中的运行中申请发起催办（5 分钟内已被催办过的人员会被跳过）</Typography.Text>
+        <TextArea
+          value={batchUrgeMessage}
+          onChange={setBatchUrgeMessage}
+          placeholder="可选留言（最多 256 个字符）"
+          maxLength={256}
+          rows={3}
+          style={{ marginTop: 12 }}
+        />
+      </AppModal>
     </div>
   );
 }

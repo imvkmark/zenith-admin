@@ -841,15 +841,30 @@ const workflowAutomationActionSendMessageSchema = z.object({
     .optional(),
 });
 
+const workflowAutomationActionWebhookSchema = z.object({
+  type: z.literal('webhook'),
+  url: z.string().min(1, 'Webhook 地址不能为空').max(512),
+  method: z.enum(['GET', 'POST', 'PUT']).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  bodyTemplate: z.string().max(4000).optional(),
+});
+
+const workflowAutomationActionUpdateFieldSchema = z.object({
+  type: z.literal('updateField'),
+  fields: z.record(z.string(), z.string()).refine((v) => Object.keys(v).length > 0, '至少配置 1 个字段'),
+});
+
 export const workflowAutomationActionSchema = z.discriminatedUnion('type', [
   workflowAutomationActionStartWorkflowSchema,
   workflowAutomationActionSendMessageSchema,
+  workflowAutomationActionWebhookSchema,
+  workflowAutomationActionUpdateFieldSchema,
 ]);
 
 export const createWorkflowAutomationSchema = z.object({
   definitionId: z.number().int().positive('请选择流程'),
   name: z.string().min(1, '规则名称不能为空').max(128),
-  trigger: z.enum(['approved', 'rejected', 'withdrawn']),
+  trigger: z.enum(['approved', 'rejected', 'withdrawn', 'created']),
   actions: z.array(workflowAutomationActionSchema).min(1, '至少配置 1 个动作').max(10),
   status: z.enum(['enabled', 'disabled']).default('enabled'),
   sort: z.number().int().nonnegative().default(0),
@@ -898,6 +913,8 @@ export const delegateWorkflowTaskSchema = z.object({
 export const addSignWorkflowTaskSchema = z.object({
   targetUserIds: z.array(z.number().int().positive()).min(1, '请选择加签人'),
   position: z.enum(['before', 'after', 'parallel']).default('parallel'),
+  /** 多加签人时的会签/或签模式：and=全部通过(会签), or=任一通过(或签)。仅 parallel 生效 */
+  signMode: z.enum(['and', 'or']).optional(),
   comment: z.string().max(500).optional(),
 });
 
@@ -940,6 +957,30 @@ export const batchApproveWorkflowTaskSchema = z.object({
 export const batchRejectWorkflowTaskSchema = z.object({
   taskIds: z.array(z.number().int().positive()).min(1, '请选择任务').max(200),
   comment: z.string().min(1, '驳回原因不能为空').max(500),
+});
+
+// ── 批量撤回 / 批量催办（跨实例，发起人/管理员维度）──
+export const batchWithdrawWorkflowInstanceSchema = z.object({
+  instanceIds: z.array(z.number().int().positive()).min(1, '请选择流程').max(200),
+  comment: z.string().max(500).optional(),
+});
+
+export const batchUrgeWorkflowInstanceSchema = z.object({
+  instanceIds: z.array(z.number().int().positive()).min(1, '请选择流程').max(200),
+  message: z.string().max(256).optional(),
+});
+
+// ── 流程定义导入（自包含 JSON）──
+export const importWorkflowDefinitionSchema = z.object({
+  name: z.string().min(1, '流程名称不能为空').max(128),
+  description: z.string().max(512).nullable().optional(),
+  categoryName: z.string().max(64).nullable().optional(),
+  flowData: z.unknown(),
+  form: z.object({
+    name: z.string().max(128),
+    description: z.string().max(512).nullable().optional(),
+    schema: z.unknown(),
+  }).nullable().optional(),
 });
 
 // ── 流程评论 ──
@@ -1043,6 +1084,9 @@ export type CreateWorkflowInstanceWithDraftInput = z.infer<typeof createWorkflow
 export type UpdateWorkflowInstanceInput = z.infer<typeof updateWorkflowInstanceSchema>;
 export type BatchApproveWorkflowTaskInput = z.infer<typeof batchApproveWorkflowTaskSchema>;
 export type BatchRejectWorkflowTaskInput = z.infer<typeof batchRejectWorkflowTaskSchema>;
+export type BatchWithdrawWorkflowInstanceInput = z.infer<typeof batchWithdrawWorkflowInstanceSchema>;
+export type BatchUrgeWorkflowInstanceInput = z.infer<typeof batchUrgeWorkflowInstanceSchema>;
+export type ImportWorkflowDefinitionInput = z.infer<typeof importWorkflowDefinitionSchema>;
 export type CreateWorkflowCommentInput = z.infer<typeof createWorkflowCommentSchema>;
 export type CreateWorkflowQuickPhraseInput = z.infer<typeof createWorkflowQuickPhraseSchema>;
 export type UpdateWorkflowQuickPhraseInput = z.infer<typeof updateWorkflowQuickPhraseSchema>;
