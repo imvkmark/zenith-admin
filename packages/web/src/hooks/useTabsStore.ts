@@ -11,15 +11,20 @@ export interface TabItem {
 
 const HOME_TAB: TabItem = { key: '/', title: '首页', closable: false };
 
+/** 认证/公共路径不应作为标签页存在，清理历史持久化的脏标签 */
+const NON_TAB_KEYS = new Set(['/login', '/reset-password']);
+
 function readPersistedTabs(): { tabs: TabItem[]; activeKey: string } | null {
   try {
     const raw = localStorage.getItem(TABS_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { tabs: TabItem[]; activeKey: string };
     if (!Array.isArray(parsed.tabs) || !parsed.tabs.length) return null;
-    const hasHome = parsed.tabs.some((t) => t.key === '/');
-    const tabs = hasHome ? parsed.tabs : [HOME_TAB, ...parsed.tabs];
-    const activeKey = typeof parsed.activeKey === 'string' ? parsed.activeKey : '/';
+    const cleaned = parsed.tabs.filter((t) => !NON_TAB_KEYS.has(t.key));
+    const hasHome = cleaned.some((t) => t.key === '/');
+    const tabs = hasHome ? cleaned : [HOME_TAB, ...cleaned];
+    const persistedActive = typeof parsed.activeKey === 'string' ? parsed.activeKey : '/';
+    const activeKey = tabs.some((t) => t.key === persistedActive) ? persistedActive : '/';
     return { tabs, activeKey };
   } catch {
     return null;

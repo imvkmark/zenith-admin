@@ -53,6 +53,22 @@ function RedirectToLogin() {
 }
 
 /**
+ * 已登录用户访问登录页时的重定向守卫。
+ * 避免 /login 落入 AdminLayout 的 catch-all 404，从而作为标签页出现在多标签栏。
+ * 若存在合法的 redirect 参数则跳转到目标页，否则回到首页。
+ */
+function RedirectFromLogin() {
+  const location = useLocation();
+  const redirect = new URLSearchParams(location.search).get('redirect');
+  const safe =
+    !!redirect &&
+    redirect.startsWith('/') &&
+    !redirect.startsWith('//') &&
+    !redirect.startsWith('/login');
+  return <Navigate to={safe ? redirect! : '/'} replace />;
+}
+
+/**
  * Catch-all 路由守卫：区分 403（页面存在但无权限）和 404（页面不存在）。
  * 通过 allMenuPaths 判断当前路径是否对应一个已存在的页面组件。
  */
@@ -149,6 +165,9 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
       <Routes>
         {/* OAuth2 同意授权页（独立页面，不在 AdminLayout 内）*/}
         <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
+        {/* 已登录用户访问认证页 → 重定向，避免落入 AdminLayout catch-all 404 并作为标签页出现 */}
+        <Route path="/login" element={<RedirectFromLogin />} />
+        <Route path="/reset-password" element={<Navigate to="/" replace />} />
         <Route path="/" element={<AdminLayout user={user} onLogout={logout} presetMenus={menus} />}>
         {/* 固定路由 */}
         <Route index element={<Suspense fallback={<DashboardSkeleton />}><DashboardPage /></Suspense>} />
