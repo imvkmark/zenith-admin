@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
-import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition, Dict, PaginatedResponse } from '@zenith/shared';
+import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition, Dict, PaginatedResponse, WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { CURRENCY_OPTIONS, DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, REGION_LEVEL_OPTIONS, COLUMN_SPAN_OPTIONS, LABEL_POSITION_OPTIONS, LABEL_ALIGN_OPTIONS, FORM_FIELD_TYPES, toDateFnsToken } from '../form-types';
 
@@ -65,7 +65,8 @@ export default function FieldConfigPanel({
   const isUserSelect = field.type === 'userSelect';
   const isDeptSelect = field.type === 'deptSelect';
   const isDictSelect = field.type === 'dictSelect';
-  const isSystemSelect = isUserSelect || isDeptSelect || isDictSelect;
+  const isRelationSelect = field.type === 'relation';
+  const isSystemSelect = isUserSelect || isDeptSelect || isDictSelect || isRelationSelect;
   const isSpecialInput = isTime || isRegion || isSignature || isRichText || isSwitch || isSlider || isTags || isColorPicker || isPinCode || isSystemSelect;
   // 支持响应式列宽 / 只读 / 隐藏的普通输入字段（排除布局类与纯展示类）
   const supportsLayoutState = !isLayout && !isDescription && !isSerialNumber;
@@ -425,6 +426,30 @@ export default function FieldConfigPanel({
             </div>
           )}
 
+          {/* 关联审批单绑定 */}
+          {isRelationSelect && (
+            <>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">关联流程</Typography.Text>
+                <RelationDefinitionPicker
+                  value={field.relationDefinitionId}
+                  onChange={(id) => onChange({ relationDefinitionId: id })}
+                />
+                <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                  留空表示可关联任意已发布流程的审批单
+                </Typography.Text>
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">展示字段 key</Typography.Text>
+                <Input
+                  value={field.relationDisplayField ?? ''}
+                  onChange={(v) => onChange({ relationDisplayField: v || undefined })}
+                  placeholder="可选，如 title / formData.amount"
+                />
+              </div>
+            </>
+          )}
+
           {/* 系统选择器：是否多选 */}
           {isSystemSelect && (
             <div className="fd-form-config__field fd-form-config__field--inline">
@@ -775,6 +800,47 @@ export default function FieldConfigPanel({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── 关联流程选择器（设计态：限制可关联哪个审批流） ──────────────────
+
+let definitionListCache: WorkflowDefinition[] | null = null;
+
+function RelationDefinitionPicker({
+  value,
+  onChange,
+}: Readonly<{ value?: number; onChange: (id: number | undefined) => void }>) {
+  const [definitions, setDefinitions] = useState<WorkflowDefinition[]>(definitionListCache ?? []);
+  const [loading, setLoading] = useState(!definitionListCache);
+
+  useEffect(() => {
+    if (definitionListCache) return;
+    setLoading(true);
+    request.get<WorkflowDefinition[]>('/api/workflows/definitions/published', { silent: true })
+      .then((res) => {
+        if (res.code === 0 && res.data) {
+          definitionListCache = res.data;
+          setDefinitions(res.data);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <Select
+      value={value === undefined ? '' : String(value)}
+      onChange={(v) => onChange(v === '' || v === undefined || v === null ? undefined : Number(v))}
+      placeholder={loading ? '加载中...' : '请选择关联流程'}
+      filter
+      showClear
+      disabled={loading}
+      style={{ width: '100%' }}
+      optionList={[
+        { value: '', label: '任意流程' },
+        ...definitions.map((d) => ({ value: String(d.id), label: d.name })),
+      ]}
+    />
   );
 }
 

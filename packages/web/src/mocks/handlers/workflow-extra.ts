@@ -50,6 +50,15 @@ let nextTemplateId = 100;
 const mockConsults: WorkflowTaskConsult[] = [];
 let nextConsultId = 1;
 
+// ── Round-3 内存态 ──
+const ccReadState = new Set<number>();
+interface MockSavedView { id: number; userId: number; pageKey: string; name: string; filters: Record<string, unknown>; isDefault: boolean; sort: number; createdAt: string; updatedAt: string }
+const mockSavedViews: MockSavedView[] = [];
+let nextSavedViewId = 1;
+interface MockSchedule { id: number; definitionId: number; definitionName: string | null; name: string; cronExpression: string; initiatorId: number; initiatorName: string | null; titleTemplate: string | null; formData: Record<string, unknown> | null; status: 'enabled' | 'disabled'; lastRunAt: string | null; lastRunStatus: string | null; lastRunMessage: string | null; nextRunAt: string | null; tenantId: number | null; createdAt: string; updatedAt: string }
+const mockSchedules: MockSchedule[] = [];
+let nextScheduleId = 1;
+
 function buildAnalytics(): WorkflowAnalytics {
   const insts = mockWorkflowInstances;
   const statusMap = new Map<string, number>();
@@ -151,8 +160,19 @@ export const workflowExtraHandlers = [
     const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
     let all = mockWorkflowInstances.filter((i) => i.status !== 'draft');
     if (keyword) all = all.filter((i) => i.title.toLowerCase().includes(keyword) || (i.definitionName ?? '').toLowerCase().includes(keyword));
-    const list = all.map((i, idx) => ({ ...i, ccTaskId: 90000 + idx } as WorkflowInstance));
+    const list = all.map((i, idx) => {
+      const ccTaskId = 90000 + idx;
+      return { ...i, ccTaskId, ccReadAt: ccReadState.has(ccTaskId) ? mockDateTime() : null } as WorkflowInstance;
+    });
     return ok({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
+  }),
+  http.get('/api/workflows/instances/cc-mine/unread-count', () => {
+    const total = mockWorkflowInstances.filter((i) => i.status !== 'draft').length;
+    return ok({ count: Math.max(0, total - ccReadState.size) });
+  }),
+  http.post('/api/workflows/instances/cc/:ccTaskId/read', ({ params }) => {
+    ccReadState.add(Number(params.ccTaskId));
+    return ok(null, '已标记已读');
   }),
 
   // ── G2 我已办（必须在 /instances/:id 之前注册）──
@@ -250,6 +270,102 @@ export const workflowExtraHandlers = [
       publishedAt: v === 0 ? null : mockDateTime(),
     });
     return ok({ left: side(leftV), right: side(rightV) });
+  }),
+
+  // ── T1-1 提交前审批链路预览 ──
+  http.post('/api/workflows/definitions/:id/preview', () => ok([
+    { nodeKey: 'approve_manager', nodeName: '直属主管审批', nodeType: 'approve', approvers: [{ id: 2, name: '李四' }], approveMethod: 'or', branchLabel: null, empty: false },
+    { nodeKey: 'approve_dept_head', nodeName: '部门负责人审批', nodeType: 'approve', approvers: [{ id: 3, name: '王五' }], approveMethod: 'and', branchLabel: null, empty: false },
+    { nodeKey: 'cc_initiator', nodeName: '抄送发起人', nodeType: 'ccNode', approvers: [{ id: 1, name: '张三' }], approveMethod: null, branchLabel: null, empty: false },
+  ])),
+
+  // ── T1-2 主动抄送 / 转发 ──
+  http.post('/api/workflows/instances/:id/forward', async ({ request }) => {
+    const body = await request.json().catch(() => ({})) as { userIds?: number[] };
+    const n = (body.userIds ?? []).length;
+    return ok(null, `已抄送 ${n} 人`);
+  }),
+
+  // ── T2-2 关联审批单候选 ──
+  http.get('/api/workflows/instances/relation-options', ({ request }) => {
+    const url = new URL(request.url);
+    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase();
+    const definitionId = url.searchParams.get('definitionId');
+    let all = mockWorkflowInstances.filter((i) => i.status !== 'draft');
+    if (definitionId) all = all.filter((i) => i.definitionId === Number(definitionId));
+    if (keyword) all = all.filter((i) => i.title.toLowerCase().includes(keyword) || (i.serialNo ?? '').toLowerCase().includes(keyword));
+    return ok(all.slice(0, 20).map((i) => ({
+      instanceId: i.id, title: i.title, serialNo: i.serialNo ?? null,
+      definitionName: i.definitionName ?? null, status: i.status, createdAt: i.createdAt,
+    })));
+  }),
+
+  // ── T1-3 列表保存视图 ──
+  http.get('/api/workflows/saved-views', ({ request }) => {
+    const url = new URL(request.url);
+    const pageKey = url.searchParams.get('pageKey') ?? '';
+    return ok(mockSavedViews.filter((v) => v.pageKey === pageKey));
+  }),
+  http.post('/api/workflows/saved-views', async ({ request }) => {
+    const body = await request.json() as { pageKey: string; name: string; filters?: Record<string, unknown>; isDefault?: boolean; sort?: number };
+    const now = mockDateTime();
+    const view: MockSavedView = { id: nextSavedViewId++, userId: 1, pageKey: body.pageKey, name: body.name, filters: body.filters ?? {}, isDefault: body.isDefault ?? false, sort: body.sort ?? 0, createdAt: now, updatedAt: now };
+    mockSavedViews.push(view);
+    return ok(view, '已保存');
+  }),
+  http.put('/api/workflows/saved-views/:id', async ({ params, request }) => {
+    const v = mockSavedViews.find((x) => x.id === Number(params.id));
+    if (!v) return err('视图不存在', 404);
+    const body = await request.json() as Partial<MockSavedView>;
+    Object.assign(v, body, { updatedAt: mockDateTime() });
+    return ok(v, '已更新');
+  }),
+  http.delete('/api/workflows/saved-views/:id', ({ params }) => {
+    const idx = mockSavedViews.findIndex((x) => x.id === Number(params.id));
+    if (idx === -1) return err('视图不存在', 404);
+    mockSavedViews.splice(idx, 1);
+    return ok(null, '已删除');
+  }),
+
+  // ── T2-1 定时发起 ──
+  http.get('/api/workflows/schedules', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Number(url.searchParams.get('page') ?? 1);
+    const pageSize = Number(url.searchParams.get('pageSize') ?? 20);
+    return ok({ list: mockSchedules.slice((page - 1) * pageSize, page * pageSize), total: mockSchedules.length, page, pageSize });
+  }),
+  http.post('/api/workflows/schedules', async ({ request }) => {
+    const body = await request.json() as { definitionId: number; name: string; cronExpression: string; initiatorId: number; titleTemplate?: string | null; formData?: Record<string, unknown> | null; status?: 'enabled' | 'disabled' };
+    const def = mockWorkflowDefinitions.find((d) => d.id === body.definitionId);
+    const now = mockDateTime();
+    const s: MockSchedule = {
+      id: nextScheduleId++, definitionId: body.definitionId, definitionName: def?.name ?? null,
+      name: body.name, cronExpression: body.cronExpression, initiatorId: body.initiatorId, initiatorName: `用户#${body.initiatorId}`,
+      titleTemplate: body.titleTemplate ?? null, formData: body.formData ?? null, status: body.status ?? 'enabled',
+      lastRunAt: null, lastRunStatus: null, lastRunMessage: null, nextRunAt: mockDateTime(), tenantId: null, createdAt: now, updatedAt: now,
+    };
+    mockSchedules.push(s);
+    return ok(s, '已创建');
+  }),
+  http.put('/api/workflows/schedules/:id', async ({ params, request }) => {
+    const s = mockSchedules.find((x) => x.id === Number(params.id));
+    if (!s) return err('定时规则不存在', 404);
+    const body = await request.json() as Partial<MockSchedule>;
+    Object.assign(s, body, { updatedAt: mockDateTime() });
+    if (body.definitionId) s.definitionName = mockWorkflowDefinitions.find((d) => d.id === body.definitionId)?.name ?? null;
+    return ok(s, '已更新');
+  }),
+  http.delete('/api/workflows/schedules/:id', ({ params }) => {
+    const idx = mockSchedules.findIndex((x) => x.id === Number(params.id));
+    if (idx === -1) return err('定时规则不存在', 404);
+    mockSchedules.splice(idx, 1);
+    return ok(null, '已删除');
+  }),
+  http.post('/api/workflows/schedules/:id/run', ({ params }) => {
+    const s = mockSchedules.find((x) => x.id === Number(params.id));
+    if (!s) return err('定时规则不存在', 404);
+    s.lastRunAt = mockDateTime(); s.lastRunStatus = 'success'; s.lastRunMessage = `已发起：${s.name}`;
+    return ok(s, '已触发一次执行');
   }),
 
   // ── 我的协办（必须在 /instances/:id 之前注册）──

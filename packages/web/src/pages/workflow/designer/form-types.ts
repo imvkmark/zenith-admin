@@ -40,6 +40,7 @@ import {
   SquareAsterisk,
   TextCursorInput,
   Palette,
+  Link2,
   type LucideIcon,
 } from 'lucide-react';
 import type { WorkflowFormFieldType } from '@zenith/shared';
@@ -89,6 +90,7 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'userSelect',   label: '人员选择', icon: Users,         group: '系统组件', description: '选择系统用户（人员）' },
   { type: 'deptSelect',   label: '部门选择', icon: Network,       group: '系统组件', description: '选择组织部门' },
   { type: 'dictSelect',   label: '字典选择', icon: BookMarked,    group: '系统组件', description: '选择数据字典项' },
+  { type: 'relation',     label: '关联审批单', icon: Link2,       group: '系统组件', description: '关联已有审批实例' },
 
   // 高级控件
   { type: 'attachment',   label: '附件',     icon: Paperclip,     group: '高级控件', description: '上传附件' },

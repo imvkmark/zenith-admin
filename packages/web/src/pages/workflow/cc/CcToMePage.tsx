@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Input, Space, Tag } from '@douyinfe/semi-ui';
+import { Button, Input, Select, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
 import type { WorkflowInstance, PaginatedResponse } from '@zenith/shared';
@@ -7,6 +7,7 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -31,6 +32,12 @@ export default function CcToMePage() {
   keywordRef.current = keyword;
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // 转发抄送
+  const [forwardTarget, setForwardTarget] = useState<WorkflowInstance | null>(null);
+  const [forwardUserIds, setForwardUserIds] = useState<number[]>([]);
+  const [forwardNote, setForwardNote] = useState('');
+  const [forwardLoading, setForwardLoading] = useState(false);
+  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, kw?: string) => {
     const activeKeyword = kw ?? keywordRef.current;
@@ -66,9 +73,47 @@ export default function CcToMePage() {
     void fetchList(1, pageSize, '');
   };
 
-  const openDetail = (id: number) => {
-    setSelectedId(id);
+  const openDetail = (record: WorkflowInstance) => {
+    setSelectedId(record.id);
     setDetailVisible(true);
+    // 自动标记已读
+    if (record.ccTaskId && !record.ccReadAt) {
+      void request.post(`/api/workflows/instances/cc/${record.ccTaskId}/read`, {}).then((res) => {
+        if (res.code === 0) void fetchList();
+      });
+    }
+  };
+
+  const openForward = async (record: WorkflowInstance) => {
+    setForwardTarget(record);
+    setForwardUserIds([]);
+    setForwardNote('');
+    if (userOptions.length === 0) {
+      try {
+        const res = await request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all');
+        if (res.code === 0) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
+      } catch { /* ignore */ }
+    }
+  };
+
+  const handleForward = async () => {
+    if (!forwardTarget || forwardUserIds.length === 0) {
+      Toast.warning('请选择抄送人');
+      return;
+    }
+    setForwardLoading(true);
+    try {
+      const res = await request.post(`/api/workflows/instances/${forwardTarget.id}/forward`, {
+        userIds: forwardUserIds,
+        note: forwardNote || undefined,
+      });
+      if (res.code === 0) {
+        Toast.success(res.message || '已抄送');
+        setForwardTarget(null);
+      }
+    } finally {
+      setForwardLoading(false);
+    }
   };
 
   const columns: ColumnProps<WorkflowInstance>[] = [
@@ -76,7 +121,13 @@ export default function CcToMePage() {
     { title: '业务编号', dataIndex: 'serialNo', width: 130, render: (v: string | null) => v ?? '—' },
     { title: '流程名称', dataIndex: 'definitionName', width: 160, render: renderEllipsis },
     { title: '发起人', dataIndex: 'initiatorName', width: 120, render: (v: string | null) => v ?? '—' },
-    { title: '抄送时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
+    { title: '抄送时间', dataIndex: 'createdAt', width: 170, render: (v: string) => formatDateTime(v) },
+    {
+      title: '阅读',
+      dataIndex: 'ccReadAt',
+      width: 80,
+      render: (v: string | null) => (v ? <Tag color="grey" size="small">已读</Tag> : <Tag color="red" size="small">未读</Tag>),
+    },
     {
       title: '状态',
       dataIndex: 'status',
@@ -90,11 +141,12 @@ export default function CcToMePage() {
     {
       title: '操作',
       key: 'action',
-      width: 90,
+      width: 140,
       fixed: 'right',
       render: (_: unknown, record: WorkflowInstance) => (
         <Space>
-          <Button theme="borderless" size="small" onClick={() => openDetail(record.id)}>详情</Button>
+          <Button theme="borderless" size="small" onClick={() => openDetail(record)}>详情</Button>
+          <Button theme="borderless" size="small" onClick={() => void openForward(record)}>转发</Button>
         </Space>
       ),
     },
@@ -131,6 +183,38 @@ export default function CcToMePage() {
         onClose={() => setDetailVisible(false)}
         title="抄送详情"
       />
+      <AppModal
+        title="转发抄送"
+        visible={forwardTarget !== null}
+        onCancel={() => setForwardTarget(null)}
+        onOk={() => void handleForward()}
+        confirmLoading={forwardLoading}
+        okText="确定转发"
+      >
+        <Typography.Text type="tertiary" size="small">将该流程抄送给指定成员（自动去重，已抄送的成员会被跳过）。</Typography.Text>
+        <div style={{ marginTop: 12 }}>
+          <Typography.Text strong>抄送人</Typography.Text>
+          <Select
+            style={{ width: '100%', marginTop: 4 }}
+            multiple
+            filter
+            value={forwardUserIds}
+            onChange={(v) => setForwardUserIds(v as number[])}
+            optionList={userOptions}
+            placeholder="请选择抄送人"
+          />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Typography.Text strong>备注</Typography.Text>
+          <Input
+            style={{ marginTop: 4 }}
+            value={forwardNote}
+            onChange={setForwardNote}
+            placeholder="可选，最多 256 字"
+            maxLength={256}
+          />
+        </div>
+      </AppModal>
     </div>
   );
 }

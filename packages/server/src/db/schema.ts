@@ -1338,6 +1338,54 @@ export const workflowAutomations = pgTable('workflow_automations', {
 export type WorkflowAutomationRow = typeof workflowAutomations.$inferSelect;
 export type NewWorkflowAutomation = typeof workflowAutomations.$inferInsert;
 
+// 流程定时发起：按 cron 周期自动发起流程实例
+export const workflowSchedules = pgTable('workflow_schedules', {
+  id: serial('id').primaryKey(),
+  definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 128 }).notNull(),
+  /** 标准 cron 表达式（5 段，tz=Asia/Shanghai） */
+  cronExpression: varchar('cron_expression', { length: 64 }).notNull(),
+  /** 自动发起时使用的发起人（必须在该流程发起范围内，系统以其身份创建实例） */
+  initiatorId: integer('initiator_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 标题模板，支持 {{date}} {{datetime}} 占位 */
+  titleTemplate: varchar('title_template', { length: 256 }),
+  /** 自动发起时预填的表单数据 */
+  formData: jsonb('form_data').$type<Record<string, unknown>>(),
+  status: statusEnum('status').notNull().default('enabled'),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastRunStatus: varchar('last_run_status', { length: 16 }),
+  lastRunMessage: varchar('last_run_message', { length: 512 }),
+  /** 下次触发时间（调度器扫描 nextRunAt <= now 的启用规则执行） */
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type WorkflowScheduleRow = typeof workflowSchedules.$inferSelect;
+export type NewWorkflowSchedule = typeof workflowSchedules.$inferInsert;
+
+// 列表保存视图：用户为某个列表页保存的命名筛选条件
+export const workflowSavedViews = pgTable('workflow_saved_views', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** 列表页标识（如 my-applications / monitor / pending / cc / handled） */
+  pageKey: varchar('page_key', { length: 64 }).notNull(),
+  name: varchar('name', { length: 64 }).notNull(),
+  /** 保存的筛选条件（任意键值，前端各页自行约定） */
+  filters: jsonb('filters').$type<Record<string, unknown>>().notNull().default({}),
+  isDefault: boolean('is_default').notNull().default(false),
+  sort: integer('sort').notNull().default(0),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type WorkflowSavedViewRow = typeof workflowSavedViews.$inferSelect;
+export type NewWorkflowSavedView = typeof workflowSavedViews.$inferInsert;
+
+
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {
   id: serial('id').primaryKey(),
@@ -1405,6 +1453,8 @@ export const workflowTasks = pgTable('workflow_tasks', {
   delegatedFromId: integer('delegated_from_id').references(() => users.id, { onDelete: 'set null' }),
   /** 退回模式 backToOrigin：被退回任务记录发起退回的来源节点 key，通过后直接跳回该节点 */
   returnOriginNodeKey: varchar('return_origin_node_key', { length: 64 }),
+  /** 抄送已读时间（仅 ccNode 任务有意义；null 表示未读） */
+  ccReadAt: timestamp('cc_read_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

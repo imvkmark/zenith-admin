@@ -155,7 +155,9 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
       break;
     case 'userSelect':
     case 'deptSelect':
+    case 'relation':
       field.multiple = false;
+      if (type === 'relation') field.placeholder = '请选择关联审批单';
       break;
     case 'autoComplete':
       field.options = ['建议1', '建议2', '建议3'];

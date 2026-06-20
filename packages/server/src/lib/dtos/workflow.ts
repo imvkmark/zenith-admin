@@ -348,6 +348,65 @@ export const WorkflowInstanceBatchActionResponseDTO = z
   })
   .openapi('WorkflowInstanceBatchActionResponse');
 
+export const WorkflowApproverPreviewNodeDTO = z
+  .object({
+    nodeKey: z.string(),
+    nodeName: z.string(),
+    nodeType: z.string(),
+    approvers: z.array(z.object({ id: z.number().int(), name: z.string() })),
+    approveMethod: z.string().nullable().optional(),
+    branchLabel: z.string().nullable().optional(),
+    empty: z.boolean().optional(),
+  })
+  .openapi('WorkflowApproverPreviewNode');
+
+export const WorkflowScheduleDTO = z
+  .object({
+    id: z.number().int(),
+    definitionId: z.number().int(),
+    definitionName: z.string().nullable().optional(),
+    name: z.string(),
+    cronExpression: z.string(),
+    initiatorId: z.number().int(),
+    initiatorName: z.string().nullable().optional(),
+    titleTemplate: z.string().nullable(),
+    formData: z.record(z.string(), z.unknown()).nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    lastRunAt: z.string().nullable(),
+    lastRunStatus: z.string().nullable(),
+    lastRunMessage: z.string().nullable(),
+    nextRunAt: z.string().nullable(),
+    tenantId: z.number().int().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('WorkflowSchedule');
+
+export const WorkflowSavedViewDTO = z
+  .object({
+    id: z.number().int(),
+    userId: z.number().int(),
+    pageKey: z.string(),
+    name: z.string(),
+    filters: z.record(z.string(), z.unknown()),
+    isDefault: z.boolean(),
+    sort: z.number().int(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('WorkflowSavedView');
+
+export const WorkflowRelationOptionDTO = z
+  .object({
+    instanceId: z.number().int(),
+    title: z.string(),
+    serialNo: z.string().nullable(),
+    definitionName: z.string().nullable(),
+    status: z.enum(['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']),
+    createdAt: z.string(),
+  })
+  .openapi('WorkflowRelationOption');
+
 export const WorkflowAnalyticsDTO = z
   .object({
     statusCounts: z.array(z.object({

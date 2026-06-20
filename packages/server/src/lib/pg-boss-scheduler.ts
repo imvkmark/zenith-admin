@@ -378,6 +378,22 @@ export function getRunningJobCount(): number {
   return boss.getWipData().filter(w => w.count > 0).reduce((sum, w) => sum + w.count, 0);
 }
 
+/**
+ * 注册系统级周期任务（不写入 cron_jobs / cron_job_logs），用于工作流定时发起等内部调度。
+ * 与用户可配置的 cron 任务隔离，避免污染任务日志。
+ */
+export async function registerSystemRecurringJob(
+  name: string,
+  cronExpr: string,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const b = getBoss();
+  await b.createQueue(name);
+  await b.work(name, async () => { await fn(); });
+  await b.schedule(name, cronExpr, {}, { tz: 'Asia/Shanghai' });
+  logger.info(`pg-boss: system recurring job "${name}" scheduled (${cronExpr})`);
+}
+
 /** 校验 cron 表达式（兼容 5 段标准格式和带秒的 6 段格式） */
 export function validateCronExpression(expression: string): boolean {
   try {

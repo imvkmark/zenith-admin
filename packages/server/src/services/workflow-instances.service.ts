@@ -48,6 +48,7 @@ export function mapInstance(
     myTaskStatus?: typeof workflowTasks.$inferSelect['status'] | null;
     myActionAt?: Date | string | null;
     ccTaskId?: number | null;
+    ccReadAt?: Date | string | null;
   } = {},
 ) {
   return {
@@ -76,6 +77,7 @@ export function mapInstance(
     myTaskStatus: extras.myTaskStatus ?? null,
     myActionAt: extras.myActionAt != null ? formatNullableDateTime(extras.myActionAt as Date) : null,
     ccTaskId: extras.ccTaskId ?? null,
+    ccReadAt: extras.ccReadAt != null ? formatNullableDateTime(extras.ccReadAt as Date) : null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),
@@ -97,6 +99,7 @@ import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, inAppMessages, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
+import { getDataScopeCondition } from '../lib/data-scope';
 import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
 import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowStarterContext, WorkflowBatchActionResult } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
@@ -1357,11 +1360,123 @@ export async function listMyCc(query: { page?: number; pageSize?: number; keywor
       initiatorName: r.initiatorName,
       initiatorAvatar: r.initiatorAvatar,
       ccTaskId: r.task.id,
+      ccReadAt: r.task.ccReadAt,
     })),
     total: Number(total),
     page,
     pageSize,
   };
+}
+
+/** G1/T1-2 抄送未读数：当前用户 ccNode 任务中 ccReadAt 为空的数量 */
+export async function countMyCcUnread(): Promise<number> {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [
+    eq(workflowTasks.assigneeId, user.userId),
+    eq(workflowTasks.nodeType, 'ccNode'),
+    sql`${workflowTasks.ccReadAt} is null`,
+  ];
+  const where = and(...conditions);
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(workflowTasks)
+    .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+    .where(tc ? and(where, tc) : where);
+  return Number(total);
+}
+
+/** T1-2 标记抄送已读：仅本人 ccNode 任务可标记 */
+export async function markCcRead(ccTaskId: number): Promise<void> {
+  const user = currentUser();
+  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, ccTaskId)).limit(1);
+  if (!task) throw new HTTPException(404, { message: '抄送任务不存在' });
+  if (task.assigneeId !== user.userId || task.nodeType !== 'ccNode') {
+    throw new HTTPException(403, { message: '无权操作该抄送' });
+  }
+  if (task.ccReadAt) return;
+  await db.update(workflowTasks).set({ ccReadAt: new Date() }).where(eq(workflowTasks.id, ccTaskId));
+}
+
+/** T1-2 主动抄送 / 转发：任一流程参与者（发起人/审批人/抄送人/管理员）将流程抄送给指定用户 */
+export async function forwardInstance(instanceId: number, userIds: number[], note?: string) {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conds = [eq(workflowInstances.id, instanceId)];
+  if (tc) conds.push(tc);
+  const [inst] = await db.select().from(workflowInstances).where(and(...conds)).limit(1);
+  if (!inst) throw new HTTPException(404, { message: '流程不存在' });
+  // 参与者校验：发起人 / 管理员 / 任一任务处理人
+  const isInitiator = inst.initiatorId === user.userId;
+  const isAdmin = (user.roles ?? []).some((r) => r === 'super_admin' || r === 'tenant_admin');
+  let allowed = isInitiator || isAdmin;
+  if (!allowed) {
+    const involved = await db.$count(workflowTasks, and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.assigneeId, user.userId)));
+    allowed = involved > 0;
+  }
+  if (!allowed) throw new HTTPException(403, { message: '仅流程参与者可转发抄送' });
+
+  const targetIds = Array.from(new Set(userIds)).filter((v) => Number.isInteger(v) && v > 0);
+  if (targetIds.length === 0) throw new HTTPException(400, { message: '请选择抄送人' });
+  // 去重：跳过已抄送给的用户
+  const existing = await db.select({ assigneeId: workflowTasks.assigneeId }).from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeType, 'ccNode')));
+  const existingSet = new Set(existing.map((r) => r.assigneeId).filter((v): v is number => typeof v === 'number'));
+  const toAdd = targetIds.filter((uid) => !existingSet.has(uid));
+  if (toAdd.length === 0) {
+    return { list: [] as ReturnType<typeof mapTask>[], message: '所选用户均已抄送，无需重复添加' };
+  }
+  const noteText = note?.trim() ? `：${note.trim()}` : '';
+  const forwardComment = `[转发抄送] 由 ${user.username ?? '系统'} 发起${noteText}`;
+  const rows = toAdd.map((uid) => ({
+    instanceId,
+    nodeKey: inst.currentNodeKey ?? '__forward__',
+    nodeName: '转发抄送',
+    nodeType: 'ccNode' as const,
+    assigneeId: uid,
+    status: 'skipped' as const,
+    comment: forwardComment,
+    actionAt: null,
+  }));
+  const inserted = await db.insert(workflowTasks).values(rows).returning();
+  const actor = { userId: user.userId, name: user.username };
+  for (const t of inserted) {
+    emitTaskEvent('task.created', mapTask(t), { definitionId: inst.definitionId, tenantId: inst.tenantId, actor });
+  }
+  return { list: inserted.map((t) => mapTask(t)), message: `已抄送 ${inserted.length} 人` };
+}
+
+/** T2-2 关联审批单候选：当前用户可见（本人发起或参与）的非草稿实例，供 relation 字段检索 */
+export async function listRelationOptions(query: { definitionId?: number; keyword?: string; limit?: number }) {
+  const user = currentUser();
+  const { definitionId, keyword, limit = 20 } = query;
+  const tc = tenantCondition(workflowInstances, user);
+  const participantSub = db.select({ id: workflowTasks.instanceId }).from(workflowTasks)
+    .where(eq(workflowTasks.assigneeId, user.userId));
+  const conds = [
+    sql`${workflowInstances.status} <> 'draft'`,
+    or(eq(workflowInstances.initiatorId, user.userId), inArray(workflowInstances.id, participantSub))!,
+  ];
+  if (tc) conds.push(tc);
+  if (definitionId) conds.push(eq(workflowInstances.definitionId, definitionId));
+  if (keyword) {
+    const v = `%${escapeLike(keyword)}%`;
+    conds.push(or(ilike(workflowInstances.title, v), ilike(workflowInstances.serialNo, v))!);
+  }
+  const rows = await db.select({ inst: workflowInstances, definitionName: workflowDefinitions.name })
+    .from(workflowInstances)
+    .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+    .where(and(...conds))
+    .orderBy(desc(workflowInstances.id))
+    .limit(Math.min(limit, 50));
+  return rows.map((r) => ({
+    instanceId: r.inst.id,
+    title: r.inst.title,
+    serialNo: r.inst.serialNo ?? null,
+    definitionName: r.definitionName ?? null,
+    status: r.inst.status,
+    createdAt: formatDateTime(r.inst.createdAt),
+  }));
 }
 
 /** G2 已办：当前用户处理过（approved/rejected）的任务对应的实例 */
@@ -1419,6 +1534,13 @@ export async function listAllInstances(query: { page?: number; pageSize?: number
   const conditions = [];
   const tc = tenantCondition(workflowInstances, user);
   if (tc) conditions.push(tc);
+  // T2-3 数据权限：按发起人部门限制非超管可见的实例范围
+  const scopeCond = await getDataScopeCondition({
+    currentUserId: user.userId,
+    deptColumn: users.departmentId,
+    ownerColumn: workflowInstances.initiatorId,
+  });
+  if (scopeCond) conditions.push(scopeCond);
   if (status) conditions.push(eq(workflowInstances.status, status as InstanceStatus));
   if (keyword) {
     const likeValue = `%${escapeLike(keyword)}%`;
@@ -1427,10 +1549,12 @@ export async function listAllInstances(query: { page?: number; pageSize?: number
   if (categoryId !== undefined) conditions.push(eq(workflowDefinitions.categoryId, categoryId));
   if (initiatorKeyword) conditions.push(ilike(users.nickname, `%${escapeLike(initiatorKeyword)}%`));
   const where = and(...conditions);
+  const statWhere = scopeCond ? (tc ? and(tc, scopeCond) : scopeCond) : tc;
   const [statRows, [{ total }], rows] = await Promise.all([
     db.select({ status: workflowInstances.status, cnt: count() })
       .from(workflowInstances)
-      .where(tc)
+      .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+      .where(statWhere)
       .groupBy(workflowInstances.status),
     db.select({ total: count() })
       .from(workflowInstances)

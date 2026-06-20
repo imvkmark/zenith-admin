@@ -3,12 +3,14 @@
  * 支持联动：公式实时计算、dateRange→天数、select 级联
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Form, Select, Upload, Button, Tag, Typography, Row, Col, Divider, Rating, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, Eraser } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup } from '@zenith/shared';
+import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup, WorkflowRelationOption } from '@zenith/shared';
 import { CURRENCY_OPTIONS, toDateFnsToken } from '../form-types';
+import { request } from '@/utils/request';
 import RegionSelect from '@/components/RegionSelect';
 import RichTextEditor from '@/components/RichTextEditor';
 import UserSelect from '@/components/UserSelect';
@@ -42,6 +44,88 @@ interface SignaturePadProps {
   disabled?: boolean;
   width?: number;
   height?: number;
+}
+
+interface RelationSelectProps {
+  value?: number | number[];
+  onChange?: (value: number | number[] | undefined) => void;
+  relationDefinitionId?: number;
+  multiple?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
+  showClear?: boolean;
+  style?: CSSProperties;
+}
+
+function formatRelationOption(option: WorkflowRelationOption): string {
+  const serial = option.serialNo ? `[${option.serialNo}] ` : '';
+  const definition = option.definitionName ? `（${option.definitionName}）` : '';
+  return `${serial}${option.title}${definition}`;
+}
+
+function RelationSelect({
+  value,
+  onChange,
+  relationDefinitionId,
+  multiple = false,
+  placeholder = '请选择关联审批单',
+  disabled = false,
+  showClear = true,
+  style,
+}: Readonly<RelationSelectProps>) {
+  const [options, setOptions] = useState<WorkflowRelationOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const requestSeq = useRef(0);
+  const keywordRef = useRef('');
+
+  const loadOptions = async (keyword = '') => {
+    const seq = ++requestSeq.current;
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (relationDefinitionId) params.set('definitionId', String(relationDefinitionId));
+    if (keyword.trim()) params.set('keyword', keyword.trim());
+    params.set('limit', '20');
+    try {
+      const res = await request.get<WorkflowRelationOption[]>(`/api/workflows/instances/relation-options?${params.toString()}`, { silent: true });
+      if (seq === requestSeq.current && res.code === 0 && res.data) {
+        setOptions(res.data);
+      }
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setOptions([]);
+    keywordRef.current = '';
+  }, [relationDefinitionId]);
+
+  const selectedIds = (Array.isArray(value) ? value : value === undefined || value === null ? [] : [value])
+    .filter((v): v is number => typeof v === 'number');
+  const optionList = [
+    ...options.map((o) => ({ value: o.instanceId, label: formatRelationOption(o) })),
+    ...selectedIds
+      .filter((id) => !options.some((o) => o.instanceId === id))
+      .map((id) => ({ value: id, label: `审批单 #${id}` })),
+  ];
+
+  return (
+    <Select
+      value={value as never}
+      onChange={(v) => onChange?.(v as number | number[] | undefined)}
+      multiple={multiple}
+      filter
+      remote
+      onSearch={(keyword) => { keywordRef.current = keyword; void loadOptions(keyword); }}
+      onFocus={() => { void loadOptions(keywordRef.current); }}
+      placeholder={loading ? '加载中...' : placeholder}
+      disabled={disabled}
+      showClear={showClear}
+      maxTagCount={3}
+      style={{ width: '100%', ...style }}
+      optionList={optionList}
+    />
+  );
 }
 
 function SignaturePad({ value, onChange, disabled, width = 360, height = 150 }: Readonly<SignaturePadProps>) {
@@ -144,6 +228,7 @@ const FormSignature = withField(SignaturePad);
 const FormUserSelect = withField(UserSelect);
 const FormDeptSelect = withField(DepartmentSelect);
 const FormDictSelect = withField(DictSelect);
+const FormRelationSelect = withField(RelationSelect);
 const FormColorPicker = withField(ColorPickerInput);
 
 export function flattenFields(fields: WorkflowFormField[]): WorkflowFormField[] {
@@ -230,7 +315,7 @@ interface RendererProps {
   getFormApi?: (api: FormApi) => void;
   onValueChange?: (values: Record<string, unknown>) => void;
   readOnly?: boolean;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   labelPosition?: 'top' | 'left' | 'inset';
   labelAlign?: 'left' | 'right';
   labelWidth?: number;
@@ -772,6 +857,19 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           dictCode={field.dictCode}
           multiple={field.multiple}
           placeholder={field.placeholder ?? '请选择'}
+          initValue={field.defaultValue}
+          rules={rules} disabled={disabled}
+          {...extraProps}
+        />
+      );
+
+    case 'relation':
+      return (
+        <FormRelationSelect
+          field={field.key} label={field.label}
+          relationDefinitionId={field.relationDefinitionId}
+          multiple={field.multiple}
+          placeholder={field.placeholder ?? '请选择关联审批单'}
           initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}

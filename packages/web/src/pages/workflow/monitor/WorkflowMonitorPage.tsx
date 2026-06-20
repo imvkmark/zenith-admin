@@ -25,6 +25,7 @@ import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -456,6 +457,16 @@ export default function WorkflowMonitorPage() {
       </div>
 
       {/* 搜索栏 */}
+      <SavedViewsBar
+        pageKey="workflow-monitor"
+        currentFilters={searchParams as unknown as Record<string, unknown>}
+        onApply={(filters) => {
+          const next = { ...defaultSearchParams, ...(filters as Partial<SearchParams>) };
+          setSearchParams(next);
+          setPage(1);
+          void fetchList(1, pageSize, next);
+        }}
+      />
       <SearchToolbar>
           <Input
             prefix={<Search size={14} />}

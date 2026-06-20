@@ -10,6 +10,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
+import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 
 const UNCATEGORIZED = -1;
@@ -217,6 +218,12 @@ export default function WorkflowLaunchpadPage() {
                 ) : (
                   <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>
                 )}
+              </TabPane>
+              <TabPane tab="审批链路" itemKey="chain">
+                <WorkflowApproverPreview
+                  definitionId={selectedDef.id}
+                  getFormData={() => (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}}
+                />
               </TabPane>
               <TabPane tab="流程图预览" itemKey="graph">
                 <WorkflowGraphView flowData={selectedDef.flowData} />

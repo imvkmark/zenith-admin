@@ -1,9 +1,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
-import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceWithDraftSchema, updateWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema, urgeWorkflowTaskSchema, addInstanceCcSchema, batchApproveWorkflowTaskSchema, batchRejectWorkflowTaskSchema, batchWithdrawWorkflowInstanceSchema, batchUrgeWorkflowInstanceSchema, createWorkflowCommentSchema, jumpWorkflowInstanceSchema, reassignWorkflowTaskSchema, createWorkflowConsultSchema, replyWorkflowConsultSchema, recallWorkflowTaskSchema } from '@zenith/shared';
+import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceWithDraftSchema, updateWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema, urgeWorkflowTaskSchema, addInstanceCcSchema, batchApproveWorkflowTaskSchema, batchRejectWorkflowTaskSchema, batchWithdrawWorkflowInstanceSchema, batchUrgeWorkflowInstanceSchema, forwardInstanceSchema, createWorkflowCommentSchema, jumpWorkflowInstanceSchema, reassignWorkflowTaskSchema, createWorkflowConsultSchema, replyWorkflowConsultSchema, recallWorkflowTaskSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
-import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowTaskDTO, WorkflowTaskUrgeDTO, WorkflowCommentDTO, WorkflowBatchActionResponseDTO, WorkflowInstanceBatchActionResponseDTO, WorkflowAnalyticsDTO, WorkflowOverdueTaskDTO, WorkflowTaskConsultDTO } from '../lib/openapi-dtos';
+import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowTaskDTO, WorkflowTaskUrgeDTO, WorkflowCommentDTO, WorkflowBatchActionResponseDTO, WorkflowInstanceBatchActionResponseDTO, WorkflowAnalyticsDTO, WorkflowOverdueTaskDTO, WorkflowTaskConsultDTO, WorkflowRelationOptionDTO } from '../lib/openapi-dtos';
 import {
   listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail,
   createInstance, withdrawInstance, cancelInstance, deleteInstance, getInstanceForAdminAudit,
@@ -12,6 +12,7 @@ import {
   urgeTask, listTaskUrges, listInstanceUrges, urgeInstance, addInstanceCc,
   updateInstanceDraft, submitDraftInstance, resubmitInstance,
   batchApproveTasks, batchRejectTasks, batchWithdrawInstances, batchUrgeInstances, jumpInstance, reassignTask, recallTask,
+  countMyCcUnread, markCcRead, forwardInstance, listRelationOptions,
 } from '../services/workflow-instances.service';
 import { listInstanceComments, addInstanceComment } from '../services/workflow-comments.service';
 import { createConsult, replyConsult, listMyConsults } from '../services/workflow-consults.service';
@@ -72,6 +73,57 @@ const handledMineRoute = defineOpenAPIRoute({
     responses: { ...commonErrorResponses, ...okPaginated(WorkflowInstanceDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listMyHandled(c.req.valid('query'))), 200),
+});
+
+const ccUnreadCountRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/instances/cc-mine/unread-count', tags: ['WorkflowInstances'], summary: '抄送未读数',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.object({ count: z.number().int() }), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody({ count: await countMyCcUnread() }), 200),
+});
+
+const relationOptionsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/instances/relation-options', tags: ['WorkflowInstances'], summary: '关联审批单候选',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
+    request: { query: z.object({ definitionId: z.coerce.number().int().optional(), keyword: z.string().optional(), limit: z.coerce.number().int().min(1).max(50).optional() }) },
+    responses: { ...commonErrorResponses, ...ok(z.array(WorkflowRelationOptionDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await listRelationOptions(c.req.valid('query'))), 200),
+});
+
+const ccReadRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/instances/cc/{ccTaskId}/read', tags: ['WorkflowInstances'], summary: '标记抄送已读',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list' })] as const,
+    request: { params: z.object({ ccTaskId: z.coerce.number().int().positive() }) },
+    responses: { ...commonErrorResponses, ...okMsg('已标记已读') },
+  }),
+  handler: async (c) => {
+    await markCcRead(c.req.valid('param').ccTaskId);
+    return c.json(okBody(null, '已标记已读'), 200);
+  },
+});
+
+const forwardRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/instances/{id}/forward', tags: ['WorkflowInstances'], summary: '主动抄送 / 转发',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:list', audit: { description: '转发抄送', module: '工作流管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(forwardInstanceSchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('已抄送'), 403: { content: jsonContent(ErrorResponse), description: '无权操作' } },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { userIds, note } = c.req.valid('json');
+    const r = await forwardInstance(id, userIds, note);
+    return c.json(okBody(null, r.message), 200);
+  },
 });
 
 const detailRoute = defineOpenAPIRoute({
@@ -720,6 +772,7 @@ const replyConsultRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await replyConsult(c.req.valid('param').id, c.req.valid('json')), '已回复'), 200),
 });
 
-router.openapiRoutes([listRoute, pendingMineRoute, allRoute, ccMineRoute, handledMineRoute, analyticsRoute, overdueRoute, exportRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, detailRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute, withdrawRoute, cancelInstanceRoute, jumpInstanceRoute, deleteInstanceRoute, batchApproveRoute, batchRejectRoute, approveRoute, rejectRoute, transferRoute, reassignRoute, recallRoute, consultRoute, replyConsultRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);
+router.openapiRoutes([listRoute, pendingMineRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, relationOptionsRoute, analyticsRoute, overdueRoute, exportRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, detailRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
+router.openapiRoutes([withdrawRoute, forwardRoute, cancelInstanceRoute, jumpInstanceRoute, deleteInstanceRoute, batchApproveRoute, batchRejectRoute, approveRoute, rejectRoute, transferRoute, reassignRoute, recallRoute, consultRoute, replyConsultRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);
 
 export default router;

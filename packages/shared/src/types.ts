@@ -1671,6 +1671,7 @@ export type WorkflowFormFieldType =
   | 'detail'        // 明细/表格
   | 'description'   // 说明文字
   | 'serialNumber'  // 流水号
+  | 'relation'      // 关联审批单（引用其他流程实例）
   | 'row'           // 栅格行
   | 'divider'       // 分割线
   | 'group';        // 分组标题
@@ -1744,6 +1745,9 @@ export interface WorkflowFormField {
   // 系统集成选择器（userSelect/deptSelect/dictSelect）
   dictCode?: string;                    // dictSelect：绑定的数据字典 code
   multiple?: boolean;                   // userSelect/deptSelect/dictSelect：是否允许多选
+  // relation 关联审批单
+  relationDefinitionId?: number;        // 关联的目标流程定义 id（为空则可关联任意流程）
+  relationDisplayField?: string;        // 关联记录展示用的表单字段 key（默认显示标题）
   // slider 滑块
   sliderMarks?: boolean;                // 是否显示刻度标记
   // colorPicker 颜色选择器
@@ -1901,6 +1905,65 @@ export interface WorkflowAutomation {
   updatedAt: string;
 }
 
+/** 流程定时发起规则 */
+export interface WorkflowSchedule {
+  id: number;
+  definitionId: number;
+  definitionName?: string | null;
+  name: string;
+  cronExpression: string;
+  initiatorId: number;
+  initiatorName?: string | null;
+  titleTemplate: string | null;
+  formData: Record<string, unknown> | null;
+  status: 'enabled' | 'disabled';
+  lastRunAt: string | null;
+  lastRunStatus: string | null;
+  lastRunMessage: string | null;
+  nextRunAt: string | null;
+  tenantId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 列表保存视图 */
+export interface WorkflowSavedView {
+  id: number;
+  userId: number;
+  pageKey: string;
+  name: string;
+  filters: Record<string, unknown>;
+  isDefault: boolean;
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 提交前审批链路预览节点 */
+export interface WorkflowApproverPreviewNode {
+  nodeKey: string;
+  nodeName: string;
+  nodeType: WorkflowNodeType | string;
+  /** 解析出的处理人（已转换为真实姓名） */
+  approvers: Array<{ id: number; name: string }>;
+  /** 多人审批方式（and/or/sequential/ratio） */
+  approveMethod?: string | null;
+  /** 所在分支标签（条件/并行分支时） */
+  branchLabel?: string | null;
+  /** 审批人为空（需按节点空处理策略兜底） */
+  empty?: boolean;
+}
+
+/** 关联审批单可选项（relation 字段检索结果） */
+export interface WorkflowRelationOption {
+  instanceId: number;
+  title: string;
+  serialNo: string | null;
+  definitionName: string | null;
+  status: WorkflowInstanceStatus;
+  createdAt: string;
+}
+
 export interface WorkflowTask {
   id: number;
   instanceId: number;
@@ -1978,6 +2041,8 @@ export interface WorkflowInstance {
   myActionAt?: string | null;
   /** 抄送视图：抄送给我的任务 ID */
   ccTaskId?: number | null;
+  /** 抄送视图：已读时间（null=未读） */
+  ccReadAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

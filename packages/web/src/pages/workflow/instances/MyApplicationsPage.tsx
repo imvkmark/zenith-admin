@@ -29,6 +29,7 @@ import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowF
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
+import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -874,6 +875,12 @@ export default function MyApplicationsPage() {
                 ) : (
                   <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>
                 )}
+              </TabPane>
+              <TabPane tab="审批链路" itemKey="chain">
+                <WorkflowApproverPreview
+                  definitionId={selectedDef.id}
+                  getFormData={() => (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}}
+                />
               </TabPane>
               <TabPane tab="流程图预览" itemKey="graph">
                 <WorkflowGraphView flowData={selectedDef.flowData} />

@@ -2,13 +2,14 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
-import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO, WorkflowDefinitionExportDTO, WorkflowVersionDiffDTO } from '../lib/openapi-dtos';
-import { importWorkflowDefinitionSchema } from '@zenith/shared';
+import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO, WorkflowDefinitionExportDTO, WorkflowVersionDiffDTO, WorkflowApproverPreviewNodeDTO } from '../lib/openapi-dtos';
+import { importWorkflowDefinitionSchema, previewWorkflowSchema } from '@zenith/shared';
 import {
   listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
   updateDefinition, publishDefinition, disableDefinition, enableDefinition, deleteDefinition, getWorkflowDefinitionBeforeAudit,
   listVersions, restoreVersion, duplicateDefinition, exportDefinition, importDefinition, diffVersions,
 } from '../services/workflow-definitions.service';
+import { previewFlow } from '../services/workflow-preview.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -287,6 +288,26 @@ const diffVersionsRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, publishedRoute, importRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, enableRoute, deleteRouteDef, listVersionsRoute, restoreVersionRoute, duplicateRoute, exportRoute, diffVersionsRoute] as const);
+const previewRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/preview', tags: ['WorkflowDefinitions'], summary: '提交前审批链路预览',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:create' })] as const,
+    request: { params: IdParam, body: { content: jsonContent(previewWorkflowSchema), required: false } },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(z.array(WorkflowApproverPreviewNodeDTO), 'ok'),
+      400: { content: jsonContent(ErrorResponse), description: '参数错误' },
+      404: { content: jsonContent(ErrorResponse), description: '不存在' },
+    },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return c.json(okBody(await previewFlow(id, body?.formData ?? null)), 200);
+  },
+});
+
+router.openapiRoutes([listRoute, publishedRoute, importRoute, detailRoute, createRouteDef, updateRouteDef, publishRoute, disableRoute, enableRoute, deleteRouteDef, listVersionsRoute, restoreVersionRoute, duplicateRoute, exportRoute, diffVersionsRoute, previewRoute] as const);
 
 export default router;

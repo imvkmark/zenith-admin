@@ -72,6 +72,8 @@ import workflowCategoriesRoutes from './routes/workflow-categories';
 import workflowFormsRoutes from './routes/workflow-forms';
 import workflowInstancesRoutes from './routes/workflow-instances';
 import workflowAutomationsRoutes from './routes/workflow-automations';
+import workflowSchedulesRoutes from './routes/workflow-schedules';
+import workflowSavedViewsRoutes from './routes/workflow-saved-views';
 import workflowDelegationsRoutes from './routes/workflow-delegations';
 import workflowQuickPhrasesRoutes from './routes/workflow-quick-phrases';
 import workflowTemplatesRoutes from './routes/workflow-templates';
@@ -294,6 +296,8 @@ app.route('/api/workflows/forms', workflowFormsRoutes);
 app.route('/api/workflows/event-subscriptions', workflowEventSubscriptionsRoutes);
 app.route('/api/workflows/trigger-executions', workflowTriggerExecutionsRoutes);
 app.route('/api/workflows/automations', workflowAutomationsRoutes);
+app.route('/api/workflows/schedules', workflowSchedulesRoutes);
+app.route('/api/workflows/saved-views', workflowSavedViewsRoutes);
 app.route('/api/workflows/delegations', workflowDelegationsRoutes);
 app.route('/api/workflows/quick-phrases', workflowQuickPhrasesRoutes);
 app.route('/api/workflows/templates', workflowTemplatesRoutes);
@@ -409,6 +413,9 @@ process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
 
 try {
   await initCronScheduler();
+  const { registerSystemRecurringJob } = await import('./lib/pg-boss-scheduler');
+  const { runDueWorkflowSchedules } = await import('./services/workflow-schedules.service');
+  await registerSystemRecurringJob('workflow-schedule-tick', '* * * * *', runDueWorkflowSchedules);
 } catch (err) {
   logger.error('Failed to initialize cron scheduler', err);
 }

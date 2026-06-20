@@ -876,6 +876,45 @@ export type WorkflowAutomationActionInput = z.infer<typeof workflowAutomationAct
 export type CreateWorkflowAutomationInput = z.infer<typeof createWorkflowAutomationSchema>;
 export type UpdateWorkflowAutomationInput = z.infer<typeof updateWorkflowAutomationSchema>;
 
+// ── 流程定时发起 ──
+export const createWorkflowScheduleSchema = z.object({
+  definitionId: z.number().int().positive('请选择流程'),
+  name: z.string().min(1, '规则名称不能为空').max(128),
+  cronExpression: z.string().min(1, '请输入 cron 表达式').max(64),
+  initiatorId: z.number().int().positive('请选择发起人'),
+  titleTemplate: z.string().max(256).nullable().optional(),
+  formData: z.record(z.string(), z.unknown()).nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateWorkflowScheduleSchema = createWorkflowScheduleSchema.partial();
+export type CreateWorkflowScheduleInput = z.infer<typeof createWorkflowScheduleSchema>;
+export type UpdateWorkflowScheduleInput = z.infer<typeof updateWorkflowScheduleSchema>;
+
+// ── 列表保存视图 ──
+export const createWorkflowSavedViewSchema = z.object({
+  pageKey: z.string().min(1).max(64),
+  name: z.string().min(1, '视图名称不能为空').max(64),
+  filters: z.record(z.string(), z.unknown()).default({}),
+  isDefault: z.boolean().optional(),
+  sort: z.number().int().nonnegative().optional(),
+});
+export const updateWorkflowSavedViewSchema = createWorkflowSavedViewSchema.partial().omit({ pageKey: true });
+export type CreateWorkflowSavedViewInput = z.infer<typeof createWorkflowSavedViewSchema>;
+export type UpdateWorkflowSavedViewInput = z.infer<typeof updateWorkflowSavedViewSchema>;
+
+// ── 提交前审批链路预览 ──
+export const previewWorkflowSchema = z.object({
+  formData: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+export type PreviewWorkflowInput = z.infer<typeof previewWorkflowSchema>;
+
+// ── 主动抄送 / 转发 ──
+export const forwardInstanceSchema = z.object({
+  userIds: z.array(z.number().int().positive()).min(1, '请选择抄送人').max(50),
+  note: z.string().max(256).optional(),
+});
+export type ForwardInstanceInput = z.infer<typeof forwardInstanceSchema>;
+
 
 export const createWorkflowInstanceSchema = z.object({
   definitionId: z.number().int().positive('请选择流程'),
