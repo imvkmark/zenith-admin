@@ -162,7 +162,7 @@ function ActivityPanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
     }},
     { title: '等待', width: 120, render: (_: unknown, r) => r.waitEvent ? <Tag size="small" color="amber">{r.waitEventType}:{r.waitEvent}</Tag> : <Text type="tertiary">-</Text> },
     { title: '阻塞于', dataIndex: 'blockedBy', width: 100, render: (v: number[]) => v.length > 0 ? <Tag color="red" size="small">{v.join(', ')}</Tag> : <Text type="tertiary">-</Text> },
-    { title: 'SQL', dataIndex: 'query', ellipsis: { showTitle: false }, render: (v: string | null) => (
+    { title: 'SQL', dataIndex: 'query', width: 360, ellipsis: { showTitle: false }, render: (v: string | null) => (
       <Tooltip content={<div style={{ maxWidth: 480, maxHeight: 300, overflow: 'auto', whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 12 }}>{v || '(无)'}</div>}>
         <Text style={{ fontFamily: 'monospace', fontSize: 12 }} ellipsis={{ showTooltip: false }}>{v || <Text type="tertiary">(无)</Text>}</Text>
       </Tooltip>
@@ -199,8 +199,8 @@ function ActivityPanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
         rowKey="pid"
         loading={loading}
         size="small"
-        pagination={false}
-        scroll={{ x: 'max-content', y: 460 }}
+        pagination={{ pageSize: 50, pageSizeOpts: [50, 100, 200] }}
+        scroll={{ x: 'max-content' }}
       />
     </div>
   );
