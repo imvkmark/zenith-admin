@@ -27,7 +27,7 @@
 
 ## 签名
 
-`signMode === 'hmacSha256'` 时，请求头会带：
+`signMode === 'hmacSha256'` 且订阅配置了 `secret` 时，请求头会带：
 
 ```http
 X-Zenith-Signature: t={timestamp},v1={hex_hmac}

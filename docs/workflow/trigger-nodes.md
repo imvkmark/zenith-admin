@@ -50,7 +50,7 @@ POST /api/public/workflow/trigger-callback/:callbackId
 }
 ```
 
-`callback` 请求的模板可使用 <code v-pre>{{callbackUrl}}</code> 与 <code v-pre>{{callbackId}}</code> 占位符，把回调地址或回调 ID 下发给外部系统。签名校验开启时，签名时间戳有效期为 5 分钟。
+`callback` 请求的 `bodyTemplate` 可使用 <code v-pre>{{callbackUrl}}</code> 与 <code v-pre>{{callbackId}}</code> 占位符，把回调地址或回调 ID 下发给外部系统。签名校验开启时，签名时间戳有效期为 5 分钟。
 
 ## 执行记录
 

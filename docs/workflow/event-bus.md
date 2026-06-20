@@ -98,7 +98,7 @@ workflowEventBus.on('node.entered', (e) => {
 
 ## 事件订阅的签名验证
 
-当配置 `signMode === 'hmacSha256'` 时，系统会在请求头中附带签名：
+当配置 `signMode === 'hmacSha256'` 且订阅配置了 `secret` 时，系统会在请求头中附带签名：
 
 ```http
 X-Zenith-Signature: t={timestamp},v1={hex_hmac}
