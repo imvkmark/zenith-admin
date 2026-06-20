@@ -42,9 +42,9 @@
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:definition:list` | 查看流程定义列表（流程分类、流程自动化也复用此读权限） |
-| `workflow:definition:create` | 创建流程定义 |
-| `workflow:definition:edit` | 编辑流程定义（流程自动化的写操作也复用此权限） |
+| `workflow:definition:list` | 查看流程定义列表（流程分类、流程模板、流程自动化也复用此读权限） |
+| `workflow:definition:create` | 创建流程定义（从模板创建、复制流程也复用此权限） |
+| `workflow:definition:edit` | 编辑流程定义（流程分类、流程模板、流程自动化的写操作也复用此权限） |
 | `workflow:definition:delete` | 删除流程定义 |
 | `workflow:definition:publish` | 发布/禁用流程定义 |
 
@@ -62,7 +62,7 @@
 | 权限点 | 说明 |
 | --- | --- |
 | `workflow:instance:list` | 查看我的申请列表和实例详情 |
-| `workflow:instance:create` | 发起流程申请（同时也是查看已发布流程列表的权限） |
+| `workflow:instance:create` | 发起流程申请、查看可发起流程、草稿提交/重提/撤回 |
 | `workflow:instance:monitor` | 查看全局流程实例列表（管理员权限） |
 | `workflow:instance:cancel` | 取消/终止流程实例（管理员） |
 | `workflow:instance:delete` | 删除流程实例（管理员） |
@@ -71,7 +71,7 @@
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:task:handle` | 处理待审批任务（通过/驳回等），同时也是查看待我审批列表的权限 |
+| `workflow:task:handle` | 查看待我审批/我已办，处理任务（通过、驳回、转交、委派、加签、减签、退回、催办、快捷语等） |
 
 ### 触发器与事件相关
 
@@ -83,6 +83,18 @@
 | `workflow:event-subscription:edit` | 编辑事件订阅 |
 | `workflow:event-subscription:delete` | 删除事件订阅 |
 | `workflow:event-delivery:view` | 查看事件投递记录 |
+| `workflow:event-delivery:retry` | 重试事件投递 |
+
+### 定时、代理相关
+
+| 权限点 | 说明 |
+| --- | --- |
+| `workflow:schedule:list` | 查看定时发起规则 |
+| `workflow:schedule:create` | 创建定时发起规则 |
+| `workflow:schedule:edit` | 编辑定时发起规则、立即执行一次 |
+| `workflow:schedule:delete` | 删除定时发起规则 |
+| `workflow:delegation:view` | 查看审批代理 |
+| `workflow:delegation:manage` | 新增、编辑、删除审批代理 |
 
 ## 权限配置建议
 
@@ -101,6 +113,8 @@
 - `workflow:instance:monitor` — 监控全局流程实例
 - `workflow:trigger-execution:view` — 查看触发器执行记录
 - `workflow:event-subscription:*` — 管理事件订阅
+- `workflow:schedule:*` — 管理定时发起
+- `workflow:delegation:*` — 管理审批代理
 
 ### 系统管理员
 
@@ -108,11 +122,13 @@
 
 ## 数据权限（租户隔离）
 
-系统支持多租户模式，流程定义和实例按租户隔离：
+系统支持多租户模式，流程定义、实例、事件订阅、触发器执行、自动化等工作流数据通过 `tenantId` 隔离：
 
-- 用户只能看到同租户下的流程定义和实例
-- 租户管理员可以看到本租户下的所有数据
-- 系统管理员（超级管理员）可以跨租户查看数据
+- 关闭多租户模式时不追加租户过滤
+- 普通用户按当前租户过滤
+- 平台超级管理员可跨租户查看，或按当前查看租户过滤
+
+流程监控列表还会叠加角色/用户数据范围：`all` 查看全部；`dept` 查看本部门及子部门；`dept_only` 仅本部门；`custom` 查看指定部门；否则按发起人本人过滤。
 
 ## 实例查看权限
 
@@ -124,4 +140,25 @@
 | 审批人 | 包含自己待处理/已处理任务的实例 |
 | 管理员（`workflow:instance:monitor`） | 全局所有实例 |
 
-在查看实例详情时，如果用户既不是发起人也不是该实例的审批人，系统会返回「无权查看」。
+在查看实例详情时，如果用户既不是发起人、任务处理人，也不是子流程祖先实例的发起人，系统会返回「无权查看」。
+
+## 审批人解析范围
+
+审批节点、办理节点、抄送节点会通过审批人解析器把节点配置解析为具体用户：
+
+| 类型 | 说明 |
+| --- | --- |
+| 指定用户 | 取节点配置中的用户 ID |
+| 指定角色 | 取角色成员；若角色配置了管理部门范围，则仅包含范围部门及其子部门内成员 |
+| 指定部门 | 取指定部门的启用用户；未指定时取发起人部门负责人 |
+| 指定岗位 | 取指定岗位下启用用户 |
+| 用户组 | 取用户组成员 |
+| 发起人 | 取流程发起人 |
+| 发起人主管/主管 | 取发起人所在部门负责人，支持按层级向上查找 |
+| 发起人部门 | 取发起人所在部门启用用户 |
+| 多级主管/多级部门负责人 | 从发起人部门逐级向上收集负责人，可按层级或角色终止 |
+| 表单联系人 | 从表单字段读取用户 ID |
+| 表单部门负责人 | 从表单部门字段读取部门，并按配置层级取部门负责人 |
+| 前序节点审批人 | 取指定前序节点已通过任务的处理人 |
+| 发起人选择 / 审批人选择 | 使用发起或审批时选择的人员，并按配置范围过滤 |
+| 表达式 | 在 `form` 与 `starter.id` 作用域内计算用户 ID |

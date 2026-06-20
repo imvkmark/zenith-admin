@@ -51,7 +51,7 @@ interface HttpResponse {
   status: number;
   ok: boolean;
   headers: Headers;
-  url: string;                                  // 最终 URL（含重定向）
+  url: string;                                  // 请求 URL（应用 baseURL 后）
   text: () => Promise<string>;
   json: <T = unknown>() => Promise<T>;
   arrayBuffer: () => Promise<ArrayBuffer>;
@@ -138,7 +138,7 @@ class HttpClientError extends Error {
   readonly status: number;          // 0 = 网络/熔断/超时；调用方自行构造时也可传 HTTP 状态码
   readonly url: string;
   readonly headers: Record<string, string>;
-  readonly bodySnippet: string;     // 最多 2KB 响应正文片段，便于诊断
+  readonly bodySnippet: string;     // 调用方传入的响应正文片段，便于诊断
   readonly cause?: unknown;
 }
 ```
@@ -182,9 +182,9 @@ resetHttpCircuitBreakers();
 每条请求在 winston 中产生 1–N 条结构化日志：
 
 - `[http] request` — 发起请求（debug）
-- `[http] retry on 5xx` / `[http] retry on error` — 触发重试（warn）
+- `[http] retry on 5xx` — 5xx 响应触发重试（warn）
 - `[http] response` — 收到响应（info）
-- `[http] error` — 最终失败 / 熔断 / 超时（warn）
+- `[http] error` — 网络错误、超时或最终失败（warn）
 
 以下 Header 在日志中始终替换为 `***`：
 

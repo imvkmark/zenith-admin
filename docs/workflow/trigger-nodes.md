@@ -24,8 +24,8 @@
 | `bodyTemplate` | 请求体模板（支持 <code v-pre>{{form.x}}</code> 占位） |
 | `fieldKeys` | `updateData / deleteData` 操作的字段 key 列表 |
 | `fieldValues` | `updateData` 每个字段的新值模板（支持 <code v-pre>{{form.x}}</code> 占位） |
-| `onFailure` | `'continue' \| 'retry' \| 'block'`：失败后行为 |
-| `maxRetries` | 最大重试次数（`onFailure === 'retry'` 生效） |
+| `onFailure` | `'continue' \| 'retry' \| 'block'`：节点配置中的失败策略标记 |
+| `maxRetries` | 最大重试次数配置 |
 | `timeoutMs` | 单次请求超时，默认 `10_000` |
 | `callbackSignMode` | `'none' \| 'hmacSha256'`：`callback` 类型回调验签模式，默认 `none` |
 | `callbackSecret` | `callbackSignMode === 'hmacSha256'` 时的 HMAC 密钥 |
@@ -40,8 +40,22 @@ POST /api/public/workflow/trigger-callback/:callbackId
 
 当 `callbackSignMode === 'hmacSha256'` 时，回调请求需携带 `X-Zenith-Signature` 头（算法同事件订阅签名），服务端用 `callbackSecret` 校验。
 
+回调 body：
+
+```json
+{
+  "comment": "外部处理意见",
+  "callerName": "external-system",
+  "payload": {}
+}
+```
+
+`callback` 请求的模板可使用 <code v-pre>{{callbackUrl}}</code> 与 <code v-pre>{{callbackId}}</code> 占位符，把回调地址或回调 ID 下发给外部系统。签名校验开启时，签名时间戳有效期为 5 分钟。
+
 ## 执行记录
 
-每次触发器调用写入 `workflow_trigger_executions` 表，包含：实例 ID、节点 key、状态（`pending / running / success / failed / retrying`）、响应数据、尝试次数、错误信息。
+每次触发器调用写入 `workflow_trigger_executions` 表，包含：实例 ID、任务 ID、节点 key、节点名称、触发器类型、状态（枚举为 `pending / running / success / failed / retrying`）、尝试次数、请求 URL、请求方法、请求体、响应码、响应体、错误信息、耗时、租户 ID。
+
+`trigger` 订阅者按 `node.entered` 事件执行节点动作；当前执行层会为一次节点进入写入一条成功或失败记录。
 
 UI：「工作流 → 触发器执行」页面，支持按状态、实例 ID、节点 key 过滤，并通过侧边抽屉查看完整请求/响应。

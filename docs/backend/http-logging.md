@@ -266,7 +266,7 @@ Client → [requestId 中间件] → correlation = X-Request-Id
 
 ```json
 {"correlation":"out-1748600000000-1","direction":"outgoing","phase":"request","method":"POST","url":"https://api.example.com/send","timestamp":"..."}
-{"correlation":"out-1748600000000-1","direction":"outgoing","phase":"response","statusCode":500,"durationMs":120,"error":null,"timestamp":"..."}
+{"correlation":"out-1748600000000-1","direction":"outgoing","phase":"response","statusCode":500,"durationMs":120,"timestamp":"..."}
 {"correlation":"out-1748600000000-2","direction":"outgoing","phase":"request","method":"POST","url":"https://api.example.com/send","attempt":2,"timestamp":"..."}
 {"correlation":"out-1748600000000-2","direction":"outgoing","phase":"response","statusCode":200,"durationMs":95,"timestamp":"..."}
 ```

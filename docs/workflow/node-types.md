@@ -1,6 +1,6 @@
 # 节点类型与节点标识
 
-## 节点类型清单
+## 设计器节点类型清单
 
 `FlowNodeType` 联合（定义于 `packages/web/src/pages/workflow/designer/types.ts`）：
 
@@ -19,6 +19,26 @@
 | `routeBranch` | 路由分支（按表达式路由） |
 
 分支节点子集 `BranchNodeType`：`conditionBranch | parallelBranch | inclusiveBranch | routeBranch`。
+
+## 运行态节点类型映射
+
+流程保存后会转换为后端引擎使用的节点类型（定义于 `@zenith/shared`）：
+
+| 设计器类型 | 运行态类型 | 说明 |
+| --- | --- | --- |
+| `initiator` | `start` | 流程起点 |
+| `approver` | `approve` | 审批人节点 |
+| `handler` | `handler` | 办理人节点 |
+| `cc` | `ccNode` | 抄送节点 |
+| `conditionBranch` | `exclusiveGateway` | 条件分支，互斥命中一条分支 |
+| `parallelBranch` | `parallelGateway` | 并行分支，所有分支并行执行 |
+| `inclusiveBranch` | `inclusiveGateway` | 包容分支，满足条件的分支并行执行 |
+| `routeBranch` | `routeGateway` | 路由分支，按表达式选择分支 |
+| `delay` | `delay` | 延迟器节点 |
+| `trigger` | `trigger` | 触发器节点 |
+| `subProcess` | `subProcess` | 子流程节点 |
+| — | `end` | 引擎内部的流程结束节点 |
+| — | `catchNode` | 引擎支持的异常捕获节点，不在设计器加号面板中直接添加 |
 
 ## 节点标识（nodeKey）
 

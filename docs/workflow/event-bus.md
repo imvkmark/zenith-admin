@@ -1,14 +1,16 @@
 # 事件总线
 
-工作流引擎在关键状态变化时会发出事件，你可以通过事件订阅来响应这些变化，实现与外部系统的联动。
+工作流引擎在关键状态变化时会发出事件。事件总线是基于 Node.js `EventEmitter` 的进程内封装，事件通过 `queueMicrotask` 异步分发，单个订阅者异常不会影响其它订阅者。
 
 ## 事件类型
+
+当前事件总线支持 15 种事件：
 
 | 事件 | 触发时机 | 典型用途 |
 | --- | --- | --- |
 | instance.created | 流程实例创建时 | 记录流程发起日志、通知相关人 |
-| instance.approved | 流程整体通过时 | 通知发起人流程已完成、归档 |
-| instance.rejected | 流程整体驳回时 | 通知发起人流程被驳回 |
+| instance.approved | 流程实例状态变为已通过时 | 通知发起人流程已完成、归档 |
+| instance.rejected | 流程实例状态变为已驳回时 | 通知发起人流程被驳回 |
 | instance.withdrawn | 实例发起人撤回时 | 通知相关人流程已撤回 |
 | node.entered | 进入某个节点时 | 触发节点级联操作 |
 | node.left | 离开某个节点时 | 清理节点相关资源 |
@@ -33,13 +35,13 @@
 3. 填写订阅名称、目标 URL、订阅的事件类型
 4. 保存并启用
 
-配置完成后，当订阅的事件发生时，系统会向配置的 URL 发送 HTTP POST 请求。
+配置完成后，当订阅的事件发生时，`webhook` 订阅者会向配置的 URL 发送 HTTP POST 请求。
 
 详见 [事件订阅（HTTP Webhook）](./event-subscriptions.md)。
 
 ### 2. WebSocket 实时推送
 
-系统内置 WebSocket 推送，当事件发生时，会实时推送给在线用户。前端无需额外配置即可使用。
+系统内置 `ws` 订阅者，针对任务创建、任务处理结果、实例结束等事件向在线用户实时推送。前端无需额外配置即可使用。
 
 ### 3. 代码级订阅
 
@@ -65,7 +67,7 @@ workflowEventBus.on('node.entered', (e) => {
 | --- | --- |
 | eventId | 事件唯一标识（UUID） |
 | type | 事件类型 |
-| occurredAt | 发生时间 |
+| occurredAt | 发生时间（`YYYY-MM-DD HH:mm:ss`） |
 | instanceId | 关联的流程实例 ID |
 | definitionId | 关联的流程定义 ID |
 | tenantId | 租户 ID（多租户场景） |
@@ -78,6 +80,21 @@ workflowEventBus.on('node.entered', (e) => {
 | instance.* | instance（完整的流程实例数据） |
 | node.* | nodeKey、nodeName、nodeType |
 | task.* | task（完整的任务数据）、comment（审批意见） |
+
+## 内置订阅者
+
+服务启动时会注册以下订阅者：
+
+| 订阅者 | 说明 |
+| --- | --- |
+| `ws` | WebSocket 实时推送 |
+| `webhook` | HTTP Webhook 事件订阅与投递重试 |
+| `trigger` | 监听 `node.entered` 执行触发器节点 |
+| `external-approver` | 监听 `task.created` 派发外部审批 |
+| `node-listeners` | 执行节点级监听器 |
+| `notification` | 站内通知 |
+| `chat` | 聊天/机器人卡片通知 |
+| `workflow-automations` | 执行流程级自动化规则 |
 
 ## 事件订阅的签名验证
 
