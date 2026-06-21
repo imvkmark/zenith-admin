@@ -1,4 +1,4 @@
-import { mockDateTime } from '../utils/date';
+import { mockDateTime, mockDateOffset } from '../utils/date';
 import { SEED_MEMBER_LEVELS, SEED_COUPONS } from '@zenith/shared';
 
 const now = mockDateTime();
@@ -83,3 +83,45 @@ export const mockMemberLoginLogs = [
   { id: 4, memberId: 1, ip: '127.0.0.1', location: '内网IP', browser: 'Firefox', os: 'Ubuntu', userAgent: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:120.0)', status: 'success', message: '登录成功', createdAt: '2026-03-15 14:20:00' },
   { id: 5, memberId: 1, ip: '9.10.11.12', location: '上海市', browser: 'Chrome', os: 'Android', userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0', status: 'success', message: '登录成功', createdAt: '2026-03-10 08:05:00' },
 ];
+
+export const mockMemberRecharges = [
+  { id: 1, orderNo: 'PAY20260320001', outTradeNo: 'OUT20260320001', channelTradeNo: '4200001234202603201', memberId: 1, memberNickname: '演示会员', memberPhone: '13800138000', subject: '会员钱包充值', amount: 10000, channel: 'wechat', payMethod: 'wechat_jsapi', status: 'success', paidAmount: 10000, paidAt: '2026-03-20 10:12:30', expiredAt: '2026-03-20 10:42:00', errorMessage: null, createdAt: '2026-03-20 10:12:00' },
+  { id: 2, orderNo: 'PAY20260318002', outTradeNo: 'OUT20260318002', channelTradeNo: '2026031822001495', memberId: 2, memberNickname: 'Alice', memberPhone: '13900139001', subject: '会员钱包充值', amount: 5000, channel: 'alipay', payMethod: 'alipay_wap', status: 'success', paidAmount: 5000, paidAt: '2026-03-18 16:05:10', expiredAt: '2026-03-18 16:35:00', errorMessage: null, createdAt: '2026-03-18 16:05:00' },
+  { id: 3, orderNo: 'PAY20260317003', outTradeNo: 'OUT20260317003', channelTradeNo: null, memberId: 3, memberNickname: '老用户', memberPhone: '13700137002', subject: '会员钱包充值', amount: 20000, channel: 'wechat', payMethod: 'wechat_native', status: 'closed', paidAmount: null, paidAt: null, expiredAt: '2026-03-17 09:30:00', errorMessage: '订单超时未支付', createdAt: '2026-03-17 09:00:00' },
+];
+
+export const mockMemberStatsOverview = {
+  totalMembers: 1286,
+  todayNewMembers: 18,
+  monthNewMembers: 246,
+  activeMembers30d: 642,
+  totalPoints: 358420,
+  totalWalletBalance: 1286500,
+  todayCheckins: 312,
+  todayCheckinRate: 24.3,
+  availableCoupons: 87,
+};
+
+function buildTrend(days: number, gen: (i: number) => Record<string, number>) {
+  return Array.from({ length: days }, (_, i) => ({
+    date: mockDateOffset(i - (days - 1)),
+    ...gen(i),
+  }));
+}
+
+export const mockMemberStatsCharts = {
+  registerTrend: buildTrend(30, (i) => ({ count: 6 + ((i * 7 + 3) % 22) })),
+  levelDistribution: [
+    { name: '普通会员', value: 812 },
+    { name: '白银会员', value: 286 },
+    { name: '黄金会员', value: 132 },
+    { name: '铂金会员', value: 42 },
+    { name: '钻石会员', value: 14 },
+  ],
+  pointTrend: buildTrend(30, (i) => ({
+    earned: 1200 + ((i * 137 + 200) % 1800),
+    spent: 600 + ((i * 89 + 100) % 1100),
+  })),
+  checkinTrend: buildTrend(7, (i) => ({ count: 260 + ((i * 53 + 40) % 160) })),
+};
+

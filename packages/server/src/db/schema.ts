@@ -3190,6 +3190,7 @@ export const memberCheckins = pgTable('member_checkins', {
   consecutiveDays: integer('consecutive_days').notNull().default(1),
   pointsAwarded: integer('points_awarded').notNull().default(0),
   experienceAwarded: integer('experience_awarded').notNull().default(0),
+  isMakeup: boolean('is_makeup').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   unique().on(t.memberId, t.checkinDate),
@@ -3199,6 +3200,65 @@ export type NewMemberCheckin = typeof memberCheckins.$inferInsert;
 
 export const memberCheckinsRelations = relations(memberCheckins, ({ one }) => ({
   member: one(members, { fields: [memberCheckins.memberId], references: [members.id] }),
+}));
+
+// ─── 签到设置（单行配置：补签开关 / 消耗积分 / 可回溯天数）────────────────────────
+export const checkinSettings = pgTable('checkin_settings', {
+  id: serial('id').primaryKey(),
+  makeupEnabled: boolean('makeup_enabled').notNull().default(true),
+  makeupCostPoints: integer('makeup_cost_points').notNull().default(20),
+  makeupMaxDays: integer('makeup_max_days').notNull().default(7),
+  ...auditColumns(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type CheckinSettingsRow = typeof checkinSettings.$inferSelect;
+export type NewCheckinSettings = typeof checkinSettings.$inferInsert;
+
+// ─── 签到里程碑（累计签到天数达标奖励）──────────────────────────────────────────
+export const checkinMilestoneRewardTypeEnum = pgEnum('checkin_milestone_reward_type', ['points', 'coupon']);
+
+export const checkinMilestones = pgTable('checkin_milestones', {
+  id: serial('id').primaryKey(),
+  title: varchar('title', { length: 64 }).notNull(),
+  cumulativeDays: integer('cumulative_days').notNull(),
+  rewardType: checkinMilestoneRewardTypeEnum('reward_type').notNull().default('points'),
+  rewardPoints: integer('reward_points').notNull().default(0),
+  couponId: integer('coupon_id').references(() => coupons.id, { onDelete: 'set null' }),
+  enabled: boolean('enabled').notNull().default(true),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  unique().on(t.cumulativeDays),
+]);
+export type CheckinMilestoneRow = typeof checkinMilestones.$inferSelect;
+export type NewCheckinMilestone = typeof checkinMilestones.$inferInsert;
+
+export const checkinMilestonesRelations = relations(checkinMilestones, ({ one }) => ({
+  coupon: one(coupons, { fields: [checkinMilestones.couponId], references: [coupons.id] }),
+}));
+
+// ─── 会员里程碑发放记录（防重复发放）──────────────────────────────────────────
+export const memberCheckinMilestoneAwards = pgTable('member_checkin_milestone_awards', {
+  id: serial('id').primaryKey(),
+  memberId: integer('member_id').notNull().references(() => members.id, { onDelete: 'cascade' }),
+  milestoneId: integer('milestone_id').notNull().references(() => checkinMilestones.id, { onDelete: 'cascade' }),
+  cumulativeDays: integer('cumulative_days').notNull(),
+  rewardType: checkinMilestoneRewardTypeEnum('reward_type').notNull(),
+  rewardPoints: integer('reward_points').notNull().default(0),
+  couponId: integer('coupon_id'),
+  memberCouponId: integer('member_coupon_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  unique().on(t.memberId, t.milestoneId),
+]);
+export type MemberCheckinMilestoneAwardRow = typeof memberCheckinMilestoneAwards.$inferSelect;
+export type NewMemberCheckinMilestoneAward = typeof memberCheckinMilestoneAwards.$inferInsert;
+
+export const memberCheckinMilestoneAwardsRelations = relations(memberCheckinMilestoneAwards, ({ one }) => ({
+  member: one(members, { fields: [memberCheckinMilestoneAwards.memberId], references: [members.id] }),
+  milestone: one(checkinMilestones, { fields: [memberCheckinMilestoneAwards.milestoneId], references: [checkinMilestones.id] }),
 }));
 
 export const membersRelations = relations(members, ({ one, many }) => ({

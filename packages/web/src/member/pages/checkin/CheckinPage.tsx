@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, Calendar, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
-import type { MemberCheckin, MemberCheckinStatus, PaginatedResponse } from '@zenith/shared';
-import { CalendarCheck, ChevronLeft, ChevronRight, Flame, Trophy } from 'lucide-react';
+import { Button, Calendar, DatePicker, Modal, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import type { MemberCheckin, MemberCheckinStatus, MemberMilestoneStatus, MakeupCheckinResult, PaginatedResponse } from '@zenith/shared';
+import { CalendarCheck, CalendarPlus, ChevronLeft, ChevronRight, Flame, Gift, Trophy } from 'lucide-react';
 import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
@@ -27,6 +27,10 @@ export default function CheckinPage() {
   const [displayMonth, setDisplayMonth] = useState(() => dayjs().startOf('month'));
   const [calendarDates, setCalendarDates] = useState<Set<string>>(new Set());
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [milestones, setMilestones] = useState<MemberMilestoneStatus | null>(null);
+  const [makeupVisible, setMakeupVisible] = useState(false);
+  const [makeupDate, setMakeupDate] = useState<Date | null>(null);
+  const [makeupLoading, setMakeupLoading] = useState(false);
   const isCurrentMonth = displayMonth.isSame(dayjs().startOf('month'), 'month');
 
   const loadStatus = useCallback(async () => {
@@ -37,6 +41,11 @@ export default function CheckinPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const loadMilestones = useCallback(async () => {
+    const res = await memberRequest.get<MemberMilestoneStatus>('/api/member/checkin/milestones', { silent: true });
+    if (res.code === 0) setMilestones(res.data);
   }, []);
 
   const loadCalendarDates = useCallback(async (month: typeof displayMonth) => {
@@ -77,13 +86,35 @@ export default function CheckinPage() {
     void loadStatus();
     void loadHistory(1);
     void loadCalendarDates(displayMonth);
-  }, [loadHistory, loadStatus, loadCalendarDates, displayMonth]);
+    void loadMilestones();
+  }, [loadHistory, loadStatus, loadCalendarDates, loadMilestones, displayMonth]);
 
   const handleCheckin = async () => {
     const res = await memberRequest.post<CheckinResult>('/api/member/checkin', {});
     if (res.code === 0) {
       Toast.success(`签到成功，获得 ${res.data.points} 积分 / ${res.data.experience} 经验`);
-      await Promise.all([loadStatus(), loadHistory(1), loadCalendarDates(displayMonth), refresh()]);
+      await Promise.all([loadStatus(), loadHistory(1), loadCalendarDates(displayMonth), loadMilestones(), refresh()]);
+    }
+  };
+
+  const handleMakeup = async () => {
+    if (!makeupDate) {
+      Toast.warning('请选择补签日期');
+      return;
+    }
+    setMakeupLoading(true);
+    try {
+      const res = await memberRequest.post<MakeupCheckinResult>('/api/member/checkin/makeup', {
+        date: dayjs(makeupDate).format('YYYY-MM-DD'),
+      });
+      if (res.code === 0) {
+        Toast.success(`补签成功，消耗 ${res.data.costPoints} 积分，获得 ${res.data.pointsAwarded} 积分`);
+        setMakeupVisible(false);
+        setMakeupDate(null);
+        await Promise.all([loadStatus(), loadHistory(1), loadCalendarDates(displayMonth), loadMilestones(), refresh()]);
+      }
+    } finally {
+      setMakeupLoading(false);
     }
   };
 
@@ -144,6 +175,14 @@ export default function CheckinPage() {
             >
               {status?.checkedToday ? '今日已签到' : '立即签到'}
             </Button>
+            <Button
+              theme="borderless"
+              icon={<CalendarPlus size={16} />}
+              onClick={() => setMakeupVisible(true)}
+              style={{ color: '#fff' }}
+            >
+              补签
+            </Button>
           </div>
         </div>
       </div>
@@ -166,6 +205,42 @@ export default function CheckinPage() {
           <div style={{ marginTop: 4, color: 'var(--m-text-secondary)' }}>连续签到天数</div>
         </div>
       </div>
+
+      {milestones && milestones.milestones.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, padding: 18, marginBottom: 20 }}>
+          <div className="mc-card-title" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Gift size={16} color="var(--m-primary)" />
+            签到里程碑
+            <span style={{ fontWeight: 400, color: 'var(--m-text-secondary)', fontSize: 13 }}>
+              累计签到 {milestones.totalDays} 天
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+            {milestones.milestones.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  flex: '0 0 auto',
+                  minWidth: 130,
+                  border: `1px solid ${m.achieved ? 'var(--m-primary)' : 'var(--m-border)'}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  background: m.achieved ? 'var(--m-primary-light, #e8f9ee)' : '#fafafa',
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{m.title}</div>
+                <div style={{ color: 'var(--m-text-secondary)', fontSize: 13 }}>累计 {m.cumulativeDays} 天</div>
+                <div style={{ marginTop: 6, fontSize: 13 }}>
+                  {m.rewardType === 'coupon' ? `券：${m.couponName ?? '-'}` : `+${m.rewardPoints} 积分`}
+                </div>
+                <Tag color={m.achieved ? 'green' : 'grey'} size="small" style={{ marginTop: 8 }}>
+                  {m.achieved ? '已达成' : '未达成'}
+                </Tag>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
         <Spin spinning={calendarLoading} size="middle">
@@ -223,6 +298,33 @@ export default function CheckinPage() {
           empty={<div className="m-empty">暂无签到记录</div>}
         />
       </div>
+
+      <Modal
+        title="补签"
+        visible={makeupVisible}
+        onCancel={() => { setMakeupVisible(false); setMakeupDate(null); }}
+        onOk={handleMakeup}
+        okButtonProps={{ loading: makeupLoading }}
+        okText="确认补签"
+        cancelText="取消"
+      >
+        <div style={{ marginBottom: 12, color: 'var(--m-text-secondary)', fontSize: 13 }}>
+          选择需要补签的历史日期，补签将消耗相应积分（具体规则以提交结果为准）。
+        </div>
+        <DatePicker
+          type="date"
+          value={makeupDate ?? undefined}
+          onChange={(d) => setMakeupDate((d as Date) ?? null)}
+          placeholder="请选择补签日期"
+          style={{ width: '100%' }}
+          disabledDate={(date) => {
+            if (!date) return false;
+            const d = dayjs(date);
+            if (!d.isBefore(dayjs(), 'day')) return true;
+            return calendarDates.has(d.format('YYYY-MM-DD'));
+          }}
+        />
+      </Modal>
     </MemberPage>
   );
 }

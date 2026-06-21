@@ -205,6 +205,12 @@ export type MemberCouponStatus = typeof MEMBER_COUPON_STATUSES[number];
 export const MEMBER_REGISTER_SOURCES = ['web', 'h5', 'app', 'admin'] as const;
 export type MemberRegisterSource = typeof MEMBER_REGISTER_SOURCES[number];
 
+export const CHECKIN_MILESTONE_REWARD_TYPES = ['points', 'coupon'] as const;
+export const CHECKIN_MILESTONE_REWARD_TYPE_LABELS: Record<typeof CHECKIN_MILESTONE_REWARD_TYPES[number], string> = {
+  points: '积分',
+  coupon: '优惠券',
+};
+
 export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {
   active: '正常',
   inactive: '未激活',

@@ -8,11 +8,20 @@ import {
   mockCoupons,
   mockMemberPointAccount,
   mockMemberWallet,
+  mockMemberLoginLogs,
+  mockMemberRecharges,
+  mockMemberStatsOverview,
+  mockMemberStatsCharts,
 } from '../data/members';
 
 function memberView(m: (typeof mockMembers)[number]) {
   const { password: _pwd, ...rest } = m;
   return rest;
+}
+
+function loginLogView(l: (typeof mockMemberLoginLogs)[number]) {
+  const m = mockMembers.find((x) => x.id === l.memberId);
+  return { ...l, memberNickname: m?.nickname ?? null };
 }
 
 function ok(data: unknown, message = 'ok') {
@@ -33,6 +42,26 @@ export const memberAdminHandlers = [
   http.put('/api/members/batch-status', () => ok(null, '已更新状态')),
   http.put('/api/members/batch-level', () => ok(null, '已调整等级')),
   http.get('/api/members', () => paginated(mockMembers.map(memberView))),
+  http.get('/api/members/options', ({ request }) => {
+    const kw = (new URL(request.url).searchParams.get('keyword') ?? '').trim().toLowerCase();
+    const rows = mockMembers
+      .filter((m) => !kw
+        || m.nickname.toLowerCase().includes(kw)
+        || (m.phone ?? '').includes(kw)
+        || (m.username ?? '').toLowerCase().includes(kw))
+      .slice(0, 20)
+      .map((m) => ({ id: m.id, nickname: m.nickname, phone: m.phone, username: m.username, levelName: m.levelName }));
+    return ok(rows);
+  }),
+  http.get('/api/members/login-logs', ({ request }) => {
+    const sp = new URL(request.url).searchParams;
+    const kw = (sp.get('keyword') ?? '').trim().toLowerCase();
+    const status = sp.get('status');
+    let rows = mockMemberLoginLogs.map(loginLogView);
+    if (status) rows = rows.filter((r) => r.status === status);
+    if (kw) rows = rows.filter((r) => (r.memberNickname ?? '').toLowerCase().includes(kw));
+    return paginated(rows);
+  }),
   http.get('/api/members/:id/overview', ({ params }) => {
     const m = mockMembers.find((x) => x.id === Number(params.id));
     if (!m) return HttpResponse.json({ code: 404, message: '不存在', data: null }, { status: 404 });
@@ -42,6 +71,7 @@ export const memberAdminHandlers = [
       wallet: mockMemberWallet,
       recentPointTxs: mockMemberPointTxs.slice(0, 5),
       recentWalletTxs: mockMemberWalletTxs.slice(0, 5),
+      recentLoginLogs: mockMemberLoginLogs.slice(0, 5).map(loginLogView),
       activeCouponCount: 2,
       loginLogCount: 8,
     });
@@ -55,6 +85,28 @@ export const memberAdminHandlers = [
   http.post('/api/members/:id/reset-password', () => ok(null, '密码已重置')),
   http.put('/api/members/:id', () => ok(memberView(mockMembers[0]), '更新成功')),
   http.delete('/api/members/:id', () => ok(null, '删除成功')),
+
+  // ── 会员充值记录 ─────────────────────────────────────────────────────────────
+  http.get('/api/member-recharges', ({ request }) => {
+    const sp = new URL(request.url).searchParams;
+    const kw = (sp.get('keyword') ?? '').trim().toLowerCase();
+    const status = sp.get('status');
+    const channel = sp.get('channel');
+    let rows = mockMemberRecharges;
+    if (status) rows = rows.filter((r) => r.status === status);
+    if (channel) rows = rows.filter((r) => r.channel === channel);
+    if (kw) {
+      rows = rows.filter((r) =>
+        (r.memberNickname ?? '').toLowerCase().includes(kw)
+        || (r.memberPhone ?? '').includes(kw)
+        || r.orderNo.toLowerCase().includes(kw));
+    }
+    return paginated(rows);
+  }),
+
+  // ── 会员看板 ─────────────────────────────────────────────────────────────
+  http.get('/api/member-stats/overview', () => ok(mockMemberStatsOverview)),
+  http.get('/api/member-stats/charts', () => ok(mockMemberStatsCharts)),
 
   // ── 会员等级 ─────────────────────────────────────────────────────────────
   http.get('/api/member-levels', () => ok(mockMemberLevels)),

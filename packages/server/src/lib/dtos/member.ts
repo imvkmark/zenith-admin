@@ -3,6 +3,7 @@
  * 统一通过 lib/openapi-dtos.ts re-export，路由文件从 '../lib/openapi-dtos' 导入。
  */
 import { z } from '@hono/zod-openapi';
+import { MemberLoginLogDTO } from './logs';
 
 // ─── 会员实体 ─────────────────────────────────────────────────────────────────
 export const MemberDTO = z
@@ -32,6 +33,16 @@ export const MemberDTO = z
     updatedAt: z.string(),
   })
   .openapi('Member');
+
+export const MemberOptionDTO = z
+  .object({
+    id: z.number().int(),
+    nickname: z.string(),
+    phone: z.string().nullable().optional(),
+    username: z.string().nullable().optional(),
+    levelName: z.string().nullable().optional(),
+  })
+  .openapi('MemberOption');
 
 export const MemberTokenDTO = z
   .object({
@@ -189,10 +200,56 @@ export const MemberOverviewDTO = z
     wallet: MemberWalletDTO,
     recentPointTxs: z.array(MemberPointTransactionDTO),
     recentWalletTxs: z.array(MemberWalletTransactionDTO),
+    recentLoginLogs: z.array(MemberLoginLogDTO),
     activeCouponCount: z.number().int(),
     loginLogCount: z.number().int(),
   })
   .openapi('MemberOverview');
+
+export const MemberRechargeDTO = z
+  .object({
+    id: z.number().int(),
+    orderNo: z.string(),
+    outTradeNo: z.string(),
+    channelTradeNo: z.string().nullable(),
+    memberId: z.number().int().nullable(),
+    memberNickname: z.string().nullable(),
+    memberPhone: z.string().nullable(),
+    subject: z.string(),
+    amount: z.number().int(),
+    channel: z.enum(['wechat', 'alipay']),
+    payMethod: z.string(),
+    status: z.enum(['pending', 'paying', 'success', 'closed', 'refunding', 'refunded', 'failed']),
+    paidAmount: z.number().int().nullable(),
+    paidAt: z.string().nullable(),
+    expiredAt: z.string().nullable(),
+    errorMessage: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('MemberRecharge');
+
+export const MemberStatsOverviewDTO = z
+  .object({
+    totalMembers: z.number().int(),
+    todayNewMembers: z.number().int(),
+    monthNewMembers: z.number().int(),
+    activeMembers30d: z.number().int(),
+    totalPoints: z.number().int(),
+    totalWalletBalance: z.number().int(),
+    todayCheckins: z.number().int(),
+    todayCheckinRate: z.number(),
+    availableCoupons: z.number().int(),
+  })
+  .openapi('MemberStatsOverview');
+
+export const MemberStatsChartsDTO = z
+  .object({
+    registerTrend: z.array(z.object({ date: z.string(), count: z.number().int() })),
+    levelDistribution: z.array(z.object({ name: z.string(), value: z.number().int() })),
+    pointTrend: z.array(z.object({ date: z.string(), earned: z.number().int(), spent: z.number().int() })),
+    checkinTrend: z.array(z.object({ date: z.string(), count: z.number().int() })),
+  })
+  .openapi('MemberStatsCharts');
 
 export const CheckinRuleDTO = z
   .object({
@@ -215,6 +272,7 @@ export const MemberCheckinDTO = z
     consecutiveDays: z.number().int(),
     pointsAwarded: z.number().int(),
     experienceAwarded: z.number().int(),
+    isMakeup: z.boolean().optional(),
     createdAt: z.string(),
   })
   .openapi('MemberCheckin');
@@ -231,3 +289,56 @@ export const MemberCheckinStatusDTO = z
     thisMonthDates: z.array(z.string()),
   })
   .openapi('MemberCheckinStatus');
+
+export const CheckinSettingsDTO = z
+  .object({
+    makeupEnabled: z.boolean(),
+    makeupCostPoints: z.number().int(),
+    makeupMaxDays: z.number().int(),
+    updatedAt: z.string(),
+  })
+  .openapi('CheckinSettings');
+
+export const CheckinMilestoneDTO = z
+  .object({
+    id: z.number().int(),
+    title: z.string(),
+    cumulativeDays: z.number().int(),
+    rewardType: z.enum(['points', 'coupon']),
+    rewardPoints: z.number().int(),
+    couponId: z.number().int().nullable().optional(),
+    couponName: z.string().nullable().optional(),
+    enabled: z.boolean(),
+    remark: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('CheckinMilestone');
+
+export const MemberMilestoneStatusDTO = z
+  .object({
+    totalDays: z.number().int(),
+    milestones: z.array(
+      z.object({
+        id: z.number().int(),
+        title: z.string(),
+        cumulativeDays: z.number().int(),
+        rewardType: z.enum(['points', 'coupon']),
+        rewardPoints: z.number().int(),
+        couponName: z.string().nullable().optional(),
+        achieved: z.boolean(),
+        achievedAt: z.string().nullable().optional(),
+      }),
+    ),
+  })
+  .openapi('MemberMilestoneStatus');
+
+export const MakeupCheckinResultDTO = z
+  .object({
+    checkinDate: z.string(),
+    pointsAwarded: z.number().int(),
+    experienceAwarded: z.number().int(),
+    costPoints: z.number().int(),
+    consecutiveDays: z.number().int(),
+  })
+  .openapi('MakeupCheckinResult');

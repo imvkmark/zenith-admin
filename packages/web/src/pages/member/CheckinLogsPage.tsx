@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, DatePicker, Input } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Form, Input, Tag, Toast } from '@douyinfe/semi-ui';
+import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw, CalendarPlus } from 'lucide-react';
 import type { MemberCheckin, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { usePagination } from '@/hooks/usePagination';
+import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { AppModal } from '@/components/AppModal';
+import { MemberSelect } from '@/components/MemberSelect';
 import { formatDateForApi } from '@/utils/date';
 
 interface SearchParams {
@@ -20,6 +24,7 @@ const defaultSearch: SearchParams = {
 };
 
 export default function CheckinLogsPage() {
+  const { hasPermission } = usePermission();
   const [data, setData] = useState<MemberCheckin[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -27,6 +32,8 @@ export default function CheckinLogsPage() {
   const searchRef = useRef<SearchParams>(defaultSearch);
   searchRef.current = search;
   const { page, pageSize, setPage, buildPagination } = usePagination();
+  const [makeupVisible, setMakeupVisible] = useState(false);
+  const makeupFormApi = useRef<FormApi | null>(null);
 
   const fetchData = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const current = params ?? searchRef.current;
@@ -54,6 +61,24 @@ export default function CheckinLogsPage() {
     void fetchData();
   }, [fetchData]);
 
+  const handleMakeup = async () => {
+    let values: { memberId?: number; date?: Date } | undefined;
+    try {
+      values = await makeupFormApi.current?.validate();
+    } catch {
+      throw new Error('validation');
+    }
+    if (!values?.memberId || !values?.date) throw new Error('请完整填写补签信息');
+    const res = await request.post(`/api/members/${values.memberId}/checkin/makeup`, { date: formatDateForApi(values.date) });
+    if (res.code === 0) {
+      Toast.success('补签成功');
+      setMakeupVisible(false);
+      void fetchData();
+      return;
+    }
+    throw new Error(res.message);
+  };
+
   const columns: ColumnProps<MemberCheckin>[] = [
     { title: 'ID', dataIndex: 'id', width: 90 },
     { title: '会员昵称', dataIndex: 'memberNickname', width: 140, render: (value?: string | null, row?: MemberCheckin) => value || `#${row?.memberId}` },
@@ -61,6 +86,14 @@ export default function CheckinLogsPage() {
     { title: '连续天数', dataIndex: 'consecutiveDays', width: 100 },
     { title: '积分奖励', dataIndex: 'pointsAwarded', width: 100 },
     { title: '经验奖励', dataIndex: 'experienceAwarded', width: 100 },
+    {
+      title: '类型',
+      dataIndex: 'isMakeup',
+      width: 90,
+      render: (value?: boolean) => (
+        <Tag color={value ? 'orange' : 'green'} size="small">{value ? '补签' : '正常'}</Tag>
+      ),
+    },
     { title: '签到时间', dataIndex: 'createdAt', width: 180 },
   ];
 
@@ -87,6 +120,11 @@ export default function CheckinLogsPage() {
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearch(defaultSearch); setPage(1); void fetchData(1, pageSize, defaultSearch); }}>
           重置
         </Button>
+        {hasPermission('member:checkin:makeup') && (
+          <Button type="primary" icon={<CalendarPlus size={14} />} onClick={() => setMakeupVisible(true)}>
+            会员补签
+          </Button>
+        )}
       </SearchToolbar>
 
       <ConfigurableTable
@@ -101,6 +139,25 @@ export default function CheckinLogsPage() {
         pagination={buildPagination(total, fetchData)}
         empty="暂无签到记录"
       />
+
+      <AppModal
+        title="会员补签"
+        visible={makeupVisible}
+        width={480}
+        closeOnEsc
+        onCancel={() => setMakeupVisible(false)}
+        onOk={handleMakeup}
+      >
+        <Form
+          key={makeupVisible ? 'makeup-open' : 'makeup-closed'}
+          getFormApi={(api) => { makeupFormApi.current = api; }}
+          labelPosition="left"
+          labelWidth={90}
+        >
+          <MemberSelect field="memberId" label="会员" required />
+          <Form.DatePicker field="date" label="补签日期" type="date" style={{ width: '100%' }} rules={[{ required: true, message: '请选择补签日期' }]} />
+        </Form>
+      </AppModal>
     </div>
   );
 }

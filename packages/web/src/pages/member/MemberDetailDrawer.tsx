@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { SideSheet, Tag, Descriptions, Table, Spin, Avatar, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { Member, MemberPointAccount, MemberWallet, MemberPointTransaction, MemberWalletTransaction } from '@zenith/shared';
+import type { Member, MemberPointAccount, MemberWallet, MemberPointTransaction, MemberWalletTransaction, MemberLoginLog } from '@zenith/shared';
 import { MEMBER_STATUS_LABELS, POINT_TX_TYPE_LABELS, WALLET_TX_TYPE_LABELS } from '@zenith/shared';
 import { request } from '@/utils/request';
 
@@ -13,6 +13,7 @@ interface MemberOverview {
   wallet: MemberWallet;
   recentPointTxs: MemberPointTransaction[];
   recentWalletTxs: MemberWalletTransaction[];
+  recentLoginLogs: MemberLoginLog[];
   activeCouponCount: number;
   loginLogCount: number;
 }
@@ -43,6 +44,14 @@ const walletTxCols: ColumnProps<MemberWalletTransaction>[] = [
   { title: '变动(元)', dataIndex: 'amount', width: 90, render: (v: number) => <span style={{ color: v > 0 ? '#07c160' : '#fa5151', fontWeight: 600 }}>{v > 0 ? `+${(v / 100).toFixed(2)}` : (v / 100).toFixed(2)}</span> },
   { title: '余额(元)', dataIndex: 'balanceAfter', width: 90, render: (v: number) => (v / 100).toFixed(2) },
   { title: '备注', dataIndex: 'remark', render: (v: string | null) => <Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{v ?? '—'}</Text> },
+  { title: '时间', dataIndex: 'createdAt', width: 180 },
+];
+
+const loginLogCols: ColumnProps<MemberLoginLog>[] = [
+  { title: '状态', dataIndex: 'status', width: 70, render: (v: string) => <Tag size="small" color={v === 'success' ? 'green' : 'red'}>{v === 'success' ? '成功' : '失败'}</Tag> },
+  { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v ?? '—' },
+  { title: '地点', dataIndex: 'location', width: 120, render: (v: string | null) => <Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 110 }}>{v ?? '—'}</Text> },
+  { title: '浏览器', dataIndex: 'browser', render: (v: string | null) => <Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 110 }}>{v ?? '—'}</Text> },
   { title: '时间', dataIndex: 'createdAt', width: 180 },
 ];
 
@@ -126,11 +135,25 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
             </div>
 
             {/* 最近钱包流水 */}
-            <div>
+            <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: 'var(--semi-color-text-0)' }}>最近钱包记录</div>
               <Table
                 columns={walletTxCols}
                 dataSource={overview.recentWalletTxs}
+                rowKey="id"
+                size="small"
+                bordered
+                pagination={false}
+                empty={<div style={{ textAlign: 'center', padding: '16px 0', color: '#9ca3af' }}>暂无记录</div>}
+              />
+            </div>
+
+            {/* 最近登录记录 */}
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: 'var(--semi-color-text-0)' }}>最近登录记录</div>
+              <Table
+                columns={loginLogCols}
+                dataSource={overview.recentLoginLogs}
                 rowKey="id"
                 size="small"
                 bordered

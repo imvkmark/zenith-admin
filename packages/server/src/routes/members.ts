@@ -5,12 +5,13 @@ import {
   ErrorResponse, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery, okExcel, excelStreamBody, okCsv, csvStreamBody, BatchIdsBody,
 } from '../lib/openapi-schemas';
-import { MemberDTO, MemberOverviewDTO } from '../lib/openapi-dtos';
+import { MemberDTO, MemberOverviewDTO, MemberOptionDTO, MemberLoginLogDTO, MakeupCheckinResultDTO } from '../lib/openapi-dtos';
 import {
-  listMembers, getMemberDetail, getMemberOverview, createMember, updateMember,
+  listMembers, getMemberDetail, getMemberOverview, getMemberOptions, listMemberLoginLogs, createMember, updateMember,
   setMemberStatus, batchSetMemberStatus, batchSetMemberLevel,
   resetMemberPasswordByAdmin, deleteMember, exportMembers, exportMembersAsCsv,
 } from '../services/admin-members.service';
+import { doMakeupCheckin } from '../services/member-checkin.service';
 import { ensureMemberExists } from '../services/member-auth.service';
 
 const membersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -141,6 +142,58 @@ const exportCsvRoute = defineOpenAPIRoute({
   },
 });
 
+// ─── GET /options — 会员搜索下拉（轻量，必须在 /{id} 之前注册）────────────────
+const optionsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/options', tags: ['会员管理'], summary: '会员搜索下拉（轻量）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:member:list' })] as const,
+    request: { query: z.object({ keyword: z.string().optional() }) },
+    responses: { ...commonErrorResponses, ...ok(z.array(MemberOptionDTO), 'ok') },
+  }),
+  handler: async (c) => c.json(okBody(await getMemberOptions(c.req.valid('query').keyword)), 200),
+});
+
+// ─── GET /login-logs — 会员登录日志（跨会员，必须在 /{id} 之前注册）───────────
+const loginLogQuery = PaginationQuery.extend({
+  keyword: z.string().optional(),
+  status: z.enum(['success', 'fail']).optional(),
+  dateStart: z.string().optional(),
+  dateEnd: z.string().optional(),
+});
+const loginLogsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/login-logs', tags: ['会员管理'], summary: '会员登录日志',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:loginlog:list' })] as const,
+    request: { query: loginLogQuery },
+    responses: { ...commonErrorResponses, ...okPaginated(MemberLoginLogDTO, '会员登录日志') },
+  }),
+  handler: async (c) => {
+    const { page = 1, pageSize = 20, ...rest } = c.req.valid('query');
+    return c.json(okBody(await listMemberLoginLogs({ page, pageSize, ...rest })), 200);
+  },
+});
+
+// ─── POST /{id}/checkin/makeup — 后台为会员补签 ───────────────────────────────
+const makeupCheckinRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/checkin/makeup', tags: ['会员管理'], summary: '会员补签',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'member:checkin:makeup', audit: { description: '会员补签', module: '会员签到' } })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({ date: z.string().openapi({ example: '2026-06-18' }) })), required: true },
+    },
+    responses: { ...commonErrorResponses, ...ok(MakeupCheckinResultDTO, '补签成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { date } = c.req.valid('json');
+    return c.json(okBody(await doMakeupCheckin({ memberId: id, date, mode: 'admin' }), '补签成功'), 200);
+  },
+});
+
 // ─── GET /{id} — 会员详情 ────────────────────────────────────────────────────
 const getOneRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -234,7 +287,7 @@ const deleteRoute_ = defineOpenAPIRoute({
 
 membersRouter.openapiRoutes([
   batchStatusRoute, batchLevelRoute, overviewRoute,
-  listRoute, exportRoute, exportCsvRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
+  listRoute, exportRoute, exportCsvRoute, optionsRoute, loginLogsRoute, makeupCheckinRoute, getOneRoute, createRoute_, updateRoute_, setStatusRoute, resetPwdRoute, deleteRoute_,
 ] as const);
 
 export default membersRouter;

@@ -16,6 +16,8 @@ import {
   MemberLoginLogDTO,
   MemberCheckinStatusDTO,
   MemberCheckinDTO,
+  MemberMilestoneStatusDTO,
+  MakeupCheckinResultDTO,
 } from '../lib/openapi-dtos';
 import { currentMemberId } from '../lib/member-context';
 import { getClientInfo } from '../services/auth.service';
@@ -23,7 +25,7 @@ import { getMyPointAccount, listMyPointTransactions } from '../services/member-p
 import { getMyWallet, listMyWalletTransactions, rechargeWallet } from '../services/member-wallet.service';
 import { getEnabledLevels } from '../services/member-levels.service';
 import { listMyCoupons, getAvailableCoupons, receiveCoupon } from '../services/coupons.service';
-import { doCheckin, getMemberCheckinStatus, getMyCheckinHistory } from '../services/member-checkin.service';
+import { doCheckin, getMemberCheckinStatus, getMyCheckinHistory, doMyMakeupCheckin, getMyMilestones } from '../services/member-checkin.service';
 import { db } from '../db';
 import { memberLoginLogs } from '../db/schema';
 import { desc, eq } from 'drizzle-orm';
@@ -201,6 +203,29 @@ const checkinHistoryRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await getMyCheckinHistory(c.req.valid('query'))), 200),
 });
 
+// ─── POST /checkin/makeup — 自助补签（消耗积分）─────────────────────────────────
+const checkinMakeupRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/checkin/makeup', tags: ['MemberSelf'], summary: '自助补签',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware, idempotencyGuard({ ttlSeconds: 5 })] as const,
+    request: { body: { content: jsonContent(z.object({ date: z.string().openapi({ example: '2026-06-18' }) })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MakeupCheckinResultDTO, '补签成功') },
+  }),
+  handler: async (c) => c.json(okBody(await doMyMakeupCheckin(c.req.valid('json').date), '补签成功'), 200),
+});
+
+// ─── GET /checkin/milestones — 我的里程碑 ─────────────────────────────────────
+const checkinMilestonesRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/checkin/milestones', tags: ['MemberSelf'], summary: '我的签到里程碑',
+    security: [{ BearerAuth: [] }],
+    middleware: [memberAuthMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(MemberMilestoneStatusDTO, '里程碑达成情况') },
+  }),
+  handler: async (c) => c.json(okBody(await getMyMilestones()), 200),
+});
+
 // ─── GET /login-logs — 我的登录历史 ──────────────────────────────────────────
 const loginLogsRoute = defineOpenAPIRoute({
   route: createRoute({
@@ -251,6 +276,8 @@ memberSelf.openapiRoutes([
   checkinStatusRoute,
   checkinRoute,
   checkinHistoryRoute,
+  checkinMakeupRoute,
+  checkinMilestonesRoute,
   availableCouponsRoute,
   myCouponsRoute,
   receiveCouponRoute,

@@ -435,6 +435,7 @@ export interface LoginLogStats {
 export interface MemberLoginLog {
   id: number;
   memberId: number | null;
+  memberNickname?: string | null;
   ip: string | null;
   location: string | null;
   browser: string | null;
@@ -443,6 +444,45 @@ export interface MemberLoginLog {
   status: 'success' | 'fail';
   message: string | null;
   createdAt: string;
+}
+
+export interface MemberRecharge {
+  id: number;
+  orderNo: string;
+  outTradeNo: string;
+  channelTradeNo: string | null;
+  memberId: number | null;
+  memberNickname: string | null;
+  memberPhone: string | null;
+  subject: string;
+  amount: number;
+  channel: PaymentChannel;
+  payMethod: PaymentMethod;
+  status: PaymentOrderStatus;
+  paidAmount: number | null;
+  paidAt: string | null;
+  expiredAt: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface MemberStatsOverview {
+  totalMembers: number;
+  todayNewMembers: number;
+  monthNewMembers: number;
+  activeMembers30d: number;
+  totalPoints: number;
+  totalWalletBalance: number;
+  todayCheckins: number;
+  todayCheckinRate: number;
+  availableCoupons: number;
+}
+
+export interface MemberStatsCharts {
+  registerTrend: { date: string; count: number }[];
+  levelDistribution: { name: string; value: number }[];
+  pointTrend: { date: string; earned: number; spent: number }[];
+  checkinTrend: { date: string; count: number }[];
 }
 
 // ─── 用户行为分析 ────────────────────────────────────────────
@@ -3478,6 +3518,15 @@ export interface Member {
   updatedAt: string;
 }
 
+/** 会员轻量下拉选项（积分/钱包调整、发券搜索选择）*/
+export interface MemberOption {
+  id: number;
+  nickname: string;
+  phone?: string | null;
+  username?: string | null;
+  levelName?: string | null;
+}
+
 export interface MemberPointAccount {
   memberId: number;
   balance: number;
@@ -3580,6 +3629,7 @@ export interface MemberCheckin {
   consecutiveDays: number;
   pointsAwarded: number;
   experienceAwarded: number;
+  isMakeup?: boolean;
   createdAt: string;
 }
 
@@ -3592,4 +3642,51 @@ export interface MemberCheckinStatus {
   nextDayPoints: number;
   nextDayExperience: number;
   thisMonthDates: string[];
+}
+
+export type CheckinMilestoneRewardType = 'points' | 'coupon';
+
+export interface CheckinSettings {
+  makeupEnabled: boolean;
+  makeupCostPoints: number;
+  makeupMaxDays: number;
+  updatedAt: string;
+}
+
+export interface CheckinMilestone {
+  id: number;
+  title: string;
+  cumulativeDays: number;
+  rewardType: CheckinMilestoneRewardType;
+  rewardPoints: number;
+  couponId?: number | null;
+  couponName?: string | null;
+  enabled: boolean;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberMilestoneStatusItem {
+  id: number;
+  title: string;
+  cumulativeDays: number;
+  rewardType: CheckinMilestoneRewardType;
+  rewardPoints: number;
+  couponName?: string | null;
+  achieved: boolean;
+  achievedAt?: string | null;
+}
+
+export interface MemberMilestoneStatus {
+  totalDays: number;
+  milestones: MemberMilestoneStatusItem[];
+}
+
+export interface MakeupCheckinResult {
+  checkinDate: string;
+  pointsAwarded: number;
+  experienceAwarded: number;
+  costPoints: number;
+  consecutiveDays: number;
 }

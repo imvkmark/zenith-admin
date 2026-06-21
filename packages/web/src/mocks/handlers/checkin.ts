@@ -1,11 +1,13 @@
 import dayjs from 'dayjs';
 import { http, HttpResponse } from 'msw';
-import { mockCheckinRules, mockCheckinStatus, mockMemberCheckins } from '../data/checkin';
+import { mockCheckinRules, mockCheckinStatus, mockMemberCheckins, mockCheckinSettings, mockCheckinMilestones, buildMilestoneStatus } from '../data/checkin';
 import { mockDate, mockDateTime } from '../utils/date';
 
 const rules = [...mockCheckinRules];
 const memberCheckins = [...mockMemberCheckins];
 let checkinStatus = { ...mockCheckinStatus };
+const settings = { ...mockCheckinSettings };
+const milestones = [...mockCheckinMilestones];
 
 function ok(data: unknown, message = 'ok') {
   return HttpResponse.json({ code: 0, message, data });
@@ -120,5 +122,102 @@ export const checkinHandlers = [
       return true;
     });
     return paginated(filtered, page, pageSize);
+  }),
+
+  // ── 签到设置 ──────────────────────────────────────────────────
+  http.get('/api/checkin-settings', () => ok(settings)),
+  http.put('/api/checkin-settings', async ({ request }) => {
+    const body = await request.json() as Partial<typeof settings>;
+    Object.assign(settings, body, { updatedAt: mockDateTime() });
+    return ok(settings, '更新成功');
+  }),
+
+  // ── 签到里程碑 ────────────────────────────────────────────────
+  http.get('/api/checkin-milestones', () => ok([...milestones].sort((a, b) => a.cumulativeDays - b.cumulativeDays))),
+  http.post('/api/checkin-milestones', async ({ request }) => {
+    const body = await request.json() as Omit<(typeof milestones)[number], 'id' | 'createdAt' | 'updatedAt' | 'couponName'>;
+    const created = {
+      id: milestones.length ? Math.max(...milestones.map((m) => m.id)) + 1 : 1,
+      ...body,
+      couponName: body.couponId ? `优惠券#${body.couponId}` : null,
+      createdAt: mockDateTime(),
+      updatedAt: mockDateTime(),
+    };
+    milestones.push(created);
+    return ok(created, '创建成功');
+  }),
+  http.put('/api/checkin-milestones/:id', async ({ params, request }) => {
+    const id = Number(params.id);
+    const body = await request.json() as Partial<(typeof milestones)[number]>;
+    const target = milestones.find((m) => m.id === id);
+    if (!target) return HttpResponse.json({ code: 404, message: '里程碑不存在', data: null }, { status: 404 });
+    Object.assign(target, body, {
+      couponName: (body.couponId ?? target.couponId) ? `优惠券#${body.couponId ?? target.couponId}` : null,
+      updatedAt: mockDateTime(),
+    });
+    return ok(target, '更新成功');
+  }),
+  http.delete('/api/checkin-milestones/:id', ({ params }) => {
+    const id = Number(params.id);
+    const index = milestones.findIndex((m) => m.id === id);
+    if (index >= 0) milestones.splice(index, 1);
+    return ok(null, '删除成功');
+  }),
+
+  // ── 我的里程碑（C 端）─────────────────────────────────────────
+  http.get('/api/member/checkin/milestones', () => ok(buildMilestoneStatus(checkinStatus.totalDays))),
+
+  // ── 后台为会员补签 ────────────────────────────────────────────
+  http.post('/api/members/:id/checkin/makeup', async ({ params, request }) => {
+    const memberId = Number(params.id);
+    const body = await request.json() as { date: string };
+    const reward = getReward(1);
+    const created = {
+      id: memberCheckins.length ? Math.max(...memberCheckins.map((item) => item.id)) + 1 : 1,
+      memberId,
+      memberNickname: `会员#${memberId}`,
+      checkinDate: body.date,
+      consecutiveDays: 1,
+      pointsAwarded: reward?.points ?? 0,
+      experienceAwarded: reward?.experience ?? 0,
+      isMakeup: true,
+      createdAt: mockDateTime(),
+    };
+    memberCheckins.unshift(created);
+    return ok({
+      checkinDate: body.date,
+      pointsAwarded: created.pointsAwarded,
+      experienceAwarded: created.experienceAwarded,
+      costPoints: 0,
+      consecutiveDays: 1,
+    }, '补签成功');
+  }),
+
+  // ── 会员自助补签（C 端）───────────────────────────────────────
+  http.post('/api/member/checkin/makeup', async ({ request }) => {
+    if (!settings.makeupEnabled) {
+      return HttpResponse.json({ code: 400, message: '补签功能未开放', data: null }, { status: 400 });
+    }
+    const body = await request.json() as { date: string };
+    const reward = getReward(1);
+    checkinStatus = { ...checkinStatus, totalDays: checkinStatus.totalDays + 1 };
+    memberCheckins.unshift({
+      id: memberCheckins.length ? Math.max(...memberCheckins.map((item) => item.id)) + 1 : 1,
+      memberId: 1,
+      memberNickname: '演示会员',
+      checkinDate: body.date,
+      consecutiveDays: 1,
+      pointsAwarded: reward?.points ?? 0,
+      experienceAwarded: reward?.experience ?? 0,
+      isMakeup: true,
+      createdAt: mockDateTime(),
+    });
+    return ok({
+      checkinDate: body.date,
+      pointsAwarded: reward?.points ?? 0,
+      experienceAwarded: reward?.experience ?? 0,
+      costPoints: settings.makeupCostPoints,
+      consecutiveDays: 1,
+    }, '补签成功');
   }),
 ];

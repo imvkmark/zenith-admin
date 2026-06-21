@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import type { CheckinRule, MemberCheckin, MemberCheckinStatus } from '@zenith/shared';
+import type { CheckinRule, CheckinSettings, CheckinMilestone, MemberMilestoneStatus, MemberCheckin, MemberCheckinStatus } from '@zenith/shared';
 import { mockDateTime, mockDate } from '../utils/date';
 
 export const mockCheckinRules: CheckinRule[] = [
@@ -37,3 +37,34 @@ export const mockCheckinStatus: MemberCheckinStatus = {
   nextDayExperience: 8,
   thisMonthDates: ['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-05', '2026-06-06', '2026-06-07', '2026-06-10', '2026-06-11', '2026-06-12', '2026-06-15', '2026-06-16'],
 };
+
+export const mockCheckinSettings: CheckinSettings = {
+  makeupEnabled: true,
+  makeupCostPoints: 20,
+  makeupMaxDays: 7,
+  updatedAt: mockDateTime(),
+};
+
+export const mockCheckinMilestones: CheckinMilestone[] = [
+  { id: 1, title: '累计签到 7 天', cumulativeDays: 7, rewardType: 'points', rewardPoints: 50, couponId: null, couponName: null, enabled: true, remark: '累计签到满 7 天奖励', createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 2, title: '累计签到 30 天', cumulativeDays: 30, rewardType: 'points', rewardPoints: 300, couponId: null, couponName: null, enabled: true, remark: '累计签到满 30 天奖励', createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 3, title: '累计签到 100 天', cumulativeDays: 100, rewardType: 'coupon', rewardPoints: 0, couponId: 2, couponName: '满100减20券', enabled: true, remark: '累计签到满 100 天赠送优惠券', createdAt: mockDateTime(), updatedAt: mockDateTime() },
+];
+
+export function buildMilestoneStatus(totalDays: number): MemberMilestoneStatus {
+  return {
+    totalDays,
+    milestones: mockCheckinMilestones
+      .filter((m) => m.enabled)
+      .map((m) => ({
+        id: m.id,
+        title: m.title,
+        cumulativeDays: m.cumulativeDays,
+        rewardType: m.rewardType,
+        rewardPoints: m.rewardPoints,
+        couponName: m.couponName ?? null,
+        achieved: totalDays >= m.cumulativeDays,
+        achievedAt: totalDays >= m.cumulativeDays ? mockDateTime() : null,
+      })),
+  };
+}

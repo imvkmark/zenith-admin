@@ -207,6 +207,14 @@ export async function issueCoupon(couponId: number, memberId: number) {
   });
 }
 
+/** 在已有事务内向会员发放指定模板的一张券（供签到里程碑等内部流程复用）。
+ * 库存不足 / 超限会抛 HTTPException，由调用方决定是否吞掉。 */
+export async function grantCouponInTx(tx: DbTransaction, couponId: number, memberId: number): Promise<MemberCouponRow> {
+  const [coupon] = await tx.select().from(coupons).where(eq(coupons.id, couponId)).limit(1);
+  if (!coupon) throw new HTTPException(404, { message: '优惠券不存在' });
+  return grantCoupon(tx, coupon, memberId);
+}
+
 /** 前台：会员自助领券 */
 export async function receiveCoupon(couponId: number) {
   const memberId = currentMemberId();

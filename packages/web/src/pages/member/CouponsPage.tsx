@@ -11,6 +11,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { MemberSelect } from '@/components/MemberSelect';
 import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { formatDateTimeForApi } from '@/utils/date';
 
@@ -272,8 +273,7 @@ export default function CouponsPage() {
       <AppModal title={`发放优惠券：${issuing?.name ?? ''}`} visible={issueVisible} width={420}
         onCancel={() => setIssueVisible(false)} onOk={handleIssue}>
         <Form key={issuing?.id ?? 'issue'} getFormApi={(api) => { issueFormApi.current = api; }} labelPosition="left" labelWidth={90}>
-          <Form.InputNumber field="memberId" label="会员ID" min={1} style={{ width: '100%' }}
-            rules={[{ required: true, message: '请输入要发放的会员ID' }]} />
+          <MemberSelect field="memberId" required />
         </Form>
       </AppModal>
     </div>

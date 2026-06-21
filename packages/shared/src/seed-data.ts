@@ -306,6 +306,7 @@ export const SEED_MENUS: Menu[] = [
 
   // ── 会员中心 ─────────────────────────────────────────────────────────────────
   { id: 800, parentId: 0,   title: '会员中心', name: 'MemberCenter',   path: undefined,                 component: undefined,                    icon: 'Crown',       type: 'directory', sort: 10, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 805, parentId: 800, title: '会员看板', name: 'MemberDashboard', path: '/member/dashboard',       component: 'member/MemberDashboardPage', icon: 'LayoutDashboard', type: 'menu',  sort: 0,  status: 'enabled', visible: true,  permission: 'member:dashboard:view', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 801, parentId: 800, title: '会员管理', name: 'MemberList',     path: '/member/members',         component: 'member/MembersPage',         icon: 'UserRound',   type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'member:member:list',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 802, parentId: 801, title: '新增会员', name: undefined,        path: undefined,                 component: undefined,                    icon: undefined,     type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'member:member:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 803, parentId: 801, title: '编辑会员', name: undefined,        path: undefined,                 component: undefined,                    icon: undefined,     type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'member:member:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
@@ -332,6 +333,14 @@ export const SEED_MENUS: Menu[] = [
   { id: 863, parentId: 861, title: '新增规则', name: undefined,         path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'member:checkin:rule:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 864, parentId: 861, title: '编辑规则', name: undefined,         path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 2, status: 'enabled', visible: true, permission: 'member:checkin:rule:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 865, parentId: 861, title: '删除规则', name: undefined,         path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'member:checkin:rule:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 866, parentId: 860, title: '里程碑配置', name: 'CheckinMilestones', path: '/member/checkin-milestones', component: 'member/CheckinMilestonesPage', icon: 'Trophy', type: 'menu', sort: 3, status: 'enabled', visible: true, permission: 'member:checkin:milestone:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 867, parentId: 866, title: '新增里程碑', name: undefined,       path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'member:checkin:milestone:create', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 868, parentId: 866, title: '编辑里程碑', name: undefined,       path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 2, status: 'enabled', visible: true, permission: 'member:checkin:milestone:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 869, parentId: 866, title: '删除里程碑', name: undefined,       path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 3, status: 'enabled', visible: true, permission: 'member:checkin:milestone:delete', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 876, parentId: 861, title: '签到设置', name: undefined,         path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 4, status: 'enabled', visible: true, permission: 'member:checkin:setting:update', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 877, parentId: 862, title: '会员补签', name: undefined,         path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'member:checkin:makeup', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 870, parentId: 800, title: '登录日志', name: 'MemberLoginLogs', path: '/member/login-logs',      component: 'member/MemberLoginLogsPage', icon: 'LogIn',       type: 'menu',      sort: 8,  status: 'enabled', visible: true,  permission: 'member:loginlog:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 875, parentId: 800, title: '充值记录', name: 'MemberRecharges', path: '/member/recharges',       component: 'member/MemberRechargesPage', icon: 'CreditCard',  type: 'menu',      sort: 9,  status: 'enabled', visible: true,  permission: 'member:recharge:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -1099,6 +1108,25 @@ export const SEED_MEMBER_LEVELS: MemberLevel[] = [
 export const SEED_COUPONS: Coupon[] = [
   { id: 1, name: '新人满100减10', type: 'amount',  faceValue: 1000, threshold: 10000, maxDiscount: null, totalQuantity: 1000, issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 30, status: 'active', description: '新人专享满减券',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, name: '全场9折券',    type: 'percent', faceValue: 90,   threshold: 0,     maxDiscount: 5000, totalQuantity: 500,  issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 15, status: 'active', description: '限时9折，最高减50元', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 签到里程碑（累计签到天数达标奖励）──────────────────────────────────────────
+
+export interface SeedCheckinMilestone {
+  id: number;
+  title: string;
+  cumulativeDays: number;
+  rewardType: 'points' | 'coupon';
+  rewardPoints: number;
+  couponId: number | null;
+  enabled: boolean;
+  remark: string | null;
+}
+
+export const SEED_CHECKIN_MILESTONES: SeedCheckinMilestone[] = [
+  { id: 1, title: '累计签到 7 天',   cumulativeDays: 7,   rewardType: 'points', rewardPoints: 50,  couponId: null, enabled: true, remark: '累计签到满 7 天奖励' },
+  { id: 2, title: '累计签到 30 天',  cumulativeDays: 30,  rewardType: 'points', rewardPoints: 300, couponId: null, enabled: true, remark: '累计签到满 30 天奖励' },
+  { id: 3, title: '累计签到 100 天', cumulativeDays: 100, rewardType: 'coupon', rewardPoints: 0,   couponId: 2,    enabled: true, remark: '累计签到满 100 天赠送优惠券' },
 ];
 
 // ─── 邮件模板 ─────────────────────────────────────────────────────────────────

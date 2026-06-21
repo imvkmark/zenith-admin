@@ -29,6 +29,7 @@ export const MemberLoginLogDTO = z
   .object({
     id: z.number().int(),
     memberId: z.number().int().nullable(),
+    memberNickname: z.string().nullable().optional(),
     ip: z.string().nullable(),
     location: z.string().nullable(),
     browser: z.string().nullable(),

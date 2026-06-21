@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Form, Space, Toast, Modal } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus, RotateCcw } from 'lucide-react';
-import type { CheckinRule } from '@zenith/shared';
+import { Plus, RotateCcw, Settings } from 'lucide-react';
+import type { CheckinRule, CheckinSettings } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -14,10 +14,13 @@ import { renderEllipsis } from '../../utils/table-columns';
 export default function CheckinRulesPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
+  const settingsFormApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<CheckinRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<CheckinRule | null>(null);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [settings, setSettings] = useState<CheckinSettings | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -32,6 +35,30 @@ export default function CheckinRulesPage() {
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  const openSettings = async () => {
+    const res = await request.get<CheckinSettings>('/api/checkin-settings');
+    if (res.code === 0) {
+      setSettings(res.data);
+      setSettingsVisible(true);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    let values: Record<string, unknown> | undefined;
+    try {
+      values = await settingsFormApi.current?.validate();
+    } catch {
+      throw new Error('validation');
+    }
+    const res = await request.put<CheckinSettings>('/api/checkin-settings', values);
+    if (res.code === 0) {
+      Toast.success('保存成功');
+      setSettingsVisible(false);
+      return;
+    }
+    throw new Error(res.message);
+  };
 
   const handleOk = async () => {
     let values: Record<string, unknown> | undefined;
@@ -101,6 +128,11 @@ export default function CheckinRulesPage() {
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => void fetchData()}>
           刷新
         </Button>
+        {hasPermission('member:checkin:setting:update') && (
+          <Button type="tertiary" icon={<Settings size={14} />} onClick={() => void openSettings()}>
+            签到设置
+          </Button>
+        )}
         {hasPermission('member:checkin:rule:create') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditing(null); setModalVisible(true); }}>
             新增
@@ -140,6 +172,27 @@ export default function CheckinRulesPage() {
           <Form.InputNumber field="points" label="积分奖励" min={0} style={{ width: '100%' }} rules={[{ required: true, message: '请输入积分奖励' }]} />
           <Form.InputNumber field="experience" label="经验奖励" min={0} style={{ width: '100%' }} rules={[{ required: true, message: '请输入经验奖励' }]} />
           <Form.TextArea field="remark" label="备注" maxCount={256} placeholder="请输入备注" />
+        </Form>
+      </AppModal>
+
+      <AppModal
+        title="签到设置"
+        visible={settingsVisible}
+        width={480}
+        closeOnEsc
+        onCancel={() => setSettingsVisible(false)}
+        onOk={handleSaveSettings}
+      >
+        <Form
+          key={settings?.updatedAt ?? 'settings'}
+          getFormApi={(api) => { settingsFormApi.current = api; }}
+          initValues={settings ?? { makeupEnabled: false, makeupCostPoints: 20, makeupMaxDays: 7 }}
+          labelPosition="left"
+          labelWidth={140}
+        >
+          <Form.Switch field="makeupEnabled" label="允许会员自助补签" />
+          <Form.InputNumber field="makeupCostPoints" label="补签消耗积分" min={0} style={{ width: '100%' }} rules={[{ required: true, message: '请输入补签消耗积分' }]} />
+          <Form.InputNumber field="makeupMaxDays" label="可回溯天数" min={1} max={366} style={{ width: '100%' }} rules={[{ required: true, message: '请输入可回溯天数' }]} />
         </Form>
       </AppModal>
     </div>

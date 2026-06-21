@@ -3,7 +3,7 @@
  * 复用 member-auth.service 的 mapMember / ensureMemberExists。
  */
 import bcrypt from 'bcryptjs';
-import { and, desc, eq, inArray, ilike, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, inArray, ilike, or, count, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { members, memberPointAccounts, memberWallets, memberPointTransactions, memberWalletTransactions, memberCoupons, memberLoginLogs } from '../db/schema';
@@ -13,6 +13,7 @@ import { forceLogoutAllByMember } from '../lib/member-session-manager';
 import { escapeLike } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
+import { formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../lib/datetime';
 import { streamToExcel, streamToCsv, formatDateTimeForExcel, type ExcelColumn } from '../lib/excel-export';
 import { mapPointAccount, mapPointTransaction, ensurePointAccount } from './member-points.service';
 import { mapWallet, mapWalletTransaction, ensureWallet } from './member-wallet.service';
@@ -67,6 +68,25 @@ export async function listMembers(q: ListMembersQuery) {
     page: q.page,
     pageSize: q.pageSize,
   };
+}
+
+// ─── 轻量搜索下拉（积分/钱包调整、发券选择会员）───────────────────────────────
+export async function getMemberOptions(keyword?: string) {
+  const where = buildMemberWhere({ keyword });
+  const rows = await db.query.members.findMany({
+    where,
+    columns: { id: true, nickname: true, phone: true, username: true },
+    with: { level: { columns: { name: true } } },
+    orderBy: desc(members.id),
+    limit: 20,
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    nickname: r.nickname,
+    phone: r.phone ?? null,
+    username: r.username ?? null,
+    levelName: r.level?.name ?? null,
+  }));
 }
 
 export async function getMemberDetail(id: number) {
@@ -214,7 +234,7 @@ export async function getMemberOverview(id: number) {
   });
   if (!row) throw new HTTPException(404, { message: '会员不存在' });
 
-  const [pointAcc, wallet, recentPointRows, recentWalletRows, activeCouponCount, loginLogCount] =
+  const [pointAcc, wallet, recentPointRows, recentWalletRows, recentLoginRows, activeCouponCount, loginLogCount] =
     await Promise.all([
       ensurePointAccount(id),
       ensureWallet(id),
@@ -225,6 +245,10 @@ export async function getMemberOverview(id: number) {
       db.select().from(memberWalletTransactions)
         .where(eq(memberWalletTransactions.memberId, id))
         .orderBy(desc(memberWalletTransactions.id))
+        .limit(5),
+      db.select().from(memberLoginLogs)
+        .where(eq(memberLoginLogs.memberId, id))
+        .orderBy(desc(memberLoginLogs.createdAt))
         .limit(5),
       db.$count(memberCoupons, and(eq(memberCoupons.memberId, id), eq(memberCoupons.status, 'unused'))),
       db.$count(memberLoginLogs, eq(memberLoginLogs.memberId, id)),
@@ -240,8 +264,99 @@ export async function getMemberOverview(id: number) {
     wallet: mapWallet(wallet),
     recentPointTxs: recentPointRows.map((r) => mapPointTransaction(r)),
     recentWalletTxs: recentWalletRows.map((r) => mapWalletTransaction(r)),
+    recentLoginLogs: recentLoginRows.map((r) => mapMemberLoginLog({ ...r, memberNickname: row.nickname })),
     activeCouponCount,
     loginLogCount,
+  };
+}
+
+// ─── 会员登录日志（后台跨会员查询）──────────────────────────────────────────────
+export interface MemberLoginLogQuery {
+  keyword?: string;
+  status?: 'success' | 'fail';
+  dateStart?: string;
+  dateEnd?: string;
+  page: number;
+  pageSize: number;
+}
+
+interface LoginLogRowWithNickname {
+  id: number;
+  memberId: number | null;
+  memberNickname: string | null;
+  ip: string | null;
+  location: string | null;
+  browser: string | null;
+  os: string | null;
+  userAgent: string | null;
+  status: 'success' | 'fail';
+  message: string | null;
+  createdAt: Date;
+}
+
+function mapMemberLoginLog(r: LoginLogRowWithNickname) {
+  return {
+    id: r.id,
+    memberId: r.memberId,
+    memberNickname: r.memberNickname,
+    ip: r.ip,
+    location: r.location,
+    browser: r.browser,
+    os: r.os,
+    userAgent: r.userAgent,
+    status: r.status,
+    message: r.message,
+    createdAt: formatDateTime(r.createdAt),
+  };
+}
+
+function buildLoginLogWhere(q: MemberLoginLogQuery): SQL | undefined {
+  const conds: SQL[] = [];
+  if (q.keyword) {
+    const kw = `%${escapeLike(q.keyword)}%`;
+    const orCond = or(ilike(members.nickname, kw), ilike(members.phone, kw), ilike(members.username, kw));
+    if (orCond) conds.push(orCond);
+  }
+  if (q.status) conds.push(eq(memberLoginLogs.status, q.status));
+  const start = parseDateRangeStart(q.dateStart);
+  if (start) conds.push(gte(memberLoginLogs.createdAt, start));
+  const end = parseDateRangeEnd(q.dateEnd);
+  if (end) conds.push(lte(memberLoginLogs.createdAt, end));
+  return conds.length ? and(...conds) : undefined;
+}
+
+export async function listMemberLoginLogs(q: MemberLoginLogQuery) {
+  const where = buildLoginLogWhere(q);
+  const [rows, totalRows] = await Promise.all([
+    db.select({
+      id: memberLoginLogs.id,
+      memberId: memberLoginLogs.memberId,
+      memberNickname: members.nickname,
+      ip: memberLoginLogs.ip,
+      location: memberLoginLogs.location,
+      browser: memberLoginLogs.browser,
+      os: memberLoginLogs.os,
+      userAgent: memberLoginLogs.userAgent,
+      status: memberLoginLogs.status,
+      message: memberLoginLogs.message,
+      createdAt: memberLoginLogs.createdAt,
+    })
+      .from(memberLoginLogs)
+      .leftJoin(members, eq(members.id, memberLoginLogs.memberId))
+      .where(where)
+      .orderBy(desc(memberLoginLogs.createdAt))
+      .limit(q.pageSize)
+      .offset(pageOffset(q.page, q.pageSize)),
+    db.select({ value: count() })
+      .from(memberLoginLogs)
+      .leftJoin(members, eq(members.id, memberLoginLogs.memberId))
+      .where(where),
+  ]);
+  return {
+    list: rows.map((r) => mapMemberLoginLog(r)),
+    total: totalRows[0]?.value ?? 0,
+    page: q.page,
+    pageSize: q.pageSize,
   };
 }
 

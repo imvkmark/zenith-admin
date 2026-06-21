@@ -1,12 +1,12 @@
 import { db } from './index';
-import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, workflowForms, workflowTemplates, aiPromptTemplates, paymentMethodConfigs } from './schema';
+import { users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, systemConfigs, cronJobs, regions, tenants, tenantPackages, tenantPackageMenus, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskConfigs, memberLevels, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowTemplates, aiPromptTemplates, paymentMethodConfigs } from './schema';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { and, eq, isNull, inArray, sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import logger from '../lib/logger';
 import { runAsUser } from '../lib/audit-context';
-import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_TENANT_PACKAGES, SEED_WORKFLOW_FORMS, SEED_WORKFLOW_TEMPLATES, SEED_AI_PROMPT_TEMPLATES, SEED_PAYMENT_METHOD_CONFIGS } from '@zenith/shared';
+import { SEED_MENUS, SEED_ROLES, SEED_DEPARTMENTS, SEED_POSITIONS, SEED_DICTS, SEED_DICT_ITEMS, SEED_SYSTEM_CONFIGS, SEED_CRON_JOBS, SEED_TAGS, SEED_DATA_MASK_CONFIGS, SEED_MEMBER_LEVELS, SEED_COUPONS, SEED_EMAIL_TEMPLATES, SEED_SMS_TEMPLATES, SEED_INAPP_TEMPLATES, SEED_TENANTS, SEED_TENANT_PACKAGES, SEED_WORKFLOW_FORMS, SEED_WORKFLOW_TEMPLATES, SEED_AI_PROMPT_TEMPLATES, SEED_PAYMENT_METHOD_CONFIGS, SEED_CHECKIN_MILESTONES } from '@zenith/shared';
 import type { PaymentChannel, PaymentMethod } from '@zenith/shared';
 
 const require = createRequire(import.meta.url);
@@ -400,6 +400,18 @@ async function seedRest() {
     { dayNumber: 7, points: 50, experience: 30, remark: '连续7天签到（周奖励）' },
   ]).onConflictDoNothing();
   logger.info('  ✔ Checkin rules seeded (onConflictDoNothing)');
+
+  // ── 签到设置（单行，id 固定为 1）────────────────────────────────
+  await db.insert(checkinSettings).values({ id: 1, makeupEnabled: true, makeupCostPoints: 20, makeupMaxDays: 7 }).onConflictDoNothing();
+  logger.info('  ✔ Checkin settings seeded (onConflictDoNothing)');
+
+  // ── 签到里程碑（数据来源：@zenith/shared SEED_CHECKIN_MILESTONES）──
+  await db.insert(checkinMilestones).values(
+    SEED_CHECKIN_MILESTONES.map(({ id, title, cumulativeDays, rewardType, rewardPoints, couponId, enabled, remark }) => ({
+      id, title, cumulativeDays, rewardType, rewardPoints, couponId, enabled, remark,
+    })),
+  ).onConflictDoNothing();
+  logger.info('  ✔ Checkin milestones seeded (onConflictDoNothing)');
 
   // ── 流程表单库（数据来源：@zenith/shared SEED_WORKFLOW_FORMS）────────────────
   // tenantId 留空（平台级），由超管可见；created_by/updated_by 由 db Proxy 注入。
