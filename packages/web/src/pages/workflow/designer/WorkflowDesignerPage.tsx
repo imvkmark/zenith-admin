@@ -644,7 +644,7 @@ export default function WorkflowDesignerPage() {
       {/* 步骤 ② 表单 */}
       {currentStep === 2 && (
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <div style={{ padding: '4px 2px 12px', borderBottom: '1px solid var(--semi-color-border)', marginBottom: 16 }}>
+          <div style={{ padding: '4px 20px 12px', borderBottom: '1px solid var(--semi-color-border)', marginBottom: 16 }}>
             <Typography.Text strong style={{ marginRight: 16 }}>表单类型</Typography.Text>
             <RadioGroup
               type="button"
