@@ -484,8 +484,8 @@ export default function AIChatPage() {
                     prev.map((m) => (m.id === assistantMsgId ? { ...m, status: 'completed' } : m))
                   );
                   // Refresh conversations to get updated title
-                  void request.get<{ list: AiConversation[] }>('/api/ai/conversations').then((r) => {
-                    setConversations(r.data?.list ?? []);
+                  void request.get<AiConversation[]>('/api/ai/conversations').then((r) => {
+                    setConversations(r.data ?? []);
                   });
                 } else if (eventType === 'error') {
                   Toast.error((parsed.error as string | undefined) ?? 'AI 服务出错');
