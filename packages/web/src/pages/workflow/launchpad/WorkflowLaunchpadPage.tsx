@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Form, Input, Space, SideSheet, Spin, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Empty, Form, Input, List, Space, SideSheet, Spin, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -173,35 +173,51 @@ export default function WorkflowLaunchpadPage() {
           {grouped.map((group) => (
             <div key={group.categoryId} style={{ marginBottom: 24 }}>
               <Typography.Title heading={6} style={{ margin: '8px 0 12px' }}>{group.categoryName}</Typography.Title>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-                {group.defs.map((def) => (
-                  <div key={def.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openApply(def)}>
-                    <Card
-                      shadows="hover"
-                      bodyStyle={{ padding: 16 }}
+              <List
+                grid={{ gutter: 12, xs: 24, sm: 12, md: 8, lg: 6, xl: 6, xxl: 4 }}
+                dataSource={group.defs}
+                renderItem={(def) => (
+                  <List.Item style={{ padding: '0 0 12px', height: '100%' }}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openApply(def)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') openApply(def); }}
+                      style={{ cursor: 'pointer', height: '100%' }}
                     >
-                      <Space spacing={12} align="start">
-                        <div
-                          style={{
-                            width: 40, height: 40, borderRadius: 8, flexShrink: 0,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: def.categoryColor ?? 'var(--semi-color-primary-light-default)',
-                            color: '#fff',
-                          }}
-                        >
-                          <Send size={20} />
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{def.name}</Typography.Text>
-                          <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true, rows: 2 }} style={{ display: 'block', marginTop: 4 }}>
-                            {def.description || '点击发起该流程'}
-                          </Typography.Text>
-                        </div>
-                      </Space>
-                    </Card>
-                  </div>
-                ))}
-              </div>
+                      <Card
+                        shadows="hover"
+                        bodyStyle={{ padding: 16 }}
+                        style={{ height: '100%' }}
+                      >
+                        <Space spacing={12} align="start" style={{ width: '100%' }}>
+                          <div
+                            style={{
+                              width: 40, height: 40, borderRadius: 8, flexShrink: 0,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: def.categoryColor ?? 'var(--semi-color-primary-light-default)',
+                              color: '#fff',
+                            }}
+                          >
+                            <Send size={20} />
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{def.name}</Typography.Text>
+                            <Typography.Paragraph
+                              type="tertiary"
+                              size="small"
+                              ellipsis={{ rows: 2, showTooltip: true }}
+                              style={{ marginTop: 4, marginBottom: 0, minHeight: 36, lineHeight: '18px' }}
+                            >
+                              {def.description || '点击发起该流程'}
+                            </Typography.Paragraph>
+                          </div>
+                        </Space>
+                      </Card>
+                    </div>
+                  </List.Item>
+                )}
+              />
             </div>
           ))}
         </div>
