@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Spin, Select } from '@douyinfe/semi-ui';
+import { LogIn, CheckCircle2, XCircle, Users } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -68,16 +69,35 @@ interface StatCardProps {
   readonly title: string;
   readonly value: string | number;
   readonly sub?: string;
+  readonly icon: React.ReactNode;
+  readonly accent?: string;
 }
 
-function StatCard({ title, value, sub }: StatCardProps) {
+function StatCard({ title, value, sub, icon, accent }: StatCardProps) {
   return (
-    <div style={{ ...sectionStyle, display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--semi-color-text-0)', lineHeight: 1.2 }}>
-        {value}
+    <div style={{ ...sectionStyle, display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 10,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: accent ? `${accent}18` : 'var(--semi-color-fill-1)',
+          color: accent ?? 'var(--semi-color-text-2)',
+        }}
+      >
+        {icon}
       </div>
-      {sub && <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{sub}</div>}
-      <div style={{ fontSize: 13, color: 'var(--semi-color-text-1)', marginTop: 2 }}>{title}</div>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ fontSize: 26, fontWeight: 700, color: accent ?? 'var(--semi-color-text-0)', lineHeight: 1.2 }}>
+          {value}
+        </div>
+        {sub && <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{sub}</div>}
+        <div style={{ fontSize: 13, color: 'var(--semi-color-text-1)' }}>{title}</div>
+      </div>
     </div>
   );
 }
@@ -196,18 +216,22 @@ export default function LoginLogStatsPanel() {
       <Spin spinning={loading}>
         {/* ── 汇总指标卡 ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
-          <StatCard title="总登录次数" value={summary ? summary.total.toLocaleString() : '—'} sub={`近 ${days} 天累计`} />
+          <StatCard title="总登录次数" value={summary ? summary.total.toLocaleString() : '—'} sub={`近 ${days} 天累计`} icon={<LogIn size={22} />} accent="#3b82f6" />
           <StatCard
             title="登录成功率"
             value={successRate == null ? '—' : `${successRate}%`}
             sub={summary ? `成功 ${summary.successCount.toLocaleString()} · 失败 ${summary.failCount.toLocaleString()}` : undefined}
+            icon={<CheckCircle2 size={22} />}
+            accent={SUCCESS_COLOR}
           />
           <StatCard
             title="登录失败次数"
             value={summary ? summary.failCount.toLocaleString() : '—'}
             sub="密码错误、账号锁定等"
+            icon={<XCircle size={22} />}
+            accent={summary && summary.failCount > 0 ? FAIL_COLOR : undefined}
           />
-          <StatCard title="活跃用户数" value={summary ? summary.uniqueUsers.toLocaleString() : '—'} sub="不重复用户账号" />
+          <StatCard title="活跃用户数" value={summary ? summary.uniqueUsers.toLocaleString() : '—'} sub="不重复用户账号" icon={<Users size={22} />} accent="#8b5cf6" />
         </div>
 
         {/* ── 每日登录趋势（成功/失败堆叠面积） ── */}
