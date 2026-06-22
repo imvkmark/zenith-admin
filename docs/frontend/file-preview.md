@@ -39,7 +39,7 @@
 | Prop | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `fileUrl` | `string` | ✅ | 文件访问 URL，通常为 `/api/files/{id}/content` |
-| `fileId` | `number` | 表格预览时必填 | 托管文件 ID，用于请求后端 `/sheet-preview` 接口 |
+| `fileId` | `string` | 表格预览时必填 | 托管文件 ID（`managed_files.id`，UUIDv7），用于请求后端 `/sheet-preview` 接口 |
 | `fileName` | `string` | 否 | 文件名，显示在标题栏；默认 `'文件'` |
 | `mimeType` | `string \| null` | 否 | MIME 类型，决定走哪个渲染分支；为空时直接关闭 |
 | `visible` | `boolean` | ✅ | 控制弹窗显示/隐藏 |
@@ -57,7 +57,7 @@
 import FilePreviewModal from '@/components/FilePreviewModal';
 
 const [preview, setPreview] = useState<{
-  id: number;
+  id: string;
   url: string;
   name: string;
   mimeType: string;

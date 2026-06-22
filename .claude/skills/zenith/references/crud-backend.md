@@ -756,11 +756,11 @@ export type BusinessType = (typeof BUSINESS_TYPES)[number];
 ```ts
 export interface NoticeAttachment {
   id: number;
-  fileId: number;
+  fileId: string; // managed_files.id 为 UUIDv7 字符串
   businessType: 'notice';
   businessId: number;
   file: {
-    id: number;
+    id: string;
     originalName: string;
     size: number;
     mimeType: string | null;
@@ -777,7 +777,7 @@ export interface NoticeAttachment {
 ```ts
 export const createNoticeSchema = z.object({
   // ... 其他字段
-  fileIds: z.array(z.number().int()).optional().default([]), // 附件文件 ID 列表
+  fileIds: z.array(z.string().uuid()).optional().default([]), // 附件文件 ID（managed_files.id，UUIDv7）列表
 });
 
 export const updateNoticeSchema = createNoticeSchema.partial();
@@ -895,11 +895,11 @@ import { auditFields } from './_audit';
 export const NoticeAttachmentDTO = z
   .object({
     id: z.number().int(),
-    fileId: z.number().int(),
+    fileId: z.string().uuid(),
     businessType: z.literal('notice'),
     businessId: z.number().int(),
     file: z.object({
-      id: z.number().int(),
+      id: z.string().uuid(),
       originalName: z.string(),
       size: z.number().int(),
       mimeType: z.string().nullable(),
@@ -1025,9 +1025,9 @@ export async function getNoticeDetail(id: number) {
 
 ### 前端文件访问注意事项
 
-- **所有文件 URL 都是受保护的**（`/api/files/{id}/content` 需要 Authorization 头）
-- **禁止使用 `window.open(url)`** 打开受保护的文件 URL
-- **使用 `fetchProtectedFile(url)`** 获取 Blob，然后创建 object URL 进行预览或下载
+- `managed_files.id` 是 UUIDv7 字符串；附件的 `fileId` / `fileIds` 均使用该 UUID 字符串，禁止按数字 ID 处理。
+- 当前文件内容 URL 为 `/api/files/{id}/content`，其中 `{id}` 为 UUIDv7；该接口仍可直接访问，后续如启用签名 URL/鉴权需再同步调整。
+- 预览或下载时优先使用 `fetchProtectedFile(url)` 获取 Blob，然后创建 object URL；需要新窗口打开时，先拉取 Blob 后再打开 object URL。
 - `FileAttachment` 组件内部已经处理了认证逻辑，直接使用即可
 
 ### 参考实现

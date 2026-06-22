@@ -107,8 +107,8 @@ like(users.username, `%${keyword}%`)
 | 表名 | 说明 |
 | --- | --- |
 | `file_storage_configs` | 存储配置（local / OSS / S3 / COS / OBS / 七牛 Kodo / 百度 BOS / Azure Blob / SFTP） |
-| `managed_files` | 已上传文件记录（`url` 字段由服务端动态拼接，不存入数据库） |
-| `business_files` | 业务附件与 `managed_files` 的关联 |
+| `managed_files` | 已上传文件记录，主键 `id` 为 UUIDv7（应用层生成）；`url` 字段由服务端动态拼接，不存入数据库 |
+| `business_files` | 业务附件与 `managed_files` 的关联，`file_id` 为 UUID 外键 |
 
 ### 通用审计字段（`created_by` / `updated_by`）
 
@@ -284,7 +284,7 @@ pg_dump --version
 - `pg_dump`：`pgdump-YYYYMMDD_HHmmss.sql.gz`
 - `drizzle_export`：`drizzle-export-YYYYMMDD_HHmmss.json`
 
-若已配置默认 `file_storage_configs`，备份完成后会上传到默认文件存储，并在 `db_backups.file_id` 记录对应的 `managed_files.id`。
+若已配置默认 `file_storage_configs`，备份完成后会上传到默认文件存储，并在 `db_backups.file_id` 记录对应的 `managed_files.id`（UUIDv7）。
 
 ### 相关接口
 
