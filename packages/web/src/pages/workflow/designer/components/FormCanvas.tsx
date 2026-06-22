@@ -17,7 +17,6 @@ interface FormCanvasProps {
   onRemove: (key: string) => void;
   onCopy: (key: string) => void;
   onDropNew: (type: WorkflowFormFieldType, target: DropTarget) => void;
-  highlightedKeys?: ReadonlySet<string>;
 }
 
 const getFieldInfo = (type: WorkflowFormFieldType) => FORM_FIELD_TYPES.find(t => t.type === type);
@@ -48,7 +47,6 @@ export default function FormCanvas({
   onRemove,
   onCopy,
   onDropNew,
-  highlightedKeys,
 }: Readonly<FormCanvasProps>) {
   // 当前高亮的拖放区标识（如 'root:before:<key>' / 'col:<rowKey>:<i>' / 'group:<key>'）
   const [hint, setHint] = useState<string | null>(null);
@@ -92,7 +90,6 @@ export default function FormCanvas({
         className={[
           'fd-form-canvas__chip',
           selectedKey === field.key && 'fd-form-canvas__chip--selected',
-          highlightedKeys?.has(field.key) && 'fd-form-canvas__chip--highlighted',
           hint === id && 'fd-form-canvas__chip--drop',
         ].filter(Boolean).join(' ')}
         draggable
@@ -194,7 +191,6 @@ export default function FormCanvas({
         className={[
           'fd-form-canvas__item',
           isSelected && 'fd-form-canvas__item--selected',
-          highlightedKeys?.has(field.key) && 'fd-form-canvas__item--highlighted',
           hint === beforeId && 'fd-form-canvas__item--drop-target',
         ].filter(Boolean).join(' ')}
         draggable

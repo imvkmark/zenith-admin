@@ -3,8 +3,8 @@
  * 三栏布局：左侧控件面板 | 中间画布预览 | 右侧属性配置
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { Search, Undo2, Redo2 } from 'lucide-react';
+import { Button, Tooltip } from '@douyinfe/semi-ui';
+import { Undo2, Redo2 } from 'lucide-react';
 import type { WorkflowFormField, WorkflowFormFieldType } from '@zenith/shared';
 import { FORM_FIELD_TYPES } from '../form-types';
 import { findField, updateField, removeField, insertField, insertAfterKey, isDescendant, isContainerType, type DropTarget } from '../form-tree';
@@ -204,25 +204,12 @@ const MAX_HISTORY = 100;
 
 export default function FormDesigner({ fields, onChange, showToolbar = true, onHistoryChange }: Readonly<FormDesignerProps>) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [fieldKeyword, setFieldKeyword] = useState('');
   // 撤销/重做历史栈（快照为不可变字段数组，所有变更走 commit 统一入栈）
   const historyRef = useRef<HistoryState>({ stack: [fields], pointer: 0, lastTag: null });
   const [, bumpHistory] = useState(0);
 
   const selectedField = findField(fields, selectedKey ?? '');
   const flatFields = useMemo(() => collectFields(fields), [fields]);
-  const normalizedFieldKeyword = fieldKeyword.trim().toLowerCase();
-  const matchingFieldKeys = useMemo(() => new Set(
-    normalizedFieldKeyword
-      ? flatFields
-        .filter((field) =>
-          field.label.toLowerCase().includes(normalizedFieldKeyword)
-          || field.key.toLowerCase().includes(normalizedFieldKeyword)
-          || field.type.toLowerCase().includes(normalizedFieldKeyword),
-        )
-        .map((field) => field.key)
-      : [],
-  ), [flatFields, normalizedFieldKeyword]);
   const duplicateLabelCount = selectedField
     ? flatFields.filter((field) => field.key !== selectedField.key && field.label === selectedField.label).length
     : 0;
@@ -338,15 +325,6 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
     commit(updateField(fields, selectedKey, updates), `edit:${selectedKey}`);
   }, [fields, commit, selectedKey]);
 
-  const focusFirstMatchedField = useCallback(() => {
-    const first = matchingFieldKeys.values().next().value as string | undefined;
-    if (!first) return;
-    setSelectedKey(first);
-    window.requestAnimationFrame(() => {
-      document.querySelector(`[data-field-key="${CSS.escape(first)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-  }, [matchingFieldKeys]);
-
   return (
     <div className="fd-form-designer-shell">
       {/* 顶部工具栏：撤销 / 重做（由外部工具栏接管时隐藏） */}
@@ -377,21 +355,6 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
           <span className="fd-form-designer__toolbar-hint">点击或拖拽左侧控件添加字段 · Ctrl+Z 撤销 / Ctrl+Shift+Z 重做</span>
         </div>
       )}
-      <div className="fd-form-designer__searchbar">
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索字段名称 / key / 类型"
-          value={fieldKeyword}
-          onChange={setFieldKeyword}
-          onEnterPress={focusFirstMatchedField}
-          showClear
-        />
-        {normalizedFieldKeyword && (
-          <Typography.Text type="tertiary" size="small">
-            {matchingFieldKeys.size > 0 ? `匹配 ${matchingFieldKeys.size} 个字段，回车定位` : '未找到字段'}
-          </Typography.Text>
-        )}
-      </div>
 
       <div className="fd-form-designer">
         {/* 左侧：控件面板 */}
@@ -409,7 +372,6 @@ export default function FormDesigner({ fields, onChange, showToolbar = true, onH
             onRemove={handleRemove}
             onCopy={handleCopy}
             onDropNew={handleDropNew}
-            highlightedKeys={matchingFieldKeys}
           />
         </div>
 
