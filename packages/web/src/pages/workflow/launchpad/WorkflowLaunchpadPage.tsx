@@ -1,25 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Empty, Form, Input, List, Space, SideSheet, Spin, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import { Button, Card, Empty, Input, List, Space, SideSheet, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
 import { ExternalLink, RotateCcw, Search, Send } from 'lucide-react';
 import type { WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { useAuth } from '@/hooks/useAuth';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
-import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
-import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
-import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
-import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
-import { WORKFLOW_PRIORITY_OPTIONS } from '@/components/workflow/WorkflowPriorityTag';
+import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 
 const UNCATEGORIZED = -1;
 
 export default function WorkflowLaunchpadPage() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const { categories } = useWorkflowCategories();
   const [loading, setLoading] = useState(false);
@@ -27,15 +18,11 @@ export default function WorkflowLaunchpadPage() {
   const [keyword, setKeyword] = useState('');
   const [activeKeyword, setActiveKeyword] = useState('');
 
-  const formApi = useRef<FormApi | null>(null);
-  const dynamicFormApi = useRef<FormApi | null>(null);
-  const businessFormApi = useRef<WorkflowBusinessFormApi | null>(null);
+  const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const [applyVisible, setApplyVisible] = useState(false);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
-  const [formKey, setFormKey] = useState(0);
-  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: number }>>([]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -45,17 +32,6 @@ export default function WorkflowLaunchpadPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (userOptions.length === 0) {
-      request.get<Array<{ id: number; nickname: string; username: string }>>('/api/users/all')
-        .then((res) => {
-          if (res.code === 0 && res.data) setUserOptions(res.data.map((u) => ({ label: u.nickname ?? u.username, value: u.id })));
-        })
-        .catch(() => { /* 抄送人选项加载失败不阻断发起 */ });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -92,12 +68,7 @@ export default function WorkflowLaunchpadPage() {
       return;
     }
     setSelectedDef(def);
-    setFormKey((k) => k + 1);
     setApplyVisible(true);
-    setTimeout(() => {
-      const who = user?.nickname || user?.username || '我';
-      formApi.current?.setValue('title', `${def.name} - ${who} - ${dayjs().format('YYYY-MM-DD')}`);
-    }, 0);
   };
 
   const closeApply = () => {
@@ -105,33 +76,10 @@ export default function WorkflowLaunchpadPage() {
     setSelectedDef(null);
   };
 
-  const collectFormData = async () => {
-    if (!formApi.current || !selectedDef) return null;
-    try {
-      const values = await formApi.current.validate() as Record<string, unknown>;
-      let formData: Record<string, unknown> = {};
-      if (selectedDef.formType === 'external') {
-        Toast.error('业务系统主导流程请从对应业务模块发起');
-        return null;
-      }
-      if (selectedDef.formType === 'custom') {
-        if (!businessFormApi.current) {
-          Toast.error('业务表单尚未就绪，请稍候重试');
-          return null;
-        }
-        formData = await businessFormApi.current.validate();
-      } else if (dynamicFormApi.current && selectedDef.formFields && selectedDef.formFields.length > 0) {
-        formData = await dynamicFormApi.current.validate();
-      }
-      return { values, formData };
-    } catch {
-      return null;
-    }
-  };
-
   const handleSubmit = async (asDraft: boolean) => {
-    const result = await collectFormData();
-    if (!result || !selectedDef) return;
+    if (!selectedDef) return;
+    const result = await launchFormRef.current?.collectFormData();
+    if (!result) return;
     const { values, formData } = result;
     const setBusy = asDraft ? setSavingDraft : setSubmitting;
     setBusy(true);
@@ -222,35 +170,6 @@ export default function WorkflowLaunchpadPage() {
     );
   };
 
-  const renderFormTab = (def: WorkflowDefinition) => {
-    if (def.formType === 'custom') {
-      return (
-        <BusinessFormHost
-          key={`biz-${formKey}-${def.id}`}
-          customForm={def.customForm}
-          mode="create"
-          container="sheet"
-          definitionId={def.id}
-          getFormApi={(api) => { businessFormApi.current = api; }}
-        />
-      );
-    }
-    if (def.formType === 'external') {
-      return <Typography.Text type="tertiary">业务系统主导流程请从对应业务模块发起。</Typography.Text>;
-    }
-    if (def.formFields && def.formFields.length > 0) {
-      return (
-        <WorkflowFormRenderer
-          key={`form-${formKey}-${def.id}`}
-          fields={def.formFields}
-          initValues={{}}
-          getFormApi={(api) => { dynamicFormApi.current = api; }}
-        />
-      );
-    }
-    return <Typography.Text type="tertiary">该流程未配置表单字段</Typography.Text>;
-  };
-
   return (
     <div className="page-container">
       <SearchToolbar>
@@ -296,56 +215,7 @@ export default function WorkflowLaunchpadPage() {
           </div>
         }
       >
-        <Form getFormApi={(api) => { formApi.current = api; }}>
-          <Form.Input
-            field="title"
-            label="申请标题"
-            placeholder="自动生成，可手动修改"
-            rules={[{ required: true, message: '请填写申请标题' }]}
-          />
-          <Form.Select
-            field="priority"
-            label="优先级"
-            style={{ width: '100%' }}
-            initValue="normal"
-            optionList={WORKFLOW_PRIORITY_OPTIONS}
-          />
-          <Form.Select
-            field="ccUserIds"
-            label="抄送人"
-            placeholder="可选，提交后立即抄送给所选成员"
-            multiple
-            filter
-            showClear
-            style={{ width: '100%' }}
-            optionList={userOptions}
-          />
-        </Form>
-        {selectedDef && (
-          <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 12 }}>
-            <Tabs type="line" defaultActiveKey="form">
-              <TabPane tab="填写表单" itemKey="form">
-                {renderFormTab(selectedDef)}
-              </TabPane>
-              <TabPane tab="审批链路" itemKey="chain">
-                <WorkflowApproverPreview
-                  definitionId={selectedDef.id}
-                  getFormData={() => (
-                    selectedDef.formType === 'custom'
-                      ? (businessFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
-                      : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
-                  )}
-                />
-              </TabPane>
-              <TabPane tab="流程图预览" itemKey="graph">
-                <WorkflowGraphView flowData={selectedDef.flowData} />
-              </TabPane>
-              <TabPane tab="节点详情" itemKey="nodes">
-                <WorkflowNodeListView flowData={selectedDef.flowData} initiator={user ? { name: user.nickname, avatar: user.avatar } : undefined} />
-              </TabPane>
-            </Tabs>
-          </div>
-        )}
+        {selectedDef && <WorkflowLaunchForm ref={launchFormRef} def={selectedDef} container="sheet" />}
       </SideSheet>
     </div>
   );
