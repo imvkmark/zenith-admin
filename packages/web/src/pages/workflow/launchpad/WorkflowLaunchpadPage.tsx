@@ -178,7 +178,7 @@ export default function WorkflowLaunchpadPage() {
                 dataSource={group.defs}
                 split={false}
                 renderItem={(def) => (
-                  <List.Item style={{ padding: '0 0 12px' }}>
+                  <List.Item style={{ padding: '0 0 12px', display: 'block' }}>
                     <div
                       role="button"
                       tabIndex={0}
