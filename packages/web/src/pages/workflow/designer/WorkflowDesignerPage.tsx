@@ -62,6 +62,7 @@ export default function WorkflowDesignerPage() {
 
   const [pageLoading, setPageLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [process, setProcess, history] = useHistoryState<FlowProcess>(createDefaultProcess());
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -409,37 +410,44 @@ export default function WorkflowDesignerPage() {
 
   // ─── 保存 ─────────────────────────────────────────────────────────
 
-  const handleSave = async () => {
+  const buildCurrentMeta = () => ({
+    name: metaName,
+    description: metaDesc || null,
+    categoryId: metaCategoryId,
+    initiatorScopeType: metaInitiatorScopeType,
+    initiatorScopeIds: metaInitiatorScopeType === 'all' ? null : metaInitiatorScopeIds,
+  });
+
+  const validateBeforeSave = () => {
     if (!metaName.trim()) {
       Toast.warning('请先填写流程名称');
       setCurrentStep(1);
-      return;
+      return false;
     }
     const routeErrors = validateRouteBranches(process);
     if (routeErrors.length > 0) {
       Toast.warning(`路由分支配置不完整：${routeErrors[0]}`);
       setCurrentStep(3);
-      return;
+      return false;
     }
     const conditionErrors = validateConditionBranches(process);
     if (conditionErrors.length > 0) {
       Toast.warning(`条件分支配置不完整：${conditionErrors[0]}`);
       setCurrentStep(3);
-      return;
+      return false;
     }
     const emptyBranchErrors = validateBranchChildren(process);
     if (emptyBranchErrors.length > 0) {
       Toast.warning(`分支配置不完整：${emptyBranchErrors[0]}`);
       setCurrentStep(3);
-      return;
+      return false;
     }
-    await doSave({
-      name: metaName,
-      description: metaDesc || null,
-      categoryId: metaCategoryId,
-      initiatorScopeType: metaInitiatorScopeType,
-      initiatorScopeIds: metaInitiatorScopeType === 'all' ? null : metaInitiatorScopeIds,
-    });
+    return true;
+  };
+
+  const handleSave = async () => {
+    if (!validateBeforeSave()) return;
+    await doSave(buildCurrentMeta());
   };
 
   const doSave = async (meta: {
@@ -448,7 +456,7 @@ export default function WorkflowDesignerPage() {
     categoryId: number | null;
     initiatorScopeType: 'all' | 'users' | 'departments' | 'roles';
     initiatorScopeIds: number[] | null;
-  }) => {
+  }, options: { showToast?: boolean } = {}): Promise<WorkflowDefinition | null> => {
     setSaving(true);
     try {
       const flat = treeToFlat(process);
@@ -473,14 +481,32 @@ export default function WorkflowDesignerPage() {
       }
 
       if (res.code === 0) {
-        Toast.success('保存成功');
+        if (options.showToast !== false) Toast.success('保存成功');
         if (isNew && res.data) {
           navigate(`/workflow/designer/${res.data.id}`, { replace: true });
         }
         setDefinition(res.data ?? null);
+        return res.data ?? null;
       }
+      return null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (isNew || !id || !validateBeforeSave()) return;
+    setPublishing(true);
+    try {
+      const saved = await doSave(buildCurrentMeta(), { showToast: false });
+      if (!saved) return;
+      const res = await request.post<WorkflowDefinition>(`/api/workflows/definitions/${id}/publish`, {});
+      if (res.code === 0) {
+        Toast.success('发布成功');
+        setDefinition(res.data ?? { ...saved, status: 'published', version: saved.version + 1 });
+      }
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -606,13 +632,9 @@ export default function WorkflowDesignerPage() {
               icon={<Send size={14} />}
               type="primary"
               theme="solid"
-              onClick={async () => {
-                const res = await request.post(`/api/workflows/definitions/${id}/publish`, {});
-                if (res.code === 0) {
-                  Toast.success('发布成功');
-                  setDefinition(prev => prev ? { ...prev, status: 'published', version: prev.version + 1 } : prev);
-                }
-              }}
+              loading={publishing}
+              disabled={saving}
+              onClick={() => void handlePublish()}
             >
               发布
             </Button>

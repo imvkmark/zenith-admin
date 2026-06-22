@@ -1150,6 +1150,7 @@ export const saveAsTemplateSchema = z.object({
 /** 从模板创建流程定义 */
 export const cloneFromTemplateSchema = z.object({
   name: z.string().min(1, '流程名称不能为空').max(64).optional(),
+  categoryId: z.number().int().positive().nullable().optional(),
 });
 
 // ── 审批协办 ──

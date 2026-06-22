@@ -602,6 +602,7 @@ export default function WorkflowDefinitionsPage() {
           <TemplateGalleryModal
             visible={templateGalleryVisible}
             onCancel={() => setTemplateGalleryVisible(false)}
+            categoryId={searchParams.selectedCategoryId}
             onCreated={(id) => {
               setTemplateGalleryVisible(false);
               navigate(`/workflow/designer/${id}`);

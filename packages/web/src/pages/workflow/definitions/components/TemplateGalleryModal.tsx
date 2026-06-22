@@ -7,11 +7,12 @@ import { request } from '@/utils/request';
 interface Props {
   visible: boolean;
   onCancel: () => void;
+  categoryId?: number | null;
   /** Called with the new definition's id on successful clone */
   onCreated: (definitionId: number) => void;
 }
 
-export function TemplateGalleryModal({ visible, onCancel, onCreated }: Props) {
+export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onCreated }: Props) {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [cloneLoadingId, setCloneLoadingId] = useState<number | null>(null);
@@ -32,7 +33,7 @@ export function TemplateGalleryModal({ visible, onCancel, onCreated }: Props) {
     try {
       const res = await request.post<WorkflowDefinition>(
         `/api/workflows/templates/${tpl.id}/clone`,
-        {},
+        categoryId == null ? {} : { categoryId },
       );
       if (res.code === 0) {
         Toast.success('已从模板创建流程');

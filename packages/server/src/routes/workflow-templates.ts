@@ -53,7 +53,7 @@ const cloneRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const body = c.req.valid('json');
-    return c.json(okBody(await cloneTemplateToDefinition(c.req.valid('param').id, body?.name), '已创建'), 200);
+    return c.json(okBody(await cloneTemplateToDefinition(c.req.valid('param').id, body ?? {}), '已创建'), 200);
   },
 });
 
