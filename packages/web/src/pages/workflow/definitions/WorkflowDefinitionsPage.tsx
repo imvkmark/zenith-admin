@@ -206,7 +206,7 @@ export default function WorkflowDefinitionsPage() {
           Toast.error('文件格式不正确');
           return;
         }
-        parsed = raw as Partial<WorkflowDefinitionExportData>;
+        parsed = raw;
       } catch {
         Toast.error('文件格式不正确');
         return;
