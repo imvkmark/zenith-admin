@@ -337,11 +337,20 @@ export default function AnalyticsDataPage() {
   }, []);
 
   useEffect(() => {
-    void fetchEvents();
-    void fetchMeta();
-    void fetchRollup();
-    void fetchSettings();
-  }, [fetchEvents, fetchMeta, fetchRollup, fetchSettings]);
+    if (activeTab === 'events') void fetchEvents();
+  }, [activeTab, fetchEvents]);
+
+  useEffect(() => {
+    if (activeTab === 'meta') void fetchMeta();
+  }, [activeTab, fetchMeta]);
+
+  useEffect(() => {
+    if (activeTab === 'rollup') void fetchRollup();
+  }, [activeTab, fetchRollup]);
+
+  useEffect(() => {
+    if (activeTab === 'settings') void fetchSettings();
+  }, [activeTab, fetchSettings]);
 
   const handleEventSearch = () => {
     setEventsPage(1);
@@ -499,7 +508,6 @@ export default function AnalyticsDataPage() {
     const days = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(days)) return;
     setRollupDays(days);
-    void fetchRollup(days);
   };
 
   const handleRebuildRollup = async () => {
@@ -1010,7 +1018,7 @@ export default function AnalyticsDataPage() {
             title={editingMeta ? '编辑事件字典' : '新增事件字典'}
             visible={metaModalVisible}
             onCancel={() => { setMetaModalVisible(false); setEditingMeta(null); }}
-            onOk={() => void handleMetaSubmit()}
+            onOk={() => { void handleMetaSubmit().catch(() => undefined); }}
             okButtonProps={{ loading: metaSubmitting }}
             width={640}
             closeOnEsc

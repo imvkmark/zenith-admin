@@ -11,6 +11,7 @@ import {
   MousePointerClick,
   Plus,
   RefreshCcw,
+  RotateCcw,
   Search,
   Target,
   Trash2,
@@ -548,7 +549,7 @@ function SessionsTab() {
         />
         <Select value={deviceInput} optionList={DEVICE_OPTIONS} onChange={(v) => setDeviceInput(String(v ?? '') as DeviceFilter)} style={{ width: 150 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RefreshCcw size={14} />} onClick={handleReset}>重置</Button>
+        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
       </SearchToolbar>
       <ConfigurableTable<SessionListItem>
         bordered
@@ -584,7 +585,7 @@ function FunnelTab() {
   const [days, setDays] = useState(7);
   const [steps, setSteps] = useState<FunnelStepDraft[]>([
     { id: 'step-1', label: '进入首页', pagePath: '/' },
-    { id: 'step-2', label: '浏览列表', eventName: '$pageview' },
+    { id: 'step-2', label: '进入仪表盘', pagePath: '/dashboard' },
   ]);
   const [result, setResult] = useState<FunnelResult | null>(null);
   const [loading, setLoading] = useState(false);

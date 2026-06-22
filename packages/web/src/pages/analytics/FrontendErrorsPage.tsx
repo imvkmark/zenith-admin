@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Tabs,
   TabPane,
@@ -37,6 +37,7 @@ import {
   ChevronDown,
   FileCode,
   MessageSquare,
+  RefreshCcw,
   RotateCcw,
   Search,
   Trash2,
@@ -405,6 +406,29 @@ export default function FrontendErrorsPage() {
     buildPagination: buildAlertPagination,
   } = usePagination(20);
 
+  // 镜像筛选条件与分页到 ref，使列表拉取函数保持稳定：
+  // 避免输入框每次按键都重建 fetch 触发请求，也避免翻页时 effect 与分页回调重复拉取。
+  const issueFiltersRef = useRef(issueFilters);
+  issueFiltersRef.current = issueFilters;
+  const groupPageRef = useRef(groupPage);
+  groupPageRef.current = groupPage;
+  const groupPageSizeRef = useRef(groupPageSize);
+  groupPageSizeRef.current = groupPageSize;
+  const eventPageRef = useRef(eventPage);
+  eventPageRef.current = eventPage;
+  const eventPageSizeRef = useRef(eventPageSize);
+  eventPageSizeRef.current = eventPageSize;
+  const sourceReleaseRef = useRef(sourceRelease);
+  sourceReleaseRef.current = sourceRelease;
+  const sourceMapPageRef = useRef(sourceMapPage);
+  sourceMapPageRef.current = sourceMapPage;
+  const sourceMapPageSizeRef = useRef(sourceMapPageSize);
+  sourceMapPageSizeRef.current = sourceMapPageSize;
+  const alertPageRef = useRef(alertPage);
+  alertPageRef.current = alertPage;
+  const alertPageSizeRef = useRef(alertPageSize);
+  alertPageSizeRef.current = alertPageSize;
+
   const typeOptions = useMemo(() => labelOptions(ERROR_TYPE_CONFIG), []);
   const levelOptions = useMemo(() => labelOptions(LEVEL_CONFIG), []);
   const statusOptions = useMemo(() => labelOptions(STATUS_CONFIG), []);
@@ -423,23 +447,24 @@ export default function FrontendErrorsPage() {
     }
   }, [overviewDays]);
 
-  const fetchGroups = useCallback(async (page = groupPage, pageSize = groupPageSize) => {
+  const fetchGroups = useCallback(async (page = groupPageRef.current, pageSize = groupPageSizeRef.current) => {
     setGroupsLoading(true);
     try {
+      const f = issueFiltersRef.current;
       const query = buildQuery({
         page,
         pageSize,
-        status: issueFilters.status,
-        errorType: issueFilters.errorType,
-        level: issueFilters.level,
-        keyword: issueFilters.keyword.trim(),
+        status: f.status,
+        errorType: f.errorType,
+        level: f.level,
+        keyword: f.keyword.trim(),
       });
       const res = await request.get<PaginatedResponse<ErrorGroup>>(`/api/frontend-errors/groups${query}`);
       if (res.code === 0) setGroups(res.data);
     } finally {
       setGroupsLoading(false);
     }
-  }, [groupPage, groupPageSize, issueFilters]);
+  }, []);
 
   const loadAdminUsers = useCallback(async () => {
     if (adminUsersLoaded) return;
@@ -533,7 +558,7 @@ export default function FrontendErrorsPage() {
     }
   }, [detail, fetchGroups, groupForm]);
 
-  const fetchEvents = useCallback(async (page = eventPage, pageSize = eventPageSize) => {
+  const fetchEvents = useCallback(async (page = eventPageRef.current, pageSize = eventPageSizeRef.current) => {
     setEventsLoading(true);
     try {
       const res = await request.get<PaginatedResponse<ErrorEvent>>(`/api/frontend-errors/events?page=${page}&pageSize=${pageSize}`);
@@ -541,18 +566,18 @@ export default function FrontendErrorsPage() {
     } finally {
       setEventsLoading(false);
     }
-  }, [eventPage, eventPageSize]);
+  }, []);
 
-  const fetchSourceMaps = useCallback(async (page = sourceMapPage, pageSize = sourceMapPageSize) => {
+  const fetchSourceMaps = useCallback(async (page = sourceMapPageRef.current, pageSize = sourceMapPageSizeRef.current) => {
     setSourceMapsLoading(true);
     try {
-      const query = buildQuery({ page, pageSize, release: sourceRelease.trim() });
+      const query = buildQuery({ page, pageSize, release: sourceReleaseRef.current.trim() });
       const res = await request.get<PaginatedResponse<SourceMapItem>>(`/api/frontend-errors/source-maps${query}`);
       if (res.code === 0) setSourceMaps(res.data);
     } finally {
       setSourceMapsLoading(false);
     }
-  }, [sourceMapPage, sourceMapPageSize, sourceRelease]);
+  }, []);
 
   const deleteSourceMap = useCallback(async (id: number) => {
     const res = await request.delete<null>(`/api/frontend-errors/source-maps/${id}`);
@@ -589,7 +614,7 @@ export default function FrontendErrorsPage() {
     }
   }, [fetchSourceMaps, sourceMapPageSize, uploadForm]);
 
-  const fetchAlerts = useCallback(async (page = alertPage, pageSize = alertPageSize) => {
+  const fetchAlerts = useCallback(async (page = alertPageRef.current, pageSize = alertPageSizeRef.current) => {
     setAlertsLoading(true);
     try {
       const res = await request.get<PaginatedResponse<ErrorAlertRule>>(`/api/frontend-errors/alerts?page=${page}&pageSize=${pageSize}`);
@@ -597,7 +622,7 @@ export default function FrontendErrorsPage() {
     } finally {
       setAlertsLoading(false);
     }
-  }, [alertPage, alertPageSize]);
+  }, []);
 
   const openAlertModal = useCallback((rule?: ErrorAlertRule) => {
     setEditingAlert(rule ?? null);
@@ -875,13 +900,9 @@ export default function FrontendErrorsPage() {
               value={overviewDays}
               style={{ width: 140 }}
               optionList={[7, 30, 90].map((days) => ({ label: `近 ${days} 天`, value: days }))}
-              onChange={(value) => {
-                const days = Number(value);
-                setOverviewDays(days);
-                void loadOverview(days);
-              }}
+              onChange={(value) => setOverviewDays(Number(value))}
             />
-            <Button type="primary" icon={<Search size={14} />} loading={overviewLoading} onClick={() => void loadOverview()}>刷新</Button>
+            <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewLoading} onClick={() => void loadOverview()}>刷新</Button>
           </SearchToolbar>
 
           {overview ? (
@@ -1032,8 +1053,9 @@ export default function FrontendErrorsPage() {
               icon={<RotateCcw size={14} />}
               onClick={() => {
                 setIssueFilters(defaultIssueFilters);
+                issueFiltersRef.current = defaultIssueFilters;
                 setGroupPage(1);
-                setTimeout(() => void fetchGroups(1, groupPageSize), 0);
+                void fetchGroups(1, groupPageSize);
               }}
             >
               重置

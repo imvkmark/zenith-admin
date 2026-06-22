@@ -18,7 +18,7 @@ import {
 } from '../lib/openapi-dtos';
 import { getClientIp } from '../lib/request-helpers';
 import { exportToExcel, streamToCsv, type ExcelColumn } from '../lib/excel-export';
-import { formatFileTimestamp } from '../lib/datetime';
+import { formatFileTimestamp, parseDateRangeStart, parseDateRangeEnd } from '../lib/datetime';
 import {
   batchInsertEvents, getOverview, getTrends, getPageStats, getFeatureStats, getHeatmapData,
   getHeatmapPageList, getUserStats, listSessions, getFunnel, getRetention, getPathAnalysis,
@@ -219,8 +219,8 @@ function parseEventQuery(q: z.infer<typeof eventListQuery>) {
     ...q,
     eventType: q.eventType || undefined,
     deviceType: q.deviceType || undefined,
-    startTime: q.startTime ? new Date(q.startTime) : undefined,
-    endTime: q.endTime ? new Date(q.endTime) : undefined,
+    startTime: parseDateRangeStart(q.startTime) ?? undefined,
+    endTime: parseDateRangeEnd(q.endTime) ?? undefined,
   };
 }
 
