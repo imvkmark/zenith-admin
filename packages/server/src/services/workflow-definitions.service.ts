@@ -1,6 +1,6 @@
 import { workflowDefinitions, workflowDefinitionVersions, workflowForms, workflowCategories, users, userRoles } from '../db/schema';
 import { formatDateTime } from '../lib/datetime';
-import type { WorkflowFormSchema } from '@zenith/shared';
+import type { WorkflowFormSchema, WorkflowCustomFormConfig, WorkflowFormType } from '@zenith/shared';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -30,6 +30,8 @@ export function mapDefinition(
     formName: row.form?.name ?? null,
     formFields: formSchema?.fields ?? null,
     formSettings: formSchema?.settings ?? null,
+    formType: (row.formType ?? 'designer') as WorkflowFormType,
+    customForm: (row.customForm ?? null) as WorkflowCustomFormConfig | null,
     status: row.status,
     version: row.version,
     tenantId: row.tenantId,
@@ -57,6 +59,8 @@ export function mapDefinitionVersion(
     formId: row.formId ?? null,
     formName: form?.name ?? null,
     formFields: formSchema?.fields ?? null,
+    formType: (row.formType ?? 'designer') as WorkflowFormType,
+    customForm: (row.customForm ?? null) as WorkflowCustomFormConfig | null,
     publishedAt: formatDateTime(row.publishedAt),
     publishedBy: row.publishedBy ?? null,
     publishedByName: publishedByName ?? null,
@@ -172,12 +176,13 @@ export async function getDefinition(id: number) {
 }
 
 export async function createDefinition(data: {
-  name: string; description?: string | null; categoryId?: number | null; initiatorScopeType?: WorkflowInitiatorScopeType; initiatorScopeIds?: number[] | null; flowData?: unknown; formId?: number | null; status?: WorkflowDefinitionStatus;
+  name: string; description?: string | null; categoryId?: number | null; initiatorScopeType?: WorkflowInitiatorScopeType; initiatorScopeIds?: number[] | null; flowData?: unknown; formId?: number | null; formType?: WorkflowFormType; customForm?: WorkflowCustomFormConfig | null; status?: WorkflowDefinitionStatus;
 }) {
   const user = currentUser();
   const scopeType = data.initiatorScopeType ?? 'all';
   const scopeIds = scopeType === 'all' ? null : normalizeScopeIds(data.initiatorScopeIds);
-  if (data.formId != null) await ensureFormExists(data.formId);
+  const formType = data.formType ?? 'designer';
+  if (formType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
   // 禁止经 create 直接发布：发布必须走 publishDefinition（含 validateFlowData 校验与版本快照）
   const initialStatus = (data.status ?? 'draft') === 'published' ? 'draft' : (data.status ?? 'draft');
   const [row] = await db.insert(workflowDefinitions).values({
@@ -187,7 +192,9 @@ export async function createDefinition(data: {
     initiatorScopeType: scopeType,
     initiatorScopeIds: scopeIds,
     flowData: data.flowData ?? null,
-    formId: data.formId ?? null,
+    formId: formType === 'designer' ? (data.formId ?? null) : null,
+    formType,
+    customForm: formType === 'custom' ? (data.customForm ?? null) : null,
     status: initialStatus,
     tenantId: getCreateTenantId(user),
   }).returning();
@@ -195,15 +202,25 @@ export async function createDefinition(data: {
 }
 
 export async function updateDefinition(id: number, data: Partial<{
-  name: string; description: string | null; categoryId: number | null; initiatorScopeType: WorkflowInitiatorScopeType; initiatorScopeIds: number[] | null; flowData: unknown; formId: number | null; status: WorkflowDefinitionStatus;
+  name: string; description: string | null; categoryId: number | null; initiatorScopeType: WorkflowInitiatorScopeType; initiatorScopeIds: number[] | null; flowData: unknown; formId: number | null; formType: WorkflowFormType; customForm: WorkflowCustomFormConfig | null; status: WorkflowDefinitionStatus;
 }>) {
   const where = findDefinition(id);
   const [existing] = await db.select().from(workflowDefinitions).where(where).limit(1);
   if (!existing) throw new HTTPException(404, { message: '流程定义不存在' });
-  if (data.formId != null) await ensureFormExists(data.formId);
+  // 解析最终的表单类型（本次更新值优先，否则取库中现值），用于条件写入两类表单字段
+  const nextFormType = (data.formType ?? existing.formType ?? 'designer') as WorkflowFormType;
+  if (nextFormType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
   const updateData: Record<string, unknown> = { ...data };
   if (data.flowData !== undefined) updateData.flowData = data.flowData;
-  if (data.formId !== undefined) updateData.formId = data.formId;
+  if (data.formType !== undefined) updateData.formType = data.formType;
+  // 切到自定义表单时清空表单库引用；切到设计器表单时清空自定义配置，避免脏数据
+  if (nextFormType === 'custom') {
+    updateData.formId = null;
+    if (data.customForm !== undefined) updateData.customForm = data.customForm;
+  } else {
+    updateData.customForm = null;
+    if (data.formId !== undefined) updateData.formId = data.formId;
+  }
   // 禁止经 update 直接发布：发布必须走 publishDefinition（含校验与版本快照），避免绕过校验上线无效流程
   if (updateData.status === 'published') updateData.status = 'draft';
   if (data.initiatorScopeType !== undefined) {
@@ -248,6 +265,8 @@ export async function publishDefinition(id: number) {
       description: locked.description,
       flowData: locked.flowData,
       formId: locked.formId,
+      formType: locked.formType,
+      customForm: locked.customForm,
       publishedBy: user?.userId ?? null,
       tenantId: locked.tenantId,
     });
@@ -295,6 +314,8 @@ export async function restoreVersion(definitionId: number, versionId: number) {
     description: ver.description,
     flowData: ver.flowData,
     formId: ver.formId,
+    formType: ver.formType,
+    customForm: ver.customForm,
     status: 'draft',
   }).where(where).returning();
   return getDefinition(updated.id);
@@ -333,6 +354,8 @@ export async function duplicateDefinition(id: number) {
       initiatorScopeIds: src.initiatorScopeIds ?? null,
       flowData: src.flowData ?? null,
       formId: newFormId,
+      formType: src.formType,
+      customForm: src.customForm,
       status: 'draft',
       tenantId,
     }).returning();
@@ -356,6 +379,8 @@ export async function exportDefinition(id: number) {
     description: row.description ?? null,
     categoryName: row.category?.name ?? null,
     flowData: row.flowData ?? null,
+    formType: (row.formType ?? 'designer') as WorkflowFormType,
+    customForm: (row.customForm ?? null) as WorkflowCustomFormConfig | null,
     form: row.form
       ? { name: row.form.name ?? '表单', description: row.form.description ?? null, schema: row.form.schema ?? null }
       : null,
@@ -370,10 +395,13 @@ export async function importDefinition(data: {
   description?: string | null;
   categoryName?: string | null;
   flowData?: unknown;
+  formType?: WorkflowFormType;
+  customForm?: WorkflowCustomFormConfig | null;
   form?: { name: string; description?: string | null; schema?: unknown } | null;
 }) {
   const user = currentUser();
   const tenantId = getCreateTenantId(user);
+  const formType = data.formType ?? 'designer';
   let categoryId: number | null = null;
   if (data.categoryName) {
     const tc = tenantCondition(workflowCategories, user);
@@ -384,7 +412,7 @@ export async function importDefinition(data: {
   }
   const newId = await db.transaction(async (tx) => {
     let newFormId: number | null = null;
-    if (data.form) {
+    if (formType === 'designer' && data.form) {
       const [newForm] = await tx.insert(workflowForms).values({
         name: data.form.name || '导入表单',
         code: null,
@@ -401,6 +429,8 @@ export async function importDefinition(data: {
       categoryId,
       flowData: (data.flowData ?? null) as WorkflowFlowData | null,
       formId: newFormId,
+      formType,
+      customForm: formType === 'custom' ? (data.customForm ?? null) : null,
       status: 'draft',
       tenantId,
     }).returning();

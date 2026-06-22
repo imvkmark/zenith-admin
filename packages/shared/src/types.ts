@@ -1931,6 +1931,31 @@ export interface WorkflowForm {
   updatedAt: string;
 }
 
+/** 流程表单类型：designer=表单库可视化设计器，custom=用户自定义业务页面 */
+export type WorkflowFormType = 'designer' | 'custom';
+
+/** 自定义业务表单暴露给流程的变量声明（驱动条件分支 / 按字段指定审批人） */
+export interface WorkflowCustomFormVariable {
+  /** 变量 key（业务页提交时写入 formData 的字段名） */
+  key: string;
+  /** 显示名称 */
+  label: string;
+  /** 变量类型 */
+  type: 'string' | 'number' | 'boolean' | 'date' | 'user' | 'dept';
+}
+
+/** 自定义业务表单配置（formType='custom' 时有效） */
+export interface WorkflowCustomFormConfig {
+  /** 创建/填写页组件路径（相对 packages/web/src/pages，如 'biz/leave/LeaveForm'） */
+  createComponent: string;
+  /** 查看页组件路径，缺省时复用 createComponent 以只读模式渲染 */
+  viewComponent?: string | null;
+  /** 多页签图标（lucide 图标名，预留给整页打开时使用） */
+  icon?: string | null;
+  /** 暴露给流程的变量声明 */
+  variables?: WorkflowCustomFormVariable[];
+}
+
 export interface WorkflowDefinition {
   id: number;
   name: string;
@@ -1951,6 +1976,10 @@ export interface WorkflowDefinition {
   formFields: WorkflowFormField[] | null;
   /** 由 formId 解析得到的表单级设置（派生字段） */
   formSettings?: WorkflowFormSettings | null;
+  /** 表单类型：designer=表单库，custom=自定义业务页面 */
+  formType: WorkflowFormType;
+  /** 自定义业务表单配置（formType='custom' 时有效） */
+  customForm: WorkflowCustomFormConfig | null;
   status: WorkflowDefinitionStatus;
   version: number;
   tenantId: number | null;
@@ -1983,6 +2012,8 @@ export interface WorkflowDefinitionVersion {
   formId: number | null;
   formName?: string | null;
   formFields: WorkflowFormField[] | null;
+  formType: WorkflowFormType;
+  customForm: WorkflowCustomFormConfig | null;
   publishedAt: string;
   publishedBy: number | null;
   publishedByName?: string | null;

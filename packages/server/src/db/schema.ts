@@ -1254,6 +1254,7 @@ export type NewTag = typeof tags.$inferInsert;
 // ─── 工作流引擎 ───────────────────────────────────────────────────────────────
 
 export const workflowDefinitionStatusEnum = pgEnum('workflow_definition_status', ['draft', 'published', 'disabled']);
+export const workflowFormTypeEnum = pgEnum('workflow_form_type', ['designer', 'custom']);
 export const workflowInstanceStatusEnum = pgEnum('workflow_instance_status', ['draft', 'running', 'approved', 'rejected', 'withdrawn', 'cancelled']);
 export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending', 'approved', 'rejected', 'skipped', 'waiting']);
 export const workflowEventSignModeEnum = pgEnum('workflow_event_sign_mode', ['hmacSha256', 'none']);
@@ -1323,6 +1324,8 @@ export const workflowDefinitions = pgTable('workflow_definitions', {
   initiatorScopeIds: jsonb('initiator_scope_ids'),
   flowData: jsonb('flow_data'), // React Flow 节点+边 JSON
   formId: integer('form_id').references(() => workflowForms.id, { onDelete: 'set null' }), // 绑定的表单（实时引用最新表单）
+  formType: workflowFormTypeEnum('form_type').default('designer').notNull(), // 表单类型：designer=表单库，custom=自定义业务页面
+  customForm: jsonb('custom_form'), // 自定义业务表单配置 { createComponent, viewComponent?, icon?, variables[] }
   status: workflowDefinitionStatusEnum('status').default('draft').notNull(),
   version: integer('version').default(1).notNull(),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
@@ -1343,6 +1346,8 @@ export const workflowDefinitionVersions = pgTable('workflow_definition_versions'
   description: text('description'),
   flowData: jsonb('flow_data'),
   formId: integer('form_id'), // 发布时绑定的表单 ID 快照
+  formType: workflowFormTypeEnum('form_type').default('designer').notNull(), // 发布时的表单类型快照
+  customForm: jsonb('custom_form'), // 发布时的自定义业务表单配置快照
   publishedAt: timestamp('published_at', { withTimezone: true }).defaultNow().notNull(),
   publishedBy: integer('published_by').references(() => users.id, { onDelete: 'set null' }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),

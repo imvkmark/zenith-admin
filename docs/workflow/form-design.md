@@ -4,6 +4,44 @@
 
 表单在「工作流 → 表单库」中维护为**可复用表单**，流程设计器通过选择表单进行绑定，多个流程可以复用同一套字段类型与设计器能力。
 
+## 表单类型
+
+流程设计器第二步「表单」支持两种表单来源，可在顶部「表单类型」切换：
+
+| 表单类型 | 说明 | 适用场景 |
+| --- | --- | --- |
+| **表单库设计器** | 绑定「表单库」中可视化设计的表单（`formId`），渲染由内置渲染器统一负责 | 标准审批表单，无需编码 |
+| **自定义业务表单** | 绑定用户在 `src/pages` 下自行实现的 React 业务页面（`customForm`） | 业务逻辑复杂、需要复用既有业务页面或自定义交互的场景 |
+
+## 自定义业务表单
+
+当标准表单控件无法满足业务诉求时，可选择「自定义业务表单」，由业务方自己实现发起填写页与查看页。
+
+### 配置项（设计器 · 表单步骤）
+
+- **创建 / 填写页组件**（必填）：相对 `packages/web/src/pages` 的组件路径，如 `biz/leave/LeaveForm`。解析机制与菜单 `component` 一致（`import.meta.glob`），无需手工注册路由。
+- **查看页组件**（可选）：查看样式与填写差异较大时单独配置；留空则复用创建页组件并以只读模式渲染。
+- **页签图标**：作为独立页签打开时显示的 lucide 图标（预留能力）。
+- **暴露给流程的变量**：声明一组 `{ key, 名称, 类型 }`，供「条件分支」「按表单字段指定审批人」引用。**业务页提交时必须把这些 key 写入 `formData`**，引擎据此求值。
+
+### 业务页面契约
+
+业务组件接收统一 props（类型 `WorkflowBusinessFormProps`，见 `packages/web/src/components/workflow/BusinessFormHost.tsx`）：
+
+| prop | 说明 |
+| --- | --- |
+| `mode` | `create`=发起填写、`view`=只读查看、`approve`=审批办理 |
+| `container` | `sheet`=嵌入抽屉（当前）、`tab`=整页多页签（预留） |
+| `definitionId` / `instanceId` | 所属流程定义 / 实例 id |
+| `value` | 创建时为初始值；查看/审批时为已保存的业务 `formData` |
+| `readOnly` | 是否只读（`view` 模式恒为 `true`） |
+| `variables` | 设计器声明的流程变量 |
+| `getFormApi` | 注册命令式 API `{ validate, getValues }`，供宿主在提交时取值校验（`create`/`approve` 必需） |
+
+发起工作台与「我的申请」详情均通过 `BusinessFormHost` 承载业务页面：发起时取 `getFormApi().validate()` 的返回值作为实例 `formData` 提交；查看时把实例 `formData` 作为 `value` 传入并只读渲染。可参考示例页 `packages/web/src/pages/biz/demo/DemoBusinessForm.tsx`。
+
+> 自定义业务表单的数据对引擎是**不透明**的（`formSnapshot` 为空），仅声明的变量参与条件分支/审批人计算，因此业务页需保证提交数据包含这些变量 key。
+
 ## 设计器布局
 
 表单设计器采用三栏布局：

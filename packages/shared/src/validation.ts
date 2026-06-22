@@ -840,11 +840,28 @@ export const updateWorkflowFormSchema = createWorkflowFormSchema.partial();
 export type CreateWorkflowFormInput = z.infer<typeof createWorkflowFormSchema>;
 export type UpdateWorkflowFormInput = z.infer<typeof updateWorkflowFormSchema>;
 
+export const workflowFormTypeSchema = z.enum(['designer', 'custom']);
+
+export const workflowCustomFormVariableSchema = z.object({
+  key: z.string().min(1).max(64),
+  label: z.string().min(1).max(64),
+  type: z.enum(['string', 'number', 'boolean', 'date', 'user', 'dept']),
+});
+
+export const workflowCustomFormConfigSchema = z.object({
+  createComponent: z.string().min(1, '请填写创建页组件路径').max(256),
+  viewComponent: z.string().max(256).nullable().optional(),
+  icon: z.string().max(64).nullable().optional(),
+  variables: z.array(workflowCustomFormVariableSchema).optional(),
+});
+
 export const createWorkflowDefinitionSchema = z.object({
   name: z.string().min(1, '流程名称不能为空').max(64),
   description: z.string().max(500).nullable().optional(),
   flowData: z.record(z.string(), z.unknown()).nullable().optional(),
   formId: z.number().int().positive().nullable().optional(),
+  formType: workflowFormTypeSchema.default('designer'),
+  customForm: workflowCustomFormConfigSchema.nullable().optional(),
   status: z.enum(['draft', 'published', 'disabled']).default('draft'),
 });
 
@@ -1053,6 +1070,8 @@ export const importWorkflowDefinitionSchema = z.object({
   description: z.string().max(512).nullable().optional(),
   categoryName: z.string().max(64).nullable().optional(),
   flowData: z.unknown(),
+  formType: workflowFormTypeSchema.optional(),
+  customForm: workflowCustomFormConfigSchema.nullable().optional(),
   form: z.object({
     name: z.string().max(128),
     description: z.string().max(512).nullable().optional(),

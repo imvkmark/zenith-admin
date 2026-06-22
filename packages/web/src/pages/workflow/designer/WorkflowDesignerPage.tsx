@@ -1,11 +1,11 @@
 /**
  * 工作流设计器页面 — 钉钉/飞书风格垂直流程设计器
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowFormField } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
 import { request } from '@/utils/request';
 
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
@@ -39,6 +39,7 @@ import NodeConfigDrawer from './components/NodeConfigDrawer';
 import ConditionEditor from './components/ConditionEditor';
 import RouteBranchEditor, { type RouteBranchEditorUpdates } from './components/RouteBranchEditor';
 import FormSelectorPanel from './components/FormSelectorPanel';
+import CustomFormConfigPanel from './components/CustomFormConfigPanel';
 import FormPreview from './components/FormPreview';
 import BasicInfoPanel from './components/BasicInfoPanel';
 import AdvancedSettingsPanel from './components/AdvancedSettingsPanel';
@@ -90,6 +91,10 @@ export default function WorkflowDesignerPage() {
   const [localFormFields, setLocalFormFields] = useState<WorkflowFormField[]>([]);
   // 绑定的表单库表单 id
   const [formId, setFormId] = useState<number | null>(null);
+  // 表单类型：designer=表单库，custom=自定义业务页面
+  const [formType, setFormType] = useState<WorkflowFormType>('designer');
+  // 自定义业务表单配置
+  const [customForm, setCustomForm] = useState<WorkflowCustomFormConfig | null>(null);
 
   // 预览
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -114,9 +119,19 @@ export default function WorkflowDesignerPage() {
   })();
   const [metaCategoryId, setMetaCategoryId] = useState<number | null>(initialCategoryId);
 
-  // 同步表单字段到视图
-  const formFields: Array<{ key: string; label: string; type: WorkflowFormField['type']; options?: string[] }> =
-    localFormFields.map(f => ({ key: f.key, label: f.label, type: f.type, options: f.options ?? undefined }));
+  // 同步表单字段到视图：设计器表单取所选表单字段；自定义表单取声明的流程变量
+  const VARIABLE_TYPE_TO_FIELD: Record<string, WorkflowFormField['type']> = {
+    string: 'text', number: 'number', boolean: 'switch', date: 'date', user: 'userSelect', dept: 'deptSelect',
+  };
+  const formFields = useMemo<Array<{ key: string; label: string; type: WorkflowFormField['type']; options?: string[] }>>(() => {
+    if (formType === 'custom') {
+      return (customForm?.variables ?? [])
+        .filter(v => v.key)
+        .map(v => ({ key: v.key, label: v.label || v.key, type: VARIABLE_TYPE_TO_FIELD[v.type] ?? 'text' }));
+    }
+    return localFormFields.map(f => ({ key: f.key, label: f.label, type: f.type, options: f.options ?? undefined }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formType, customForm, localFormFields]);
 
   // ─── 加载数据 ─────────────────────────────────────────────────────
 
@@ -132,6 +147,8 @@ export default function WorkflowDesignerPage() {
           setMetaInitiatorScopeType(res.data.initiatorScopeType ?? 'all');
           setMetaInitiatorScopeIds(res.data.initiatorScopeIds ?? []);
           setFormId(res.data.formId ?? null);
+          setFormType(res.data.formType ?? 'designer');
+          setCustomForm(res.data.customForm ?? null);
           if (res.data.formFields) setLocalFormFields(res.data.formFields);
           const fd = res.data.flowData;
           if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
@@ -443,7 +460,9 @@ export default function WorkflowDesignerPage() {
         initiatorScopeType: meta.initiatorScopeType,
         initiatorScopeIds: meta.initiatorScopeIds,
         flowData,
-        formId,
+        formId: formType === 'designer' ? formId : null,
+        formType,
+        customForm: formType === 'custom' ? customForm : null,
       };
 
       let res;
@@ -564,7 +583,7 @@ export default function WorkflowDesignerPage() {
 
         {/* 右侧操作 */}
         <div className="fd-toolbar__actions">
-          {currentStep === 2 && (
+          {currentStep === 2 && formType === 'designer' && (
             <Button
               icon={<Eye size={14} />}
               type="tertiary"
@@ -625,14 +644,29 @@ export default function WorkflowDesignerPage() {
       {/* 步骤 ② 表单 */}
       {currentStep === 2 && (
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <FormSelectorPanel
-            formId={formId}
-            formName={definition?.formName}
-            onSelect={(form) => {
-              setFormId(form?.id ?? null);
-              setLocalFormFields(form?.schema?.fields ?? []);
-            }}
-          />
+          <div style={{ padding: '4px 2px 12px', borderBottom: '1px solid var(--semi-color-border)', marginBottom: 16 }}>
+            <Typography.Text strong style={{ marginRight: 16 }}>表单类型</Typography.Text>
+            <RadioGroup
+              type="button"
+              value={formType}
+              onChange={(e) => setFormType((e.target as HTMLInputElement).value as WorkflowFormType)}
+            >
+              <Radio value="designer">表单库设计器</Radio>
+              <Radio value="custom">自定义业务表单</Radio>
+            </RadioGroup>
+          </div>
+          {formType === 'designer' ? (
+            <FormSelectorPanel
+              formId={formId}
+              formName={definition?.formName}
+              onSelect={(form) => {
+                setFormId(form?.id ?? null);
+                setLocalFormFields(form?.schema?.fields ?? []);
+              }}
+            />
+          ) : (
+            <CustomFormConfigPanel value={customForm} onChange={setCustomForm} />
+          )}
         </div>
       )}
 

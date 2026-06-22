@@ -8,6 +8,7 @@ import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
+import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
 import WorkflowApproverPreview from '@/components/workflow/WorkflowApproverPreview';
@@ -26,6 +27,7 @@ export default function WorkflowLaunchpadPage() {
 
   const formApi = useRef<FormApi | null>(null);
   const dynamicFormApi = useRef<FormApi | null>(null);
+  const businessFormApi = useRef<WorkflowBusinessFormApi | null>(null);
   const [applyVisible, setApplyVisible] = useState(false);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -102,7 +104,11 @@ export default function WorkflowLaunchpadPage() {
     try {
       const values = await formApi.current.validate() as Record<string, unknown>;
       let formData: Record<string, unknown> = {};
-      if (dynamicFormApi.current && selectedDef.formFields && selectedDef.formFields.length > 0) {
+      if (selectedDef.formType === 'custom') {
+        if (businessFormApi.current) {
+          formData = await businessFormApi.current.validate();
+        }
+      } else if (dynamicFormApi.current && selectedDef.formFields && selectedDef.formFields.length > 0) {
         formData = await dynamicFormApi.current.validate() as Record<string, unknown>;
       }
       return { values, formData };
@@ -240,7 +246,16 @@ export default function WorkflowLaunchpadPage() {
           <div style={{ marginTop: 16, borderTop: '1px solid var(--semi-color-border)', paddingTop: 12 }}>
             <Tabs type="line" defaultActiveKey="form">
               <TabPane tab="填写表单" itemKey="form">
-                {selectedDef.formFields && selectedDef.formFields.length > 0 ? (
+                {selectedDef.formType === 'custom' ? (
+                  <BusinessFormHost
+                    key={`biz-${formKey}-${selectedDef.id}`}
+                    customForm={selectedDef.customForm}
+                    mode="create"
+                    container="sheet"
+                    definitionId={selectedDef.id}
+                    getFormApi={(api) => { businessFormApi.current = api; }}
+                  />
+                ) : selectedDef.formFields && selectedDef.formFields.length > 0 ? (
                   <WorkflowFormRenderer
                     key={`form-${formKey}-${selectedDef.id}`}
                     fields={selectedDef.formFields}
@@ -254,7 +269,11 @@ export default function WorkflowLaunchpadPage() {
               <TabPane tab="审批链路" itemKey="chain">
                 <WorkflowApproverPreview
                   definitionId={selectedDef.id}
-                  getFormData={() => (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}}
+                  getFormData={() => (
+                    selectedDef.formType === 'custom'
+                      ? (businessFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
+                      : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
+                  )}
                 />
               </TabPane>
               <TabPane tab="流程图预览" itemKey="graph">

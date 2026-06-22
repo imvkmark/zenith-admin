@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { WorkflowDefinitionDTO, WorkflowDefinitionVersionDTO, WorkflowDefinitionExportDTO, WorkflowVersionDiffDTO, WorkflowApproverPreviewNodeDTO } from '../lib/openapi-dtos';
-import { importWorkflowDefinitionSchema, previewWorkflowSchema } from '@zenith/shared';
+import { importWorkflowDefinitionSchema, previewWorkflowSchema, workflowCustomFormConfigSchema, workflowFormTypeSchema } from '@zenith/shared';
 import {
   listDefinitions, listPublishedDefinitions, getDefinition, createDefinition,
   updateDefinition, publishDefinition, disableDefinition, enableDefinition, deleteDefinition, getWorkflowDefinitionBeforeAudit,
@@ -21,6 +21,8 @@ const createWorkflowDefinitionSchema = z.object({
   initiatorScopeIds: z.array(z.number().int()).nullable().optional(),
   flowData: z.looseObject({}).nullable().optional(),
   formId: z.number().int().nullable().optional(),
+  formType: workflowFormTypeSchema.default('designer'),
+  customForm: workflowCustomFormConfigSchema.nullable().optional(),
   status: z.enum(['draft', 'published', 'disabled']).default('draft'),
 });
 const updateWorkflowDefinitionSchema = createWorkflowDefinitionSchema.partial();

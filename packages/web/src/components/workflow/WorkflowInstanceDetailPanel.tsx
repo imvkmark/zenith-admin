@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { formatDateTime } from '@/utils/date';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
+import BusinessFormHost from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
 import WorkflowNodeListView from './WorkflowNodeListView';
 
@@ -172,6 +173,20 @@ export default function WorkflowInstanceDetailPanel({
   const childInstances = instance.childInstances ?? [];
 
   const renderFormData = () => {
+    // 自定义业务表单：渲染用户业务页面（view 模式只读）
+    if (definition?.formType === 'custom') {
+      return (
+        <BusinessFormHost
+          customForm={definition.customForm}
+          mode="view"
+          container="sheet"
+          definitionId={instance.definitionId}
+          instanceId={instance.id}
+          value={(instance.formData as Record<string, unknown>) ?? {}}
+          readOnly
+        />
+      );
+    }
     if (hasFormFields) {
       return (
         <WorkflowFormRenderer

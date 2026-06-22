@@ -11,11 +11,11 @@ import { ThemeProvider } from '@/providers/ThemeProvider';
 import { request } from '@/utils/request';
 import MaintenanceOverlay from '@/components/MaintenanceOverlay';
 import { config } from '@/config';
+import { resolvePageLoader } from '@/utils/page-registry';
 import type { Menu, User } from '@zenith/shared';
 
 import AdminLayout from '@/layouts/AdminLayout';
 
-const modules = import.meta.glob(['./pages/**/*.tsx', '!./pages/**/**Skeleton.tsx']);
 const LoginPage = React.lazy(() => import('@/pages/login/LoginPage'));
 const ResetPasswordPage = React.lazy(() => import('@/pages/reset-password/ResetPasswordPage'));
 const DashboardPage = React.lazy(() => import('@/pages/dashboard/DashboardPage'));
@@ -180,12 +180,10 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
 
         {/* 动态路由 */}
         {dynamicRoutes.map(m => {
-          // 由于 vite glob 是以 ./pages 开头的，我们需要拼接
-          const importPath = `./pages/${m.component}.tsx`;
-          const importFn = modules[importPath] as () => Promise<{ default: React.ComponentType }>;
+          const importFn = resolvePageLoader(m.component);
 
           if (!importFn) {
-            console.warn(`[Router] Component not found for path: ${m.path} -> ${importPath}`);
+            console.warn(`[Router] Component not found for path: ${m.path} -> ${m.component}`);
             return null;
           }
 
