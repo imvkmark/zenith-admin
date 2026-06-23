@@ -2,8 +2,9 @@
  * 更多设置面板 — 步骤 ④ 更多设置
  */
 import dayjs from 'dayjs';
-import { Divider, Form, Input, InputNumber, Select, Switch, Typography } from '@douyinfe/semi-ui';
+import { Divider, Form, Input, InputNumber, Radio, Select, Switch, Typography } from '@douyinfe/semi-ui';
 import type { WorkflowSerialNoConfig, WorkflowNotifyChannels } from '@zenith/shared';
+import { WORKFLOW_APPROVER_DEDUP_OPTIONS, resolveApproverDedupMode } from '@zenith/shared';
 import type { AdvancedSettingsData } from './advanced-settings';
 import { DEFAULT_SERIAL_NO } from './advanced-settings';
 
@@ -34,7 +35,7 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
     <div className="fd-basic-info">
       <div className="fd-basic-info__inner">
         <Form
-          initValues={settings as unknown as Record<string, unknown>}
+          initValues={{ ...settings, approverDedupMode: resolveApproverDedupMode(settings) } as unknown as Record<string, unknown>}
           labelPosition="left"
           labelWidth={180}
           onValueChange={(values: Record<string, unknown>) => {
@@ -44,7 +45,16 @@ export default function AdvancedSettingsPanel({ settings, onChange }: Readonly<A
           <Form.Switch field="allowWithdraw" label="允许撤回" />
           <Form.Switch field="allowResubmit" label="允许驳回后重新提交" />
           <Form.Switch field="notifyInitiator" label="流程结束后通知发起人" />
-          <Form.Switch field="autoApproveIfSameUser" label="相同审批人自动通过" />
+          <Form.RadioGroup
+            field="approverDedupMode"
+            label="自动去重"
+            direction="vertical"
+            extraText="同一审批人在流程中重复出现时的处理方式"
+          >
+            {WORKFLOW_APPROVER_DEDUP_OPTIONS.map((o) => (
+              <Radio key={o.value} value={o.value}>{o.label}</Radio>
+            ))}
+          </Form.RadioGroup>
           <Form.Switch field="allowComment" label="允许流程中评论" />
 
           {/* 业务编号 / 流水号 */}

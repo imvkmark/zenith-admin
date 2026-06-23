@@ -1477,6 +1477,11 @@ export type WorkflowApprovalType = 'manual' | 'autoApprove' | 'autoReject';
 export type WorkflowEmptyAssigneeStrategy = 'autoApprove' | 'assignToAdmin' | 'reject' | 'assignTo';
 export type WorkflowSameInitiatorStrategy = 'selfApprove' | 'autoSkip' | 'toDirectManager' | 'toDeptHead';
 export type WorkflowDeduplicateStrategy = 'autoSkip' | 'repeatApprove';
+/** 流程级「自动去重」模式：同一审批人在流程中重复出现时的处理方式 */
+export type WorkflowApproverDedupMode =
+  | 'none'         // 不自动通过
+  | 'all'          // 仅审批一次，后续重复的审批节点均自动通过
+  | 'consecutive'; // 仅针对连续审批的节点自动通过
 export type WorkflowOperationPermission =
   | 'approve'
   | 'reject'
@@ -1735,7 +1740,10 @@ export interface WorkflowAdvancedSettings {
   allowWithdraw: boolean;
   allowResubmit: boolean;
   notifyInitiator: boolean;
-  autoApproveIfSameUser: boolean;
+  /** 流程级「自动去重」模式（同一审批人在流程中重复出现时的处理方式） */
+  approverDedupMode?: WorkflowApproverDedupMode;
+  /** @deprecated 已被 approverDedupMode 取代，仅用于读取旧数据（true→all / false→none） */
+  autoApproveIfSameUser?: boolean;
   /** @deprecated 全局超时处理已废弃，请使用节点级 timeout 配置 */
   timeoutAction?: 'none' | 'auto-approve' | 'auto-reject' | 'notify';
   /** 是否允许在实例下自由评论（默认 true） */

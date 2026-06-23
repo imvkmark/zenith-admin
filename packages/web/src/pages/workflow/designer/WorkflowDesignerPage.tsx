@@ -6,7 +6,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, Eye, History, Minus, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
-import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS } from '@zenith/shared';
+import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
 import { request } from '@/utils/request';
 
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
@@ -157,10 +157,14 @@ export default function WorkflowDesignerPage() {
             history.reset((fd as unknown as Record<string, unknown>).process);
           }
           if (fd && 'settings' in fd && (fd as unknown as Record<string, unknown>).settings) {
-            setAdvancedSettings({
+            const loaded = (fd as unknown as Record<string, unknown>).settings as Partial<AdvancedSettingsData>;
+            const normalized: AdvancedSettingsData = {
               ...DEFAULT_ADVANCED_SETTINGS,
-              ...((fd as unknown as Record<string, unknown>).settings as Partial<AdvancedSettingsData>),
-            });
+              ...loaded,
+              approverDedupMode: resolveApproverDedupMode(loaded),
+            };
+            delete normalized.autoApproveIfSameUser;
+            setAdvancedSettings(normalized);
           }
         }
       }).finally(() => setPageLoading(false));

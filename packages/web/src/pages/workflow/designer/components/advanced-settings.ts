@@ -1,10 +1,13 @@
-import type { WorkflowSerialNoConfig, WorkflowNotifyChannels } from '@zenith/shared';
+import type { WorkflowSerialNoConfig, WorkflowNotifyChannels, WorkflowApproverDedupMode } from '@zenith/shared';
 
 export interface AdvancedSettingsData {
   allowWithdraw: boolean;
   allowResubmit: boolean;
   notifyInitiator: boolean;
-  autoApproveIfSameUser: boolean;
+  /** 流程级「自动去重」模式（同一审批人在流程中重复出现时的处理方式） */
+  approverDedupMode?: WorkflowApproverDedupMode;
+  /** @deprecated 已被 approverDedupMode 取代，仅用于读取旧数据 */
+  autoApproveIfSameUser?: boolean;
   allowComment?: boolean;
   serialNo?: WorkflowSerialNoConfig;
   notifyChannels?: WorkflowNotifyChannels;
@@ -22,7 +25,7 @@ export const DEFAULT_ADVANCED_SETTINGS: AdvancedSettingsData = {
   allowWithdraw: true,
   allowResubmit: true,
   notifyInitiator: true,
-  autoApproveIfSameUser: false,
+  approverDedupMode: 'all',
   allowComment: true,
   serialNo: { ...DEFAULT_SERIAL_NO },
 };

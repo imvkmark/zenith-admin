@@ -199,7 +199,7 @@ function assertLaunchMatchesFormType(
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
-import { count, countDistinct, eq, and, desc, ilike, or, inArray, sql, isNotNull, gt } from 'drizzle-orm';
+import { count, countDistinct, eq, ne, and, desc, ilike, or, inArray, sql, isNotNull, gt } from 'drizzle-orm';
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
@@ -207,7 +207,8 @@ import { workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinition
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy } from '@zenith/shared';
+import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { resolveAssigneeIds, buildStarterContext } from './workflow-assignee-resolver.service';
@@ -326,8 +327,9 @@ async function applyAssigneeRuntimeStrategies(
   ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; formData?: Record<string, unknown>; settings?: WorkflowFlowData['settings'] },
 ): Promise<number[]> {
   let ids = [...new Set(userIds)];
+  const dedupMode = resolveApproverDedupMode(ctx.settings);
   const sameInitiatorStrategy = task.nodeConfig.sameInitiatorStrategy
-    ?? (ctx.settings?.autoApproveIfSameUser ? 'autoSkip' : 'selfApprove');
+    ?? (dedupMode !== 'none' ? 'autoSkip' : 'selfApprove');
 
   if (ids.includes(ctx.initiatorId) && sameInitiatorStrategy !== 'selfApprove') {
     ids = ids.filter((id) => id !== ctx.initiatorId);
@@ -337,14 +339,61 @@ async function applyAssigneeRuntimeStrategies(
     }
   }
 
-  if ((task.nodeConfig.deduplicateStrategy ?? 'autoSkip') === 'autoSkip' && ids.length > 0) {
-    const approvedRows = await ctx.executor.select({ assigneeId: workflowTasks.assigneeId }).from(workflowTasks)
-      .where(and(eq(workflowTasks.instanceId, ctx.instanceId), eq(workflowTasks.status, 'approved')));
-    const approvedUsers = new Set(approvedRows.map((row) => row.assigneeId).filter((id): id is number => typeof id === 'number'));
-    ids = ids.filter((id) => !approvedUsers.has(id));
+  // 审批人去重：节点级 deduplicateStrategy 显式设置时优先，否则跟随流程级 approverDedupMode
+  const effectiveDedup = resolveEffectiveDedup(task.nodeConfig.deduplicateStrategy, dedupMode);
+  if (effectiveDedup !== 'none' && ids.length > 0) {
+    const dedupUsers = await collectDedupApprovers(ctx.executor, ctx.instanceId, effectiveDedup);
+    ids = ids.filter((id) => !dedupUsers.has(id));
   }
 
   return ids;
+}
+
+/**
+ * 计算某审批节点的有效去重范围：
+ * - 节点显式「仍需审批」→ 不去重
+ * - 节点显式「自动跳过」→ 至少 all；流程级为 consecutive 时尊重 consecutive
+ * - 节点未设置 → 完全跟随流程级模式
+ */
+function resolveEffectiveDedup(
+  nodeStrategy: WorkflowDeduplicateStrategy | undefined,
+  globalMode: WorkflowApproverDedupMode,
+): WorkflowApproverDedupMode {
+  if (nodeStrategy === 'repeatApprove') return 'none';
+  if (nodeStrategy === 'autoSkip') return globalMode === 'consecutive' ? 'consecutive' : 'all';
+  return globalMode;
+}
+
+/** 收集需要去重的「前序已审批」处理人集合 */
+async function collectDedupApprovers(
+  exec: DbExecutor,
+  instanceId: number,
+  mode: 'all' | 'consecutive',
+): Promise<Set<number>> {
+  if (mode === 'all') {
+    // 去重实例内所有已审批人（含抄送，保持既有行为）
+    const rows = await exec.select({ assigneeId: workflowTasks.assigneeId }).from(workflowTasks)
+      .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.status, 'approved')));
+    return new Set(rows.map((row) => row.assigneeId).filter((id): id is number => typeof id === 'number'));
+  }
+  // consecutive：仅取「紧邻的前一个审批节点」（排除抄送）的处理人
+  const rows = await exec
+    .select({ nodeKey: workflowTasks.nodeKey, assigneeId: workflowTasks.assigneeId })
+    .from(workflowTasks)
+    .where(and(
+      eq(workflowTasks.instanceId, instanceId),
+      eq(workflowTasks.status, 'approved'),
+      ne(workflowTasks.nodeType, 'ccNode'),
+    ))
+    .orderBy(desc(workflowTasks.id));
+  const lastNodeKey = rows[0]?.nodeKey;
+  if (!lastNodeKey) return new Set();
+  return new Set(
+    rows
+      .filter((row) => row.nodeKey === lastNodeKey)
+      .map((row) => row.assigneeId)
+      .filter((id): id is number => typeof id === 'number'),
+  );
 }
 
 function computeDelayWakeAt(nodeConfig: TaskAction['nodeConfig'], formData: Record<string, unknown>): Date {
