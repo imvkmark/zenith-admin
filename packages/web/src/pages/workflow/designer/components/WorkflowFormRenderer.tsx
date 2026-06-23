@@ -7,13 +7,15 @@ import type { CSSProperties, ReactNode } from 'react';
 import DOMPurify from 'dompurify';
 import { Form, Select, Upload, Button, Typography, Row, Col, Divider, Rating, Toast, withField, Input, InputNumber, DatePicker } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { Plus, Eraser, Trash2, FileText, Download } from 'lucide-react';
+import { Plus, Eraser, Trash2 } from 'lucide-react';
 import dayjs from 'dayjs';
 import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup, WorkflowRelationOption } from '@zenith/shared';
 import { TOKEN_KEY } from '@zenith/shared';
 import { CURRENCY_OPTIONS, toDateFnsToken } from '../form-types';
 import { config } from '@/config';
 import { request } from '@/utils/request';
+import { guessMimeTypeFromName } from '@/utils/file-utils';
+import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
 import RegionSelect from '@/components/RegionSelect';
 import RichTextEditor from '@/components/RichTextEditor';
 import UserSelect from '@/components/UserSelect';
@@ -276,27 +278,24 @@ function FileUploadInput({ value, onChange, disabled, isImage, limit }: Readonly
 
   if (disabled) {
     if (files.length === 0) return <Typography.Text type="tertiary">（无附件）</Typography.Text>;
-    if (isImage) {
-      return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {files.map((f) => (
-            <img
-              key={f.url} src={f.url} alt={f.name}
-              style={{ width: 96, height: 96, objectFit: 'cover', border: '1px solid var(--semi-color-border)', borderRadius: 6 }}
-            />
-          ))}
-        </div>
-      );
-    }
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {files.map((f) => (
-          <a key={f.url} href={f.url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <FileText size={14} /><span>{f.name}</span><Download size={12} />
-          </a>
-        ))}
-      </div>
-    );
+    const attachments: AttachmentItem[] = files.map((f, i) => {
+      const dot = f.name?.lastIndexOf('.') ?? -1;
+      return {
+        id: i + 1,
+        fileId: f.url,
+        file: {
+          id: f.url,
+          originalName: f.name,
+          size: Number(f.size ?? 0),
+          mimeType: guessMimeTypeFromName(f.name),
+          extension: dot >= 0 ? f.name.slice(dot + 1) : null,
+          url: f.url,
+        },
+        sortOrder: i,
+        createdAt: '',
+      };
+    });
+    return <FileAttachment mode="view" value={attachments} showTitle={false} />;
   }
 
   const defaultFileList = files.map((f, i) => ({ uid: `${i}-${f.url}`, name: f.name, status: 'success' as const, url: f.url, size: String(f.size ?? '') }));
