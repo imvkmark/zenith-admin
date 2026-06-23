@@ -43,6 +43,9 @@ import { rateLimitHandlers } from './rate-limit';
 import { emailTemplatesHandlers } from './email-templates';
 import { emailSendLogsHandlers } from './email-send-logs';
 import { smsConfigsHandlers } from './sms-configs';
+import { mpAccountsHandlers } from './mp-accounts';
+import { mpTagsHandlers } from './mp-tags';
+import { mpFansHandlers } from './mp-fans';
 import { smsTemplatesHandlers } from './sms-templates';
 import { smsSendLogsHandlers } from './sms-send-logs';
 import { aiProvidersHandlers } from './ai-providers';
@@ -120,6 +123,9 @@ export const handlers = [
   ...emailTemplatesHandlers,
   ...emailSendLogsHandlers,
   ...smsConfigsHandlers,
+  ...mpAccountsHandlers,
+  ...mpTagsHandlers,
+  ...mpFansHandlers,
   ...smsTemplatesHandlers,
   ...smsSendLogsHandlers,
   ...inAppTemplatesHandlers,

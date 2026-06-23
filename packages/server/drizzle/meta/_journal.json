@@ -981,6 +981,20 @@
       "when": 1782208058348,
       "tag": "0139_fuzzy_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1782223523118,
+      "tag": "0140_nifty_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1782229407082,
+      "tag": "0141_abandoned_vulcan",
+      "breakpoints": true
     }
   ]
 }

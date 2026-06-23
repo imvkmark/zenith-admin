@@ -3534,3 +3534,111 @@ export const sslCertificates = pgTable('ssl_certificates', {
 });
 export type SslCertificateRow = typeof sslCertificates.$inferSelect;
 export type NewSslCertificate = typeof sslCertificates.$inferInsert;
+
+// ─── 公众号管理 ────────────────────────────────────────────────────────────────
+// 微信公众号账号（多公众号 + 租户隔离）。子实体（粉丝/标签/消息/菜单/素材/图文等）
+// 在后续阶段加入，均通过 account_id 外键挂到此表。
+export const mpAccountTypeEnum = pgEnum('mp_account_type', ['subscribe', 'service', 'test']);
+export const mpEncryptModeEnum = pgEnum('mp_encrypt_mode', ['plaintext', 'compatible', 'safe']);
+
+export const mpAccounts = pgTable('mp_accounts', {
+  id: serial('id').primaryKey(),
+  /** 公众号名称 */
+  name: varchar('name', { length: 100 }).notNull(),
+  /** 微信号 / 原始 ID（gh_xxx） */
+  account: varchar('account', { length: 100 }),
+  /** 公众号 AppID（全局唯一） */
+  appId: varchar('app_id', { length: 64 }).notNull().unique(),
+  /** 公众号 AppSecret（响应中脱敏） */
+  appSecret: varchar('app_secret', { length: 128 }).notNull().default(''),
+  /** 服务器配置 Token（回调签名校验用） */
+  token: varchar('token', { length: 64 }).notNull().default(''),
+  /** 消息加解密密钥（安全模式 / 兼容模式需要） */
+  encodingAesKey: varchar('encoding_aes_key', { length: 64 }),
+  /** 消息加解密方式：明文 / 兼容 / 安全 */
+  encryptMode: mpEncryptModeEnum('encrypt_mode').notNull().default('plaintext'),
+  /** 账号类型：订阅号 / 服务号 / 测试号 */
+  type: mpAccountTypeEnum('type').notNull().default('service'),
+  /** 二维码图片地址 */
+  qrCodeUrl: varchar('qr_code_url', { length: 500 }),
+  /** 是否默认公众号（同租户内唯一） */
+  isDefault: boolean('is_default').notNull().default(false),
+  status: statusEnum('status').notNull().default('enabled'),
+  remark: text('remark'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('mp_accounts_tenant_idx').on(t.tenantId),
+]);
+export type MpAccountRow = typeof mpAccounts.$inferSelect;
+export type NewMpAccount = typeof mpAccounts.$inferInsert;
+
+export const mpAccountsRelations = relations(mpAccounts, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [mpAccounts.tenantId], references: [tenants.id] }),
+  tags: many(mpTags),
+  fans: many(mpFans),
+}));
+
+// 公众号粉丝标签（与微信标签同步；wechat_tag_id 同步后回填）
+export const mpTags = pgTable('mp_tags', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  /** 微信侧标签 id（从微信同步后回填，本地新建时为空） */
+  wechatTagId: integer('wechat_tag_id'),
+  name: varchar('name', { length: 30 }).notNull(),
+  /** 该标签下粉丝数（同步时更新） */
+  fansCount: integer('fans_count').notNull().default(0),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('mp_tags_account_name_uq').on(t.accountId, t.name),
+  index('mp_tags_account_idx').on(t.accountId),
+]);
+export type MpTagRow = typeof mpTags.$inferSelect;
+export type NewMpTag = typeof mpTags.$inferInsert;
+
+export const mpTagsRelations = relations(mpTags, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpTags.accountId], references: [mpAccounts.id] }),
+  tenant: one(tenants, { fields: [mpTags.tenantId], references: [tenants.id] }),
+}));
+
+// 公众号粉丝（关注者；从微信同步，本地可备注/打标签）
+export const mpFanSubscribeEnum = pgEnum('mp_fan_subscribe', ['subscribed', 'unsubscribed']);
+
+export const mpFans = pgTable('mp_fans', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  openid: varchar('openid', { length: 64 }).notNull(),
+  nickname: varchar('nickname', { length: 128 }),
+  avatar: varchar('avatar', { length: 512 }),
+  /** 性别：0 未知 / 1 男 / 2 女 */
+  sex: smallint('sex').notNull().default(0),
+  country: varchar('country', { length: 64 }),
+  province: varchar('province', { length: 64 }),
+  city: varchar('city', { length: 64 }),
+  language: varchar('language', { length: 16 }),
+  subscribe: mpFanSubscribeEnum('subscribe').notNull().default('subscribed'),
+  subscribeTime: timestamp('subscribe_time', { withTimezone: true }),
+  /** 本地备注 */
+  remark: varchar('remark', { length: 128 }),
+  /** 本地标签 id 列表（指向 mp_tags.id） */
+  tagIds: jsonb('tag_ids').$type<number[]>().notNull().default([]),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  uniqueIndex('mp_fans_account_openid_uq').on(t.accountId, t.openid),
+  index('mp_fans_account_idx').on(t.accountId),
+]);
+export type MpFanRow = typeof mpFans.$inferSelect;
+export type NewMpFan = typeof mpFans.$inferInsert;
+
+export const mpFansRelations = relations(mpFans, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpFans.accountId], references: [mpAccounts.id] }),
+  tenant: one(tenants, { fields: [mpFans.tenantId], references: [tenants.id] }),
+}));

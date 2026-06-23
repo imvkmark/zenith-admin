@@ -1969,3 +1969,45 @@ export const uploadCertSchema = z.object({
 
 export type GenerateSelfSignedCertSchemaInput = z.infer<typeof generateSelfSignedCertSchema>;
 export type UploadCertSchemaInput = z.infer<typeof uploadCertSchema>;
+
+// ─── 公众号管理 ────────────────────────────────────────────────────────────────
+export const MP_ACCOUNT_TYPES = ['subscribe', 'service', 'test'] as const;
+export const MP_ENCRYPT_MODES = ['plaintext', 'compatible', 'safe'] as const;
+
+export const createMpAccountSchema = z.object({
+  name: z.string().min(1, '公众号名称不能为空').max(100),
+  account: z.string().max(100).optional(),
+  appId: z.string().min(1, 'AppID 不能为空').max(64),
+  appSecret: z.string().min(1, 'AppSecret 不能为空').max(128),
+  token: z.string().min(1, 'Token 不能为空').max(64).regex(/^[A-Za-z0-9]+$/, 'Token 只能包含字母和数字'),
+  encodingAesKey: z.string().max(64).optional(),
+  encryptMode: z.enum(MP_ENCRYPT_MODES).default('plaintext'),
+  type: z.enum(MP_ACCOUNT_TYPES).default('service'),
+  qrCodeUrl: z.string().max(500).optional(),
+  isDefault: z.boolean().default(false),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  remark: z.string().max(500).optional(),
+});
+export const updateMpAccountSchema = createMpAccountSchema.partial().extend({
+  appSecret: z.string().max(128).optional(), // 更新时留空表示保持原值
+});
+export type CreateMpAccountInput = z.infer<typeof createMpAccountSchema>;
+export type UpdateMpAccountInput = z.infer<typeof updateMpAccountSchema>;
+
+// 公众号标签
+export const createMpTagSchema = z.object({
+  accountId: z.number().int().positive(),
+  name: z.string().min(1, '标签名称不能为空').max(30),
+});
+export const updateMpTagSchema = z.object({
+  name: z.string().min(1, '标签名称不能为空').max(30),
+});
+export type CreateMpTagInput = z.infer<typeof createMpTagSchema>;
+export type UpdateMpTagInput = z.infer<typeof updateMpTagSchema>;
+
+// 公众号粉丝（本地备注 / 标签）
+export const updateMpFanSchema = z.object({
+  remark: z.string().max(128).optional(),
+  tagIds: z.array(z.number().int().positive()).optional(),
+});
+export type UpdateMpFanInput = z.infer<typeof updateMpFanSchema>;

@@ -3930,3 +3930,67 @@ export interface UploadCertInput {
   certContent: string;
   keyContent: string;
 }
+
+// ─── 公众号管理 ────────────────────────────────────────────────────────────────
+export type MpAccountType = 'subscribe' | 'service' | 'test';
+export type MpEncryptMode = 'plaintext' | 'compatible' | 'safe';
+
+export interface MpAccount {
+  id: number;
+  name: string;
+  account: string | null;
+  appId: string;
+  /** 列表/详情返回时脱敏 */
+  appSecret?: string;
+  token: string;
+  encodingAesKey: string | null;
+  encryptMode: MpEncryptMode;
+  type: MpAccountType;
+  qrCodeUrl: string | null;
+  isDefault: boolean;
+  status: EntityStatus;
+  remark: string | null;
+  tenantId?: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MpFanSubscribe = 'subscribed' | 'unsubscribed';
+
+export interface MpTag {
+  id: number;
+  accountId: number;
+  wechatTagId: number | null;
+  name: string;
+  fansCount: number;
+  tenantId?: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MpFan {
+  id: number;
+  accountId: number;
+  openid: string;
+  nickname: string | null;
+  avatar: string | null;
+  /** 0 未知 / 1 男 / 2 女 */
+  sex: number;
+  country: string | null;
+  province: string | null;
+  city: string | null;
+  language: string | null;
+  subscribe: MpFanSubscribe;
+  subscribeTime: string | null;
+  remark: string | null;
+  tagIds: number[];
+  tenantId?: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}

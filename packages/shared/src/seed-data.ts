@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -357,8 +357,24 @@ export const SEED_MENUS: Menu[] = [
   { id: 877, parentId: 862, title: '会员补签', name: undefined,         path: undefined,                 component: undefined,                    icon: undefined, type: 'button', sort: 1, status: 'enabled', visible: true, permission: 'member:checkin:makeup', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 870, parentId: 800, title: '登录日志', name: 'MemberLoginLogs', path: '/member/login-logs',      component: 'member/MemberLoginLogsPage', icon: 'LogIn',       type: 'menu',      sort: 8,  status: 'enabled', visible: true,  permission: 'member:loginlog:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 875, parentId: 800, title: '充值记录', name: 'MemberRecharges', path: '/member/recharges',       component: 'member/MemberRechargesPage', icon: 'CreditCard',  type: 'menu',      sort: 9,  status: 'enabled', visible: true,  permission: 'member:recharge:list', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  // ── 公众号管理（多公众号 + 租户隔离）──
+  { id: 1000, parentId: 0,    title: '公众号管理', name: 'MpCenter',   path: undefined,      component: undefined,           icon: 'MessageCircle', type: 'directory', sort: 11, status: 'enabled', visible: true,  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1001, parentId: 1000, title: '公众号账号', name: 'MpAccounts', path: '/mp/accounts', component: 'mp/MpAccountsPage', icon: 'BadgeCheck',    type: 'menu',      sort: 1,  status: 'enabled', visible: true,  permission: 'mp:account:list',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1002, parentId: 1001, title: '新增公众号', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:account:create',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1003, parentId: 1001, title: '编辑公众号', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:account:update',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1004, parentId: 1001, title: '删除公众号', name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'mp:account:delete',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1005, parentId: 1001, title: '设为默认',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'mp:account:default', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1006, parentId: 1001, title: '测试连接',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 5,  status: 'enabled', visible: true,  permission: 'mp:account:token',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1010, parentId: 1000, title: '标签管理',   name: 'MpTags',     path: '/mp/tags',     component: 'mp/MpTagsPage',     icon: 'Tags',          type: 'menu',      sort: 2,  status: 'enabled', visible: true,  permission: 'mp:tag:list',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1011, parentId: 1010, title: '新增标签',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:tag:create',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1012, parentId: 1010, title: '编辑标签',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:tag:update',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1013, parentId: 1010, title: '删除标签',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 3,  status: 'enabled', visible: true,  permission: 'mp:tag:delete',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1014, parentId: 1010, title: '同步标签',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 4,  status: 'enabled', visible: true,  permission: 'mp:tag:sync',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1020, parentId: 1000, title: '粉丝管理',   name: 'MpFans',     path: '/mp/fans',     component: 'mp/MpFansPage',     icon: 'Users',         type: 'menu',      sort: 3,  status: 'enabled', visible: true,  permission: 'mp:fan:list',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1021, parentId: 1020, title: '同步粉丝',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'mp:fan:sync',        createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1022, parentId: 1020, title: '编辑粉丝',   name: undefined,    path: undefined,      component: undefined,           icon: undefined,       type: 'button',    sort: 2,  status: 'enabled', visible: true,  permission: 'mp:fan:update',      createdAt: SEED_DATE, updatedAt: SEED_DATE },
   // ── 业务接入示例（请假，业务模块自有实体 + 工作流编排）──
-  { id: 900, parentId: 0,   title: '业务示例', name: 'BizDemo',          path: undefined,        component: undefined,            icon: 'Briefcase',     type: 'directory', sort: 11, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 900, parentId: 0,   title: '业务示例', name: 'BizDemo',          path: undefined,        component: undefined,            icon: 'Briefcase',     type: 'directory', sort: 12, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 901, parentId: 900, title: '请假管理', name: 'BizLeave',         path: '/biz/leave',     component: 'biz/leave/LeavePage', icon: 'CalendarClock', type: 'menu',      sort: 1,  status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
@@ -1192,6 +1208,26 @@ export const SEED_MEMBER_LEVELS: MemberLevel[] = [
 export const SEED_COUPONS: Coupon[] = [
   { id: 1, name: '新人满100减10', type: 'amount',  faceValue: 1000, threshold: 10000, maxDiscount: null, totalQuantity: 1000, issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 30, status: 'active', description: '新人专享满减券',  createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2, name: '全场9折券',    type: 'percent', faceValue: 90,   threshold: 0,     maxDiscount: 5000, totalQuantity: 500,  issuedQuantity: 0, perLimit: 1, validType: 'relative', validStart: null, validEnd: null, validDays: 15, status: 'active', description: '限时9折，最高减50元', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 公众号账号（示例占位，需填实际凭证后启用）──────────────────────────────────
+export const SEED_MP_ACCOUNTS: MpAccount[] = [
+  { id: 1, name: '示例服务号', account: 'gh_demo_service', appId: 'wxdemoservice0001', appSecret: 'DemoAppSecretReplaceMe', token: 'zenithdemotoken', encodingAesKey: null, encryptMode: 'plaintext', type: 'service', qrCodeUrl: null, isDefault: true,  status: 'disabled', remark: '初始占位配置，需填实际 AppSecret 后启用', createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, name: '示例测试号', account: null,              appId: 'wxdemotest00000001', appSecret: 'DemoTestSecret',        token: 'zenithtesttoken', encodingAesKey: null, encryptMode: 'plaintext', type: 'test',    qrCodeUrl: null, isDefault: false, status: 'disabled', remark: '微信测试号占位',                createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 公众号标签（示例）────────────────────────────────────────────────────────
+export const SEED_MP_TAGS: MpTag[] = [
+  { id: 1, accountId: 1, wechatTagId: 100, name: '星标用户', fansCount: 2, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, wechatTagId: 101, name: '活跃粉丝', fansCount: 1, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, accountId: 1, wechatTagId: null, name: '潜在客户', fansCount: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 公众号粉丝（示例）────────────────────────────────────────────────────────
+export const SEED_MP_FANS: MpFan[] = [
+  { id: 1, accountId: 1, openid: 'oDemoFan0000000000000001', nickname: '小明', avatar: null, sex: 1, country: '中国', province: '广东', city: '深圳', language: 'zh_CN', subscribe: 'subscribed',   subscribeTime: SEED_DATE, remark: 'VIP客户', tagIds: [1, 2], tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, openid: 'oDemoFan0000000000000002', nickname: '小红', avatar: null, sex: 2, country: '中国', province: '浙江', city: '杭州', language: 'zh_CN', subscribe: 'subscribed',   subscribeTime: SEED_DATE, remark: null,    tagIds: [1],    tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, accountId: 1, openid: 'oDemoFan0000000000000003', nickname: '老王', avatar: null, sex: 1, country: '中国', province: '北京', city: '北京', language: 'zh_CN', subscribe: 'unsubscribed', subscribeTime: SEED_DATE, remark: null,    tagIds: [],     tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 签到里程碑（累计签到天数达标奖励）──────────────────────────────────────────
