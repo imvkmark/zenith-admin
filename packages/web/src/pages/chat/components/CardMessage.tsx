@@ -22,7 +22,7 @@ export function CardMessage({
   msg: ChatMessage;
   onCardAction?: (msg: ChatMessage, action: ChatCardAction) => void;
   /** 工作流卡片点击时打开对应流程详情抽屉 */
-  onOpenWorkflow?: (instanceId: number) => void;
+  onOpenWorkflow?: (instanceId: number, taskId: number | null) => void;
 }>) {
   const card = getMessageExtra(msg)?.card ?? null;
   const [hovered, setHovered] = useState(false);
@@ -37,10 +37,11 @@ export function CardMessage({
   const done = card.status === 'done';
   const actions = card.actions ?? [];
   const instanceId = card.instanceId ?? null;
+  const taskId = actions.find((a) => a.taskId != null)?.taskId ?? null;
   const clickable = instanceId != null && !!onOpenWorkflow;
 
   const openWorkflow = () => {
-    if (clickable && instanceId != null) onOpenWorkflow?.(instanceId);
+    if (clickable && instanceId != null) onOpenWorkflow?.(instanceId, taskId);
   };
 
   return (

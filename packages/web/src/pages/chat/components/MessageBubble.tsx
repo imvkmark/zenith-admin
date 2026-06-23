@@ -64,7 +64,7 @@ export function MessageBubble({
   onOpenFilePreview?: (msg: ChatMessage) => void;
   readReceipt?: MessageReadReceipt;
   onCardAction?: (msg: ChatMessage, action: ChatCardAction) => void;
-  onOpenWorkflow?: (instanceId: number) => void;
+  onOpenWorkflow?: (instanceId: number, taskId: number | null) => void;
 }>) {
   const fullTimeStr = formatDateTime(msg.createdAt);
   // 机器人/系统消息（senderId 为空）的展示身份取自 extra.bot

@@ -31,7 +31,7 @@ export function MessageContent({
   onVote?: (msg: ChatMessage, optionIds: string[]) => void;
   onOpenFilePreview?: (msg: ChatMessage) => void;
   onCardAction?: (msg: ChatMessage, action: ChatCardAction) => void;
-  onOpenWorkflow?: (instanceId: number) => void;
+  onOpenWorkflow?: (instanceId: number, taskId: number | null) => void;
 }>) {
   const extra = getMessageExtra(msg);
   const asset = extra?.asset ?? null;

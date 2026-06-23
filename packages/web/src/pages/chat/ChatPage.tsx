@@ -45,7 +45,7 @@ import { VotePollModal } from './components/VotePollModal';
 import { MessageBubble } from './components/MessageBubble';
 
 import { MessageContent } from './components/MessageContent';
-import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
+import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalDetailSheet';
 import { useVoiceRecorder } from './useVoiceRecorder';
 import { getChatNotifyPrefs, setChatNotifyPrefs } from './notifyPrefs';
 import { callManager } from '@/webrtc/useCallManager';
@@ -154,9 +154,7 @@ export default function ChatPage({
   const isQuick = variant === 'quick';
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [cardRejectTask, setCardRejectTask] = useState<{ taskId: number; messageId: number } | null>(null);
-  const [cardRejectComment, setCardRejectComment] = useState('');
-  const [workflowSheetInstanceId, setWorkflowSheetInstanceId] = useState<number | null>(null);
+  const [cardSheet, setCardSheet] = useState<{ instanceId: number; taskId: number | null; action: 'approve' | 'reject' | null; messageId?: number } | null>(null);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -597,42 +595,21 @@ export default function ChatPage({
         ? { ...m, extra: { ...m.extra, card: { ...m.extra.card, status: 'done' as const, statusText } } }
         : m);
 
-  const handleCardApprove = useCallback(async (messageId: number, taskId: number) => {
-    const res = await request.post(`/api/workflows/tasks/${taskId}/approve`, {});
-    if (res.code === 0) {
-      Toast.success('已同意');
-      setMessages(markCardDoneLocal(messageId, '已同意'));
-    }
-  }, []);
-
-  const handleCardReject = useCallback(async () => {
-    if (!cardRejectTask) return;
-    const comment = cardRejectComment.trim();
-    if (!comment) { Toast.warning('请填写驳回理由'); return; }
-    const res = await request.post(`/api/workflows/tasks/${cardRejectTask.taskId}/reject`, { comment });
-    if (res.code === 0) {
-      Toast.success('已驳回');
-      setMessages(markCardDoneLocal(cardRejectTask.messageId, '已驳回'));
-      setCardRejectTask(null);
-      setCardRejectComment('');
-    }
-  }, [cardRejectTask, cardRejectComment]);
-
-  const handleOpenWorkflowFromCard = useCallback((instanceId: number) => {
-    setWorkflowSheetInstanceId(instanceId);
+  const handleOpenWorkflowFromCard = useCallback((instanceId: number, taskId: number | null) => {
+    setCardSheet({ instanceId, taskId, action: null });
   }, []);
 
   const handleCardAction = useCallback((msg: ChatMessage, action: ChatCardAction) => {
-    if (action.action === 'workflow:approve' && action.taskId) {
-      void handleCardApprove(msg.id, action.taskId);
-    } else if (action.action === 'workflow:reject' && action.taskId) {
-      setCardRejectComment('');
-      setCardRejectTask({ taskId: action.taskId, messageId: msg.id });
+    const instanceId = msg.extra?.card?.instanceId ?? null;
+    if (action.action === 'workflow:approve' && instanceId != null) {
+      setCardSheet({ instanceId, taskId: action.taskId ?? null, action: 'approve', messageId: msg.id });
+    } else if (action.action === 'workflow:reject' && instanceId != null) {
+      setCardSheet({ instanceId, taskId: action.taskId ?? null, action: 'reject', messageId: msg.id });
     } else if (action.action === 'link' && action.url) {
       if (action.url.startsWith('/')) navigate(action.url);
       else window.open(action.url, '_blank', 'noopener,noreferrer');
     }
-  }, [handleCardApprove, navigate]);
+  }, [navigate]);
 
   // ── 音视频通话 ──
   const handleStartCall = useCallback((callType: 'audio' | 'video') => {
@@ -3449,30 +3426,20 @@ export default function ChatPage({
         onClose={() => setShowVoteModal(false)}
         onConfirm={handleCreateVote}
       />
-      <Modal
-        title="驳回审批"
-        visible={!!cardRejectTask}
-        onOk={() => { void handleCardReject(); }}
-        onCancel={() => { setCardRejectTask(null); setCardRejectComment(''); }}
-        okText="确认驳回"
-        cancelText="取消"
-        okButtonProps={{ type: 'danger' }}
-        closeOnEsc
-        width={420}
-      >
-        <TextArea
-          placeholder="请填写驳回理由"
-          value={cardRejectComment}
-          onChange={setCardRejectComment}
-          rows={3}
-          maxCount={500}
-          autosize
-        />
-      </Modal>
-      <WorkflowInstanceDetailSheet
-        instanceId={workflowSheetInstanceId}
-        visible={workflowSheetInstanceId != null}
-        onClose={() => setWorkflowSheetInstanceId(null)}
+      <WorkflowApprovalDetailSheet
+        instanceId={cardSheet?.instanceId ?? null}
+        taskId={cardSheet?.taskId ?? null}
+        initialAction={cardSheet?.action ?? null}
+        visible={!!cardSheet}
+        onClose={() => setCardSheet(null)}
+        onActionDone={() => {
+          if (cardSheet?.messageId) {
+            const statusText = cardSheet.action === 'reject' ? '已驳回' : '已处理';
+            setMessages(markCardDoneLocal(cardSheet.messageId, statusText));
+          } else if (activeConvId) {
+            void fetchMessages(activeConvId);
+          }
+        }}
       />
       {/* Reaction emoji picker — fixed overlay */}
       {reactionPickerVisible && reactionPickerAnchor && (
