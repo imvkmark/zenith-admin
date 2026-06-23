@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Avatar, Button, Card, Empty, Input, Progress, Select, SideSheet, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
+import { Avatar, Button, Card, Empty, Input, Progress, Select, SideSheet, Skeleton, Spin, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
   Activity,
@@ -212,7 +212,27 @@ function OverviewTab() {
         description="关键指标与趋势"
         extra={<Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />}
       />
-      {loading && !overview ? emptyOrSpin(true) : <div style={gridStyle}>{cards.map((card) => <StatCard key={card.label} {...card} />)}</div>}
+      {loading && !overview ? (
+        <Skeleton
+          loading
+          active
+          placeholder={
+            <div style={gridStyle}>
+              {Array.from({ length: 9 }, (_, i) => `sk-stat-${i}`).map((key) => (
+                <Card key={key} bodyStyle={{ padding: 16 }} style={{ borderRadius: 14 }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <Skeleton.Avatar style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Skeleton.Paragraph rows={1} style={{ width: '50%', marginBottom: 8 }} />
+                      <Skeleton.Title style={{ width: '70%', marginBottom: 6 }} />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          }
+        >{null}</Skeleton>
+      ) : <div style={gridStyle}>{cards.map((card) => <StatCard key={card.label} {...card} />)}</div>}
       <Card title="访问趋势" bodyStyle={{ padding: 16 }}>
         {chartData.length === 0 ? emptyOrSpin(loading) : (
           <ResponsiveContainer width="100%" height={300}>
