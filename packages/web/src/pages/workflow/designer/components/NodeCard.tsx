@@ -247,9 +247,11 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly
                   <div className="fd-node-card__rt-info">
                     <div className="fd-node-card__rt-line">
                       <span className="fd-node-card__rt-name" title={a.name}>{a.name || '未指定'}</span>
-                      <span className={`fd-node-card__rt-status fd-node-card__rt-status--${a.status}`}>
-                        {approverStatusLabel(node.type, a.status)}
-                      </span>
+                      {(runtime.approvers.length > 1 || node.type === 'cc') && (
+                        <span className={`fd-node-card__rt-status fd-node-card__rt-status--${a.status}`}>
+                          {approverStatusLabel(node.type, a.status)}
+                        </span>
+                      )}
                     </div>
                     {a.actionAt && (
                       <span className="fd-node-card__rt-time">{formatDateTime(a.actionAt)}</span>

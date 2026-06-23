@@ -102,9 +102,11 @@ export default function WorkflowNodeListView({ flowData, tasks = [], initiator }
                           size={18}
                         />
                         <Typography.Text size="small" type="tertiary">{a.name || '未指定'}</Typography.Text>
-                        <Tag size="small" color={NODE_RT_STATUS_COLOR[a.status]}>
-                          {approverActionLabel(a.status, isCc)}
-                        </Tag>
+                        {(rt.approvers.length > 1 || isCc) && (
+                          <Tag size="small" color={NODE_RT_STATUS_COLOR[a.status]}>
+                            {approverActionLabel(a.status, isCc)}
+                          </Tag>
+                        )}
                         {a.actionAt && (
                           <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto' }}>
                             {formatDateTime(a.actionAt)}
