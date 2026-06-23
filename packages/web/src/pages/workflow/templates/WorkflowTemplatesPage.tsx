@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Col, Form, Input, Popconfirm, Row, Space, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Input, Popconfirm, Row, Space, Tag, Toast, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate, RotateCcw, Search } from 'lucide-react';
@@ -10,8 +10,11 @@ import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import ColorPickerInput from '@/components/ColorPickerInput';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';
+
+const FormColorPicker = withField(ColorPickerInput);
 
 interface FormValues extends Record<string, unknown> {
   name?: string;
@@ -286,7 +289,7 @@ export default function WorkflowTemplatesPage() {
               <Form.Input field="icon" label="图标" placeholder="选填，lucide 图标名" />
             </Col>
             <Col span={12}>
-              <Form.Input field="color" label="颜色" placeholder="选填，如 #1677ff" />
+              <FormColorPicker field="color" label="颜色" />
             </Col>
           </Row>
           <Form.TextArea field="description" label="描述" placeholder="选填" autosize rows={2} />
