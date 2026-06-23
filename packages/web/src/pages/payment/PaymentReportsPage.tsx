@@ -83,7 +83,7 @@ export default function PaymentReportsPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <Select value={groupBy} onChange={(v) => setGroupBy(v as PaymentReportGroupBy)} style={{ width: 140 }} optionList={groupByOptions} prefix="维度" />
+        <Select value={groupBy} onChange={(v) => setGroupBy(v as PaymentReportGroupBy)} style={{ width: 140 }} optionList={groupByOptions} placeholder="选择维度" />
         <DatePicker type="dateTimeRange" placeholder={['开始时间', '结束时间']} value={timeRange ?? undefined} onChange={(v) => setTimeRange(v ? (v as [Date, Date]) : null)} style={{ width: 330 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchSummary()} disabled={!canView}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset} disabled={!canView}>重置</Button>
