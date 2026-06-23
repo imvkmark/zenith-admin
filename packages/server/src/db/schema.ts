@@ -3680,3 +3680,62 @@ export const mpMessagesRelations = relations(mpMessages, ({ one }) => ({
   account: one(mpAccounts, { fields: [mpMessages.accountId], references: [mpAccounts.id] }),
   tenant: one(tenants, { fields: [mpMessages.tenantId], references: [tenants.id] }),
 }));
+
+// 公众号自动回复（关注回复 / 关键词回复 / 默认回复）
+export const mpAutoReplyTypeEnum = pgEnum('mp_auto_reply_type', ['subscribe', 'keyword', 'default']);
+export const mpAutoReplyMatchEnum = pgEnum('mp_auto_reply_match', ['exact', 'contain']);
+export const mpReplyContentTypeEnum = pgEnum('mp_reply_content_type', ['text', 'image']);
+
+export const mpAutoReplies = pgTable('mp_auto_replies', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  replyType: mpAutoReplyTypeEnum('reply_type').notNull(),
+  /** 关键词（仅 replyType=keyword） */
+  keyword: varchar('keyword', { length: 64 }),
+  /** 匹配方式（仅 keyword）：exact=全匹配 contain=包含 */
+  matchType: mpAutoReplyMatchEnum('match_type').notNull().default('contain'),
+  contentType: mpReplyContentTypeEnum('content_type').notNull().default('text'),
+  /** 文本回复内容 */
+  content: text('content'),
+  /** 图片回复素材 id（contentType=image） */
+  mediaId: varchar('media_id', { length: 128 }),
+  status: statusEnum('status').notNull().default('enabled'),
+  /** 关键词优先级（小在前） */
+  sort: integer('sort').notNull().default(0),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('mp_auto_replies_account_type_idx').on(t.accountId, t.replyType),
+]);
+export type MpAutoReplyRow = typeof mpAutoReplies.$inferSelect;
+export type NewMpAutoReply = typeof mpAutoReplies.$inferInsert;
+
+export const mpAutoRepliesRelations = relations(mpAutoReplies, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpAutoReplies.accountId], references: [mpAccounts.id] }),
+  tenant: one(tenants, { fields: [mpAutoReplies.tenantId], references: [tenants.id] }),
+}));
+
+// 公众号自定义菜单（每账号一份，buttons 为微信菜单按钮树 JSON）
+export const mpMenuStatusEnum = pgEnum('mp_menu_status', ['draft', 'published']);
+
+export const mpMenus = pgTable('mp_menus', {
+  id: serial('id').primaryKey(),
+  accountId: integer('account_id').notNull().unique().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
+  /** 微信菜单按钮树（最多 3 个一级，每个最多 5 个二级） */
+  buttons: jsonb('buttons').$type<unknown[]>().notNull().default([]),
+  status: mpMenuStatusEnum('status').notNull().default('draft'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type MpMenuRow = typeof mpMenus.$inferSelect;
+export type NewMpMenu = typeof mpMenus.$inferInsert;
+
+export const mpMenusRelations = relations(mpMenus, ({ one }) => ({
+  account: one(mpAccounts, { fields: [mpMenus.accountId], references: [mpAccounts.id] }),
+  tenant: one(tenants, { fields: [mpMenus.tenantId], references: [tenants.id] }),
+}));

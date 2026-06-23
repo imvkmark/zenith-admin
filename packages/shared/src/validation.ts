@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { WorkflowFormField } from './types';
+import type { WorkflowFormField, MpMenuButton } from './types';
 
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const dateTimeStringSchema = z.string().regex(DATE_TIME_PATTERN, '日期时间格式必须为 YYYY-MM-DD HH:mm:ss');
@@ -2019,3 +2019,40 @@ export const sendMpMessageSchema = z.object({
   content: z.string().min(1, '消息内容不能为空').max(2000),
 });
 export type SendMpMessageInput = z.infer<typeof sendMpMessageSchema>;
+
+// 公众号自动回复
+export const MP_AUTO_REPLY_TYPES = ['subscribe', 'keyword', 'default'] as const;
+const mpAutoReplyBase = z.object({
+  accountId: z.number().int().positive(),
+  replyType: z.enum(MP_AUTO_REPLY_TYPES),
+  keyword: z.string().max(64).optional(),
+  matchType: z.enum(['exact', 'contain']).default('contain'),
+  contentType: z.enum(['text', 'image']).default('text'),
+  content: z.string().max(2000).optional(),
+  mediaId: z.string().max(128).optional(),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+  sort: z.number().int().default(0),
+});
+export const createMpAutoReplySchema = mpAutoReplyBase
+  .refine((d) => d.replyType !== 'keyword' || !!d.keyword, { message: '关键词回复必须填写关键词', path: ['keyword'] })
+  .refine((d) => d.contentType !== 'text' || !!d.content, { message: '请填写回复内容', path: ['content'] });
+export const updateMpAutoReplySchema = mpAutoReplyBase.omit({ accountId: true, replyType: true }).partial();
+export type CreateMpAutoReplyInput = z.infer<typeof createMpAutoReplySchema>;
+export type UpdateMpAutoReplyInput = z.infer<typeof updateMpAutoReplySchema>;
+
+// 公众号自定义菜单
+const mpMenuButtonSchema: z.ZodType<MpMenuButton> = z.lazy(() => z.object({
+  name: z.string().min(1, '按钮名称不能为空').max(60),
+  type: z.string().max(32).optional(),
+  key: z.string().max(128).optional(),
+  url: z.string().max(1024).optional(),
+  appid: z.string().max(64).optional(),
+  pagepath: z.string().max(256).optional(),
+  media_id: z.string().max(128).optional(),
+  sub_button: z.array(mpMenuButtonSchema).max(5).optional(),
+}));
+export const saveMpMenuSchema = z.object({
+  accountId: z.number().int().positive(),
+  buttons: z.array(mpMenuButtonSchema).max(3, '一级菜单最多 3 个'),
+});
+export type SaveMpMenuInput = z.infer<typeof saveMpMenuSchema>;

@@ -10,3 +10,4 @@ export * from './users';
 export * from './xml';
 export * from './crypto';
 export * from './messages';
+export * from './menu';

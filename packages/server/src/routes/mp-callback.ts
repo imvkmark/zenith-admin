@@ -9,8 +9,9 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { validationHook } from '../lib/openapi-schemas';
 import { getMpAccountForCallback } from '../services/mp-account.service';
-import { storeInboundMessage } from '../services/mp-message.service';
-import { verifyWechatSignature, msgSignature, decryptWechatMessage, parseWechatXml } from '../lib/wechat';
+import { storeInboundMessage, storeOutboundAutoReply } from '../services/mp-message.service';
+import { resolveAutoReply } from '../services/mp-auto-reply.service';
+import { verifyWechatSignature, msgSignature, decryptWechatMessage, encryptWechatMessage, parseWechatXml, buildWechatXml } from '../lib/wechat';
 import logger from '../lib/logger';
 import type { MpMessageType } from '@zenith/shared';
 
@@ -122,9 +123,41 @@ const receiveRoute = defineOpenAPIRoute({
           event: f.Event ?? null,
           msgId: f.MsgId ?? null,
         });
+
+        // ── 自动回复匹配 ──
+        let replyContent: string | null = null;
+        if (msgType === 'event' && f.Event === 'subscribe') {
+          replyContent = await resolveAutoReply(accountId, { event: 'subscribe' });
+        } else if (msgType === 'text') {
+          replyContent = await resolveAutoReply(accountId, { text: f.Content ?? '' });
+        }
+
+        if (replyContent) {
+          await storeOutboundAutoReply(accountId, account.tenantId, openid, replyContent);
+          const replyXml = buildWechatXml({
+            ToUserName: openid,
+            FromUserName: f.ToUserName ?? '',
+            CreateTime: Math.floor(Date.now() / 1000),
+            MsgType: 'text',
+            Content: replyContent,
+          });
+          if (encrypted && account.encodingAesKey) {
+            const enc = encryptWechatMessage(account.encodingAesKey, account.appId, replyXml);
+            const ts = timestamp ?? String(Math.floor(Date.now() / 1000));
+            const nc = nonce ?? Math.random().toString(36).slice(2);
+            const encXml = buildWechatXml({
+              Encrypt: enc,
+              MsgSignature: msgSignature(account.token, ts, nc, enc),
+              TimeStamp: Number(ts),
+              Nonce: nc,
+            });
+            return c.text(encXml, 200);
+          }
+          return c.text(replyXml, 200);
+        }
       }
     } catch (err) {
-      logger.warn(`[mp-callback] 消息落库失败: ${(err as Error).message}`);
+      logger.warn(`[mp-callback] 消息处理失败: ${(err as Error).message}`);
     }
     return c.text('', 200);
   },

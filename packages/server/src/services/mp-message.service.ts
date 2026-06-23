@@ -150,3 +150,16 @@ export async function storeInboundMessage(p: InboundMessageParams): Promise<bool
   });
   return true;
 }
+
+/** 落库出站自动回复消息（由公开回调调用，无登录上下文）。 */
+export async function storeOutboundAutoReply(accountId: number, tenantId: number | null, openid: string, content: string): Promise<void> {
+  await db.insert(mpMessages).values({
+    accountId,
+    openid,
+    direction: 'out',
+    msgType: 'text',
+    content,
+    status: 'sent',
+    tenantId,
+  });
+}

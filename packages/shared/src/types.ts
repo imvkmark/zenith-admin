@@ -4026,3 +4026,50 @@ export interface MpConversation {
   lastTime: string;
   messageCount: number;
 }
+
+export type MpAutoReplyType = 'subscribe' | 'keyword' | 'default';
+export type MpAutoReplyMatch = 'exact' | 'contain';
+export type MpReplyContentType = 'text' | 'image';
+
+export interface MpAutoReply {
+  id: number;
+  accountId: number;
+  replyType: MpAutoReplyType;
+  keyword: string | null;
+  matchType: MpAutoReplyMatch;
+  contentType: MpReplyContentType;
+  content: string | null;
+  mediaId: string | null;
+  status: EntityStatus;
+  sort: number;
+  tenantId?: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MpMenuStatus = 'draft' | 'published';
+
+/** 微信自定义菜单按钮（可嵌套二级 sub_button） */
+export interface MpMenuButton {
+  name: string;
+  type?: string;
+  key?: string;
+  url?: string;
+  appid?: string;
+  pagepath?: string;
+  media_id?: string;
+  sub_button?: MpMenuButton[];
+}
+
+export interface MpMenu {
+  id: number;
+  accountId: number;
+  buttons: MpMenuButton[];
+  status: MpMenuStatus;
+  publishedAt: string | null;
+  tenantId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}

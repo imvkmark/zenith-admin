@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -1238,6 +1238,29 @@ export const SEED_MP_MESSAGES: MpMessage[] = [
   { id: 2, accountId: 1, openid: 'oDemoFan0000000000000001', direction: 'in',  msgType: 'text',  content: '你好，请问怎么开通会员？',   mediaId: null, mediaUrl: null, event: null,        msgId: '2001', status: 'received', errorMsg: null, createdAt: '2025-03-01 10:01:00' },
   { id: 3, accountId: 1, openid: 'oDemoFan0000000000000001', direction: 'out', msgType: 'text',  content: '您好！点击底部菜单「会员中心」即可开通～', mediaId: null, mediaUrl: null, event: null, msgId: null, status: 'sent', errorMsg: null, createdAt: '2025-03-01 10:02:00' },
   { id: 4, accountId: 1, openid: 'oDemoFan0000000000000002', direction: 'in',  msgType: 'text',  content: '最近有优惠券吗？',           mediaId: null, mediaUrl: null, event: null,        msgId: '2002', status: 'received', errorMsg: null, createdAt: '2025-03-02 09:00:00' },
+];
+
+// ─── 公众号自动回复（示例）──────────────────────────────────────────────────────
+export const SEED_MP_AUTO_REPLIES: MpAutoReply[] = [
+  { id: 1, accountId: 1, replyType: 'subscribe', keyword: null,     matchType: 'contain', contentType: 'text', content: '欢迎关注 Zenith 公众号！回复「会员」了解会员权益。', mediaId: null, status: 'enabled', sort: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2, accountId: 1, replyType: 'keyword',   keyword: '会员',   matchType: 'contain', contentType: 'text', content: '点击底部菜单「会员中心」即可开通会员～',           mediaId: null, status: 'enabled', sort: 1, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 3, accountId: 1, replyType: 'keyword',   keyword: '优惠券', matchType: 'contain', contentType: 'text', content: '最新优惠券请在「会员中心-优惠券」查看。',           mediaId: null, status: 'enabled', sort: 2, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 4, accountId: 1, replyType: 'default',   keyword: null,     matchType: 'contain', contentType: 'text', content: '感谢留言，我们会尽快回复您～',                       mediaId: null, status: 'enabled', sort: 0, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+];
+
+// ─── 公众号自定义菜单（示例草稿）────────────────────────────────────────────────
+export const SEED_MP_MENUS: MpMenu[] = [
+  {
+    id: 1, accountId: 1, status: 'draft', publishedAt: null, tenantId: null, createdAt: SEED_DATE, updatedAt: SEED_DATE,
+    buttons: [
+      { name: '会员中心', sub_button: [
+        { name: '我的会员', type: 'view', url: 'https://example.com/member' },
+        { name: '积分商城', type: 'view', url: 'https://example.com/points' },
+      ] },
+      { name: '最新活动', type: 'click', key: 'LATEST_EVENT' },
+      { name: '联系我们', type: 'view', url: 'https://example.com/contact' },
+    ],
+  },
 ];
 
 // ─── 签到里程碑（累计签到天数达标奖励）──────────────────────────────────────────
