@@ -50,7 +50,10 @@ export default function MpTagsPage() {
     [page, pageSize, currentId, setPage, setPageSize],
   );
 
-  useEffect(() => { setPage(1); void fetchList(1, pageSize, keywordRef.current); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [currentId]);
+  useEffect(() => {
+    setPage(1);
+    void fetchList(1, pageSize, keywordRef.current);
+  }, [currentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => { setPage(1); void fetchList(1, pageSize); };
   const handleReset = () => { setKeyword(''); setPage(1); void fetchList(1, pageSize, ''); };

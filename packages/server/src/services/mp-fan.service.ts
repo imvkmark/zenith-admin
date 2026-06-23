@@ -105,7 +105,7 @@ export async function syncMpFans(accountId: number): Promise<{ success: boolean;
 
   let nextOpenid = '';
   let synced = 0;
-  let total = 0;
+  let total: number;
   try {
     do {
       const page = await getFollowerOpenids(account, nextOpenid);
