@@ -6,6 +6,9 @@ import { config } from '@/config';
 type MessageHandler = (message: WsMessage) => void;
 type StatusListener = (connected: boolean) => void;
 
+/** Demo 模式无实时后端：跳过 WebSocket，避免反复连接/断开触发“已恢复”提示 */
+const IS_DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
+
 const MAX_RECONNECT_DELAY = 30_000;
 const BASE_RECONNECT_DELAY = 1_000;
 /** 心跳间隔（毫秒）：每 25s 发一次 ping */
@@ -70,6 +73,7 @@ function notifyListeners(message: WsMessage) {
 }
 
 function connectSharedSocket() {
+  if (IS_DEMO) return;
   if (sharedSocket?.readyState === WebSocket.OPEN || sharedSocket?.readyState === WebSocket.CONNECTING) {
     return;
   }
@@ -195,9 +199,10 @@ export function useWebSocket(onMessage: MessageHandler) {
  * 断线（包括心跳超时、网络切换）时为 false，方便 UI 显示重连提示。
  */
 export function useWsConnected(): boolean {
-  const [connected, setConnected] = useState(isConnectedState);
+  const [connected, setConnected] = useState(IS_DEMO || isConnectedState);
 
   useEffect(() => {
+    if (IS_DEMO) return;
     // 同步最新状态（组件挂载时 WS 可能已连接）
     setConnected(isConnectedState);
     statusListeners.add(setConnected);
@@ -206,5 +211,5 @@ export function useWsConnected(): boolean {
     };
   }, []);
 
-  return connected;
+  return IS_DEMO ? true : connected;
 }
