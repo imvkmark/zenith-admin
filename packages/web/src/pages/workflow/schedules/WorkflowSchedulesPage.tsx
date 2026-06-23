@@ -17,6 +17,7 @@ import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
+import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -49,6 +50,17 @@ const STATUS_OPTIONS: Array<{ value: ScheduleStatus; label: string }> = [
   { value: 'enabled', label: '启用' },
   { value: 'disabled', label: '停用' },
 ];
+
+// CronBuilderPopover 内部使用 6 段（含秒）cron；定时发起存标准 5 段，故在边界转换
+const toSixField = (expr: string) => {
+  const e = (expr ?? '').trim();
+  return e.split(/\s+/).length === 5 ? `0 ${e}` : e;
+};
+const toFiveField = (expr: string) => {
+  const e = (expr ?? '').trim();
+  const parts = e.split(/\s+/);
+  return parts.length === 6 ? parts.slice(1).join(' ') : e;
+};
 
 function renderStatus(status: ScheduleStatus) {
   return status === 'enabled' ? <Tag color="green">启用</Tag> : <Tag color="grey">停用</Tag>;
@@ -84,6 +96,7 @@ export default function WorkflowSchedulesPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowSchedule | null>(null);
   const [saving, setSaving] = useState(false);
+  const [cronExprValue, setCronExprValue] = useState('');
   const [runningId, setRunningId] = useState<number | null>(null);
   const canCreate = hasPermission('workflow:schedule:create');
   const canEdit = hasPermission('workflow:schedule:edit');
@@ -161,6 +174,7 @@ export default function WorkflowSchedulesPage() {
   const openCreate = () => {
     setEditing(null);
     setModalVisible(true);
+    setCronExprValue('');
     setTimeout(() => {
       formApi.current?.setValues({
         definitionId: null,
@@ -176,6 +190,7 @@ export default function WorkflowSchedulesPage() {
   const openEdit = (row: WorkflowSchedule) => {
     setEditing(row);
     setModalVisible(true);
+    setCronExprValue(row.cronExpression ?? '');
     setTimeout(() => {
       formApi.current?.setValues({
         definitionId: row.definitionId,
@@ -389,8 +404,9 @@ export default function WorkflowSchedulesPage() {
             formApi.current = api;
           }}
           onSubmit={handleSubmit}
+          onValueChange={(v) => { if (typeof v.cronExpression === 'string') setCronExprValue(v.cronExpression); }}
           labelPosition="left"
-          labelWidth={90}
+          labelWidth={110}
         >
           <Form.Select
             field="definitionId"
@@ -412,6 +428,16 @@ export default function WorkflowSchedulesPage() {
             maxLength={64}
             rules={[{ required: true, message: '请输入 Cron 表达式' }]}
             extraText="标准 5 段 cron，时区 Asia/Shanghai，例：0 9 * * 1 表示每周一 9:00"
+            addonAfter={
+              <CronBuilderPopover
+                value={toSixField(cronExprValue)}
+                onApply={(expr) => {
+                  const five = toFiveField(expr);
+                  formApi.current?.setValue('cronExpression', five);
+                  setCronExprValue(five);
+                }}
+              />
+            }
           />
           <Form.Select
             field="initiatorId"
