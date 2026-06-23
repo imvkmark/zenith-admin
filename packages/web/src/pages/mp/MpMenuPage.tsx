@@ -361,11 +361,6 @@ export default function MpMenuPage() {
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', padding: '0 2px' }}>
                         {btn.name}
                       </span>
-                      {btn.sub_button?.length ? (
-                        <span style={{ fontSize: 8, opacity: 0.6, lineHeight: 1 }}>
-                          {activeL1 === l1 ? '▾' : '▴'}
-                        </span>
-                      ) : null}
                     </button>
                   );
                 })}
