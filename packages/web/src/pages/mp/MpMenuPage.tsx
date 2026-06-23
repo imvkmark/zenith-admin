@@ -120,8 +120,11 @@ export default function MpMenuPage() {
     if (!currentId) return;
     setBusy('publish');
     try {
+      // 先保存当前编辑的按钮树，再发布，避免发布到旧草稿丢失改动
+      const saveRes = await request.post<MpMenu>('/api/mp/menu/save', { accountId: currentId, buttons });
+      if (saveRes.code !== 0) return;
       const res = await request.post<MpMenu>('/api/mp/menu/publish', { accountId: currentId });
-      if (res.code === 0) { Toast.success('已发布到微信'); setMenu(res.data ?? null); }
+      if (res.code === 0) { Toast.success('已保存并发布到微信'); setMenu(res.data ?? null); }
     } finally { setBusy(''); }
   };
 
@@ -271,12 +274,11 @@ export default function MpMenuPage() {
                 {activeL1 !== null && (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
                     <div style={{ background: 'var(--semi-color-bg-2)', borderTop: '1px solid var(--semi-color-border)', maxHeight: 280, overflowY: 'auto' }}>
-                      {activeSubs.map((sub) => {
-                        const subL2 = buttons[activeL1]?.sub_button?.indexOf(sub) ?? -1;
+                      {activeSubs.map((sub, subL2) => {
                         const isActive = selected?.l1 === activeL1 && selected?.l2 === subL2;
                         return (
                           <button
-                            key={sub.name}
+                            key={subL2}
                             type="button"
                             onClick={() => { if (subL2 >= 0) setSelected({ l1: activeL1, l2: subL2 }); }}
                             style={{
@@ -335,7 +337,7 @@ export default function MpMenuPage() {
                   const isHighlighted = selected?.l1 === l1 || activeL1 === l1;
                   return (
                     <button
-                      key={btn.name}
+                      key={l1}
                       type="button"
                       onClick={() => handleTabClick(l1)}
                       style={{

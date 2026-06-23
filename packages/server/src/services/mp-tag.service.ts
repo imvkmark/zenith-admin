@@ -106,25 +106,29 @@ export async function syncMpTags(accountId: number): Promise<{ success: boolean;
   const tenantId = currentCreateTenantId();
   let created = 0;
   let updated = 0;
-  await db.transaction(async (tx) => {
-    for (const wt of wechatTags) {
-      const [byTagId] = await tx.select().from(mpTags)
-        .where(and(eq(mpTags.accountId, accountId), eq(mpTags.wechatTagId, wt.id))).limit(1);
-      if (byTagId) {
-        await tx.update(mpTags).set({ name: wt.name, fansCount: wt.count }).where(eq(mpTags.id, byTagId.id));
-        updated += 1;
-        continue;
+  try {
+    await db.transaction(async (tx) => {
+      for (const wt of wechatTags) {
+        const [byTagId] = await tx.select().from(mpTags)
+          .where(and(eq(mpTags.accountId, accountId), eq(mpTags.wechatTagId, wt.id))).limit(1);
+        if (byTagId) {
+          await tx.update(mpTags).set({ name: wt.name, fansCount: wt.count }).where(eq(mpTags.id, byTagId.id));
+          updated += 1;
+          continue;
+        }
+        const [byName] = await tx.select().from(mpTags)
+          .where(and(eq(mpTags.accountId, accountId), eq(mpTags.name, wt.name))).limit(1);
+        if (byName) {
+          await tx.update(mpTags).set({ wechatTagId: wt.id, fansCount: wt.count }).where(eq(mpTags.id, byName.id));
+          updated += 1;
+        } else {
+          await tx.insert(mpTags).values({ accountId, wechatTagId: wt.id, name: wt.name, fansCount: wt.count, tenantId });
+          created += 1;
+        }
       }
-      const [byName] = await tx.select().from(mpTags)
-        .where(and(eq(mpTags.accountId, accountId), eq(mpTags.name, wt.name))).limit(1);
-      if (byName) {
-        await tx.update(mpTags).set({ wechatTagId: wt.id, fansCount: wt.count }).where(eq(mpTags.id, byName.id));
-        updated += 1;
-      } else {
-        await tx.insert(mpTags).values({ accountId, wechatTagId: wt.id, name: wt.name, fansCount: wt.count, tenantId });
-        created += 1;
-      }
-    }
-  });
+    });
+  } catch (err) {
+    rethrowPgUniqueViolation(err, '同步失败：存在与微信侧重名的本地标签，请先处理重名标签');
+  }
   return { success: true, created, updated, total: wechatTags.length };
 }

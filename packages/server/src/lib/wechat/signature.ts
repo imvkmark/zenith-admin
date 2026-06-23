@@ -1,4 +1,14 @@
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
+
+/** 定长安全比较两个签名字符串（避免计时侧信道） */
+export function timingSafeCompare(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 微信服务器配置校验签名。
@@ -16,5 +26,5 @@ export function verifyWechatSignature(
   if (!token || !signature || !timestamp || !nonce) return false;
   const sorted = [token, timestamp, nonce].sort().join('');
   const hash = createHash('sha1').update(sorted).digest('hex');
-  return hash === signature;
+  return timingSafeCompare(hash, signature);
 }

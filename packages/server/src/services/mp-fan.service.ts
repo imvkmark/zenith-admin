@@ -88,6 +88,7 @@ export async function updateMpFan(id: number, data: UpdateMpFanInput) {
       patch.tagIds = [];
     }
   }
+  if (Object.keys(patch).length === 0) return mapMpFan(fan); // 空更新直接返回，避免 Drizzle "No values to set"
   const [row] = await db.update(mpFans).set(patch).where(eq(mpFans.id, id)).returning();
   return mapMpFan(row ?? fan);
 }

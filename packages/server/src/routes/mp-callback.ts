@@ -11,7 +11,7 @@ import { validationHook } from '../lib/openapi-schemas';
 import { getMpAccountForCallback } from '../services/mp-account.service';
 import { storeInboundMessage, storeOutboundAutoReply } from '../services/mp-message.service';
 import { resolveAutoReply } from '../services/mp-auto-reply.service';
-import { verifyWechatSignature, msgSignature, decryptWechatMessage, encryptWechatMessage, parseWechatXml, buildWechatXml } from '../lib/wechat';
+import { verifyWechatSignature, msgSignature, timingSafeCompare, decryptWechatMessage, encryptWechatMessage, parseWechatXml, buildWechatXml } from '../lib/wechat';
 import logger from '../lib/logger';
 import type { MpMessageType } from '@zenith/shared';
 
@@ -86,6 +86,7 @@ const receiveRoute = defineOpenAPIRoute({
     const { signature, msg_signature: msgSig, timestamp, nonce, encrypt_type: encryptType } = c.req.valid('query');
     const account = await getMpAccountForCallback(accountId);
     if (!account) return c.text('', 404);
+    if (account.status === 'disabled') return c.text('', 200);
 
     const rawBody = await c.req.raw.clone().text();
     const encrypted = encryptType === 'aes' || account.encryptMode !== 'plaintext';
@@ -94,7 +95,7 @@ const receiveRoute = defineOpenAPIRoute({
     if (encrypted) {
       const encrypt = parseWechatXml(rawBody).Encrypt;
       if (!encrypt) return c.text('', 403);
-      if (msgSignature(account.token, timestamp ?? '', nonce ?? '', encrypt) !== msgSig) return c.text('', 403);
+      if (!timingSafeCompare(msgSignature(account.token, timestamp ?? '', nonce ?? '', encrypt), msgSig)) return c.text('', 403);
       if (!account.encodingAesKey) return c.text('', 403);
       try {
         plainXml = decryptWechatMessage(account.encodingAesKey, account.appId, encrypt);
@@ -112,7 +113,7 @@ const receiveRoute = defineOpenAPIRoute({
       const openid = f.FromUserName;
       if (openid) {
         const msgType = normalizeType(f.MsgType ?? 'text');
-        await storeInboundMessage({
+        const isNew = await storeInboundMessage({
           accountId,
           tenantId: account.tenantId,
           openid,
@@ -133,7 +134,8 @@ const receiveRoute = defineOpenAPIRoute({
         }
 
         if (replyContent) {
-          await storeOutboundAutoReply(accountId, account.tenantId, openid, replyContent);
+          // 仅首次落库出站回复；微信重试时仍返回被动回复，但不写重复记录
+          if (isNew) await storeOutboundAutoReply(accountId, account.tenantId, openid, replyContent);
           const replyXml = buildWechatXml({
             ToUserName: openid,
             FromUserName: f.ToUserName ?? '',
