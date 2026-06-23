@@ -2,7 +2,7 @@
  * 右侧字段属性配置面板
  */
 import { useMemo, useState, useEffect } from 'react';
-import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Input, InputNumber, Select, Switch, Typography, TextArea, TagInput, RadioGroup, Radio, Tooltip, Dropdown } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Wand2 } from 'lucide-react';
 import { pinyin } from 'pinyin-pro';
 import type { WorkflowFormField, WorkflowFormFieldType, WorkflowFieldVisibilityCondition, Dict, PaginatedResponse, WorkflowDefinition } from '@zenith/shared';
@@ -19,6 +19,16 @@ interface FieldConfigPanelProps {
 }
 
 const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+// 动态默认值占位符（发起时按登录用户/部门/时间解析）
+const DYNAMIC_DEFAULT_TOKENS: Array<{ token: string; label: string }> = [
+  { token: '${currentUser}', label: '当前用户姓名' },
+  { token: '${currentUserId}', label: '当前用户ID' },
+  { token: '${currentDept}', label: '当前部门名称' },
+  { token: '${currentDeptId}', label: '当前部门ID' },
+  { token: '${today}', label: '今天（日期）' },
+  { token: '${now}', label: '现在（日期时间）' },
+];
 
 // 根据字段名称生成可读 key：中文转拼音（无声调），非中文连续保留，输出 camelCase
 function slugifyToKey(label: string, fallbackType: string): string {
@@ -72,10 +82,14 @@ function formulaError(formula: string | undefined, fields: WorkflowFormField[], 
   const refs = Array.from(expr.matchAll(/\{([^}]+)\}/g), (match) => match[1]?.trim())
     .filter((key): key is string => Boolean(key));
   const keys = new Set(fields.map((field) => field.key));
-  const unknown = refs.filter((key) => key !== currentKey && !keys.has(key));
+  // 明细列引用 {明细key.列key} 取点号前的字段 key 校验
+  const unknown = refs.filter((key) => {
+    const base = key.split('.')[0];
+    return base !== currentKey && !keys.has(base);
+  });
   if (unknown.length > 0) return `引用字段不存在：${unknown.join('、')}`;
   const sampleValues = Object.fromEntries(refs.map((key) => [key, 1]));
-  return evalFormula(expr, sampleValues, 2) === null ? '公式表达式无效，仅支持字段引用、数字、+ - * / 与括号' : null;
+  return evalFormula(expr, sampleValues, 2) === null ? '公式表达式无效，请检查函数与括号是否匹配' : null;
 }
 
 function createsCascadeCycle(fieldKey: string, sourceKey: string, fields: WorkflowFormField[]): boolean {
@@ -309,11 +323,31 @@ export default function FieldConfigPanel({
           {/* 默认值（简单类型） */}
           {(field.type === 'text' || isFormatted) && (
             <div className="fd-form-config__field">
-              <Typography.Text strong size="small">默认值</Typography.Text>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography.Text strong size="small">默认值</Typography.Text>
+                <Dropdown
+                  trigger="click"
+                  position="bottomRight"
+                  render={(
+                    <Dropdown.Menu>
+                      {DYNAMIC_DEFAULT_TOKENS.map((t) => (
+                        <Dropdown.Item
+                          key={t.token}
+                          onClick={() => onChange({ defaultValue: `${typeof field.defaultValue === 'string' ? field.defaultValue : ''}${t.token}` })}
+                        >
+                          {t.label} <Typography.Text type="tertiary" size="small">{t.token}</Typography.Text>
+                        </Dropdown.Item>
+                      ))}
+                    </Dropdown.Menu>
+                  )}
+                >
+                  <Button size="small" theme="borderless" type="tertiary">插入变量</Button>
+                </Dropdown>
+              </div>
               <Input
                 value={typeof field.defaultValue === 'string' ? field.defaultValue : ''}
                 onChange={(v) => onChange({ defaultValue: v || undefined })}
-                placeholder="留空表示无默认值"
+                placeholder="留空表示无默认值，支持 ${currentUser} 等动态变量"
               />
             </div>
           )}
@@ -407,11 +441,11 @@ export default function FieldConfigPanel({
                 <TextArea
                   value={field.formula ?? ''}
                   onChange={(v) => onChange({ formula: v })}
-                  placeholder="使用 {字段key} 引用其他字段，如：{amount} * {days}"
+                  placeholder="如：{amount}*{days}、IF({days}>3,{amount}*0.9,{amount})、SUM({items.amount})"
                   rows={3}
                 />
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
-                  支持 + - * / 与括号，运行时会从其他字段自动计算
+                  支持 + - * / 与比较/三元，函数 IF/SUM/AVG/MAX/MIN/ROUND/ABS/CEIL/FLOOR；明细汇总用 {'{明细key.列key}'}
                 </Typography.Text>
                 {formulaValidationError && (
                   <Typography.Text type="danger" size="small" style={{ display: 'block', marginTop: 4 }}>
@@ -450,6 +484,18 @@ export default function FieldConfigPanel({
                 placeholder="请选择币种"
                 style={{ width: '100%' }}
                 optionList={CURRENCY_OPTIONS}
+              />
+            </div>
+          )}
+
+          {/* 金额大写（仅人民币） */}
+          {isAmount && (field.currency ?? 'CNY') === 'CNY' && (
+            <div className="fd-form-config__field fd-form-config__field--inline">
+              <Typography.Text strong size="small">显示中文大写</Typography.Text>
+              <Switch
+                checked={field.amountInWords ?? false}
+                onChange={(v) => onChange({ amountInWords: v || undefined })}
+                size="small"
               />
             </div>
           )}
@@ -952,19 +998,55 @@ export default function FieldConfigPanel({
       {activeSection === 'visibility' && (
         <div className="fd-form-config__section">
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
-            配置多条件组合（且 / 或），满足时显示该字段；规则优先级高于「默认隐藏」
+            配置多条件组合（且 / 或）联动；规则优先级高于「默认隐藏」
           </Typography.Text>
 
           {conditionFields.length === 0 ? (
             <Typography.Text type="tertiary" size="small">
-              暂无可作为条件的字段（需要先添加单选/多选/数字/文本类型字段）
+              暂无可作为条件的字段（需要先添加单选/多选/数字/文本等类型字段）
             </Typography.Text>
           ) : (
-            <VisibilityRulesEditor
-              field={field}
-              conditionFields={conditionFields}
-              onChange={onChange}
-            />
+            <>
+              <Typography.Text strong size="small" style={{ display: 'block', marginBottom: 6 }}>显隐联动</Typography.Text>
+              <VisibilityRulesEditor
+                field={field}
+                conditionFields={conditionFields}
+                onChange={onChange}
+                ruleKey="visibilityRules"
+                clearLegacy
+                toggleLabel="启用条件显隐"
+              />
+
+              {supportsLayoutState && (
+                <>
+                  <div style={{ borderTop: '1px solid var(--semi-color-border)', margin: '14px 0 10px' }} />
+                  <Typography.Text strong size="small" style={{ display: 'block', marginBottom: 6 }}>条件必填</Typography.Text>
+                  <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 6 }}>
+                    满足条件时该字段变为必填（与固定「必填」取或）
+                  </Typography.Text>
+                  <VisibilityRulesEditor
+                    field={field}
+                    conditionFields={conditionFields}
+                    onChange={onChange}
+                    ruleKey="requiredRules"
+                    toggleLabel="启用条件必填"
+                  />
+
+                  <div style={{ borderTop: '1px solid var(--semi-color-border)', margin: '14px 0 10px' }} />
+                  <Typography.Text strong size="small" style={{ display: 'block', marginBottom: 6 }}>条件只读</Typography.Text>
+                  <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 6 }}>
+                    满足条件时该字段变为只读（不可编辑）
+                  </Typography.Text>
+                  <VisibilityRulesEditor
+                    field={field}
+                    conditionFields={conditionFields}
+                    onChange={onChange}
+                    ruleKey="readOnlyRules"
+                    toggleLabel="启用条件只读"
+                  />
+                </>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1157,12 +1239,18 @@ function VisibilityRulesEditor({
   field,
   conditionFields,
   onChange,
+  ruleKey = 'visibilityRules',
+  clearLegacy = false,
+  toggleLabel = '启用联动规则',
 }: Readonly<{
   field: WorkflowFormField;
   conditionFields: WorkflowFormField[];
   onChange: (updates: Partial<WorkflowFormField>) => void;
+  ruleKey?: 'visibilityRules' | 'requiredRules' | 'readOnlyRules';
+  clearLegacy?: boolean;
+  toggleLabel?: string;
 }>) {
-  const group = field.visibilityRules;
+  const group = field[ruleKey];
   const enabled = !!group && (group.rules?.length ?? 0) > 0;
   const newRule = (): WorkflowFieldVisibilityCondition => ({
     field: conditionFields[0].key,
@@ -1170,13 +1258,13 @@ function VisibilityRulesEditor({
     value: '',
   });
 
-  // 设置规则组时清除旧版单条件，避免冲突
+  // 设置规则组（显隐规则同时清除旧版单条件，避免冲突）
   const setGroup = (logic: 'and' | 'or', rules: WorkflowFieldVisibilityCondition[]) =>
-    onChange({ visibilityRules: { logic, rules }, visibilityCondition: undefined });
+    onChange({ [ruleKey]: { logic, rules }, ...(clearLegacy ? { visibilityCondition: undefined } : {}) });
 
   const toggle = (v: boolean) => {
     if (v) setGroup('and', [newRule()]);
-    else onChange({ visibilityRules: undefined });
+    else onChange({ [ruleKey]: undefined });
   };
 
   const updateRule = (index: number, patch: Partial<WorkflowFieldVisibilityCondition>) => {
@@ -1192,14 +1280,14 @@ function VisibilityRulesEditor({
   const removeRule = (index: number) => {
     if (!group) return;
     const rules = group.rules.filter((_, i) => i !== index);
-    if (rules.length === 0) onChange({ visibilityRules: undefined });
+    if (rules.length === 0) onChange({ [ruleKey]: undefined });
     else setGroup(group.logic, rules);
   };
 
   return (
     <>
       <div className="fd-form-config__field fd-form-config__field--inline">
-        <Typography.Text strong size="small">启用联动规则</Typography.Text>
+        <Typography.Text strong size="small">{toggleLabel}</Typography.Text>
         <Switch checked={enabled} onChange={toggle} size="small" />
       </div>
 

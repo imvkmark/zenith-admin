@@ -12,6 +12,7 @@ import dayjs from 'dayjs';
 import type { WorkflowFormField, WorkflowFormFieldColumn, WorkflowFieldVisibilityCondition, WorkflowFieldVisibilityRuleGroup, WorkflowRelationOption } from '@zenith/shared';
 import { CURRENCY_OPTIONS, toDateFnsToken } from '../form-types';
 import { request } from '@/utils/request';
+import { rmbUpper } from '@/utils/rmb';
 import { guessMimeTypeFromName } from '@/utils/file-utils';
 import FileAttachment, { type AttachmentItem } from '@/components/FileAttachment';
 import RegionSelect from '@/components/RegionSelect';
@@ -25,7 +26,6 @@ const PHONE_REGEX = /^1[3-9]\d{9}$/;
 const EMAIL_REGEX = /^[\w.+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
 const ID_CARD_REGEX = /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[0-9Xx]$/;
 const URL_REGEX = /^https?:\/\/.+/;
-const SAFE_EXPR_REGEX = /^[\d+\-*/(). ]+$/;
 
 const ValuesContext = createContext<Record<string, unknown>>({});
 
@@ -443,8 +443,8 @@ function DetailTableInput({ value, onChange, columns, disabled }: Readonly<Detai
 const FormDetailTable = withField(DetailTableInput);
 
 // 必填字段标签（带红色星号），用于 withField 自定义控件
-function fieldLabelNode(field: WorkflowFormField): ReactNode {
-  if (!field.required) return field.label;
+function fieldLabelNode(field: WorkflowFormField, required: boolean | undefined = field.required): ReactNode {
+  if (!required) return field.label;
   return <span>{field.label}<span style={{ color: 'var(--semi-color-danger)' }}> *</span></span>;
 }
 
@@ -461,22 +461,79 @@ export function flattenFields(fields: WorkflowFormField[]): WorkflowFormField[] 
   return out;
 }
 
+const FORMULA_FUNCTIONS = ['IF', 'SUM', 'AVG', 'MAX', 'MIN', 'ROUND', 'ABS', 'CEIL', 'FLOOR'] as const;
+type FormulaFn = typeof FORMULA_FUNCTIONS[number];
+const FORMULA_IDENT_RE = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+
+// 解析公式引用：'key' 取标量；'detailKey.colKey' 取明细列数组（用于 SUM/AVG 等）
+function resolveFormulaRef(values: Record<string, unknown>, ref: string): unknown {
+  const trimmed = ref.trim();
+  const dot = trimmed.indexOf('.');
+  if (dot >= 0) {
+    const detailKey = trimmed.slice(0, dot);
+    const colKey = trimmed.slice(dot + 1);
+    const rows = values[detailKey];
+    if (Array.isArray(rows)) {
+      return rows.map((r) => (r && typeof r === 'object' ? (r as Record<string, unknown>)[colKey] : undefined));
+    }
+    return [];
+  }
+  return values[trimmed];
+}
+
+const flattenNums = (args: unknown[]): number[] =>
+  args.flatMap((a) => (Array.isArray(a) ? a : [a])).map((x) => Number(x)).filter((x) => Number.isFinite(x));
+
+const FORMULA_IMPL: Record<FormulaFn, (...args: never[]) => unknown> = {
+  IF: ((cond: unknown, a: unknown, b: unknown) => (cond ? a : b)) as (...args: never[]) => unknown,
+  SUM: ((...args: unknown[]) => flattenNums(args).reduce((s, x) => s + x, 0)) as (...args: never[]) => unknown,
+  AVG: ((...args: unknown[]) => { const xs = flattenNums(args); return xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : NaN; }) as (...args: never[]) => unknown,
+  MAX: ((...args: unknown[]) => { const xs = flattenNums(args); return xs.length ? Math.max(...xs) : NaN; }) as (...args: never[]) => unknown,
+  MIN: ((...args: unknown[]) => { const xs = flattenNums(args); return xs.length ? Math.min(...xs) : NaN; }) as (...args: never[]) => unknown,
+  ROUND: ((x: number, n = 0) => { const f = 10 ** n; return Math.round(Number(x) * f) / f; }) as (...args: never[]) => unknown,
+  ABS: ((x: number) => Math.abs(Number(x))) as (...args: never[]) => unknown,
+  CEIL: ((x: number) => Math.ceil(Number(x))) as (...args: never[]) => unknown,
+  FLOOR: ((x: number) => Math.floor(Number(x))) as (...args: never[]) => unknown,
+};
+
+/**
+ * 计算公式。支持：四则运算、比较/逻辑/三元、函数 IF/SUM/AVG/MAX/MIN/ROUND/ABS/CEIL/FLOOR，
+ * 以及明细列引用 {明细key.列key}（解析为数字数组）。
+ * 安全：先校验标识符必须是白名单函数名，引用替换为字面量，再以白名单函数为入参求值。
+ * 缺失/非数字标量依赖 → NaN → 最终不可计算返回 null。
+ */
 export function evalFormula(formula: string, values: Record<string, unknown>, precision = 2): number | null {
-  let uncomputable = false;
-  const replaced = formula.replace(/\{([^}]+)\}/g, (_, key: string) => {
-    const v = values[key.trim()];
-    if (v === undefined || v === null || v === '') { uncomputable = true; return '0'; }
+  if (!formula?.trim()) return null;
+
+  // 1) 标识符白名单：剔除 {引用} 后剩余标识符必须是允许的函数名或 NaN
+  const stripped = formula.replace(/\{[^}]+\}/g, ' ');
+  const idents = stripped.match(FORMULA_IDENT_RE) ?? [];
+  if (idents.some((id) => id !== 'NaN' && !FORMULA_FUNCTIONS.includes(id as FormulaFn))) return null;
+
+  // 2) 引用替换为字面量：标量缺失/非数字 → NaN；明细列 → 数字数组
+  const replaced = formula.replace(/\{([^}]+)\}/g, (_, ref: string) => {
+    const v = resolveFormulaRef(values, ref);
+    if (Array.isArray(v)) {
+      const nums = v
+        .map((x) => (x === '' || x === null || x === undefined ? NaN : Number(x)))
+        .map((x) => (Number.isFinite(x) ? String(x) : 'NaN'));
+      return `[${nums.join(',')}]`;
+    }
+    if (v === undefined || v === null || v === '') return 'NaN';
     const n = typeof v === 'number' ? v : Number(v);
-    if (!Number.isFinite(n)) { uncomputable = true; return '0'; }
-    return String(n);
+    return Number.isFinite(n) ? String(n) : 'NaN';
   });
-  // 任一依赖缺失或非数字 → 不可计算（避免按 0 处理产生"看似正确"的错误结果）
-  if (uncomputable) return null;
-  if (!SAFE_EXPR_REGEX.test(replaced)) return null;
+
+  // 3) 字符白名单：剔除函数名与 NaN 后只允许数字与运算符（杜绝注入）
+  const checkStr = replaced.replace(/\b(?:IF|SUM|AVG|MAX|MIN|ROUND|ABS|CEIL|FLOOR|NaN)\b/g, '');
+  if (/[^0-9+\-*/%(),.<>=!&|?:\s[\]]/.test(checkStr)) return null;
+
   try {
-    const result = new Function(`"use strict"; return (${replaced});`)() as number;
-    if (!Number.isFinite(result)) return null;
-    return Number(result.toFixed(precision));
+    const fn = new Function(...FORMULA_FUNCTIONS, `"use strict"; return (${replaced});`);
+    const result = fn(...FORMULA_FUNCTIONS.map((k) => FORMULA_IMPL[k])) as unknown;
+    const num = typeof result === 'boolean' ? (result ? 1 : 0) : Number(result);
+    if (!Number.isFinite(num)) return null;
+    return Number(num.toFixed(precision));
   } catch {
     return null;
   }
@@ -655,8 +712,11 @@ export default function WorkflowFormRenderer({
 
 function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField; readOnly?: boolean }>) {
   const values = useContext(ValuesContext);
+  // 条件必填 / 条件只读：满足规则时动态生效（叠加静态 required/readOnly）
+  const dynamicRequired = field.required || (!!field.requiredRules?.rules?.length && evalRuleGroup(field.requiredRules, values));
+  const dynamicReadOnly = !!field.readOnlyRules?.rules?.length && evalRuleGroup(field.readOnlyRules, values);
   const baseRules: Array<Record<string, unknown>> = [];
-  if (field.required) baseRules.push({ required: true, message: `请填写${field.label}` });
+  if (dynamicRequired) baseRules.push({ required: true, message: `请填写${field.label}` });
   if (field.minLength !== undefined) baseRules.push({ type: 'string', minLength: field.minLength, message: `最少${field.minLength}个字符` });
   if (field.maxLength !== undefined) baseRules.push({ type: 'string', maxLength: field.maxLength, message: `最多${field.maxLength}个字符` });
   if (field.pattern) {
@@ -665,7 +725,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
     } catch { /* invalid regex */ }
   }
   const numberRules: Array<Record<string, unknown>> = [];
-  if (field.required) numberRules.push({ required: true, message: `请填写${field.label}` });
+  if (dynamicRequired) numberRules.push({ required: true, message: `请填写${field.label}` });
   if (field.min !== undefined) numberRules.push({ type: 'number', min: field.min, message: `不小于${field.min}` });
   if (field.max !== undefined) numberRules.push({ type: 'number', max: field.max, message: `不大于${field.max}` });
   const rules = baseRules.length > 0 ? baseRules : undefined;
@@ -678,7 +738,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
   const extraProps = { ...(helpText ? { extraText: helpText } : {}), ...labelOverride };
   const unitSuffix = field.unit ? `（${field.unit}）` : '';
   const numberLabel = `${field.label}${unitSuffix}`;
-  const disabled = readOnly || field.readOnly;
+  const disabled = readOnly || field.readOnly || dynamicReadOnly;
 
   switch (field.type) {
     case 'text':
@@ -709,7 +769,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           placeholder={field.placeholder ?? '请输入手机号'}
           initValue={field.defaultValue} disabled={disabled}
           rules={[
-            ...(field.required ? [{ required: true, message: `请填写${field.label}` }] : []),
+            ...(dynamicRequired ? [{ required: true, message: `请填写${field.label}` }] : []),
             { pattern: PHONE_REGEX, message: '手机号格式不正确' },
           ]}
           {...extraProps}
@@ -723,7 +783,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           placeholder={field.placeholder ?? '请输入邮箱'}
           initValue={field.defaultValue} disabled={disabled}
           rules={[
-            ...(field.required ? [{ required: true, message: `请填写${field.label}` }] : []),
+            ...(dynamicRequired ? [{ required: true, message: `请填写${field.label}` }] : []),
             { pattern: EMAIL_REGEX, message: '邮箱格式不正确' },
           ]}
           {...extraProps}
@@ -737,7 +797,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           placeholder={field.placeholder ?? '请输入身份证号'}
           initValue={field.defaultValue} maxLength={18} disabled={disabled}
           rules={[
-            ...(field.required ? [{ required: true, message: `请填写${field.label}` }] : []),
+            ...(dynamicRequired ? [{ required: true, message: `请填写${field.label}` }] : []),
             { pattern: ID_CARD_REGEX, message: '身份证号格式不正确' },
           ]}
           {...extraProps}
@@ -751,7 +811,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           placeholder={field.placeholder ?? '请输入网址'}
           initValue={field.defaultValue} disabled={disabled}
           rules={[
-            ...(field.required ? [{ required: true, message: `请填写${field.label}` }] : []),
+            ...(dynamicRequired ? [{ required: true, message: `请填写${field.label}` }] : []),
             { pattern: URL_REGEX, message: '网址需以 http:// 或 https:// 开头' },
           ]}
           {...extraProps}
@@ -795,11 +855,11 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
     case 'rate':
       return (
         <FormRating
-          field={field.key} label={fieldLabelNode(field)}
+          field={field.key} label={fieldLabelNode(field, dynamicRequired)}
           count={field.rateMax ?? 5}
           initValue={Number(field.defaultValue) || 0}
           disabled={disabled}
-          rules={field.required ? [{ validator: (_r: unknown, v: unknown) => typeof v === 'number' && v > 0, message: `请为${field.label}评分` }] : undefined}
+          rules={dynamicRequired ? [{ validator: (_r: unknown, v: unknown) => typeof v === 'number' && v > 0, message: `请为${field.label}评分` }] : undefined}
           {...extraProps}
         />
       );
@@ -836,6 +896,9 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
       const currencyLabel = CURRENCY_OPTIONS.find(c => c.value === (field.currency ?? 'CNY'))?.label ?? 'CNY';
       const amountSuffix = field.unit ? ` · ${field.unit}` : '';
       const amountLabel = `${field.label}（${currencyLabel}${amountSuffix}）`;
+      const showUpper = field.amountInWords && (field.currency ?? 'CNY') === 'CNY';
+      const upper = showUpper ? rmbUpper(values[field.key] as number) : '';
+      const amountExtra = upper ? `大写：${upper}` : (extraProps as { extraText?: ReactNode }).extraText;
       return (
         <Form.InputNumber
           field={field.key} label={amountLabel}
@@ -847,6 +910,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
           prefix="¥" disabled={disabled}
           rules={numberRules.length > 0 ? numberRules : undefined}
           {...extraProps}
+          extraText={amountExtra}
         />
       );
     }
@@ -1050,11 +1114,11 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
       return (
         <FormFileUpload
           field={field.key}
-          label={fieldLabelNode(field)}
+          label={fieldLabelNode(field, dynamicRequired)}
           isImage={field.type === 'image'}
           limit={field.maxCount}
           disabled={disabled}
-          rules={field.required ? [{ validator: (_r: unknown, v: unknown) => Array.isArray(v) && v.length > 0, message: `请上传${field.label}` }] : undefined}
+          rules={dynamicRequired ? [{ validator: (_r: unknown, v: unknown) => Array.isArray(v) && v.length > 0, message: `请上传${field.label}` }] : undefined}
           extraText={field.maxCount ? `最多上传 ${field.maxCount} 个文件` : undefined}
           {...extraProps}
         />
@@ -1131,7 +1195,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
       const children = field.children ?? [];
       const requiredChildren = children.filter(c => c.required);
       const detailRules: Array<Record<string, unknown>> = [];
-      if (field.required) {
+      if (dynamicRequired) {
         detailRules.push({ validator: (_r: unknown, v: unknown) => Array.isArray(v) && v.length > 0, message: `请至少添加一行${field.label}` });
       }
       if (requiredChildren.length > 0) {
@@ -1147,7 +1211,7 @@ function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField;
       return (
         <FormDetailTable
           field={field.key}
-          label={fieldLabelNode(field)}
+          label={fieldLabelNode(field, dynamicRequired)}
           columns={children}
           disabled={disabled}
           rules={detailRules.length > 0 ? detailRules : undefined}

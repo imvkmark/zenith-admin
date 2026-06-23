@@ -4,7 +4,7 @@
  * 封装标准字段（标题/优先级/抄送）+ 4 个页签（填写表单/审批链路/流程图预览/节点详情）
  * 及取数校验逻辑，通过 ref 暴露 collectFormData 供外层提交/存草稿调用。
  */
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Banner, Col, Form, Row, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
@@ -12,6 +12,7 @@ import type { WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useAuth } from '@/hooks/useAuth';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
+import { resolveDynamicDefaults } from '@/pages/workflow/designer/form-defaults';
 import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import WorkflowNodeListView from '@/components/workflow/WorkflowNodeListView';
@@ -93,6 +94,18 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
         : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
     );
 
+    // 动态默认值（${currentUser}/${today} 等）按发起人解析，被草稿/编辑回填覆盖
+    const dynamicDefaults = useMemo(() => (
+      def.formFields && def.formFields.length > 0
+        ? resolveDynamicDefaults(def.formFields, {
+            userName: user?.nickname || user?.username,
+            userId: user?.id,
+            deptName: user?.departmentName ?? undefined,
+            deptId: user?.departmentId ?? undefined,
+          })
+        : {}
+    ), [def.formFields, user]);
+
     const renderFormBody = () => {
       if (def.formType === 'external') {
         return (
@@ -120,7 +133,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           <WorkflowFormRenderer
             key={`form-${def.id}`}
             fields={def.formFields}
-            initValues={initialFormData ?? {}}
+            initValues={{ ...dynamicDefaults, ...(initialFormData ?? {}) }}
             getFormApi={(api) => { dynamicFormApi.current = api; }}
           />
         );

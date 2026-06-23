@@ -1841,11 +1841,14 @@ export interface WorkflowFormField {
   defaultValue?: unknown;
   visibilityCondition?: WorkflowFieldVisibilityCondition;
   visibilityRules?: WorkflowFieldVisibilityRuleGroup;   // 高级联动：多条件 and/or 显隐
+  requiredRules?: WorkflowFieldVisibilityRuleGroup;     // 条件必填：满足规则时必填
+  readOnlyRules?: WorkflowFieldVisibilityRuleGroup;     // 条件只读：满足规则时只读
   children?: WorkflowFormField[];  // 明细子字段
   precision?: number;              // 数字/金额精度
   step?: number;                   // 数字步长
   unit?: string;                   // 数字/金额单位（如 "元" "天" "件"）
   currency?: string;               // 金额币种
+  amountInWords?: boolean;         // 金额字段：联动显示人民币中文大写
   dateFormat?: string;             // 日期格式
   maxCount?: number;               // 附件/图片限制数
   description?: string;            // 说明文字内容

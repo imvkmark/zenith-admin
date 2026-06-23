@@ -64,8 +64,10 @@ export function validateFormSchema(fields: WorkflowFormField[]): FormIssue[] {
     const refKeys: string[] = [];
     if (f.visibilityCondition?.field) refKeys.push(f.visibilityCondition.field);
     if (f.visibilityRules?.rules) for (const r of f.visibilityRules.rules) if (r.field) refKeys.push(r.field);
+    if (f.requiredRules?.rules) for (const r of f.requiredRules.rules) if (r.field) refKeys.push(r.field);
+    if (f.readOnlyRules?.rules) for (const r of f.readOnlyRules.rules) if (r.field) refKeys.push(r.field);
     for (const rk of refKeys) {
-      if (!keys.has(rk)) issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: `显隐条件引用了不存在的字段：${rk}` });
+      if (!keys.has(rk)) issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: `联动条件引用了不存在的字段：${rk}` });
     }
 
     if (f.optionsFrom?.sourceKey && !keys.has(f.optionsFrom.sourceKey)) {
@@ -81,7 +83,11 @@ export function validateFormSchema(fields: WorkflowFormField[]): FormIssue[] {
         issues.push({ level: 'warning', fieldKey: f.key, fieldLabel: label, message: '公式为空' });
       } else {
         const refs = Array.from(f.formula.matchAll(/\{([^}]+)\}/g), (m) => m[1].trim());
-        const unknown = refs.filter((rk) => rk !== f.key && !keys.has(rk));
+        // 明细列引用 {明细key.列key} 取点号前的字段 key 校验存在性
+        const unknown = refs.filter((rk) => {
+          const base = rk.split('.')[0];
+          return base !== f.key && !keys.has(base);
+        });
         if (unknown.length > 0) {
           issues.push({ level: 'error', fieldKey: f.key, fieldLabel: label, message: `公式引用不存在的字段：${unknown.join('、')}` });
         } else {

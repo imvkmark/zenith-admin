@@ -162,9 +162,15 @@ export function flattenAllFields(fields: WorkflowFormField[]): WorkflowFormField
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const replaceFormulaKey = (formula: string, oldKey: string, newKey: string): string =>
-  formula.replace(new RegExp(`\\{\\s*${escapeRegExp(oldKey)}\\s*\\}`, 'g'), `{${newKey}}`);
+  formula.replace(
+    new RegExp(`\\{\\s*${escapeRegExp(oldKey)}(\\.[^}\\s]*)?\\s*\\}`, 'g'),
+    (_m, suffix) => `{${newKey}${suffix ?? ''}}`,
+  );
 
-/** 重命名字段 key，并级联更新所有引用（显隐条件/联动规则/级联父字段/天数联动/公式） */
+const renameRuleGroupField = (group: WorkflowFormField['visibilityRules'], oldKey: string, newKey: string) =>
+  group ? { ...group, rules: group.rules.map((r) => (r.field === oldKey ? { ...r, field: newKey } : r)) } : group;
+
+/** 重命名字段 key，并级联更新所有引用（显隐/必填/只读规则、级联父字段、天数联动、公式） */
 export function renameFieldKey(fields: WorkflowFormField[], oldKey: string, newKey: string): WorkflowFormField[] {
   return fields.map((f) => {
     const nf: WorkflowFormField = { ...f };
@@ -172,12 +178,9 @@ export function renameFieldKey(fields: WorkflowFormField[], oldKey: string, newK
     if (nf.visibilityCondition?.field === oldKey) {
       nf.visibilityCondition = { ...nf.visibilityCondition, field: newKey };
     }
-    if (nf.visibilityRules) {
-      nf.visibilityRules = {
-        ...nf.visibilityRules,
-        rules: nf.visibilityRules.rules.map((r) => (r.field === oldKey ? { ...r, field: newKey } : r)),
-      };
-    }
+    nf.visibilityRules = renameRuleGroupField(nf.visibilityRules, oldKey, newKey);
+    nf.requiredRules = renameRuleGroupField(nf.requiredRules, oldKey, newKey);
+    nf.readOnlyRules = renameRuleGroupField(nf.readOnlyRules, oldKey, newKey);
     if (nf.optionsFrom?.sourceKey === oldKey) {
       nf.optionsFrom = { ...nf.optionsFrom, sourceKey: newKey };
     }
@@ -189,10 +192,10 @@ export function renameFieldKey(fields: WorkflowFormField[], oldKey: string, newK
   });
 }
 
-/** 公式是否引用了某字段 key */
+/** 公式是否引用了某字段 key（含明细列引用 {key.col}） */
 export function formulaReferencesKey(formula: string | undefined, key: string): boolean {
   if (!formula) return false;
-  return new RegExp(`\\{\\s*${escapeRegExp(key)}\\s*\\}`).test(formula);
+  return new RegExp(`\\{\\s*${escapeRegExp(key)}(\\.[^}\\s]*)?\\s*\\}`).test(formula);
 }
 
 export interface FieldDependent {
@@ -200,7 +203,7 @@ export interface FieldDependent {
   reasons: string[];
 }
 
-/** 找出所有依赖某字段（显隐/级联/天数/公式）的字段，用于删除前提示 */
+/** 找出所有依赖某字段（显隐/必填/只读/级联/天数/公式）的字段，用于删除前提示 */
 export function findFieldDependents(fields: WorkflowFormField[], key: string): FieldDependent[] {
   const out: FieldDependent[] = [];
   for (const f of flattenAllFields(fields)) {
@@ -208,6 +211,8 @@ export function findFieldDependents(fields: WorkflowFormField[], key: string): F
     const reasons: string[] = [];
     if (f.visibilityCondition?.field === key) reasons.push('显隐条件');
     if (f.visibilityRules?.rules?.some((r) => r.field === key)) reasons.push('联动规则');
+    if (f.requiredRules?.rules?.some((r) => r.field === key)) reasons.push('条件必填');
+    if (f.readOnlyRules?.rules?.some((r) => r.field === key)) reasons.push('条件只读');
     if (f.optionsFrom?.sourceKey === key) reasons.push('级联父字段');
     if (f.daysFromKey === key) reasons.push('日期天数联动');
     if (formulaReferencesKey(f.formula, key)) reasons.push('公式引用');
@@ -216,13 +221,18 @@ export function findFieldDependents(fields: WorkflowFormField[], key: string): F
   return out;
 }
 
+const pruneRuleGroup = (group: WorkflowFormField['visibilityRules'], key: string) => {
+  if (!group) return undefined;
+  const rules = group.rules.filter((r) => r.field !== key);
+  return rules.length > 0 ? { ...group, rules } : undefined;
+};
+
 function cleanFieldRefs(f: WorkflowFormField, key: string): WorkflowFormField {
   const nf: WorkflowFormField = { ...f };
   if (nf.visibilityCondition?.field === key) nf.visibilityCondition = undefined;
-  if (nf.visibilityRules) {
-    const rules = nf.visibilityRules.rules.filter((r) => r.field !== key);
-    nf.visibilityRules = rules.length > 0 ? { ...nf.visibilityRules, rules } : undefined;
-  }
+  nf.visibilityRules = pruneRuleGroup(nf.visibilityRules, key);
+  nf.requiredRules = pruneRuleGroup(nf.requiredRules, key);
+  nf.readOnlyRules = pruneRuleGroup(nf.readOnlyRules, key);
   if (nf.optionsFrom?.sourceKey === key) nf.optionsFrom = undefined;
   if (nf.daysFromKey === key) nf.daysFromKey = undefined;
   return nf;
