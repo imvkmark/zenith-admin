@@ -1,7 +1,6 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Form, Input, Modal, Select, Space, Tag,
+import { Button, Dropdown, Input, Modal, Select, Space, Tag,
   Toast } from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Ban, CircleCheck, GitCompare, LayoutTemplate, MoreHorizontal, Plus, RotateCcw, Save, Search, Trash2, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -13,8 +12,8 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
-import { AppModal } from '@/components/AppModal';
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
+import WorkflowTemplateFormModal, { type WorkflowTemplateFormValues } from '../components/WorkflowTemplateFormModal';
 import CategorySidebar from './components/CategorySidebar';
 import { TemplateGalleryModal } from './components/TemplateGalleryModal';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
@@ -92,7 +91,6 @@ export default function WorkflowDefinitionsPage() {
   const [templateGalleryVisible, setTemplateGalleryVisible] = useState(false);
   const [saveAsTarget, setSaveAsTarget] = useState<WorkflowDefinition | null>(null);
   const [saveAsLoading, setSaveAsLoading] = useState(false);
-  const saveAsFormRef = useRef<FormApi | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
   const [diffTarget, setDiffTarget] = useState<WorkflowDefinition | null>(null);
@@ -337,7 +335,7 @@ export default function WorkflowDefinitionsPage() {
     setDiffData(null);
   };
 
-  const handleSaveAsTemplate = async (values: { name: string; code?: string; description?: string; icon?: string; color?: string }) => {
+  const handleSaveAsTemplate = async (values: WorkflowTemplateFormValues) => {
     if (!saveAsTarget) return;
     setSaveAsLoading(true);
     try {
@@ -624,53 +622,16 @@ export default function WorkflowDefinitionsPage() {
               navigate(`/workflow/designer/${id}`);
             }}
           />
-          <AppModal
+          <WorkflowTemplateFormModal
             title="另存为模板"
             visible={!!saveAsTarget}
+            formKey={saveAsTarget?.id ?? 'save-as'}
+            okIcon={<Save size={14} />}
+            confirmLoading={saveAsLoading}
             onCancel={() => setSaveAsTarget(null)}
-            width={480}
-            okText="保存"
-            okButtonProps={{ loading: saveAsLoading, icon: <Save size={14} /> }}
-            onOk={() => {
-              saveAsFormRef.current?.validate().then((values) => {
-                void handleSaveAsTemplate(values as { name: string; code?: string; description?: string; icon?: string; color?: string });
-              });
-            }}
-          >
-            <Form
-              labelPosition="left"
-              labelWidth={90}
-              getFormApi={(api) => { saveAsFormRef.current = api; }}
-              initValues={{ name: saveAsTarget?.name ?? '' }}
-            >
-              <Form.Input
-                field="name"
-                label="模板名称"
-                placeholder="请输入模板名称"
-                rules={[{ required: true, message: '请输入模板名称' }]}
-              />
-              <Form.Input
-                field="code"
-                label="模板编码"
-                placeholder="选填，唯一标识"
-              />
-              <Form.Input
-                field="description"
-                label="描述"
-                placeholder="选填"
-              />
-              <Form.Input
-                field="icon"
-                label="图标"
-                placeholder="选填，lucide 图标名"
-              />
-              <Form.Input
-                field="color"
-                label="颜色"
-                placeholder="选填，如 #1677ff"
-              />
-            </Form>
-          </AppModal>
+            onSubmit={handleSaveAsTemplate}
+            initValues={{ name: saveAsTarget?.name ?? '' }}
+          />
           <Modal
             title={diffTarget ? `版本对比 - ${diffTarget.name}` : '版本对比'}
             visible={!!diffTarget}

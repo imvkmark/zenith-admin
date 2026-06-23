@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Col, Form, Input, Popconfirm, Row, Space, Tag, Toast, withField } from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Input, Popconfirm, Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate, RotateCcw, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -8,23 +7,10 @@ import type { WorkflowTemplate, WorkflowDefinition } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import ColorPickerInput from '@/components/ColorPickerInput';
 import { usePermission } from '@/hooks/usePermission';
 import { renderEllipsis } from '@/utils/table-columns';
-
-const FormColorPicker = withField(ColorPickerInput);
-
-interface FormValues extends Record<string, unknown> {
-  name?: string;
-  code?: string;
-  description?: string;
-  categoryName?: string;
-  icon?: string;
-  color?: string;
-  sort?: number;
-}
+import WorkflowTemplateFormModal, { type WorkflowTemplateFormValues } from '../components/WorkflowTemplateFormModal';
 
 export default function WorkflowTemplatesPage() {
   const { hasPermission } = usePermission();
@@ -40,7 +26,6 @@ export default function WorkflowTemplatesPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowTemplate | null>(null);
   const [saving, setSaving] = useState(false);
-  const formApi = useRef<FormApi | null>(null);
   const [cloningId, setCloningId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -77,7 +62,7 @@ export default function WorkflowTemplatesPage() {
     setEditing(null);
   };
 
-  const handleSubmit = async (values: FormValues) => {
+  const handleSubmit = async (values: WorkflowTemplateFormValues) => {
     if (!editing) return;
     setSaving(true);
     try {
@@ -242,59 +227,24 @@ export default function WorkflowTemplatesPage() {
         pagination={{ pageSize: 10 }}
       />
 
-      <AppModal
+      <WorkflowTemplateFormModal
         title="编辑模板"
         visible={modalVisible}
-        onCancel={closeModal}
-        onOk={() => formApi.current?.submitForm()}
+        formKey={editing?.id ?? 'edit'}
+        showCategorySort
         confirmLoading={saving}
-        okText="保存"
-        width={680}
-      >
-        <Form<FormValues>
-          key={editing?.id ?? 'edit'}
-          getFormApi={(api) => { formApi.current = api; }}
-          onSubmit={handleSubmit}
-          labelPosition="left"
-          labelWidth={90}
-          initValues={{
-            name: editing?.name ?? '',
-            code: editing?.code ?? '',
-            description: editing?.description ?? '',
-            categoryName: editing?.categoryName ?? '',
-            icon: editing?.icon ?? '',
-            color: editing?.color ?? '',
-            sort: editing?.sort ?? 0,
-          }}
-        >
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Input
-                field="name"
-                label="模板名称"
-                placeholder="请输入模板名称"
-                rules={[{ required: true, message: '请输入模板名称' }]}
-              />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="code" label="模板编码" placeholder="选填，唯一标识" />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="categoryName" label="分类" placeholder="选填" />
-            </Col>
-            <Col span={12}>
-              <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
-            </Col>
-            <Col span={12}>
-              <Form.Input field="icon" label="图标" placeholder="选填，lucide 图标名" />
-            </Col>
-            <Col span={12}>
-              <FormColorPicker field="color" label="颜色" />
-            </Col>
-          </Row>
-          <Form.TextArea field="description" label="描述" placeholder="选填" autosize rows={2} />
-        </Form>
-      </AppModal>
+        onCancel={closeModal}
+        onSubmit={handleSubmit}
+        initValues={{
+          name: editing?.name ?? '',
+          code: editing?.code ?? '',
+          description: editing?.description ?? '',
+          categoryName: editing?.categoryName ?? '',
+          icon: editing?.icon ?? '',
+          color: editing?.color ?? '',
+          sort: editing?.sort ?? 0,
+        }}
+      />
     </div>
   );
 }
