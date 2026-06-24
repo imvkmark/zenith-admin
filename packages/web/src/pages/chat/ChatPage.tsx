@@ -53,6 +53,11 @@ import { callManager } from '@/webrtc/useCallManager';
 
 const { Text, Title } = Typography;
 
+/** 左侧会话列表项：频道与会话合并后的统一条目（仿微信，按消息时间混排） */
+type LeftListItem =
+  | { kind: 'channel'; sortTime: number; pinned: boolean; channel: Channel }
+  | { kind: 'conv'; sortTime: number; pinned: boolean; conv: ChatConversation };
+
 const ONLINE_DOT_STYLE: React.CSSProperties = {
   position: 'absolute', insetInlineEnd: -1, bottom: -1, width: 10, height: 10, borderRadius: '50%',
   background: 'var(--semi-color-success)', border: '2px solid var(--semi-color-bg-1)', boxSizing: 'border-box',
@@ -1772,6 +1777,16 @@ export default function ChatPage({
     return name.toLowerCase().includes(convSearch.toLowerCase());
   });
 
+  // 仿微信：频道与会话合并为同一个列表，按最后消息时间倒序排列（置顶会话优先），不再将频道单独置顶
+  const filteredChannels = convSearch
+    ? channels.filter((ch) => ch.name.toLowerCase().includes(convSearch.toLowerCase()))
+    : channels;
+  const parseMsgTime = (s?: string | null) => (s ? new Date(s.replace(' ', 'T')).getTime() : 0);
+  const leftListItems: LeftListItem[] = [
+    ...filteredChannels.map((ch): LeftListItem => ({ kind: 'channel', sortTime: parseMsgTime(ch.lastMessage?.createdAt), pinned: false, channel: ch })),
+    ...filteredConvs.map((conv): LeftListItem => ({ kind: 'conv', sortTime: parseMsgTime(conv.lastMessage?.createdAt ?? conv.updatedAt), pinned: conv.isPinned ?? false, conv })),
+  ].sort((a, b) => (a.pinned !== b.pinned ? (a.pinned ? -1 : 1) : b.sortTime - a.sortTime));
+
   const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
 
   // 频道列表本地过滤：按名称包含匹配，不调接口
@@ -1960,38 +1975,36 @@ export default function ChatPage({
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}>
           <Spin spinning={loadingConvs}>
             {leftPaneMode === 'conversations' && (
-              <>
-              {channels.length > 0 && (
-                <SemiList
-                  className="chat-conv-list"
-                  dataSource={channels}
-                  split={false}
-                  style={{ borderBottom: '1px solid var(--semi-color-border)' }}
-                  renderItem={(ch: Channel) => (
-                    <SemiList.Item
-                      key={`channel-${ch.id}`}
-                      align="center"
-                      onClick={() => { setActiveChannelId(ch.id); setActiveConvId(null); setChannels((prev) => prev.map((c) => c.id === ch.id ? { ...c, unreadCount: 0 } : c)); }}
-                      style={{ padding: '10px 12px', cursor: 'pointer', background: activeChannelId === ch.id ? 'var(--semi-color-primary-light-default)' : 'transparent' }}
-                      header={ch.unreadCount > 0
-                        ? <Badge count={ch.unreadCount} overflowCount={99}>{channelAvatarNode(ch)}</Badge>
-                        : channelAvatarNode(ch)}
-                      main={(
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <Text strong style={{ fontSize: 13, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</Text>
-                          <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.lastMessage ? (ch.lastMessage.title ?? ch.lastMessage.content) : (ch.description ?? '')}</Text>
-                        </div>
-                      )}
-                    />
-                  )}
-                />
-              )}
               <SemiList
                 className="chat-conv-list"
-                dataSource={filteredConvs}
+                dataSource={leftListItems}
                 emptyContent={loadingConvs ? null : <Empty description="暂无会话" style={{ padding: '40px 0' }} imageStyle={{ width: 80 }} />}
                 split={false}
-                renderItem={(conv: ChatConversation) => {
+                renderItem={(item: LeftListItem) => {
+                  if (item.kind === 'channel') {
+                    const ch = item.channel;
+                    return (
+                      <SemiList.Item
+                        key={`channel-${ch.id}`}
+                        align="center"
+                        onClick={() => { setActiveChannelId(ch.id); setActiveConvId(null); setChannels((prev) => prev.map((c) => c.id === ch.id ? { ...c, unreadCount: 0 } : c)); }}
+                        style={{ padding: '10px 12px', cursor: 'pointer', background: activeChannelId === ch.id ? 'var(--semi-color-primary-light-default)' : 'transparent' }}
+                        header={ch.unreadCount > 0
+                          ? <Badge count={ch.unreadCount} overflowCount={99}>{channelAvatarNode(ch)}</Badge>
+                          : channelAvatarNode(ch)}
+                        main={(
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+                              <Text strong style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{ch.name}</Text>
+                              {ch.lastMessage && <Text type="tertiary" style={{ fontSize: 11, flexShrink: 0 }}>{formatConvTime(ch.lastMessage.createdAt)}</Text>}
+                            </div>
+                            <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{ch.lastMessage ? (ch.lastMessage.title ?? ch.lastMessage.content) : (ch.description ?? '')}</Text>
+                          </div>
+                        )}
+                      />
+                    );
+                  }
+                  const conv = item.conv;
                   const name = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '未知用户') : (conv.name ?? '群聊');
                   const avatarName = conv.type === 'direct' ? (conv.targetUser?.nickname ?? '?') : (conv.name ?? '?');
                   const avatar = conv.type === 'direct' ? conv.targetUser?.avatar : null;
@@ -2096,7 +2109,6 @@ export default function ChatPage({
                   );
                 }}
               />
-              </>
             )}
             {leftPaneMode === 'favorites' && (
               <SemiList
