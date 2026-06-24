@@ -14,8 +14,8 @@ import { workflowInstances } from '../../db/schema';
 import type { ChatCard } from '@zenith/shared';
 import { workflowEventBus } from '../workflow-event-bus';
 import {
-  getSystemBotUserId, ensureBotDirectConversation, postBotMessage, markTaskCardsDone,
-} from '../../services/chat.service';
+  getSystemChannelId, publishTargeted, markChannelTaskCardsDone,
+} from '../../services/channel.service';
 import logger from '../logger';
 
 async function loadInstanceLabel(instanceId: number): Promise<string> {
@@ -34,8 +34,8 @@ export function registerChatWorkflowSubscriber(): void {
     const task = event.task;
     if (!task.assigneeId || task.nodeType === 'ccNode' || task.status !== 'pending') return;
     try {
-      const botId = await getSystemBotUserId();
-      if (!botId) return;
+      const channelId = await getSystemChannelId();
+      if (!channelId) return;
       const label = await loadInstanceLabel(event.instanceId);
       const card: ChatCard = {
         title: '待办审批提醒',
@@ -49,8 +49,7 @@ export function registerChatWorkflowSubscriber(): void {
         status: 'pending',
         instanceId: event.instanceId,
       };
-      const conversationId = await ensureBotDirectConversation(botId, task.assigneeId);
-      await postBotMessage(conversationId, botId, { type: 'card', content: card.title, extra: { card } });
+      await publishTargeted(channelId, [task.assigneeId], { type: 'card', content: card.title, extra: { card } });
     } catch (err) {
       logger.error('[chat-workflow] 审批卡片推送失败', { err, taskId: task.id });
     }
@@ -59,7 +58,7 @@ export function registerChatWorkflowSubscriber(): void {
   // 审批完成 → 置灰卡片
   const resolveCard = (statusText: string) => async (event: { task: { id: number } }) => {
     try {
-      await markTaskCardsDone(event.task.id, statusText);
+      await markChannelTaskCardsDone(event.task.id, statusText);
     } catch (err) {
       logger.error('[chat-workflow] 卡片置灰失败', { err, taskId: event.task.id });
     }
@@ -86,8 +85,8 @@ export function registerChatWorkflowSubscriber(): void {
     };
     const m = map[kind];
     try {
-      const botId = await getSystemBotUserId();
-      if (!botId) return;
+      const channelId = await getSystemChannelId();
+      if (!channelId) return;
       const card: ChatCard = {
         title: m.title,
         text: m.text,
@@ -96,8 +95,7 @@ export function registerChatWorkflowSubscriber(): void {
         statusText: m.statusText,
         instanceId: event.instanceId,
       };
-      const conversationId = await ensureBotDirectConversation(botId, inst.initiatorId);
-      await postBotMessage(conversationId, botId, { type: 'card', content: card.title, extra: { card } });
+      await publishTargeted(channelId, [inst.initiatorId], { type: 'card', content: card.title, extra: { card } });
     } catch (err) {
       logger.error('[chat-workflow] 结果卡片推送失败', { err, instanceId: event.instanceId });
     }

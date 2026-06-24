@@ -112,8 +112,6 @@ export const users = pgTable('users', {
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   gender: varchar('gender', { length: 20 }),
   status: statusEnum('status').notNull().default('enabled'),
-  /** 是否为机器人/系统账号（不可登录、不出现在可聊天用户搜索中） */
-  isBot: boolean('is_bot').notNull().default(false),
   preferences: jsonb('preferences'),
   /** 用户收藏的菜单 ID 列表（有序） */
   favoriteMenus: jsonb('favorite_menus').$type<number[]>(),
@@ -1880,6 +1878,76 @@ export const chatWebhooks = pgTable('chat_webhooks', {
 
 export type ChatWebhookRow = typeof chatWebhooks.$inferSelect;
 export type NewChatWebhook = typeof chatWebhooks.$inferInsert;
+
+// ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────
+export const channelTypeEnum = pgEnum('channel_type', ['system', 'business']);
+export const channelAudienceEnum = pgEnum('channel_audience', ['broadcast', 'targeted']);
+export const channelMessageTypeEnum = pgEnum('channel_message_type', ['text', 'card']);
+
+export const channels = pgTable('channels', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 64 }).notNull().unique(),
+  name: varchar('name', { length: 64 }).notNull(),
+  avatar: varchar('avatar', { length: 256 }),
+  description: varchar('description', { length: 255 }),
+  type: channelTypeEnum('type').notNull().default('system'),
+  builtin: boolean('builtin').notNull().default(false),
+  status: statusEnum('status').notNull().default('enabled'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ChannelRow = typeof channels.$inferSelect;
+export type NewChannel = typeof channels.$inferInsert;
+
+export const channelMessages = pgTable('channel_messages', {
+  id: serial('id').primaryKey(),
+  channelId: integer('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+  audienceType: channelAudienceEnum('audience_type').notNull().default('broadcast'),
+  type: channelMessageTypeEnum('type').notNull().default('text'),
+  title: varchar('title', { length: 200 }),
+  content: text('content').notNull(),
+  extra: jsonb('extra'),
+  publishedById: integer('published_by_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export type ChannelMessageRow = typeof channelMessages.$inferSelect;
+export type NewChannelMessage = typeof channelMessages.$inferInsert;
+
+export const channelSubscriptions = pgTable('channel_subscriptions', {
+  channelId: integer('channel_id').notNull().references(() => channels.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+  isMuted: boolean('is_muted').notNull().default(false),
+  subscribedAt: timestamp('subscribed_at').defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.channelId, t.userId] })]);
+export type ChannelSubscriptionRow = typeof channelSubscriptions.$inferSelect;
+
+export const channelMessageTargets = pgTable('channel_message_targets', {
+  messageId: integer('message_id').notNull().references(() => channelMessages.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  readAt: timestamp('read_at', { withTimezone: true }),
+}, (t) => [primaryKey({ columns: [t.messageId, t.userId] })]);
+export type ChannelMessageTargetRow = typeof channelMessageTargets.$inferSelect;
+
+export const channelsRelations = relations(channels, ({ many }) => ({
+  messages: many(channelMessages),
+  subscriptions: many(channelSubscriptions),
+}));
+export const channelMessagesRelations = relations(channelMessages, ({ one, many }) => ({
+  channel: one(channels, { fields: [channelMessages.channelId], references: [channels.id] }),
+  publishedBy: one(users, { fields: [channelMessages.publishedById], references: [users.id] }),
+  targets: many(channelMessageTargets),
+}));
+export const channelSubscriptionsRelations = relations(channelSubscriptions, ({ one }) => ({
+  channel: one(channels, { fields: [channelSubscriptions.channelId], references: [channels.id] }),
+  user: one(users, { fields: [channelSubscriptions.userId], references: [users.id] }),
+}));
+export const channelMessageTargetsRelations = relations(channelMessageTargets, ({ one }) => ({
+  message: one(channelMessages, { fields: [channelMessageTargets.messageId], references: [channelMessages.id] }),
+  user: one(users, { fields: [channelMessageTargets.userId], references: [users.id] }),
+}));
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 支付中心（Payment Center）

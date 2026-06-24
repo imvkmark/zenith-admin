@@ -38,6 +38,7 @@ import { workflowDataSourcesHandlers } from './workflow-data-sources';
 import { bizLeaveHandlers } from './biz-leave';
 import { chatHandlers } from './chat';
 import { chatBotsHandlers } from './chat-bots';
+import { channelsHandlers } from './channels';
 import { tagsHandlers } from './tags';
 import { rateLimitHandlers } from './rate-limit';
 import { emailTemplatesHandlers } from './email-templates';
@@ -125,6 +126,7 @@ export const handlers = [
   ...bizLeaveHandlers,
   ...chatHandlers,
   ...chatBotsHandlers,
+  ...channelsHandlers,
   ...tagsHandlers,
   ...rateLimitHandlers,
   ...emailTemplatesHandlers,

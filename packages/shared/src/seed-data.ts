@@ -1405,3 +1405,26 @@ export const SEED_PAYMENT_METHOD_CONFIGS: SeedPaymentMethodConfig[] = [
   { id: 5, method: 'alipay_wap', channel: 'alipay', label: '支付宝手机网站', icon: 'Smartphone', enabled: true, sort: 5 },
   { id: 6, method: 'alipay_app', channel: 'alipay', label: '支付宝 APP', icon: 'AppWindow', enabled: true, sort: 6 },
 ];
+
+// ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────
+export interface SeedChannel {
+  id: number;
+  code: string;
+  name: string;
+  avatar: string | null;
+  description: string | null;
+  type: 'system' | 'business';
+  builtin: boolean;
+}
+
+export const SEED_CHANNELS: SeedChannel[] = [
+  {
+    id: 1,
+    code: 'system-assistant',
+    name: 'Zenith 助手',
+    avatar: null,
+    description: '系统通知与工作流提醒',
+    type: 'system',
+    builtin: true,
+  },
+];

@@ -30,6 +30,7 @@ export * from './sms';
 export * from './email';
 export * from './in-app';
 export * from './chat';
+export * from './channel';
 export * from './tags';
 export * from './rate-limit';
 

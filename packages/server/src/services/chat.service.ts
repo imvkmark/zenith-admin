@@ -1513,7 +1513,6 @@ export async function listChatUsers(keyword?: string) {
     .where(and(
       ne(users.id, me.userId),
       eq(users.status, 'enabled'),
-      eq(users.isBot, false),
       me.tenantId ? eq(users.tenantId, me.tenantId) : undefined,
       keyword
         ? or(
@@ -1943,50 +1942,7 @@ export async function searchGlobalMessages(
 
 // ─── 机器人 / 系统消息（无请求上下文，供事件订阅器与 Webhook 调用）─────────────
 
-export const SYSTEM_BOT_USERNAME = 'zenith-assistant';
-let cachedBotUserId: number | null = null;
-
-/** 系统机器人用户 ID（种子写入，缓存命中后不再查库） */
-export async function getSystemBotUserId(): Promise<number | null> {
-  if (cachedBotUserId != null) return cachedBotUserId;
-  const bot = await db.query.users.findFirst({
-    where: and(eq(users.isBot, true), eq(users.username, SYSTEM_BOT_USERNAME)),
-    columns: { id: true },
-  });
-  cachedBotUserId = bot?.id ?? null;
-  return cachedBotUserId;
-}
-
-/** 获取或创建「机器人 ↔ 用户」单聊会话，返回会话 ID（无上下文） */
-export async function ensureBotDirectConversation(botUserId: number, userId: number): Promise<number> {
-  const botConvRows = await db
-    .select({ conversationId: chatConversationMembers.conversationId })
-    .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.userId, botUserId));
-  const botConvIds = botConvRows.map((r) => r.conversationId);
-
-  if (botConvIds.length > 0) {
-    const [existing] = await db
-      .select({ conversationId: chatConversationMembers.conversationId })
-      .from(chatConversationMembers)
-      .innerJoin(chatConversations, eq(chatConversationMembers.conversationId, chatConversations.id))
-      .where(and(
-        eq(chatConversationMembers.userId, userId),
-        inArray(chatConversationMembers.conversationId, botConvIds),
-        eq(chatConversations.type, 'direct'),
-      ))
-      .limit(1);
-    if (existing) return existing.conversationId;
-  }
-
-  const target = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { tenantId: true } });
-  const [conv] = await db.insert(chatConversations).values({ type: 'direct', tenantId: target?.tenantId ?? null }).returning();
-  await db.insert(chatConversationMembers).values([
-    { conversationId: conv.id, userId: botUserId },
-    { conversationId: conv.id, userId },
-  ]);
-  return conv.id;
-}
+// ─── 以机器人/系统身份向会话投递消息 ─────────────────────────────────────────
 
 /**
  * 以机器人/系统身份向会话投递一条消息（无上下文、不校验成员）。

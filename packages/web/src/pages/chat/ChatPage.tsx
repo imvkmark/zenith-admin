@@ -26,7 +26,7 @@ import FilePreviewModal from '@/components/FilePreviewModal';
 import type {
   ChatConversation, ChatMessage, WsMessage, ChatLinkPreview, ChatAssetMeta, ChatMessageExtra,
   ChatGroupMember, ChatMessageSearchItem, ChatMessageSearchResult, ChatMessageContext, ChatVoteData,
-  ChatReadState, ChatPresence, ChatCardAction,
+  ChatReadState, ChatPresence, ChatCardAction, Channel,
 } from '@zenith/shared';
 import {
   extractFirstUrl, getFileExtension, getAssetMeta, getMessageSummary, shouldDisplayMessageTime,
@@ -43,6 +43,7 @@ import { ForwardModal } from './components/ForwardModal';
 import { ForwardedMessagesModal } from './components/ForwardedMessagesModal';
 import { VotePollModal } from './components/VotePollModal';
 import { MessageBubble } from './components/MessageBubble';
+import { ChannelMessageView } from './components/ChannelMessageView';
 
 import { MessageContent } from './components/MessageContent';
 import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalDetailSheet';
@@ -157,6 +158,8 @@ export default function ChatPage({
   const [cardSheet, setCardSheet] = useState<{ instanceId: number; taskId: number | null; action: 'approve' | 'reject' | null; messageId?: number } | null>(null);
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [activeChannelId, setActiveChannelId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [mentionClosed, setMentionClosed] = useState(false);
@@ -323,6 +326,7 @@ export default function ChatPage({
   const currentUserNickname = authUser?.nickname ?? authUser?.username ?? '我';
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
+  const activeChannel = channels.find((c) => c.id === activeChannelId) ?? null;
   const mentionState = useMemo(() => {
     if (activeConv?.type !== 'group') return null;
     const cursor = inputRef.current?.selectionStart ?? input.length;
@@ -362,6 +366,13 @@ export default function ChatPage({
   }, []);
 
   useEffect(() => { void fetchConversations(); }, [fetchConversations]);
+
+  const fetchChannels = useCallback(async () => {
+    const res = await request.get<Channel[]>('/api/channels/mine', { silent: true });
+    if (res.code === 0 && res.data) setChannels(res.data);
+  }, []);
+
+  useEffect(() => { void fetchChannels(); }, [fetchChannels]);
 
   // 初始化时从 localStorage 加载所有草稿
   useEffect(() => {
@@ -697,6 +708,7 @@ export default function ChatPage({
     // 保存当前会话草稿
     if (activeConvId) saveDraft(activeConvId, input);
     setActiveConvId(conv.id);
+    setActiveChannelId(null);
     onConvChange?.(conv.id);
     setReplyTo(null);
     setSelectedMentions([]);
@@ -1781,7 +1793,7 @@ export default function ChatPage({
         divider
         persistKey={isQuick ? undefined : 'messages'}
         responsiveBreakpoint={isQuick ? 99999 : undefined}
-        showDetail={!!activeConv}
+        showDetail={!!activeConv || activeChannelId != null}
         onBack={isQuick ? undefined : () => setActiveConvId(null)}
         master={(
           <>
@@ -1881,6 +1893,32 @@ export default function ChatPage({
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}>
           <Spin spinning={loadingConvs}>
             {leftPaneMode === 'conversations' && (
+              <>
+              {channels.length > 0 && (
+                <SemiList
+                  className="chat-conv-list"
+                  dataSource={channels}
+                  split={false}
+                  style={{ borderBottom: '1px solid var(--semi-color-border)' }}
+                  renderItem={(ch: Channel) => (
+                    <SemiList.Item
+                      key={`channel-${ch.id}`}
+                      align="center"
+                      onClick={() => { setActiveChannelId(ch.id); setActiveConvId(null); }}
+                      style={{ padding: '10px 12px', cursor: 'pointer', background: activeChannelId === ch.id ? 'var(--semi-color-primary-light-default)' : 'transparent' }}
+                      header={ch.unreadCount > 0
+                        ? <Badge count={ch.unreadCount} overflowCount={99}><UserAvatar name={ch.name} avatar={ch.avatar} size={38} /></Badge>
+                        : <UserAvatar name={ch.name} avatar={ch.avatar} size={38} />}
+                      main={(
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Text strong style={{ fontSize: 13, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</Text>
+                          <Text type="tertiary" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.lastMessage ? (ch.lastMessage.title ?? ch.lastMessage.content) : (ch.description ?? '')}</Text>
+                        </div>
+                      )}
+                    />
+                  )}
+                />
+              )}
               <SemiList
                 className="chat-conv-list"
                 dataSource={filteredConvs}
@@ -1991,6 +2029,7 @@ export default function ChatPage({
                   );
                 }}
               />
+              </>
             )}
             {leftPaneMode === 'favorites' && (
               <SemiList
@@ -2306,7 +2345,15 @@ export default function ChatPage({
         </div>
           </>
         )}
-        detail={activeConv ? (
+        detail={activeChannelId != null && activeChannel ? (
+          <ChannelMessageView
+            channel={activeChannel}
+            currentUserId={currentUserId}
+            onBack={() => setActiveChannelId(null)}
+            onCardAction={handleCardAction}
+            onOpenWorkflow={handleOpenWorkflowFromCard}
+          />
+        ) : activeConv ? (
           <>
           {/* Header */}
           <MasterDetailLayout.Header

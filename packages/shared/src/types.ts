@@ -1240,6 +1240,7 @@ export type WsMessage =
   | { type: 'chat:edit'; payload: ChatMessage }
   | { type: 'chat:vote-update'; payload: { conversationId: number; messageId: number; voteData: ChatVoteData } }
   | { type: 'chat:presence'; payload: { userId: number; online: boolean; lastSeen: string | null } }
+  | { type: 'channel:message'; payload: ChannelMessage }
   | { type: 'rtc:invite'; payload: RtcInvitePayload }
   | { type: 'rtc:accept'; payload: { callId: string; to: number; from: RtcPeerInfo } }
   | { type: 'rtc:reject'; payload: { callId: string; to: number; reason?: string } }
@@ -2889,6 +2890,45 @@ export interface ChatWebhook {
   /** 令牌（仅创建/重置时返回明文，列表中为脱敏） */
   token: string;
   lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────
+export type ChannelType = 'system' | 'business';
+export type ChannelAudienceType = 'broadcast' | 'targeted';
+export type ChannelMessageType = 'text' | 'card';
+
+/** 频道内一条消息（卡片复用 ChatMessageExtra.card / 身份用 extra.bot） */
+export interface ChannelMessage {
+  id: number;
+  channelId: number;
+  audienceType: ChannelAudienceType;
+  type: ChannelMessageType;
+  title: string | null;
+  content: string;
+  extra: ChatMessageExtra | null;
+  publishedById: number | null;
+  /** 当前用户视角是否已读 */
+  isRead: boolean;
+  createdAt: string;
+}
+
+/** 公众号 / 系统号（在聊天会话列表中以只读频道形式呈现） */
+export interface Channel {
+  id: number;
+  code: string;
+  name: string;
+  avatar: string | null;
+  description: string | null;
+  type: ChannelType;
+  builtin: boolean;
+  status: EntityStatus;
+  /** 当前用户未读数 */
+  unreadCount: number;
+  lastMessage: ChannelMessage | null;
+  isMuted: boolean;
+  tenantId?: number | null;
   createdAt: string;
   updatedAt: string;
 }

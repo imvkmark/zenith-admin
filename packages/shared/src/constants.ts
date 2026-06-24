@@ -243,6 +243,13 @@ export const CHECKIN_MILESTONE_REWARD_TYPE_LABELS: Record<typeof CHECKIN_MILESTO
   coupon: '优惠券',
 };
 
+// ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────
+export const CHANNEL_TYPES = ['system', 'business'] as const;
+export const CHANNEL_AUDIENCE_TYPES = ['broadcast', 'targeted'] as const;
+export const CHANNEL_MESSAGE_TYPES = ['text', 'card'] as const;
+/** 内置「Zenith 助手」系统号 code（全局唯一、内置不可删、全员订阅） */
+export const SYSTEM_CHANNEL_CODE = 'system-assistant';
+
 export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {
   active: '正常',
   inactive: '未激活',
