@@ -451,6 +451,9 @@ export function advanceFlow(
       // 并行/包容网关：判断是 fork 还是 join
       const inCount = (inEdges.get(nodeId) ?? []).length;
       const outCount = outs.length;
+      // fork 判定采用"多出即 fork"：标准拓扑下 fork=单入多出、join=多入单出，均正确。
+      // 不可改成"多入即 join"——网关若含回边（B→gw 这类环路）会因等待下游来源而永久死锁。
+      // 见 workflow-engine.test.ts「loop-back gateway safety」回归护栏。
       const isFork = outCount > 1 || (outCount === 1 && inCount <= 1);
 
       if (isFork) {
@@ -593,6 +596,44 @@ export function getInitialTasks(
     return { finished: false, rejected: false, tasksToCreate: [], currentNodeKeys: [] };
   }
   return advanceFlow(flowData, startNode.data.key, formData, new Set(['start']), starter);
+}
+
+/**
+ * 计算某节点的全部上游祖先节点 key（沿正常入边反向 BFS；不含自身、不含异常边）。
+ * 用于「退回上一步」等需要"仅在当前路径的上游中选择目标"的场景。
+ */
+export function getAncestorNodeKeys(flowData: WorkflowFlowData, nodeKey: string): Set<string> {
+  const { nodeMap, inEdges } = buildAdjacency(flowData);
+  const startNode = flowData.nodes.find((n) => n.data.key === nodeKey);
+  const ancestors = new Set<string>();
+  if (!startNode) return ancestors;
+  const queue: string[] = [...(inEdges.get(startNode.id) ?? [])];
+  const visited = new Set<string>();
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (!id || visited.has(id)) continue;
+    visited.add(id);
+    const node = nodeMap.get(id);
+    if (node) ancestors.add(node.data.key);
+    for (const p of inEdges.get(id) ?? []) queue.push(p);
+  }
+  return ancestors;
+}
+
+/**
+ * 「退回上一步」目标选择：在按时间倒序排列的已审批 approve/handler 节点 key 中，
+ * 优先选当前节点的最近上游祖先（避免并行流程里误选到另一条分支上最近审批的节点）；
+ * 若无任何祖先匹配则回退为最近审批节点（兼容线性流程旧行为）。
+ */
+export function findReturnPrevTarget(
+  flowData: WorkflowFlowData,
+  currentNodeKey: string,
+  approvedApproveNodeKeysByRecency: string[],
+): string | null {
+  if (approvedApproveNodeKeysByRecency.length === 0) return null;
+  const ancestors = getAncestorNodeKeys(flowData, currentNodeKey);
+  const ancestorMatch = approvedApproveNodeKeysByRecency.find((k) => ancestors.has(k));
+  return ancestorMatch ?? approvedApproveNodeKeysByRecency[0];
 }
 
 /**

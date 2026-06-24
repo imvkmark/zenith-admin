@@ -6,6 +6,8 @@ import {
   getInitialTasks,
   validateFlowData,
   getNodeOrder,
+  getAncestorNodeKeys,
+  findReturnPrevTarget,
 } from './workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared';
 
@@ -89,6 +91,52 @@ function makeCcFlow(): WorkflowFlowData {
       { id: 'e1', source: 'n1', target: 'n2' },
       { id: 'e2', source: 'n2', target: 'n3' },
       { id: 'e3', source: 'n3', target: 'n4' },
+    ],
+  };
+}
+
+// ─── Helper: 分支流程（用于退回上一步祖先选择） ────────────────────────────────
+//  start ─→ A ─→ B ─→ C ─→ end   （C 的上游祖先链：B、A、start）
+//        └→ D ─────────→ end      （D 为另一分支，非 C 的祖先）
+function makeBranchedFlow(): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'nA', position: { x: 1, y: 0 }, data: { key: 'a', type: 'approve', label: 'A', assigneeId: 10 } },
+      { id: 'nB', position: { x: 2, y: 0 }, data: { key: 'b', type: 'approve', label: 'B', assigneeId: 11 } },
+      { id: 'nC', position: { x: 3, y: 0 }, data: { key: 'c', type: 'approve', label: 'C', assigneeId: 12 } },
+      { id: 'nD', position: { x: 1, y: 1 }, data: { key: 'd', type: 'approve', label: 'D', assigneeId: 13 } },
+      { id: 'nEnd', position: { x: 4, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'nA' },
+      { id: 'e2', source: 'nA', target: 'nB' },
+      { id: 'e3', source: 'nB', target: 'nC' },
+      { id: 'e4', source: 'nC', target: 'nEnd' },
+      { id: 'e5', source: 'n1', target: 'nD' },
+      { id: 'e6', source: 'nD', target: 'nEnd' },
+    ],
+  };
+}
+
+// ─── Helper: 环路并行网关（用于验证 fork/join 判定对回边的安全性） ──────────────
+//  start → gw(parallel) ⇉ A → end
+//                        ⇉ B → gw   （B 回到 gw 的回边；gw 同时是多入多出）
+function makeLoopBackParallelFlow(): WorkflowFlowData {
+  return {
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'ngw', position: { x: 1, y: 0 }, data: { key: 'gw', type: 'parallelGateway', label: '网关' } },
+      { id: 'nA', position: { x: 2, y: 0 }, data: { key: 'a-loop', type: 'approve', label: 'A', assigneeId: 10 } },
+      { id: 'nB', position: { x: 2, y: 1 }, data: { key: 'b-loop', type: 'approve', label: 'B', assigneeId: 11 } },
+      { id: 'nEnd', position: { x: 3, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'ngw' },
+      { id: 'e2', source: 'ngw', target: 'nA' },
+      { id: 'e3', source: 'ngw', target: 'nB' },
+      { id: 'e4', source: 'nA', target: 'nEnd' },
+      { id: 'e5', source: 'nB', target: 'ngw' }, // 回边：B → gw
     ],
   };
 }
@@ -655,3 +703,50 @@ describe('advanceFlow - auto approval nodes', () => {
     expect(result.tasksToCreate[0]).toMatchObject({ nodeKey: 'auto-approval', autoStatus: 'rejected' });
   });
 });
+
+// ─── 退回上一步：祖先选择（修复并行流程误选另一分支最近审批节点） ──────────────
+describe('getAncestorNodeKeys', () => {
+  it('returns only upstream ancestors of a node', () => {
+    const anc = getAncestorNodeKeys(makeBranchedFlow(), 'c');
+    expect(anc.has('b')).toBe(true);
+    expect(anc.has('a')).toBe(true);
+    expect(anc.has('start')).toBe(true);
+    // D 在另一分支上，不是 C 的祖先
+    expect(anc.has('d')).toBe(false);
+  });
+
+  it('returns empty set for unknown node', () => {
+    expect(getAncestorNodeKeys(makeBranchedFlow(), 'nope').size).toBe(0);
+  });
+});
+
+describe('findReturnPrevTarget', () => {
+  const flow = makeBranchedFlow();
+
+  it('prefers the nearest approved ancestor over a more-recent sibling-branch node', () => {
+    // D 最近审批，但不在 C 的上游路径；应退回到祖先 B，而非 D
+    expect(findReturnPrevTarget(flow, 'c', ['d', 'b', 'a'])).toBe('b');
+  });
+
+  it('falls back to most-recent when no approved ancestor exists', () => {
+    expect(findReturnPrevTarget(flow, 'c', ['d'])).toBe('d');
+  });
+
+  it('returns null when there are no approved nodes', () => {
+    expect(findReturnPrevTarget(flow, 'c', [])).toBeNull();
+  });
+});
+
+// ─── fork/join 判定对回边的安全性（保留"多出即 fork"的回归护栏） ────────────────
+// 说明：网关同时多入多出（且含回边）时，引擎按"多出即 fork"激活全部出边而非等待入边。
+// 若改成"多入即 join"，下方 gw 会等待来自下游 B 的回边、永不满足 → 死锁。此测试锁定当前安全行为。
+describe('advanceFlow - loop-back gateway safety', () => {
+  it('forks (does not deadlock) on a multi-in/multi-out gateway with a back-edge', () => {
+    const result = advanceFlow(makeLoopBackParallelFlow(), 'start', {}, new Set(['start']));
+    const keys = result.tasksToCreate.map((t) => t.nodeKey).sort();
+    expect(keys).toEqual(['a-loop', 'b-loop']);
+    expect(result.finished).toBe(false);
+    expect(result.rejected).toBe(false);
+  });
+});
+

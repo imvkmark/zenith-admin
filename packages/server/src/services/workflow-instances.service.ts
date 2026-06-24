@@ -207,7 +207,7 @@ import { pageOffset } from '../lib/pagination';
 import { workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, inAppMessages, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
-import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
+import { advanceFlow, getInitialTasks, validateFlowData, findReturnPrevTarget, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
 import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
@@ -2361,18 +2361,21 @@ export async function rejectTaskCore(
         targetNodeKey = rejectToNodeKey;
       }
     } else if (strategy === 'returnPrev') {
-      // 找最近一个已 approved 的 approve/handler 任务节点
+      // 找已 approved 的 approve/handler 任务节点，按审批时间倒序
       const prevApproved = await db.select().from(workflowTasks)
         .where(and(
           eq(workflowTasks.instanceId, inst.id),
           eq(workflowTasks.status, 'approved'),
         ))
         .orderBy(desc(workflowTasks.actionAt), desc(workflowTasks.id));
-      const prev = prevApproved.find((t) => {
-        const cfg = flowData.nodes.find((n) => n.data.key === t.nodeKey)?.data;
-        return cfg && (cfg.type === 'approve' || cfg.type === 'handler');
-      });
-      if (prev) targetNodeKey = prev.nodeKey;
+      const approvedApproveKeys = prevApproved
+        .filter((t) => {
+          const cfg = flowData.nodes.find((n) => n.data.key === t.nodeKey)?.data;
+          return cfg && (cfg.type === 'approve' || cfg.type === 'handler');
+        })
+        .map((t) => t.nodeKey);
+      // 优先退回到当前节点的最近上游祖先，避免并行流程误选到另一分支上最近审批的节点
+      targetNodeKey = findReturnPrevTarget(flowData, task.nodeKey, approvedApproveKeys);
     } else if (strategy === 'returnStart') {
       // 从头重新走流程（重新生成首批任务）
       targetNodeKey = '__start__';
