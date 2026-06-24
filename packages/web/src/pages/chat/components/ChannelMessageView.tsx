@@ -53,6 +53,7 @@ const noop = () => { /* 频道气泡：禁用交互 */ };
 
 export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscribe, onCardAction, onOpenWorkflow }: Readonly<Props>) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [retractedIds, setRetractedIds] = useState<Set<number>>(new Set());
   const [menus, setMenus] = useState<ChannelMenu[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
@@ -69,6 +70,14 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
 
   const appendMessage = useCallback((m: ChannelMessage) => {
     if (m.channelId !== channel.id) return;
+    if (m.isRetracted) {
+      setRetractedIds((prev) => {
+        if (prev.has(m.id)) return prev;
+        const next = new Set(prev);
+        next.add(m.id);
+        return next;
+      });
+    }
     setMessages((prev) => {
       const mapped = toChatMessage(m, channel);
       const idx = prev.findIndex((x) => x.id === m.id);
@@ -85,6 +94,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     let cancelled = false;
     setLoading(true);
     setMessages([]);
+    setRetractedIds(new Set());
     setMenus([]);
     setInput('');
     void (async () => {
@@ -95,8 +105,9 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
       if (cancelled) return;
       setLoading(false);
       if (res.code === 0 && res.data) {
-        const ordered = [...res.data.list].reverse().map((m) => toChatMessage(m, channel));
-        setMessages(ordered);
+        const ordered = [...res.data.list].reverse();
+        setMessages(ordered.map((m) => toChatMessage(m, channel)));
+        setRetractedIds(new Set(ordered.filter((m) => m.isRetracted).map((m) => m.id)));
         scrollToBottom();
       }
       void request.post(`/api/channels/${channel.id}/read`, {}, { silent: true });
@@ -116,6 +127,17 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
   }, [channel.id, isBusiness]);
 
   const handleWs = useCallback((wsMsg: WsMessage) => {
+    if (wsMsg.type === 'channel:message-retract') {
+      if (wsMsg.payload.channelId !== channel.id) return;
+      const { messageId } = wsMsg.payload;
+      setRetractedIds((prev) => {
+        if (prev.has(messageId)) return prev;
+        const next = new Set(prev);
+        next.add(messageId);
+        return next;
+      });
+      return;
+    }
     if (wsMsg.type !== 'channel:message') return;
     const m = wsMsg.payload;
     if (m.channelId !== channel.id) return;
@@ -225,6 +247,11 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
         ) : (
           messages.map((msg) => (
             <div key={msg.id} style={{ padding: '0 20px 16px' }}>
+              {retractedIds.has(msg.id) ? (
+                <div style={{ textAlign: 'center', color: 'var(--semi-color-text-2)', fontSize: 12 }}>
+                  该消息已被撤回
+                </div>
+              ) : (
               <MessageBubble
                 msg={msg}
                 isSelf={msg.senderId != null && msg.senderId === currentUserId}
@@ -241,6 +268,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
                 onCardAction={onCardAction}
                 onOpenWorkflow={onOpenWorkflow}
               />
+              )}
             </div>
           ))
         )}

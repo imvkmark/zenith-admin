@@ -14,15 +14,16 @@ import {
 } from '@zenith/shared';
 import {
   ChannelDTO, ChannelMessageDTO, ChannelAdminDTO,
-  ChannelMenuDTO, ChannelAutoReplyDTO, ChannelConversationDTO, ChannelCsChannelDTO, ChannelQuickReplyDTO, ChannelCsAgentDTO,
+  ChannelMenuDTO, ChannelAutoReplyDTO, ChannelConversationDTO, ChannelCsChannelDTO, ChannelQuickReplyDTO, ChannelCsAgentDTO, ChannelDashboardDTO,
 } from '../lib/openapi-dtos';
 import {
   listMyChannels, listChannelMessages, markChannelRead,
   listChannelsAdmin, createChannel, updateChannel, deleteChannel, publishToChannel,
   subscribeChannel, unsubscribeChannel, listDiscoverableChannels,
   listChannelMessageRecords, updateDeferredMessage, deleteDeferredMessage, publishDeferredMessageNow,
-  estimateAudience,
+  estimateAudience, retractMessage,
 } from '../services/channel.service';
+import { getChannelDashboard } from '../services/channel-dashboard.service';
 import {
   getChannelMenus, saveChannelMenus,
   listChannelAutoReplies, createChannelAutoReply, updateChannelAutoReply, deleteChannelAutoReply,
@@ -437,7 +438,30 @@ const publishDraftNow = defineOpenAPIRoute({
   },
 });
 
-// ─── 客服快捷回复库 ───────────────────────────────────────────────────────────
+const retract = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/admin/messages/{id}/retract', tags: ['Channels'], summary: '撤回已发送的群发/客服消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish', audit: { description: '撤回消息', module: '消息中心' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已撤回') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await retractMessage(id);
+    return c.json(okBody(null, '已撤回'), 200);
+  },
+});
+
+const dashboard = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/dashboard', tags: ['Channels'], summary: '频道数据看板',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:dashboard' })] as const,
+    responses: { ...commonErrorResponses, ...ok(ChannelDashboardDTO, '看板数据') },
+  }),
+  handler: async (c) => c.json(okBody(await getChannelDashboard()), 200),
+});
 
 const listQuickReplies = defineOpenAPIRoute({
   route: createRoute({
@@ -564,7 +588,7 @@ channelsRoute.openapiRoutes([
   listMine, listMessages, read, adminList, create, update, remove, publish, discoverable, subscribe, unsubscribe,
   sendMessage, listMenus, saveMenus,
   listAutoReplies, createAutoReply, updateAutoReply, removeAutoReply,
-  adminMessages, updateDraft, deleteDraft, publishDraftNow, audienceEstimate,
+  adminMessages, updateDraft, deleteDraft, publishDraftNow, retract, audienceEstimate, dashboard,
   listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   csChannels, csAgents, csConversations, csMessages, csReply, csAssign, csResolve, csTags,
 ] as const);

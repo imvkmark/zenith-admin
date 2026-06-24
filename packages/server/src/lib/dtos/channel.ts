@@ -21,6 +21,8 @@ export const ChannelMessageDTO = z
     status: z.enum(['sent', 'draft', 'scheduled']),
     scheduledAt: z.string().nullable(),
     readByTarget: z.boolean().nullable().optional(),
+    isRetracted: z.boolean().optional(),
+    retractedAt: z.string().nullable().optional(),
     createdAt: z.string(),
   })
   .openapi('ChannelMessage');
@@ -87,13 +89,45 @@ export const ChannelAutoReplyDTO = z
     matchType: z.enum(['subscribe', 'keyword', 'default']),
     keyword: z.string().nullable(),
     keywordMode: z.enum(['exact', 'contains']),
+    replyType: z.enum(['text', 'card', 'image', 'news']),
     replyContent: z.string(),
+    replyExtra: z.object({
+      imageUrl: z.string().nullable().optional(),
+      title: z.string().nullable().optional(),
+      cover: z.string().nullable().optional(),
+      summary: z.string().nullable().optional(),
+      linkUrl: z.string().nullable().optional(),
+    }).nullable(),
+    hitCount: z.number().int(),
     status: z.enum(['enabled', 'disabled']),
     sort: z.number().int(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
   .openapi('ChannelAutoReply');
+
+export const ChannelDashboardDTO = z
+  .object({
+    overview: z.object({
+      businessChannelCount: z.number().int(),
+      subscriptionCount: z.number().int(),
+      messageCount: z.number().int(),
+      todayPushCount: z.number().int(),
+      openConversationCount: z.number().int(),
+      avgResponseMinutes: z.number().nullable(),
+    }),
+    trend: z.array(z.object({ date: z.string(), inbound: z.number().int(), outbound: z.number().int() })),
+    statusDist: z.object({ open: z.number().int(), processing: z.number().int(), resolved: z.number().int() }),
+    readRate: z.number(),
+    topReplies: z.array(z.object({
+      id: z.number().int(), channelName: z.string(), keyword: z.string().nullable(),
+      matchType: z.enum(['subscribe', 'keyword', 'default']), hitCount: z.number().int(),
+    })),
+    channelRank: z.array(z.object({
+      channelId: z.number().int(), channelName: z.string(), messageCount: z.number().int(), subscriberCount: z.number().int(),
+    })),
+  })
+  .openapi('ChannelDashboard');
 
 export const ChannelConversationDTO = z
   .object({

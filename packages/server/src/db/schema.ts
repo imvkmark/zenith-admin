@@ -1920,6 +1920,7 @@ export const channelMessages = pgTable('channel_messages', {
   senderUserId: integer('sender_user_id').references(() => users.id, { onDelete: 'set null' }),
   status: channelMessageStatusEnum('status').notNull().default('sent'),
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+  retractedAt: timestamp('retracted_at', { withTimezone: true }),
   targetSpec: jsonb('target_spec'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -1981,7 +1982,10 @@ export const channelAutoReplies = pgTable('channel_auto_replies', {
   matchType: channelAutoReplyMatchEnum('match_type').notNull().default('keyword'),
   keyword: varchar('keyword', { length: 100 }),
   keywordMode: channelAutoReplyKeywordModeEnum('keyword_mode').notNull().default('contains'),
+  replyType: channelMessageTypeEnum('reply_type').notNull().default('text'),
   replyContent: text('reply_content').notNull(),
+  replyExtra: jsonb('reply_extra'),
+  hitCount: integer('hit_count').notNull().default(0),
   status: statusEnum('status').notNull().default('enabled'),
   sort: integer('sort').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),

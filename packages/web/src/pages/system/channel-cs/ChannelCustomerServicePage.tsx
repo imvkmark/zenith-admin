@@ -161,6 +161,13 @@ export default function ChannelCustomerServicePage() {
 
   // 订阅 WS：用户给运营号发消息时实时刷新
   const handleWs = useCallback((wsMsg: WsMessage) => {
+    if (wsMsg.type === 'channel:message-retract') {
+      const cid = channelIdRef.current;
+      if (cid == null || wsMsg.payload.channelId !== cid) return;
+      const uid = activeUserIdRef.current;
+      if (uid != null) void fetchMessages(cid, uid);
+      return;
+    }
     if (wsMsg.type !== 'channel:cs-message') return;
     const cid = channelIdRef.current;
     if (cid == null) return;
@@ -440,6 +447,13 @@ export default function ChannelCustomerServicePage() {
                     <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
                   ) : messages.map((m) => {
                     const isOut = m.direction === 'out';
+                    if (m.isRetracted) {
+                      return (
+                        <div key={m.id} style={{ textAlign: 'center', marginBottom: 14 }}>
+                          <Text type="tertiary" size="small">该消息已撤回</Text>
+                        </div>
+                      );
+                    }
                     return (
                       <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isOut ? 'flex-end' : 'flex-start', marginBottom: 14 }}>
                         <Text type="tertiary" size="small" style={{ marginBottom: 2 }}>

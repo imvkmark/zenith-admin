@@ -1475,19 +1475,42 @@ export const saveChannelMenusSchema = z.object({
 });
 export type SaveChannelMenusInput = z.infer<typeof saveChannelMenusSchema>;
 
+/** 富内容自动回复扩展（image: imageUrl；news: title/cover/summary/linkUrl） */
+const channelRichReplyExtraSchema = z.object({
+  imageUrl: z.string().max(1000).nullable().optional(),
+  title: z.string().max(200).nullable().optional(),
+  cover: z.string().max(1000).nullable().optional(),
+  summary: z.string().max(500).nullable().optional(),
+  linkUrl: z.string().max(1000).nullable().optional(),
+});
+
 /** 新建频道自动回复规则 */
 export const createChannelAutoReplySchema = z
   .object({
     matchType: z.enum(['subscribe', 'keyword', 'default']),
     keyword: z.string().max(100).nullable().optional(),
     keywordMode: z.enum(['exact', 'contains']).default('contains'),
-    replyContent: z.string().min(1, '回复内容不能为空'),
+    replyType: z.enum(['text', 'image', 'news']).default('text'),
+    replyContent: z.string().max(10000).default(''),
+    replyExtra: channelRichReplyExtraSchema.nullable().optional(),
     status: z.enum(['enabled', 'disabled']).default('enabled'),
     sort: z.number().int().min(0).default(0),
   })
   .refine((v) => v.matchType !== 'keyword' || (v.keyword != null && v.keyword.trim().length > 0), {
     message: '关键词回复必须填写关键词',
     path: ['keyword'],
+  })
+  .refine((v) => v.replyType !== 'text' || v.replyContent.trim().length > 0, {
+    message: '文本回复内容不能为空',
+    path: ['replyContent'],
+  })
+  .refine((v) => v.replyType !== 'image' || (v.replyExtra?.imageUrl?.trim().length ?? 0) > 0, {
+    message: '图片回复必须上传图片',
+    path: ['replyExtra', 'imageUrl'],
+  })
+  .refine((v) => v.replyType !== 'news' || (v.replyExtra?.title?.trim().length ?? 0) > 0, {
+    message: '图文回复必须填写标题',
+    path: ['replyExtra', 'title'],
   });
 export type CreateChannelAutoReplyInput = z.infer<typeof createChannelAutoReplySchema>;
 
@@ -1496,7 +1519,9 @@ export const updateChannelAutoReplySchema = z
   .object({
     keyword: z.string().max(100).nullable().optional(),
     keywordMode: z.enum(['exact', 'contains']).optional(),
-    replyContent: z.string().min(1).optional(),
+    replyType: z.enum(['text', 'image', 'news']).optional(),
+    replyContent: z.string().max(10000).optional(),
+    replyExtra: channelRichReplyExtraSchema.nullable().optional(),
     status: z.enum(['enabled', 'disabled']).optional(),
     sort: z.number().int().min(0).optional(),
   });

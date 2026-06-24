@@ -1051,6 +1051,13 @@
       "when": 1782286443427,
       "tag": "0149_woozy_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1782288134921,
+      "tag": "0150_abnormal_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

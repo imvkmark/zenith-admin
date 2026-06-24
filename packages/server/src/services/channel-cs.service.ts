@@ -20,7 +20,8 @@ import {
   type ChannelMenuRow, type ChannelAutoReplyRow, type ChannelQuickReplyRow, type ChannelConversationRow, type ChannelRow,
 } from '../db/schema';
 import type {
-  ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelConversationStatus, ChannelMessage, ChannelQuickReply, ChannelCsAgent,
+  ChannelMenu, ChannelAutoReply, ChannelConversation, ChannelConversationStatus, ChannelMessage, ChannelMessageType, ChannelQuickReply, ChannelCsAgent, ChannelRichReplyExtra,
+  ChatCard, ChatMessageExtra,
   SaveChannelMenusInput, CreateChannelAutoReplyInput, UpdateChannelAutoReplyInput,
   CreateChannelQuickReplyInput, UpdateChannelQuickReplyInput,
 } from '@zenith/shared';
@@ -123,7 +124,10 @@ function mapAutoReply(row: ChannelAutoReplyRow): ChannelAutoReply {
     matchType: row.matchType,
     keyword: row.keyword,
     keywordMode: row.keywordMode,
+    replyType: row.replyType,
     replyContent: row.replyContent,
+    replyExtra: (row.replyExtra as ChannelRichReplyExtra | null) ?? null,
+    hitCount: row.hitCount,
     status: row.status,
     sort: row.sort,
     createdAt: formatDateTime(row.createdAt),
@@ -147,7 +151,9 @@ export async function createChannelAutoReply(channelId: number, input: CreateCha
     matchType: input.matchType,
     keyword: input.matchType === 'keyword' ? (input.keyword ?? null) : null,
     keywordMode: input.keywordMode,
+    replyType: input.replyType,
     replyContent: input.replyContent,
+    replyExtra: input.replyExtra ?? null,
     status: input.status,
     sort: input.sort,
   }).returning();
@@ -160,7 +166,9 @@ export async function updateChannelAutoReply(id: number, input: UpdateChannelAut
   const [row] = await db.update(channelAutoReplies).set({
     ...(input.keyword === undefined ? {} : { keyword: existing.matchType === 'keyword' ? input.keyword : null }),
     ...(input.keywordMode === undefined ? {} : { keywordMode: input.keywordMode }),
+    ...(input.replyType === undefined ? {} : { replyType: input.replyType }),
     ...(input.replyContent === undefined ? {} : { replyContent: input.replyContent }),
+    ...(input.replyExtra === undefined ? {} : { replyExtra: input.replyExtra }),
     ...(input.status === undefined ? {} : { status: input.status }),
     ...(input.sort === undefined ? {} : { sort: input.sort }),
   }).where(eq(channelAutoReplies.id, id)).returning();
@@ -176,6 +184,7 @@ export async function deleteChannelAutoReply(id: number): Promise<void> {
 /**
  * 匹配自动回复规则。
  * 优先级：subscribe（仅关注事件）→ keyword(exact 优先于 contains，按 sort)→ default。
+ * 命中后异步累加 hitCount（H 统计）。
  */
 async function matchAutoReply(
   channelId: number,
@@ -186,6 +195,17 @@ async function matchAutoReply(
     where: and(eq(channelAutoReplies.channelId, channelId), eq(channelAutoReplies.status, 'enabled')),
     orderBy: [asc(channelAutoReplies.sort), asc(channelAutoReplies.id)],
   });
+  const hit = pickAutoReply(rows, text, event);
+  if (hit) {
+    await db.update(channelAutoReplies)
+      .set({ hitCount: sql`${channelAutoReplies.hitCount} + 1` })
+      .where(eq(channelAutoReplies.id, hit.id));
+  }
+  return hit;
+}
+
+/** 纯匹配逻辑（不含副作用），便于单测与复用。 */
+function pickAutoReply(rows: ChannelAutoReplyRow[], text: string, event: 'subscribe' | 'message'): ChannelAutoReplyRow | null {
   if (event === 'subscribe') {
     return rows.find((r) => r.matchType === 'subscribe') ?? null;
   }
@@ -202,6 +222,26 @@ async function matchAutoReply(
   return rows.find((r) => r.matchType === 'default') ?? null;
 }
 
+/** 由自动回复规则构造发送参数（支持 text/image/news 富内容）。 */
+function buildAutoReplyArgs(rule: ChannelAutoReplyRow): { content: string; type: ChannelMessageType; extra: ChatMessageExtra | null } {
+  const ex = (rule.replyExtra as ChannelRichReplyExtra | null) ?? null;
+  if (rule.replyType === 'image') {
+    return { content: (ex?.imageUrl ?? '').trim(), type: 'image', extra: null };
+  }
+  if (rule.replyType === 'news') {
+    const card: ChatCard = {
+      title: (ex?.title ?? '').trim() || '图文消息',
+      text: ex?.summary ?? null,
+      cover: ex?.cover ?? null,
+      actions: ex?.linkUrl ? [{ key: 'open', label: '查看详情', action: 'link', url: ex.linkUrl }] : null,
+      source: '图文',
+      status: null,
+    };
+    return { content: rule.replyContent || ex?.summary || '', type: 'news', extra: { card } };
+  }
+  return { content: rule.replyContent, type: 'text', extra: null };
+}
+
 // ─── 双向消息 ──────────────────────────────────────────────────────────────────
 
 /** 写入一条 out（频道→用户）消息，定向到指定用户并实时推送。 */
@@ -211,14 +251,15 @@ async function deliverOut(
   content: string,
   senderUserId: number | null,
   senderUserName: string | null,
+  opts: { type?: ChannelMessageType; extra?: ChatMessageExtra | null } = {},
 ): Promise<ChannelMessage> {
   const [row] = await db.insert(channelMessages).values({
     channelId,
     audienceType: 'targeted',
-    type: 'text',
+    type: opts.type ?? 'text',
     title: null,
     content,
-    extra: null,
+    extra: opts.extra ?? null,
     publishedById: senderUserId,
     direction: 'out',
     senderUserId,
@@ -257,7 +298,8 @@ export async function sendUserMessage(
   const matched = await matchAutoReply(channelId, content, 'message');
   let autoReply: ChannelMessage | null = null;
   if (matched) {
-    autoReply = await deliverOut(channelId, me.userId, matched.replyContent, null, null);
+    const args = buildAutoReplyArgs(matched);
+    autoReply = await deliverOut(channelId, me.userId, args.content, null, null, { type: args.type, extra: args.extra });
   }
   // 会话治理：用户来信 → upsert 会话；若已解决则重新激活为待处理
   await activateConversationOnUserMessage(channelId, me.userId);
@@ -301,7 +343,8 @@ export async function handleSubscribeAutoReply(channelId: number): Promise<void>
   if (!ch || ch.type !== 'business') return;
   const matched = await matchAutoReply(channelId, '', 'subscribe');
   if (!matched) return;
-  await deliverOut(channelId, currentUser().userId, matched.replyContent, null, null);
+  const args = buildAutoReplyArgs(matched);
+  await deliverOut(channelId, currentUser().userId, args.content, null, null, { type: args.type, extra: args.extra });
 }
 
 // ─── 客服工作台 ────────────────────────────────────────────────────────────────

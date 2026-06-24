@@ -1241,6 +1241,7 @@ export type WsMessage =
   | { type: 'chat:vote-update'; payload: { conversationId: number; messageId: number; voteData: ChatVoteData } }
   | { type: 'chat:presence'; payload: { userId: number; online: boolean; lastSeen: string | null } }
   | { type: 'channel:message'; payload: ChannelMessage }
+  | { type: 'channel:message-retract'; payload: { channelId: number; messageId: number } }
   | { type: 'channel:cs-message'; payload: { channelId: number } }
   | { type: 'rtc:invite'; payload: RtcInvitePayload }
   | { type: 'rtc:accept'; payload: { callId: string; to: number; from: RtcPeerInfo } }
@@ -2942,6 +2943,9 @@ export interface ChannelMessage {
   scheduledAt: string | null;
   /** 客服会话视角：该 out 定向消息是否已被目标用户读取（null=非定向/不适用） */
   readByTarget?: boolean | null;
+  /** 是否已撤回（F：撤回后内容置空，前端显示占位） */
+  isRetracted?: boolean;
+  retractedAt?: string | null;
   createdAt: string;
 }
 
@@ -2958,6 +2962,17 @@ export interface ChannelMenu {
   children?: ChannelMenu[];
 }
 
+/** 富内容自动回复的扩展数据（replyType=image/news 时使用） */
+export interface ChannelRichReplyExtra {
+  /** 图片消息：图片 URL */
+  imageUrl?: string | null;
+  /** 图文消息：标题 / 封面 / 摘要 / 跳转链接 */
+  title?: string | null;
+  cover?: string | null;
+  summary?: string | null;
+  linkUrl?: string | null;
+}
+
 /** 频道自动回复规则 */
 export interface ChannelAutoReply {
   id: number;
@@ -2966,7 +2981,13 @@ export interface ChannelAutoReply {
   /** 关键词（matchType=keyword 时必填） */
   keyword: string | null;
   keywordMode: ChannelAutoReplyKeywordMode;
+  /** 回复内容类型（text/image/news；H 富内容） */
+  replyType: ChannelMessageType;
   replyContent: string;
+  /** 富内容扩展（image/news 时） */
+  replyExtra: ChannelRichReplyExtra | null;
+  /** 命中次数（H 统计） */
+  hitCount: number;
   status: EntityStatus;
   sort: number;
   createdAt: string;
@@ -3017,6 +3038,66 @@ export interface ChannelCsAgent {
   id: number;
   name: string;
   avatar: string | null;
+}
+
+/** 频道数据看板（I） */
+export interface ChannelDashboardOverview {
+  /** 运营号数量 */
+  businessChannelCount: number;
+  /** 订阅总数（运营号订阅关系） */
+  subscriptionCount: number;
+  /** 消息总数（已发送 out） */
+  messageCount: number;
+  /** 今日推送数 */
+  todayPushCount: number;
+  /** 待处理会话数 */
+  openConversationCount: number;
+  /** 平均首次响应时长（分钟，用户首条 in → 首条人工 out） */
+  avgResponseMinutes: number | null;
+}
+
+/** 近 N 天消息量趋势点 */
+export interface ChannelDashboardTrendPoint {
+  date: string;
+  /** 用户来信数 */
+  inbound: number;
+  /** 频道发出数（群发+客服回复） */
+  outbound: number;
+}
+
+/** 会话状态分布 */
+export interface ChannelDashboardStatusDist {
+  open: number;
+  processing: number;
+  resolved: number;
+}
+
+/** 热门自动回复（按命中次数） */
+export interface ChannelDashboardTopReply {
+  id: number;
+  channelName: string;
+  keyword: string | null;
+  matchType: ChannelAutoReplyMatchType;
+  hitCount: number;
+}
+
+/** 运营号消息排行 */
+export interface ChannelDashboardChannelRank {
+  channelId: number;
+  channelName: string;
+  messageCount: number;
+  subscriberCount: number;
+}
+
+/** 频道数据看板聚合结果 */
+export interface ChannelDashboard {
+  overview: ChannelDashboardOverview;
+  trend: ChannelDashboardTrendPoint[];
+  statusDist: ChannelDashboardStatusDist;
+  /** 群发定向消息已读率（0-100） */
+  readRate: number;
+  topReplies: ChannelDashboardTopReply[];
+  channelRank: ChannelDashboardChannelRank[];
 }
 
 /** 公众号 / 系统号（在聊天会话列表中以只读频道形式呈现） */

@@ -21,7 +21,7 @@ import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { currentUser } from '../lib/context';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
-import { scheduleSendToUsers } from '../lib/ws-manager';
+import { broadcast, scheduleSendToUsers } from '../lib/ws-manager';
 import { escapeLike } from '../lib/where-helpers';
 import logger from '../lib/logger';
 
@@ -34,14 +34,15 @@ interface PublishInput {
 }
 
 export function mapChannelMessage(row: ChannelMessageRow, isRead: boolean, senderUserName: string | null = null): ChannelMessage {
+  const retracted = row.retractedAt != null;
   return {
     id: row.id,
     channelId: row.channelId,
     audienceType: row.audienceType,
     type: row.type,
-    title: row.title,
-    content: row.content,
-    extra: (row.extra as ChatMessageExtra | null) ?? null,
+    title: retracted ? null : row.title,
+    content: retracted ? '' : row.content,
+    extra: retracted ? null : ((row.extra as ChatMessageExtra | null) ?? null),
     publishedById: row.publishedById,
     direction: row.direction,
     senderUserId: row.senderUserId,
@@ -49,6 +50,8 @@ export function mapChannelMessage(row: ChannelMessageRow, isRead: boolean, sende
     isRead,
     status: row.status,
     scheduledAt: formatNullableDateTime(row.scheduledAt),
+    isRetracted: retracted,
+    retractedAt: formatNullableDateTime(row.retractedAt),
     createdAt: formatDateTime(row.createdAt),
   };
 }
@@ -140,13 +143,14 @@ async function buildChannelView(ch: ChannelRow, userId: number, isSubscribed: bo
   const lastReadAt = sub?.lastReadAt ?? null;
 
   const targetedMsgIds = db.select({ id: channelMessages.id }).from(channelMessages)
-    .where(and(eq(channelMessages.channelId, ch.id), eq(channelMessages.audienceType, 'targeted'), eq(channelMessages.status, 'sent')));
+    .where(and(eq(channelMessages.channelId, ch.id), eq(channelMessages.audienceType, 'targeted'), eq(channelMessages.status, 'sent'), isNull(channelMessages.retractedAt)));
 
   const [broadcastUnread, targetedUnread, lastRows] = await Promise.all([
     db.$count(channelMessages, and(
       eq(channelMessages.channelId, ch.id),
       eq(channelMessages.audienceType, 'broadcast'),
       eq(channelMessages.status, 'sent'),
+      isNull(channelMessages.retractedAt),
       lastReadAt ? gt(channelMessages.createdAt, lastReadAt) : undefined,
     )),
     db.$count(channelMessageTargets, and(
@@ -558,6 +562,25 @@ export async function publishDeferredMessageNow(messageId: number): Promise<Chan
   await deliverDeferredRow(row);
   const sent = await db.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) });
   return mapChannelMessage(sent!, true);
+}
+
+/** 撤回一条已发送的群发/客服消息（F）：标记 retractedAt + WS 通知客户端移除 */
+export async function retractMessage(messageId: number): Promise<void> {
+  const row = await db.query.channelMessages.findFirst({ where: eq(channelMessages.id, messageId) });
+  if (!row) throw new HTTPException(404, { message: '消息不存在' });
+  if (row.status !== 'sent') throw new HTTPException(400, { message: '仅已发送的消息可撤回' });
+  if (row.direction !== 'out') throw new HTTPException(400, { message: '仅频道发出的消息可撤回' });
+  if (row.retractedAt != null) return;
+  await db.update(channelMessages).set({ retractedAt: new Date() }).where(eq(channelMessages.id, messageId));
+  // 实时通知：广播全员 / 定向通知目标用户移除该消息
+  const payload = { channelId: row.channelId, messageId };
+  if (row.audienceType === 'broadcast') {
+    broadcast({ type: 'channel:message-retract', payload });
+  } else {
+    const tg = await db.select({ userId: channelMessageTargets.userId })
+      .from(channelMessageTargets).where(eq(channelMessageTargets.messageId, messageId));
+    scheduleSendToUsers(tg, { type: 'channel:message-retract', payload });
+  }
 }
 
 // ─── 订阅（运营号） ───────────────────────────────────────────────────────────

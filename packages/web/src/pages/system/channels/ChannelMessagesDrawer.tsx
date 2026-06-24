@@ -95,6 +95,11 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
     if (res.code === 0) { Toast.success('已发送'); void fetchList(page, tab); }
   };
 
+  const handleRetract = async (m: ChannelMessage) => {
+    const res = await request.post(`/api/channels/admin/messages/${m.id}/retract`);
+    if (res.code === 0) { Toast.success('已撤回'); void fetchList(page, tab); }
+  };
+
   const columns: ColumnProps<ChannelMessage>[] = [
     {
       title: '类型', dataIndex: 'type', width: 70,
@@ -112,8 +117,10 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
     },
     {
       title: '状态', dataIndex: 'status', width: 90,
-      render: (v: ChannelMessageStatus) => (
-        <Tag size="small" color={STATUS_COLOR[v] ?? 'grey'}>{CHANNEL_MESSAGE_STATUS_LABELS[v] ?? v}</Tag>
+      render: (v: ChannelMessageStatus, r: ChannelMessage) => (
+        r.isRetracted
+          ? <Tag size="small" color="grey">已撤回</Tag>
+          : <Tag size="small" color={STATUS_COLOR[v] ?? 'grey'}>{CHANNEL_MESSAGE_STATUS_LABELS[v] ?? v}</Tag>
       ),
     },
     {
@@ -128,8 +135,18 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
     {
       title: '操作', dataIndex: 'op', width: 160, fixed: 'right',
       render: (_: unknown, r: ChannelMessage) => {
-        if (r.status === 'sent' || !canManage) {
+        if (!canManage) {
           return <Typography.Text type="tertiary">—</Typography.Text>;
+        }
+        if (r.status === 'sent') {
+          if (r.isRetracted) {
+            return <Typography.Text type="tertiary">—</Typography.Text>;
+          }
+          return (
+            <Popconfirm title="确定撤回？撤回后用户将看不到此消息" onConfirm={() => void handleRetract(r)}>
+              <Button theme="borderless" type="danger" size="small">撤回</Button>
+            </Popconfirm>
+          );
         }
         return (
           <Space>

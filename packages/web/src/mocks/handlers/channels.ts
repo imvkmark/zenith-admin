@@ -180,6 +180,17 @@ export const channelsHandlers = [
     return HttpResponse.json({ code: 0, message: '已发送', data: msg });
   }),
 
+  // 撤回已发送消息（F）
+  http.post('/api/channels/admin/messages/:id/retract', ({ params }) => {
+    const id = Number(params.id);
+    const msg = mockChannelMessages.find((m) => m.id === id);
+    if (!msg) return HttpResponse.json({ code: 404, message: '消息不存在', data: null }, { status: 404 });
+    if (msg.status !== 'sent') return HttpResponse.json({ code: 400, message: '仅已发送的消息可撤回', data: null }, { status: 400 });
+    msg.isRetracted = true;
+    msg.retractedAt = mockDateTime();
+    return HttpResponse.json({ code: 0, message: '已撤回', data: null });
+  }),
+
   // 消息记录列表（某频道全部 out 消息，可按状态过滤）
   http.get('/api/channels/admin/:id/messages', ({ params, request }) => {
     const channelId = Number(params.id);
@@ -249,9 +260,16 @@ export const channelsHandlers = [
     const matched = matchAutoReply(channelId, body.content, 'message');
     let autoReply: ChannelMessage | null = null;
     if (matched) {
+      matched.hitCount += 1;
+      const isImage = matched.replyType === 'image';
+      const isNews = matched.replyType === 'news';
+      const ex = matched.replyExtra;
       const out: MockChannelMessage = {
-        id: getNextChannelMessageId(), channelId, audienceType: 'targeted', type: 'text', title: null,
-        content: matched.replyContent, extra: null, publishedById: null, direction: 'out',
+        id: getNextChannelMessageId(), channelId, audienceType: 'targeted',
+        type: matched.replyType === 'card' ? 'text' : matched.replyType, title: null,
+        content: isImage ? (ex?.imageUrl ?? '') : (matched.replyContent || ex?.summary || ''),
+        extra: isNews ? { card: { title: ex?.title ?? '图文消息', text: ex?.summary ?? null, cover: ex?.cover ?? null, actions: ex?.linkUrl ? [{ key: 'open', label: '查看详情', action: 'link', url: ex.linkUrl }] : null, source: '图文', status: null } } : null,
+        publishedById: null, direction: 'out',
         senderUserId: null, senderUserName: null, isRead: true,
         createdAt: mockDateTime(), status: 'sent', scheduledAt: null, convUserId: MOCK_CURRENT_USER_ID,
       };
@@ -292,13 +310,16 @@ export const channelsHandlers = [
 
   http.post('/api/channels/:id/auto-replies', async ({ params, request }) => {
     const channelId = Number(params.id);
-    const body = await request.json() as Partial<ChannelAutoReply> & { matchType: ChannelAutoReply['matchType']; replyContent: string };
+    const body = await request.json() as Partial<ChannelAutoReply> & { matchType: ChannelAutoReply['matchType']; replyContent?: string };
     const rule: ChannelAutoReply = {
       id: getNextAutoReplyId(), channelId,
       matchType: body.matchType,
       keyword: body.matchType === 'keyword' ? (body.keyword ?? null) : null,
       keywordMode: body.keywordMode ?? 'contains',
-      replyContent: body.replyContent,
+      replyType: body.replyType ?? 'text',
+      replyContent: body.replyContent ?? '',
+      replyExtra: body.replyExtra ?? null,
+      hitCount: 0,
       status: body.status ?? 'enabled',
       sort: body.sort ?? 0,
       createdAt: mockDateTime(), updatedAt: mockDateTime(),
@@ -314,7 +335,9 @@ export const channelsHandlers = [
     if (!rule) return HttpResponse.json({ code: 404, message: '自动回复规则不存在', data: null }, { status: 404 });
     if (body.keyword !== undefined) rule.keyword = rule.matchType === 'keyword' ? body.keyword : null;
     if (body.keywordMode !== undefined) rule.keywordMode = body.keywordMode;
+    if (body.replyType !== undefined) rule.replyType = body.replyType;
     if (body.replyContent !== undefined) rule.replyContent = body.replyContent;
+    if (body.replyExtra !== undefined) rule.replyExtra = body.replyExtra;
     if (body.status !== undefined) rule.status = body.status;
     if (body.sort !== undefined) rule.sort = body.sort;
     rule.updatedAt = mockDateTime();
@@ -516,6 +539,36 @@ export const channelsHandlers = [
     else if (a.mode === 'departments') count = (a.departmentIds?.length ?? 0) * 12;
     else if (a.mode === 'roles') count = (a.roleIds?.length ?? 0) * 25;
     return HttpResponse.json({ code: 0, message: 'ok', data: { count } });
+  }),
+
+  // 频道数据看板（I）
+  http.get('/api/channels/dashboard', () => {
+    const outs = mockChannelMessages.filter((m) => m.direction === 'out' && m.status === 'sent' && !m.isRetracted);
+    const ins = mockChannelMessages.filter((m) => m.direction === 'in');
+    const trend = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (6 - i));
+      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { date, inbound: Math.max(0, Math.round(ins.length / 7) + ((i * 3) % 5)), outbound: Math.max(0, Math.round(outs.length / 7) + ((i * 2) % 4)) };
+    });
+    const topReplies = [...mockChannelAutoReplies].sort((a, b) => b.hitCount - a.hitCount).slice(0, 5)
+      .map((r) => ({ id: r.id, channelName: mockChannels.find((c) => c.id === r.channelId)?.name ?? '', keyword: r.keyword, matchType: r.matchType, hitCount: r.hitCount }));
+    const bizChannels = mockChannels.filter((c) => c.type === 'business');
+    const channelRank = bizChannels.map((c) => ({
+      channelId: c.id, channelName: c.name,
+      messageCount: mockChannelMessages.filter((m) => m.channelId === c.id && m.direction === 'out' && !m.isRetracted).length,
+      subscriberCount: c.id === 3 ? 3 : 0,
+    })).sort((a, b) => b.messageCount - a.messageCount).slice(0, 5);
+    return HttpResponse.json({
+      code: 0, message: 'ok',
+      data: {
+        overview: { businessChannelCount: bizChannels.length, subscriptionCount: 5, messageCount: outs.length, todayPushCount: 3, openConversationCount: 2, avgResponseMinutes: 8 },
+        trend,
+        statusDist: { open: 2, processing: 1, resolved: 4 },
+        readRate: 76,
+        topReplies,
+        channelRank,
+      },
+    });
   }),
 
   // ── 订阅（运营号） ────────────────────────────────────────

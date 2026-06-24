@@ -159,10 +159,10 @@ export const mockChannelMenus: ChannelMenu[] = [
 
 /** 运营号自动回复规则（channel 3） */
 export const mockChannelAutoReplies: ChannelAutoReply[] = [
-  { id: 1, channelId: 3, matchType: 'subscribe', keyword: null, keywordMode: 'contains', replyContent: '欢迎关注智能客服！发送「价格」「人工」试试。', status: 'enabled', sort: 0, createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { id: 2, channelId: 3, matchType: 'keyword', keyword: '价格', keywordMode: 'contains', replyContent: '我们提供免费版与企业版，详情见官网定价页。', status: 'enabled', sort: 1, createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { id: 3, channelId: 3, matchType: 'keyword', keyword: '人工', keywordMode: 'exact', replyContent: '正在为您转接人工客服，请稍候…', status: 'enabled', sort: 2, createdAt: mockDateTime(), updatedAt: mockDateTime() },
-  { id: 4, channelId: 3, matchType: 'default', keyword: null, keywordMode: 'contains', replyContent: '已收到您的消息，客服会尽快回复。', status: 'enabled', sort: 3, createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 1, channelId: 3, matchType: 'subscribe', keyword: null, keywordMode: 'contains', replyType: 'text', replyContent: '欢迎关注智能客服！发送「价格」「人工」试试。', replyExtra: null, hitCount: 12, status: 'enabled', sort: 0, createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 2, channelId: 3, matchType: 'keyword', keyword: '价格', keywordMode: 'contains', replyType: 'text', replyContent: '我们提供免费版与企业版，详情见官网定价页。', replyExtra: null, hitCount: 34, status: 'enabled', sort: 1, createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 3, channelId: 3, matchType: 'keyword', keyword: '人工', keywordMode: 'exact', replyType: 'text', replyContent: '正在为您转接人工客服，请稍候…', replyExtra: null, hitCount: 21, status: 'enabled', sort: 2, createdAt: mockDateTime(), updatedAt: mockDateTime() },
+  { id: 4, channelId: 3, matchType: 'default', keyword: null, keywordMode: 'contains', replyType: 'text', replyContent: '已收到您的消息，客服会尽快回复。', replyExtra: null, hitCount: 8, status: 'enabled', sort: 3, createdAt: mockDateTime(), updatedAt: mockDateTime() },
 ];
 
 let nextAutoReplyId = 100;
