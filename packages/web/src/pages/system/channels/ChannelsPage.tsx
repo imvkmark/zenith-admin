@@ -115,7 +115,7 @@ export default function ChannelsPage() {
     { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
     { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
     {
-      title: '操作', dataIndex: 'op', width: 250, fixed: 'right',
+      title: '操作', dataIndex: 'op', width: 290, fixed: 'right',
       render: (_: unknown, r: ChannelAdmin) => {
         const moreItems: ReactNode[] = [];
         if (r.type === 'business' && hasPermission('channel:menu:save')) {

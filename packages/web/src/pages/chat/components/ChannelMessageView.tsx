@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Dropdown, Empty, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, ChevronUp, ExternalLink, Send } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, ChevronUp, ExternalLink, Send } from 'lucide-react';
 import type { Channel, ChannelMenu, ChannelMessage, ChatMessage, ChatCardAction, WsMessage } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -227,7 +227,14 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
         <Button icon={<ArrowLeft size={16} />} theme="borderless" type="tertiary" onClick={onBack} />
-        <UserAvatar name={channel.name} avatar={channel.avatar} size={32} />
+        <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+          <UserAvatar name={channel.name} avatar={channel.avatar} size={32} />
+          <BadgeCheck
+            size={13}
+            style={{ position: 'absolute', right: -2, bottom: -2, color: '#fff', fill: 'var(--semi-color-primary)' }}
+            aria-label="官方频道"
+          />
+        </span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <Text strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{channel.name}</Text>
           {channel.description && (
