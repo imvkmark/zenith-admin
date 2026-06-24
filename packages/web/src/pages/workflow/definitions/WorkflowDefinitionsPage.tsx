@@ -2,7 +2,7 @@ import { type ChangeEvent, useCallback, useEffect, useRef, useState } from 'reac
 import { Button, Dropdown, Input, Modal, Select, Space, Tag,
   Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Ban, CircleCheck, GitCompare, LayoutTemplate, MoreHorizontal, Plus, RotateCcw, Save, Search, Trash2, Upload } from 'lucide-react';
+import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, MoreHorizontal, Plus, RotateCcw, Save, Search, Trash2, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, PaginatedResponse, WorkflowFormType } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPE_LABELS } from '@zenith/shared';
@@ -101,6 +101,9 @@ export default function WorkflowDefinitionsPage() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffData, setDiffData] = useState<WorkflowVersionDiffData | null>(null);
   const { categories, refetch: refetchCategories } = useWorkflowCategories();
+  // 窄屏（单栏）响应式：默认展示列表，点「分类」按钮切到分类侧栏，选中后自动返回
+  const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
+  const [showCategorySidebar, setShowCategorySidebar] = useState(false);
 
   const fetchList = useCallback(async (p = page, ps = pageSize, params?: SearchParams) => {
     const { keyword: kw, status: st, selectedCategoryId: cid } = params ?? searchParamsRef.current;
@@ -131,6 +134,7 @@ export default function WorkflowDefinitionsPage() {
     setSelectedRowKeys([]);
     setSearchParams((prev) => ({ ...prev, selectedCategoryId: id }));
     setPage(1);
+    setShowCategorySidebar(false);
     void fetchList(1, pageSize, { ...searchParamsRef.current, selectedCategoryId: id });
   };
 
@@ -510,6 +514,8 @@ export default function WorkflowDefinitionsPage() {
       minSize={180}
       maxSize={360}
       persistKey="workflow-definitions"
+      showDetail={!showCategorySidebar}
+      onResponsiveChange={setIsLayoutNarrow}
       master={
         <CategorySidebar
           categories={categories}
@@ -522,6 +528,12 @@ export default function WorkflowDefinitionsPage() {
       detail={
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <SearchToolbar>
+            <Button
+              theme="borderless"
+              icon={<Layers size={14} />}
+              onClick={() => setShowCategorySidebar(true)}
+              style={{ display: isLayoutNarrow ? undefined : 'none' }}
+            >分类</Button>
             <input
               ref={importInputRef}
               type="file"
