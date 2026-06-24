@@ -57,6 +57,7 @@ export const mpAccountsHandlers = [
       qrCodeUrl: body.qrCodeUrl ?? null,
       isDefault: body.isDefault ?? false,
       autoCreateMember: body.autoCreateMember ?? false,
+      contentCheckEnabled: body.contentCheckEnabled ?? false,
       status: body.status ?? 'enabled',
       remark: body.remark ?? null,
       createdAt: now,
