@@ -578,7 +578,7 @@ export default function WorkflowDesignerPage() {
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="fd-designer-root" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 顶部工具栏 */}
       <div className="fd-toolbar">
         <Button
