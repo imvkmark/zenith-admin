@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Avatar, Button, Form, Input, Select, Space, Spin, Tag, Toast, Banner, Popconfirm } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { RotateCcw, Search, RefreshCw } from 'lucide-react';
+import { RotateCcw, Search, RefreshCw, Ban } from 'lucide-react';
 import type { PaginatedResponse, MpFan, MpTag, MpFanSubscribe } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
@@ -31,8 +31,8 @@ export default function MpFansPage() {
   const [tags, setTags] = useState<MpTag[]>([]);
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
 
-  interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; }
-  const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined };
+  interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; blacklisted: 'true' | 'false' | undefined; }
+  const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined, blacklisted: undefined };
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearch);
   const searchRef = useRef<SearchParams>(defaultSearch);
   searchRef.current = searchParams;
@@ -53,13 +53,14 @@ export default function MpFansPage() {
     async (p = page, ps = pageSize, params?: SearchParams) => {
       if (!currentId) { setList([]); setTotal(0); return; }
       const reqId = currentId;
-      const { keyword, subscribe, tagId } = params ?? searchRef.current;
+      const { keyword, subscribe, tagId, blacklisted } = params ?? searchRef.current;
       setLoading(true);
       try {
         const query = new URLSearchParams({ page: String(p), pageSize: String(ps), accountId: String(currentId) });
         if (keyword) query.set('keyword', keyword);
         if (subscribe) query.set('subscribe', subscribe);
         if (tagId) query.set('tagId', String(tagId));
+        if (blacklisted) query.set('blacklisted', blacklisted);
         const res = await request.get<PaginatedResponse<MpFan>>(`/api/mp/fans?${query}`);
         if (currentIdRef.current !== reqId) return; // 账号已切换，丢弃过期响应
         setList(res.data?.list ?? []);
@@ -92,6 +93,23 @@ export default function MpFansPage() {
         Toast.success(`同步完成：共处理 ${res.data?.synced ?? 0} 个粉丝`);
         void fetchList();
       }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleBlacklist = async (record: MpFan) => {
+    if (!currentId) return;
+    const res = await request.post(`/api/mp/fans/${record.blacklisted ? 'unblacklist' : 'blacklist'}`, { accountId: currentId, openids: [record.openid] });
+    if (res.code === 0) { Toast.success(record.blacklisted ? '已移出黑名单' : '已拉黑'); void fetchList(); }
+  };
+
+  const handleSyncBlacklist = async () => {
+    if (!currentId) return;
+    setSyncing(true);
+    try {
+      const res = await request.post<{ synced: number }>('/api/mp/fans/sync-blacklist', { accountId: currentId });
+      if (res.code === 0) { Toast.success(`黑名单同步完成：共 ${res.data?.synced ?? 0} 个`); void fetchList(); }
     } finally {
       setSyncing(false);
     }
@@ -156,14 +174,15 @@ export default function MpFansPage() {
     },
     {
       title: '关注状态', dataIndex: 'subscribe', width: 100, align: 'center' as const, fixed: 'right' as const,
-      render: (v: MpFanSubscribe) => (
-        v === 'subscribed'
-          ? <Tag color="green" type="light">已关注</Tag>
-          : <Tag color="grey" type="light">已取关</Tag>
+      render: (v: MpFanSubscribe, r: MpFan) => (
+        <Space spacing={2}>
+          {v === 'subscribed' ? <Tag color="green" type="light">已关注</Tag> : <Tag color="grey" type="light">已取关</Tag>}
+          {r.blacklisted && <Tag color="red" type="light">黑名单</Tag>}
+        </Space>
       ),
     },
     {
-      title: '操作', key: 'actions', width: 180, fixed: 'right' as const,
+      title: '操作', key: 'actions', width: 240, fixed: 'right' as const,
       render: (_: unknown, record: MpFan) => (
         <Space>
           {can('mp:fan:update') && <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>}
@@ -174,6 +193,11 @@ export default function MpFansPage() {
               </Popconfirm>
             )
             : <Button theme="borderless" size="small" onClick={() => void handleCreateMember(record)}>创建会员</Button>)}
+          {can('mp:fan:blacklist') && (
+            <Popconfirm title={record.blacklisted ? '移出黑名单？' : '确定拉黑该粉丝？'} onConfirm={() => void handleBlacklist(record)}>
+              <Button theme="borderless" size="small" type={record.blacklisted ? 'tertiary' : 'danger'}>{record.blacklisted ? '移出黑名单' : '拉黑'}</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -189,10 +213,15 @@ export default function MpFansPage() {
           optionList={SUBSCRIBE_OPTIONS} showClear style={{ width: 120 }} />
         <Select placeholder="标签" value={searchParams.tagId} onChange={(v) => setSearchParams({ ...searchParams, tagId: v as number | undefined })}
           optionList={tags.map((t) => ({ label: t.name, value: t.id }))} showClear filter style={{ width: 150 }} />
+        <Select placeholder="黑名单" value={searchParams.blacklisted} onChange={(v) => setSearchParams({ ...searchParams, blacklisted: v as 'true' | 'false' | undefined })}
+          optionList={[{ label: '黑名单', value: 'true' }, { label: '正常', value: 'false' }]} showClear style={{ width: 110 }} />
         <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
         <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
         {can('mp:fan:sync') && (
           <Button icon={<RefreshCw size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSync()}>同步粉丝</Button>
+        )}
+        {can('mp:fan:blacklist') && (
+          <Button icon={<Ban size={14} />} loading={syncing} disabled={!currentId} onClick={() => void handleSyncBlacklist()}>同步黑名单</Button>
         )}
       </SearchToolbar>
 

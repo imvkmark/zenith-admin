@@ -332,6 +332,9 @@ export default function MpAccountsPage() {
               <Col span={12}>
                 <Form.Switch field="autoCreateMember" label="关注即注册会员" extraText="开启后，粉丝关注时自动创建并绑定会员" />
               </Col>
+              <Col span={12}>
+                <Form.Switch field="contentCheckEnabled" label="内容安全校验" extraText="开启后，群发/客服消息发送前自动做敏感词校验" />
+              </Col>
             </Row>
             <Row gutter={16}>
               <Col span={24}>
