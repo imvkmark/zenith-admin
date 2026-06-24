@@ -115,12 +115,9 @@ export default function ChannelsPage() {
     { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
     { title: '创建时间', dataIndex: 'createdAt', width: 180, render: (v: string) => formatDateTime(v) },
     {
-      title: '操作', dataIndex: 'op', width: 180, fixed: 'right',
+      title: '操作', dataIndex: 'op', width: 250, fixed: 'right',
       render: (_: unknown, r: ChannelAdmin) => {
         const moreItems: ReactNode[] = [];
-        if (hasPermission('channel:message:publish')) {
-          moreItems.push(<Dropdown.Item key="records" onClick={() => setMessagesDrawer(r)}>消息记录</Dropdown.Item>);
-        }
         if (r.type === 'business' && hasPermission('channel:menu:save')) {
           moreItems.push(<Dropdown.Item key="menu" onClick={() => setMenuDrawer(r)}>菜单配置</Dropdown.Item>);
         }
@@ -133,6 +130,7 @@ export default function ChannelsPage() {
         return (
           <Space>
             {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => openPublish(r)}>群发</Button>}
+            {hasPermission('channel:message:publish') && <Button theme="borderless" size="small" onClick={() => setMessagesDrawer(r)}>消息记录</Button>}
             {hasPermission('channel:channel:update') && <Button theme="borderless" size="small" onClick={() => openEdit(r)}>编辑</Button>}
             {moreItems.length > 0 && (
               <Dropdown trigger="click" clickToHide position="bottomRight" render={<Dropdown.Menu>{moreItems}</Dropdown.Menu>}>
