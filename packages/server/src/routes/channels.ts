@@ -1,11 +1,16 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
+import { guard } from '../middleware/guard';
 import {
   jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg,
   IdParam, PaginationQuery, okBody,
 } from '../lib/openapi-schemas';
-import { ChannelDTO, ChannelMessageDTO } from '../lib/openapi-dtos';
-import { listMyChannels, listChannelMessages, markChannelRead } from '../services/channel.service';
+import { createChannelSchema, updateChannelSchema, publishChannelSchema } from '@zenith/shared';
+import { ChannelDTO, ChannelMessageDTO, ChannelAdminDTO } from '../lib/openapi-dtos';
+import {
+  listMyChannels, listChannelMessages, markChannelRead,
+  listChannelsAdmin, createChannel, updateChannel, deleteChannel, publishToChannel,
+} from '../services/channel.service';
 
 const channelsRoute = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -49,6 +54,76 @@ const read = defineOpenAPIRoute({
   },
 });
 
-channelsRoute.openapiRoutes([listMine, listMessages, read] as const);
+// ─── 管理后台 ────────────────────────────────────────────────────────────────
+
+const adminList = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/admin', tags: ['Channels'], summary: '频道管理列表（含订阅/消息数）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:list' })] as const,
+    request: { query: PaginationQuery.extend({ keyword: z.string().optional() }) },
+    responses: { ...commonErrorResponses, ...okPaginated(ChannelAdminDTO, '频道列表') },
+  }),
+  handler: async (c) => {
+    const { page, pageSize, keyword } = c.req.valid('query');
+    return c.json(okBody(await listChannelsAdmin(page, pageSize, keyword)), 200);
+  },
+});
+
+const create = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/', tags: ['Channels'], summary: '新建运营号',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:create', audit: { description: '新建频道', module: '消息中心' } })] as const,
+    request: { body: { content: jsonContent(createChannelSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(ChannelAdminDTO, '创建成功') },
+  }),
+  handler: async (c) => c.json(okBody(await createChannel(c.req.valid('json')), '创建成功'), 200),
+});
+
+const update = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/{id}', tags: ['Channels'], summary: '编辑频道',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:update', audit: { description: '编辑频道', module: '消息中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(updateChannelSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(ChannelAdminDTO, '更新成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await updateChannel(id, c.req.valid('json')), '更新成功'), 200);
+  },
+});
+
+const remove = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/{id}', tags: ['Channels'], summary: '删除频道',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:channel:delete', audit: { description: '删除频道', module: '消息中心' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('删除成功') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await deleteChannel(id);
+    return c.json(okBody(null, '删除成功'), 200);
+  },
+});
+
+const publish = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/publish', tags: ['Channels'], summary: '向频道群发消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'channel:message:publish', audit: { description: '频道群发', module: '消息中心' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(publishChannelSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(ChannelMessageDTO, '已发布') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await publishToChannel(id, c.req.valid('json')), '已发布'), 200);
+  },
+});
+
+channelsRoute.openapiRoutes([listMine, listMessages, read, adminList, create, update, remove, publish] as const);
 
 export default channelsRoute;

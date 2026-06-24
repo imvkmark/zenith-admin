@@ -14,8 +14,10 @@ import {
   channels, channelMessages, channelSubscriptions, channelMessageTargets, users,
   type ChannelRow, type ChannelMessageRow,
 } from '../db/schema';
-import type { Channel, ChannelMessage, ChannelMessageType, ChatMessageExtra } from '@zenith/shared';
+import type { Channel, ChannelAdmin, ChannelMessage, ChannelMessageType, ChatMessageExtra, CreateChannelInput, UpdateChannelInput, PublishChannelInput } from '@zenith/shared';
 import { SYSTEM_CHANNEL_CODE } from '@zenith/shared';
+import { HTTPException } from 'hono/http-exception';
+import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { currentUser } from '../lib/context';
 import { formatDateTime } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
@@ -263,4 +265,106 @@ export async function markChannelTaskCardsDone(taskId: number, statusText: strin
   for (const r of rows) {
     await markChannelCardDone(r.id, statusText);
   }
+}
+
+// ─── 管理后台 ────────────────────────────────────────────────────────────────
+
+function mapChannelAdmin(ch: ChannelRow, subscriberCount: number, messageCount: number): ChannelAdmin {
+  return {
+    id: ch.id,
+    code: ch.code,
+    name: ch.name,
+    avatar: ch.avatar,
+    description: ch.description,
+    type: ch.type,
+    builtin: ch.builtin,
+    status: ch.status,
+    subscriberCount,
+    messageCount,
+    createdAt: formatDateTime(ch.createdAt),
+    updatedAt: formatDateTime(ch.updatedAt),
+  };
+}
+
+/** 系统号订阅数按全员计（懒创建订阅行不可靠），运营号按订阅表计 */
+async function countSubscribers(ch: ChannelRow, userCount: number): Promise<number> {
+  return ch.type === 'system'
+    ? userCount
+    : db.$count(channelSubscriptions, eq(channelSubscriptions.channelId, ch.id));
+}
+
+export async function listChannelsAdmin(page: number, pageSize: number, keyword?: string) {
+  const where = keyword
+    ? sql`(${channels.name} ILIKE ${'%' + keyword + '%'} OR ${channels.code} ILIKE ${'%' + keyword + '%'})`
+    : undefined;
+  const [total, rows, userCount] = await Promise.all([
+    db.$count(channels, where),
+    db.select().from(channels).where(where)
+      .orderBy(desc(channels.builtin), channels.id)
+      .limit(pageSize).offset(pageOffset(page, pageSize)),
+    db.$count(users),
+  ]);
+  const list = await Promise.all(rows.map(async (ch) => {
+    const [subscriberCount, messageCount] = await Promise.all([
+      countSubscribers(ch, userCount),
+      db.$count(channelMessages, eq(channelMessages.channelId, ch.id)),
+    ]);
+    return mapChannelAdmin(ch, subscriberCount, messageCount);
+  }));
+  return { list, total, page, pageSize };
+}
+
+export async function createChannel(input: CreateChannelInput): Promise<ChannelAdmin> {
+  try {
+    const [row] = await db.insert(channels).values({
+      code: input.code,
+      name: input.name,
+      avatar: input.avatar ?? null,
+      description: input.description ?? null,
+      type: 'business',
+      builtin: false,
+      status: 'enabled',
+    }).returning();
+    return mapChannelAdmin(row, 0, 0);
+  } catch (err) {
+    rethrowPgUniqueViolation(err, '频道 code 已存在');
+    throw err;
+  }
+}
+
+export async function updateChannel(id: number, input: UpdateChannelInput): Promise<ChannelAdmin> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, id) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  const [row] = await db.update(channels).set({
+    ...(input.name === undefined ? {} : { name: input.name }),
+    ...(input.avatar === undefined ? {} : { avatar: input.avatar }),
+    ...(input.description === undefined ? {} : { description: input.description }),
+    ...(input.status === undefined ? {} : { status: input.status }),
+  }).where(eq(channels.id, id)).returning();
+  const userCount = await db.$count(users);
+  const [subscriberCount, messageCount] = await Promise.all([
+    countSubscribers(row, userCount),
+    db.$count(channelMessages, eq(channelMessages.channelId, id)),
+  ]);
+  return mapChannelAdmin(row, subscriberCount, messageCount);
+}
+
+export async function deleteChannel(id: number): Promise<void> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, id) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  if (ch.builtin) throw new HTTPException(400, { message: '内置系统号不可删除' });
+  await db.delete(channels).where(eq(channels.id, id));
+}
+
+/** 管理员手动向频道群发一条广播文本消息 */
+export async function publishToChannel(id: number, input: PublishChannelInput): Promise<ChannelMessage> {
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, id) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  const me = currentUser();
+  return publishBroadcast(id, {
+    type: 'text',
+    title: input.title ?? null,
+    content: input.content,
+    publishedById: me.userId,
+  });
 }

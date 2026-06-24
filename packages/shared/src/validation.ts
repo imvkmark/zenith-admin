@@ -1391,6 +1391,29 @@ export const chatWebhookPayloadSchema = z.object({
 
 export type ChatWebhookPayloadInput = z.infer<typeof chatWebhookPayloadSchema>;
 
+// ─── Channel（站内公众号）管理 ────────────────────────────────────────────────
+export const createChannelSchema = z.object({
+  code: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/, 'code 只能包含小写字母、数字和连字符'),
+  name: z.string().min(1).max(64),
+  avatar: z.string().max(256).nullable().optional(),
+  description: z.string().max(255).nullable().optional(),
+});
+export type CreateChannelInput = z.infer<typeof createChannelSchema>;
+
+export const updateChannelSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  avatar: z.string().max(256).nullable().optional(),
+  description: z.string().max(255).nullable().optional(),
+  status: z.enum(['enabled', 'disabled']).optional(),
+});
+export type UpdateChannelInput = z.infer<typeof updateChannelSchema>;
+
+export const publishChannelSchema = z.object({
+  title: z.string().max(200).nullable().optional(),
+  content: z.string().min(1),
+});
+export type PublishChannelInput = z.infer<typeof publishChannelSchema>;
+
 // ── 通话记录（结束后写入会话系统消息）──
 export const chatCallRecordSchema = z.object({
   callType: z.enum(['audio', 'video']),

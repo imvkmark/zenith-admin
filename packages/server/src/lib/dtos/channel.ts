@@ -37,3 +37,20 @@ export const ChannelDTO = z
     updatedAt: z.string(),
   })
   .openapi('Channel');
+
+export const ChannelAdminDTO = z
+  .object({
+    id: z.number().int(),
+    code: z.string(),
+    name: z.string(),
+    avatar: z.string().nullable(),
+    description: z.string().nullable(),
+    type: z.enum(['system', 'business']),
+    builtin: z.boolean(),
+    status: z.enum(['enabled', 'disabled']),
+    subscriberCount: z.number().int(),
+    messageCount: z.number().int(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('ChannelAdmin');

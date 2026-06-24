@@ -2933,6 +2933,22 @@ export interface Channel {
   updatedAt: string;
 }
 
+/** 频道管理后台视图（含订阅数 / 消息数） */
+export interface ChannelAdmin {
+  id: number;
+  code: string;
+  name: string;
+  avatar: string | null;
+  description: string | null;
+  type: ChannelType;
+  builtin: boolean;
+  status: EntityStatus;
+  subscriberCount: number;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── 通知模块（邮件 / 短信 / 站内信）─────────────────────────────────────────
 export type SendStatus = 'pending' | 'success' | 'failed';
 export type SendSource = 'manual' | 'test' | 'system' | 'api';
