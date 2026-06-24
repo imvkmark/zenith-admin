@@ -26,6 +26,8 @@ export function mapMpFan(row: MpFanRow) {
     subscribeTime: formatNullableDateTime(row.subscribeTime),
     remark: row.remark ?? null,
     tagIds: row.tagIds ?? [],
+    unionid: row.unionid ?? null,
+    memberId: row.memberId ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdAt: formatDateTime(row.createdAt),

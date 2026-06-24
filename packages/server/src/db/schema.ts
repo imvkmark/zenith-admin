@@ -3739,6 +3739,8 @@ export const mpAccounts = pgTable('mp_accounts', {
   qrCodeUrl: varchar('qr_code_url', { length: 500 }),
   /** 是否默认公众号（同租户内唯一） */
   isDefault: boolean('is_default').notNull().default(false),
+  /** 关注即注册会员：粉丝关注时自动创建并绑定会员 */
+  autoCreateMember: boolean('auto_create_member').notNull().default(false),
   status: statusEnum('status').notNull().default('enabled'),
   remark: text('remark'),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
