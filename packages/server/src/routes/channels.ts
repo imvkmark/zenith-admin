@@ -22,7 +22,7 @@ import {
 import {
   getChannelMenus, saveChannelMenus,
   listChannelAutoReplies, createChannelAutoReply, updateChannelAutoReply, deleteChannelAutoReply,
-  sendUserMessage, replyAsAgent,
+  sendUserMessage, replyAsAgent, handleSubscribeAutoReply,
   listCsChannels, listChannelConversations, listConversationMessages,
 } from '../services/channel-cs.service';
 
@@ -178,7 +178,8 @@ const subscribe = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    await subscribeChannel(id);
+    const firstTime = await subscribeChannel(id);
+    if (firstTime) await handleSubscribeAutoReply(id);
     return c.json(okBody(null, '已订阅'), 200);
   },
 });

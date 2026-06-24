@@ -22,7 +22,6 @@ import { currentUser } from '../lib/context';
 import { formatDateTime } from '../lib/datetime';
 import { pageOffset } from '../lib/pagination';
 import { scheduleSendToUsers } from '../lib/ws-manager';
-import { handleSubscribeAutoReply } from './channel-cs.service';
 
 interface PublishInput {
   type: ChannelMessageType;
@@ -381,7 +380,7 @@ export async function publishToChannel(id: number, input: PublishChannelInput): 
 
 // ─── 订阅（运营号） ───────────────────────────────────────────────────────────
 
-export async function subscribeChannel(channelId: number): Promise<void> {
+export async function subscribeChannel(channelId: number): Promise<boolean> {
   const me = currentUser().userId;
   const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
   if (!ch) throw new HTTPException(404, { message: '频道不存在' });
@@ -390,10 +389,8 @@ export async function subscribeChannel(channelId: number): Promise<void> {
     .values({ channelId, userId: me, lastReadAt: null })
     .onConflictDoNothing()
     .returning({ channelId: channelSubscriptions.channelId });
-  // 仅首次订阅时触发「关注欢迎语」自动回复
-  if (inserted.length > 0) {
-    await handleSubscribeAutoReply(channelId, me);
-  }
+  // 返回是否为首次订阅，由路由层据此触发「关注欢迎语」自动回复
+  return inserted.length > 0;
 }
 
 export async function unsubscribeChannel(channelId: number): Promise<void> {

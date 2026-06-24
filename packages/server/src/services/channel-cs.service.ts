@@ -270,13 +270,13 @@ export async function replyAsAgent(channelId: number, userId: number, content: s
   return deliverOut(channelId, userId, content, agent.userId, agentName);
 }
 
-/** 关注运营号时触发「关注欢迎语」自动回复（由 channel.service.subscribeChannel 调用）。 */
-export async function handleSubscribeAutoReply(channelId: number, userId: number): Promise<void> {
+/** 关注运营号时触发「关注欢迎语」自动回复（首次订阅后由路由层调用）。 */
+export async function handleSubscribeAutoReply(channelId: number): Promise<void> {
   const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId), columns: { type: true } });
   if (!ch || ch.type !== 'business') return;
   const matched = await matchAutoReply(channelId, '', 'subscribe');
   if (!matched) return;
-  await deliverOut(channelId, userId, matched.replyContent, null, null);
+  await deliverOut(channelId, currentUser().userId, matched.replyContent, null, null);
 }
 
 // ─── 客服工作台 ────────────────────────────────────────────────────────────────
