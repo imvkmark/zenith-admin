@@ -293,6 +293,7 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     assigneeAvatar: null,
     status: 'approved',
     comment: '同意，注意按时归来。',
+    attachments: [{ name: '请假佐证材料.pdf', url: '/api/files/demo/leave-proof.pdf', size: 102400 }],
     actionAt: '2026-03-15 10:30:00',
     createdAt: '2026-03-14 09:00:00',
   },
