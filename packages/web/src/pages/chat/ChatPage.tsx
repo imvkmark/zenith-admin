@@ -14,7 +14,7 @@ import Picker from '@emoji-mart/react';
 import {
   Search, MessageSquarePlus, Send, CornerDownLeft, RotateCcw, Smile, ImagePlus, MoreHorizontal,
   Pin, PinOff, Star, X, Paperclip, Bookmark, History, Forward, Trash2, BellOff, Images, AlertCircle,
-  ArrowLeft, ExternalLink, BarChart3, MessageSquare, Eye, Download, Mic, Bell, Phone, Video, Compass,
+  ArrowLeft, ExternalLink, BarChart3, MessageSquare, Eye, Download, Mic, Bell, Phone, Video, Compass, BadgeCheck,
 } from 'lucide-react';
 import { useWebSocket, sendWsMessage, useWsConnected } from '@/hooks/useWebSocket';
 import { useAuth } from '@/hooks/useAuth';
@@ -163,7 +163,6 @@ export default function ChatPage({
   const [discoverVisible, setDiscoverVisible] = useState(false);
   const [discoverList, setDiscoverList] = useState<Channel[]>([]);
   const [discoverKeyword, setDiscoverKeyword] = useState('');
-  const [channelSearch, setChannelSearch] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [mentionClosed, setMentionClosed] = useState(false);
@@ -1776,11 +1775,16 @@ export default function ChatPage({
   const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
 
   // 频道列表本地过滤：按名称包含匹配，不调接口
-  const filteredChannels = useMemo(() => {
-    const kw = channelSearch.trim().toLowerCase();
-    if (!kw) return channels;
-    return channels.filter((c) => c.name.toLowerCase().includes(kw));
-  }, [channels, channelSearch]);
+  const channelAvatarNode = useCallback((ch: Channel) => (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <UserAvatar name={ch.name} avatar={ch.avatar} size={38} />
+      <BadgeCheck
+        size={15}
+        style={{ position: 'absolute', right: -2, bottom: -2, color: '#fff', fill: 'var(--semi-color-primary)' }}
+        aria-label="官方频道"
+      />
+    </span>
+  ), []);
 
   useEffect(() => {
     onUnreadChange?.(totalUnread);
@@ -1961,21 +1965,9 @@ export default function ChatPage({
                 </Tooltip>
               </div>
               {channels.length > 0 && (
-                <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
-                  <Input
-                    prefix={<Search size={14} />}
-                    placeholder="搜索频道"
-                    showClear
-                    size="small"
-                    value={channelSearch}
-                    onChange={setChannelSearch}
-                  />
-                </div>
-              )}
-              {filteredChannels.length > 0 && (
                 <SemiList
                   className="chat-conv-list"
-                  dataSource={filteredChannels}
+                  dataSource={channels}
                   split={false}
                   style={{ borderBottom: '1px solid var(--semi-color-border)' }}
                   renderItem={(ch: Channel) => (
@@ -1985,8 +1977,8 @@ export default function ChatPage({
                       onClick={() => { setActiveChannelId(ch.id); setActiveConvId(null); setChannels((prev) => prev.map((c) => c.id === ch.id ? { ...c, unreadCount: 0 } : c)); }}
                       style={{ padding: '10px 12px', cursor: 'pointer', background: activeChannelId === ch.id ? 'var(--semi-color-primary-light-default)' : 'transparent' }}
                       header={ch.unreadCount > 0
-                        ? <Badge count={ch.unreadCount} overflowCount={99}><UserAvatar name={ch.name} avatar={ch.avatar} size={38} /></Badge>
-                        : <UserAvatar name={ch.name} avatar={ch.avatar} size={38} />}
+                        ? <Badge count={ch.unreadCount} overflowCount={99}>{channelAvatarNode(ch)}</Badge>
+                        : channelAvatarNode(ch)}
                       main={(
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Text strong style={{ fontSize: 13, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</Text>
