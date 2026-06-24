@@ -5,10 +5,11 @@ import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
-import { sendMpTemplateSchema } from '@zenith/shared';
-import { MpMessageTemplateDTO, MpTemplateSendLogDTO, MpTagSyncResultDTO } from '../lib/openapi-dtos';
+import { sendMpTemplateSchema, setMpTemplateIndustrySchema, batchSendMpTemplateSchema } from '@zenith/shared';
+import { MpMessageTemplateDTO, MpTemplateSendLogDTO, MpTagSyncResultDTO, MpTemplateIndustryDTO, MpBatchSendResultDTO } from '../lib/openapi-dtos';
 import {
   listMpTemplates, deleteMpTemplate, syncMpTemplates, sendMpTemplate, listMpTemplateSendLogs,
+  setMpTemplateIndustry, getMpTemplateIndustry, batchSendMpTemplate,
 } from '../services/mp-template.service';
 
 const mpTemplatesRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -79,6 +80,39 @@ const deleteRoute = defineOpenAPIRoute({
   },
 });
 
-mpTemplatesRouter.openapiRoutes([logsRoute, listRoute, syncRoute, sendRoute, deleteRoute] as const);
+const industryGetRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/industry', tags: ['公众号模板消息'], summary: '获取所属行业',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'mp:template:list' })] as const,
+    request: { query: z.object({ accountId: z.coerce.number().int().positive() }) },
+    responses: { ...commonErrorResponses, ...ok(MpTemplateIndustryDTO, '行业信息') },
+  }),
+  handler: async (c) => c.json(okBody(await getMpTemplateIndustry(c.req.valid('query').accountId)), 200),
+});
+
+const industrySetRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'put', path: '/industry', tags: ['公众号模板消息'], summary: '设置所属行业',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'mp:template:sync', audit: { description: '设置模板行业', module: '公众号模板消息' } })] as const,
+    request: { body: { content: jsonContent(setMpTemplateIndustrySchema), required: true } },
+    responses: { ...commonErrorResponses, ...okMsg('设置成功') },
+  }),
+  handler: async (c) => { const b = c.req.valid('json'); await setMpTemplateIndustry(b.accountId, b.industryId1, b.industryId2); return c.json(okBody(null, '设置成功'), 200); },
+});
+
+const batchSendRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/batch-send', tags: ['公众号模板消息'], summary: '批量发送模板消息',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'mp:template:send', audit: { description: '批量发送模板消息', module: '公众号模板消息' } })] as const,
+    request: { body: { content: jsonContent(batchSendMpTemplateSchema), required: true } },
+    responses: { ...commonErrorResponses, ...ok(MpBatchSendResultDTO, '已提交批量发送') },
+  }),
+  handler: async (c) => c.json(okBody(await batchSendMpTemplate(c.req.valid('json')), '已提交批量发送'), 200),
+});
+
+mpTemplatesRouter.openapiRoutes([logsRoute, industryGetRoute, industrySetRoute, batchSendRoute, listRoute, syncRoute, sendRoute, deleteRoute] as const);
 
 export default mpTemplatesRouter;
