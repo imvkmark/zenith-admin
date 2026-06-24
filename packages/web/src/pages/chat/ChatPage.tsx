@@ -160,6 +160,8 @@ export default function ChatPage({
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<number | null>(null);
+  const [discoverVisible, setDiscoverVisible] = useState(false);
+  const [discoverList, setDiscoverList] = useState<Channel[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [mentionClosed, setMentionClosed] = useState(false);
@@ -373,6 +375,30 @@ export default function ChatPage({
   }, []);
 
   useEffect(() => { void fetchChannels(); }, [fetchChannels]);
+
+  const handleUnsubscribeChannel = useCallback(async (ch: Channel) => {
+    const res = await request.delete(`/api/channels/${ch.id}/subscribe`);
+    if (res.code === 0) {
+      Toast.success('已退订');
+      setActiveChannelId(null);
+      void fetchChannels();
+    }
+  }, [fetchChannels]);
+
+  const openDiscover = useCallback(async () => {
+    const res = await request.get<Channel[]>('/api/channels/discoverable', { silent: true });
+    if (res.code === 0 && res.data) setDiscoverList(res.data);
+    setDiscoverVisible(true);
+  }, []);
+
+  const handleSubscribeChannel = useCallback(async (ch: Channel) => {
+    const res = await request.post(`/api/channels/${ch.id}/subscribe`, {});
+    if (res.code === 0) {
+      Toast.success('已订阅');
+      setDiscoverList((prev) => prev.filter((c) => c.id !== ch.id));
+      void fetchChannels();
+    }
+  }, [fetchChannels]);
 
   // 初始化时从 localStorage 加载所有草稿
   useEffect(() => {
@@ -1902,6 +1928,10 @@ export default function ChatPage({
           <Spin spinning={loadingConvs}>
             {leftPaneMode === 'conversations' && (
               <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', borderBottom: '1px solid var(--semi-color-border)' }}>
+                <Text type="tertiary" size="small">频道</Text>
+                <Button size="small" theme="borderless" onClick={() => void openDiscover()}>发现频道</Button>
+              </div>
               {channels.length > 0 && (
                 <SemiList
                   className="chat-conv-list"
@@ -2358,6 +2388,7 @@ export default function ChatPage({
             channel={activeChannel}
             currentUserId={currentUserId}
             onBack={() => setActiveChannelId(null)}
+            onUnsubscribe={() => { if (activeChannel) void handleUnsubscribeChannel(activeChannel); }}
             onCardAction={handleCardAction}
             onOpenWorkflow={handleOpenWorkflowFromCard}
           />
@@ -3468,6 +3499,37 @@ export default function ChatPage({
           </div>
         )}
       />
+      <AppModal
+        title="发现频道"
+        visible={discoverVisible}
+        onCancel={() => setDiscoverVisible(false)}
+        footer={null}
+        width={480}
+      >
+        {discoverList.length === 0 ? (
+          <Empty description="暂无可订阅的频道" style={{ padding: 32 }} />
+        ) : (
+          <SemiList
+            dataSource={discoverList}
+            split={false}
+            renderItem={(ch: Channel) => (
+              <SemiList.Item
+                key={ch.id}
+                style={{ padding: '10px 4px' }}
+                header={<UserAvatar name={ch.name} avatar={ch.avatar} size={36} />}
+                main={(
+                  <div style={{ minWidth: 0 }}>
+                    <Text strong>{ch.name}</Text>
+                    <Text type="tertiary" size="small" style={{ display: 'block' }}>{ch.description}</Text>
+                  </div>
+                )}
+                extra={<Button size="small" type="primary" theme="light" onClick={() => void handleSubscribeChannel(ch)}>订阅</Button>}
+              />
+            )}
+          />
+        )}
+      </AppModal>
+
       <ForwardModal
         visible={forwardModalVisible}
         conversations={conversations}

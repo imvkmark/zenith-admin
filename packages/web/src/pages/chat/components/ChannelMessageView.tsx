@@ -19,6 +19,7 @@ interface Props {
   channel: Channel;
   currentUserId: number | null;
   onBack: () => void;
+  onUnsubscribe?: () => void;
   onCardAction: (msg: ChatMessage, action: ChatCardAction) => void;
   onOpenWorkflow: (instanceId: number, taskId: number | null) => void;
 }
@@ -45,7 +46,7 @@ function toChatMessage(m: ChannelMessage, channel: Channel): ChatMessage {
 
 const noop = () => { /* 只读频道：禁用交互 */ };
 
-export function ChannelMessageView({ channel, currentUserId, onBack, onCardAction, onOpenWorkflow }: Readonly<Props>) {
+export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscribe, onCardAction, onOpenWorkflow }: Readonly<Props>) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -109,6 +110,9 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onCardActio
             <Text type="tertiary" style={{ display: 'block', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{channel.description}</Text>
           )}
         </div>
+        {channel.type === 'business' && onUnsubscribe && (
+          <Button size="small" type="tertiary" theme="borderless" onClick={onUnsubscribe}>退订</Button>
+        )}
       </div>
 
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px 0', minHeight: 0 }}>

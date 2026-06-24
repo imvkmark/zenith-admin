@@ -10,6 +10,7 @@ import { ChannelDTO, ChannelMessageDTO, ChannelAdminDTO } from '../lib/openapi-d
 import {
   listMyChannels, listChannelMessages, markChannelRead,
   listChannelsAdmin, createChannel, updateChannel, deleteChannel, publishToChannel,
+  subscribeChannel, unsubscribeChannel, listDiscoverableChannels,
 } from '../services/channel.service';
 
 const channelsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -124,6 +125,48 @@ const publish = defineOpenAPIRoute({
   },
 });
 
-channelsRoute.openapiRoutes([listMine, listMessages, read, adminList, create, update, remove, publish] as const);
+// ─── 订阅（运营号） ───────────────────────────────────────────────────────────
+
+const discoverable = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/discoverable', tags: ['Channels'], summary: '可订阅的运营号列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(ChannelDTO), '可订阅频道') },
+  }),
+  handler: async (c) => c.json(okBody(await listDiscoverableChannels()), 200),
+});
+
+const subscribe = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/subscribe', tags: ['Channels'], summary: '订阅运营号',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已订阅') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await subscribeChannel(id);
+    return c.json(okBody(null, '已订阅'), 200);
+  },
+});
+
+const unsubscribe = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'delete', path: '/{id}/subscribe', tags: ['Channels'], summary: '退订运营号',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...okMsg('已退订') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    await unsubscribeChannel(id);
+    return c.json(okBody(null, '已退订'), 200);
+  },
+});
+
+channelsRoute.openapiRoutes([listMine, listMessages, read, adminList, create, update, remove, publish, discoverable, subscribe, unsubscribe] as const);
 
 export default channelsRoute;

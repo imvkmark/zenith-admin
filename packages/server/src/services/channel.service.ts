@@ -124,7 +124,7 @@ export async function publishTargeted(
 
 // ─── 查询（HTTP 上下文） ───────────────────────────────────────────────────────
 
-async function buildChannelView(ch: ChannelRow, userId: number): Promise<Channel> {
+async function buildChannelView(ch: ChannelRow, userId: number, isSubscribed: boolean): Promise<Channel> {
   const sub = await db.query.channelSubscriptions.findFirst({
     where: and(eq(channelSubscriptions.channelId, ch.id), eq(channelSubscriptions.userId, userId)),
   });
@@ -163,20 +163,25 @@ async function buildChannelView(ch: ChannelRow, userId: number): Promise<Channel
     unreadCount: broadcastUnread + targetedUnread,
     lastMessage: last ? mapChannelMessage(last, true) : null,
     isMuted: sub?.isMuted ?? false,
+    isSubscribed,
     tenantId: ch.tenantId,
     createdAt: formatDateTime(ch.createdAt),
     updatedAt: formatDateTime(ch.updatedAt),
   };
 }
 
-/** 我的频道列表（第一期：全员强制订阅，返回全部 enabled 频道 + 未读统计） */
+/** 我的频道列表（系统号全部强制可见 + 已订阅的运营号） */
 export async function listMyChannels(): Promise<Channel[]> {
   const me = currentUser().userId;
+  const subRows = await db.select({ channelId: channelSubscriptions.channelId })
+    .from(channelSubscriptions).where(eq(channelSubscriptions.userId, me));
+  const subscribedIds = new Set(subRows.map((r) => r.channelId));
   const chs = await db.query.channels.findMany({
     where: eq(channels.status, 'enabled'),
     orderBy: [desc(channels.builtin), channels.id],
   });
-  return Promise.all(chs.map((ch) => buildChannelView(ch, me)));
+  const visible = chs.filter((ch) => ch.type === 'system' || subscribedIds.has(ch.id));
+  return Promise.all(visible.map((ch) => buildChannelView(ch, me, ch.type === 'system' || subscribedIds.has(ch.id))));
 }
 
 /** 频道消息流（仅当前用户可见的消息，分页，按时间倒序） */
@@ -367,4 +372,39 @@ export async function publishToChannel(id: number, input: PublishChannelInput): 
     content: input.content,
     publishedById: me.userId,
   });
+}
+
+// ─── 订阅（运营号） ───────────────────────────────────────────────────────────
+
+export async function subscribeChannel(channelId: number): Promise<void> {
+  const me = currentUser().userId;
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  if (ch.type === 'system') throw new HTTPException(400, { message: '系统号默认全员订阅，无需操作' });
+  await db.insert(channelSubscriptions).values({ channelId, userId: me, lastReadAt: null }).onConflictDoNothing();
+}
+
+export async function unsubscribeChannel(channelId: number): Promise<void> {
+  const me = currentUser().userId;
+  const ch = await db.query.channels.findFirst({ where: eq(channels.id, channelId) });
+  if (!ch) throw new HTTPException(404, { message: '频道不存在' });
+  if (ch.type === 'system') throw new HTTPException(400, { message: '系统号不可退订' });
+  await db.delete(channelSubscriptions).where(and(
+    eq(channelSubscriptions.channelId, channelId),
+    eq(channelSubscriptions.userId, me),
+  ));
+}
+
+/** 可发现（未订阅）的运营号列表 */
+export async function listDiscoverableChannels(): Promise<Channel[]> {
+  const me = currentUser().userId;
+  const subRows = await db.select({ channelId: channelSubscriptions.channelId })
+    .from(channelSubscriptions).where(eq(channelSubscriptions.userId, me));
+  const subscribedIds = new Set(subRows.map((r) => r.channelId));
+  const chs = await db.query.channels.findMany({
+    where: and(eq(channels.status, 'enabled'), eq(channels.type, 'business')),
+    orderBy: [channels.id],
+  });
+  const discoverable = chs.filter((ch) => !subscribedIds.has(ch.id));
+  return Promise.all(discoverable.map((ch) => buildChannelView(ch, me, false)));
 }

@@ -32,6 +32,7 @@ export const ChannelDTO = z
     unreadCount: z.number().int(),
     lastMessage: ChannelMessageDTO.nullable(),
     isMuted: z.boolean(),
+    isSubscribed: z.boolean(),
     tenantId: z.number().int().nullable().optional(),
     createdAt: z.string(),
     updatedAt: z.string(),

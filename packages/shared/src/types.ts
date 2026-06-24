@@ -2928,6 +2928,7 @@ export interface Channel {
   unreadCount: number;
   lastMessage: ChannelMessage | null;
   isMuted: boolean;
+  isSubscribed: boolean;
   tenantId?: number | null;
   createdAt: string;
   updatedAt: string;

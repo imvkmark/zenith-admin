@@ -59,9 +59,28 @@ function buildChannel(seed: (typeof SEED_CHANNELS)[number]): Channel {
     unreadCount: msgs.filter((m) => !m.isRead).length,
     lastMessage: last,
     isMuted: false,
+    isSubscribed: true,
     createdAt: mockDateTime(),
     updatedAt: mockDateTime(),
   };
 }
 
-export const mockChannels: Channel[] = SEED_CHANNELS.map(buildChannel);
+export const mockChannels: Channel[] = [
+  ...SEED_CHANNELS.map(buildChannel),
+  {
+    id: 2,
+    code: 'product-updates',
+    name: '产品动态',
+    avatar: null,
+    description: '产品更新与运营活动公告',
+    type: 'business',
+    builtin: false,
+    status: 'enabled',
+    unreadCount: 0,
+    lastMessage: null,
+    isMuted: false,
+    isSubscribed: false,
+    createdAt: mockDateTime(),
+    updatedAt: mockDateTime(),
+  },
+];

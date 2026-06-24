@@ -6,7 +6,7 @@ import { mockDateTime } from '@/mocks/utils/date';
 export const channelsHandlers = [
   // 我的频道列表（含未读数）
   http.get('/api/channels/mine', () => {
-    const list = mockChannels.map((ch) => {
+    const list = mockChannels.filter((ch) => ch.isSubscribed).map((ch) => {
       const msgs = mockChannelMessages.filter((m) => m.channelId === ch.id);
       const last = msgs.length ? [...msgs].sort((a, b) => b.id - a.id)[0] : null;
       return { ...ch, unreadCount: msgs.filter((m) => !m.isRead).length, lastMessage: last };
@@ -58,7 +58,7 @@ export const channelsHandlers = [
     const now = mockDateTime();
     const ch: Channel = {
       id, code: body.code, name: body.name, avatar: body.avatar ?? null, description: body.description ?? null,
-      type: 'business', builtin: false, status: 'enabled', unreadCount: 0, lastMessage: null, isMuted: false,
+      type: 'business', builtin: false, status: 'enabled', unreadCount: 0, lastMessage: null, isMuted: false, isSubscribed: false,
       createdAt: now, updatedAt: now,
     };
     mockChannels.push(ch);
@@ -98,5 +98,27 @@ export const channelsHandlers = [
     };
     mockChannelMessages.unshift(msg);
     return HttpResponse.json({ code: 0, message: '已发布', data: msg });
+  }),
+
+  // ── 订阅（运营号） ────────────────────────────────────────
+  http.get('/api/channels/discoverable', () => {
+    const list = mockChannels.filter((ch) => ch.type === 'business' && !ch.isSubscribed);
+    return HttpResponse.json({ code: 0, message: 'ok', data: list });
+  }),
+
+  http.post('/api/channels/:id/subscribe', ({ params }) => {
+    const ch = mockChannels.find((c) => c.id === Number(params.id));
+    if (!ch) return HttpResponse.json({ code: 404, message: '频道不存在', data: null }, { status: 404 });
+    if (ch.type === 'system') return HttpResponse.json({ code: 400, message: '系统号默认全员订阅', data: null }, { status: 400 });
+    ch.isSubscribed = true;
+    return HttpResponse.json({ code: 0, message: '已订阅', data: null });
+  }),
+
+  http.delete('/api/channels/:id/subscribe', ({ params }) => {
+    const ch = mockChannels.find((c) => c.id === Number(params.id));
+    if (!ch) return HttpResponse.json({ code: 404, message: '频道不存在', data: null }, { status: 404 });
+    if (ch.type === 'system') return HttpResponse.json({ code: 400, message: '系统号不可退订', data: null }, { status: 400 });
+    ch.isSubscribed = false;
+    return HttpResponse.json({ code: 0, message: '已退订', data: null });
   }),
 ];
