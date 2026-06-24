@@ -270,6 +270,23 @@ export const MpOAuthResultDTO = z
   })
   .openapi('MpOAuthResult');
 
+export const MpKfAccountDTO = z
+  .object({
+    id: z.number().int(),
+    accountId: z.number().int(),
+    kfAccount: z.string(),
+    nickname: z.string(),
+    avatar: z.string().nullable(),
+    kfId: z.string().nullable(),
+    inviteStatus: z.string(),
+    inviteWx: z.string().nullable(),
+    status: z.enum(['enabled', 'disabled']),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('MpKfAccount');
+
 export const MpStatsDTO = z
   .object({
     fanTotal: z.number().int(),
