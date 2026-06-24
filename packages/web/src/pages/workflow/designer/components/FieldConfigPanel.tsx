@@ -170,8 +170,6 @@ export default function FieldConfigPanel({
   const isFormula = field.type === 'formula';
   const isTime = field.type === 'time';
   const isRegion = field.type === 'region';
-  const isSignature = field.type === 'signature';
-  const isRichText = field.type === 'richtext';
   const isSwitch = field.type === 'switch';
   const isSlider = field.type === 'slider';
   const isTags = field.type === 'tags';
