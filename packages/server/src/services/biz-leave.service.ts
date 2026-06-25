@@ -198,21 +198,49 @@ export async function submitBizLeave(id: number) {
   const user = currentUser();
   const [leave] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
   if (!leave) throw new HTTPException(404, { message: '请假单不存在' });
-  if (leave.status !== 'draft') throw new HTTPException(400, { message: '该请假单已提交，无法重复提交' });
+  if (leave.status !== 'draft') {
+    if (leave.workflowInstanceId) return getBizLeave(id);
+    const existingWorkflow = await findExistingLeaveWorkflow(id);
+    if (existingWorkflow) {
+      await linkLeaveWorkflow(id, existingWorkflow);
+      return getBizLeave(id);
+    }
+    throw new HTTPException(400, { message: '该请假单已提交，无法重复提交' });
+  }
   const definitionId = await ensureLeaveDefinitionId();
-  const applicant = user.username || '我';
-  const instance = await startWorkflowForBiz({
-    definitionId,
-    title: `${LEAVE_TYPE_TEXT[leave.leaveType] ?? '请假'}申请 - ${applicant} - ${formatDate(leave.startDate)}`,
-    bizType: BIZ_LEAVE_TYPE,
-    bizId: leave.id,
-    // 暴露给流程的路由变量：天数 / 类型，可用于条件分支与按字段指定审批人
-    variables: { days: leave.days, leaveType: leave.leaveType },
-  });
-  await db.update(bizLeaves).set({
+  const [claimed] = await db.update(bizLeaves).set({
     status: 'pending',
-    workflowInstanceId: instance.id,
-    workflowStatus: instance.status,
-  }).where(eq(bizLeaves.id, id));
+    workflowStatus: 'running',
+  }).where(and(findOwnLeave(id), eq(bizLeaves.status, 'draft'))).returning();
+  if (!claimed) {
+    const [fresh] = await db.select().from(bizLeaves).where(findOwnLeave(id)).limit(1);
+    if (fresh?.workflowInstanceId) return getBizLeave(id);
+    const existingWorkflow = await findExistingLeaveWorkflow(id);
+    if (existingWorkflow) {
+      await linkLeaveWorkflow(id, existingWorkflow);
+      return getBizLeave(id);
+    }
+    throw new HTTPException(409, { message: '请假单正在提交，请稍后刷新' });
+  }
+
+  const applicant = user.username || '我';
+  try {
+    const existingWorkflow = await findExistingLeaveWorkflow(id);
+    const instance = existingWorkflow ?? await startWorkflowForBiz({
+      definitionId,
+      title: `${LEAVE_TYPE_TEXT[claimed.leaveType] ?? '请假'}申请 - ${applicant} - ${formatDate(claimed.startDate)}`,
+      bizType: BIZ_LEAVE_TYPE,
+      bizId: claimed.id,
+      // 暴露给流程的路由变量：天数 / 类型，可用于条件分支与按字段指定审批人
+      variables: { days: claimed.days, leaveType: claimed.leaveType },
+    });
+    await linkLeaveWorkflow(id, instance);
+  } catch (err) {
+    await db.update(bizLeaves).set({
+      status: 'draft',
+      workflowStatus: null,
+    }).where(and(eq(bizLeaves.id, id), isNull(bizLeaves.workflowInstanceId)));
+    throw err;
+  }
   return getBizLeave(id);
 }
