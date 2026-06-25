@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -11,7 +11,9 @@ import {
   getNextDefinitionVersionId,
 } from '@/mocks/data/workflow';
 import { mockWorkflowForms } from '@/mocks/data/workflow-forms';
-import { mockDateTime } from '@/mocks/utils/date';
+import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import dayjs from 'dayjs';
+import { DATE_TIME_FORMAT } from '@/utils/date';
 import { mockWorkflowTriggerExecutions } from './workflow-trigger-executions';
 
 function ok<T>(data: T, message = 'ok') {
@@ -90,6 +92,530 @@ function resolveDefinitionFormSnapshot(definition: WorkflowDefinition): Workflow
     fields: [],
     settings: null,
     customForm: definition.customForm,
+  };
+}
+
+function ageMinutesFrom(value: string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = dayjs(value, DATE_TIME_FORMAT, true);
+  if (!parsed.isValid()) return 0;
+  return Math.max(0, Math.floor(dayjs().diff(parsed, 'minute', true)));
+}
+
+function isMockDateTimeDue(value: string | null | undefined) {
+  if (!value) return false;
+  const parsed = dayjs(value, DATE_TIME_FORMAT, true);
+  return parsed.isValid() && !parsed.isAfter(dayjs());
+}
+
+function buildMockWorkflowEngineIntrospection(thresholdMinutes: number): WorkflowEngineIntrospection {
+  const timeoutAt = mockDateTimeOffset(-30 * 60 * 1000);
+  const delayWakeAt = mockDateTimeOffset(-12 * 60 * 1000);
+  const runningInstances = mockWorkflowInstances.filter((item) => item.status === 'running');
+  const activeTasks = mockWorkflowTasks.filter((item) => item.status === 'pending' || item.status === 'waiting');
+  const activeInstanceIds = new Set(activeTasks.map((item) => item.instanceId));
+  const runningWithoutActiveTasks = runningInstances
+    .filter((item) => !activeInstanceIds.has(item.id))
+    .map((item) => ({
+      instanceId: item.id,
+      title: item.title,
+      serialNo: item.serialNo ?? null,
+      definitionId: item.definitionId,
+      definitionName: item.definitionName ?? null,
+      currentNodeKey: item.currentNodeKey ?? null,
+      ageMinutes: ageMinutesFrom(item.createdAt),
+      createdAt: item.createdAt,
+    }));
+
+  const toEngineTask = (task: WorkflowTask, queue: WorkflowEngineRuntimeTask['queue']): WorkflowEngineRuntimeTask | null => {
+    const instance = mockWorkflowInstances.find((item) => item.id === task.instanceId);
+    if (!instance) return null;
+    return {
+      queue,
+      taskId: task.id,
+      instanceId: instance.id,
+      instanceTitle: instance.title,
+      serialNo: instance.serialNo ?? null,
+      definitionId: instance.definitionId,
+      definitionName: instance.definitionName ?? '—',
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType ?? null,
+      status: task.status,
+      assigneeId: task.assigneeId ?? null,
+      assigneeName: task.assigneeName ?? null,
+      priority: instance.priority ?? 'normal',
+      externalCallbackId: task.externalCallbackId ?? null,
+      externalDispatchStatus: task.externalDispatchStatus ?? null,
+      triggerDispatchStatus: task.triggerDispatchStatus ?? null,
+      triggerAttempt: task.triggerAttempt ?? 0,
+      triggerNextRetryAt: task.triggerNextRetryAt ?? null,
+      triggerLastError: task.triggerLastError ?? null,
+      timeoutAt: task.id === 4 ? timeoutAt : null,
+      wakeAt: null,
+      ageMinutes: ageMinutesFrom(task.createdAt),
+      createdAt: task.createdAt,
+    };
+  };
+
+  const runtimeTasks = activeTasks
+    .flatMap((task) => {
+      const queues: WorkflowEngineRuntimeTask['queue'][] = [];
+      if (task.status === 'pending' && task.nodeType !== 'trigger') queues.push('humanTasks');
+      if (task.id === 4) queues.push('timeouts');
+      return queues.map((queue) => toEngineTask(task, queue)).filter(Boolean) as WorkflowEngineRuntimeTask[];
+    });
+
+  const subProcessParent = mockWorkflowInstances.find((item) => item.id === 2);
+  if (subProcessParent) {
+    runtimeTasks.push({
+      queue: 'subProcessJoin',
+      taskId: 870010,
+      instanceId: subProcessParent.id,
+      instanceTitle: subProcessParent.title,
+      serialNo: subProcessParent.serialNo ?? null,
+      definitionId: subProcessParent.definitionId,
+      definitionName: subProcessParent.definitionName ?? '—',
+      nodeKey: 'subprocess_use_seal',
+      nodeName: '用印子流程',
+      nodeType: 'subProcess',
+      status: 'waiting',
+      assigneeId: null,
+      assigneeName: null,
+      priority: subProcessParent.priority ?? 'normal',
+      externalCallbackId: null,
+      externalDispatchStatus: null,
+      triggerDispatchStatus: null,
+      triggerAttempt: 0,
+      triggerNextRetryAt: null,
+      triggerLastError: null,
+      timeoutAt: null,
+      wakeAt: null,
+      ageMinutes: ageMinutesFrom(subProcessParent.updatedAt),
+      createdAt: subProcessParent.updatedAt,
+    });
+  }
+
+  const delayInstance = mockWorkflowInstances.find((item) => item.id === 3);
+  if (delayInstance) {
+    runtimeTasks.push({
+      queue: 'delayWakeups',
+      taskId: 870011,
+      instanceId: delayInstance.id,
+      instanceTitle: delayInstance.title,
+      serialNo: delayInstance.serialNo ?? null,
+      definitionId: delayInstance.definitionId,
+      definitionName: delayInstance.definitionName ?? '—',
+      nodeKey: 'delay_review_window',
+      nodeName: '审批冷却期',
+      nodeType: 'delay',
+      status: 'waiting',
+      assigneeId: null,
+      assigneeName: null,
+      priority: delayInstance.priority ?? 'normal',
+      externalCallbackId: null,
+      externalDispatchStatus: null,
+      triggerDispatchStatus: null,
+      triggerAttempt: 0,
+      triggerNextRetryAt: null,
+      triggerLastError: null,
+      timeoutAt: null,
+      wakeAt: delayWakeAt,
+      ageMinutes: ageMinutesFrom(delayInstance.updatedAt),
+      createdAt: delayInstance.updatedAt,
+    });
+  }
+
+  for (const execution of mockWorkflowTriggerExecutions.filter((item) => item.status !== 'success')) {
+    const instance = mockWorkflowInstances.find((item) => item.id === execution.instanceId);
+    if (!instance) continue;
+    runtimeTasks.push({
+      queue: 'triggerDispatch',
+      taskId: execution.taskId ?? 870100 + execution.id,
+      instanceId: instance.id,
+      instanceTitle: instance.title,
+      serialNo: instance.serialNo ?? null,
+      definitionId: instance.definitionId,
+      definitionName: instance.definitionName ?? '—',
+      nodeKey: execution.nodeKey,
+      nodeName: execution.nodeName ?? '触发器节点',
+      nodeType: 'trigger',
+      status: 'waiting',
+      assigneeId: null,
+      assigneeName: null,
+      priority: instance.priority ?? 'normal',
+      externalCallbackId: null,
+      externalDispatchStatus: null,
+      triggerDispatchStatus: execution.status,
+      triggerAttempt: execution.attempt,
+      triggerNextRetryAt: execution.status === 'retrying' ? mockDateTimeOffset(15 * 60 * 1000) : null,
+      triggerLastError: execution.errorMessage ?? null,
+      timeoutAt: null,
+      wakeAt: null,
+      ageMinutes: ageMinutesFrom(execution.createdAt),
+      createdAt: execution.createdAt,
+    });
+  }
+
+  const outboxEvents: WorkflowEngineOutboxEvent[] = [
+    {
+      id: 2101,
+      eventId: 'mock-workflow-task-created-2',
+      eventType: 'task.created',
+      instanceId: 2,
+      instanceTitle: mockWorkflowInstances.find((item) => item.id === 2)?.title ?? null,
+      taskId: 4,
+      status: 'retrying',
+      attempts: 2,
+      errorMessage: 'Demo：通知订阅者暂时不可用，等待 replay。',
+      nextRetryAt: mockDateTimeOffset(10 * 60 * 1000),
+      processedAt: null,
+      ageMinutes: ageMinutesFrom(mockDateTimeOffset(-25 * 60 * 1000)),
+      createdAt: mockDateTimeOffset(-25 * 60 * 1000),
+    },
+    {
+      id: 2102,
+      eventId: 'mock-workflow-trigger-failed-2',
+      eventType: 'trigger.failed',
+      instanceId: 2,
+      instanceTitle: mockWorkflowInstances.find((item) => item.id === 2)?.title ?? null,
+      taskId: 3,
+      status: 'failed',
+      attempts: 5,
+      errorMessage: 'Demo：触发器回调连续超时。',
+      nextRetryAt: null,
+      processedAt: null,
+      ageMinutes: ageMinutesFrom(mockDateTimeOffset(-40 * 60 * 1000)),
+      createdAt: mockDateTimeOffset(-40 * 60 * 1000),
+    },
+  ];
+
+  const nodeTypeCounts: Record<string, number> = {};
+  let edgeCount = 0;
+  const invalidDefinitions = mockWorkflowDefinitions
+    .flatMap((definition) => {
+      const flowData = definition.flowData;
+      if (flowData?.nodes) {
+        for (const node of flowData.nodes) {
+          const type = node.data?.type ?? node.type;
+          nodeTypeCounts[type] = (nodeTypeCounts[type] ?? 0) + 1;
+        }
+        edgeCount += flowData.edges?.length ?? 0;
+      }
+      if (flowData?.nodes?.length && flowData?.edges?.length) return [];
+      return [{
+        definitionId: definition.id,
+        name: definition.name,
+        status: definition.status,
+        version: definition.version,
+        errors: ['流程图缺少节点或连线。'],
+      }];
+    });
+
+  const definitions = {
+    total: mockWorkflowDefinitions.length,
+    published: mockWorkflowDefinitions.filter((item) => item.status === 'published').length,
+    invalid: invalidDefinitions.length,
+    invalidPublished: invalidDefinitions.filter((item) => item.status === 'published').length,
+    nodeTypeCounts,
+    edgeCount,
+    invalidDefinitions,
+  };
+
+  const triggerExecutions = mockWorkflowTriggerExecutions
+    .filter((item) => item.status !== 'success')
+    .map((item) => ({
+      ...item,
+      instanceTitle: mockWorkflowInstances.find((inst) => inst.id === item.instanceId)?.title ?? null,
+    }));
+
+  const issues: WorkflowEngineIntrospection['issues'] = [];
+  for (const item of invalidDefinitions.filter((definition) => definition.status === 'published')) {
+    issues.push({
+      id: `definition:${item.definitionId}`,
+      severity: 'critical',
+      component: 'dagExecutor',
+      title: '已发布流程定义未通过当前引擎校验',
+      description: item.errors[0] ?? '流程图结构不合法。',
+      refType: 'definition',
+      refId: item.definitionId,
+      metadata: { errors: item.errors, version: item.version },
+    });
+  }
+  for (const item of runningWithoutActiveTasks) {
+    issues.push({
+      id: `instance:${item.instanceId}:no-active-task`,
+      severity: 'critical',
+      component: 'taskMaterializer',
+      title: '运行中实例没有活动任务',
+      description: `实例「${item.title}」没有 pending / waiting 任务，可能需要恢复扫描介入。`,
+      refType: 'instance',
+      refId: item.instanceId,
+      ageMinutes: item.ageMinutes,
+      createdAt: item.createdAt,
+    });
+  }
+  for (const task of runtimeTasks.filter((item) => item.queue === 'timeouts')) {
+    issues.push({
+      id: `task:${task.taskId}:timeout-due`,
+      severity: 'warning',
+      component: 'timeoutProcessor',
+      title: '任务超时待处理',
+      description: `任务 #${task.taskId} 已到 timeoutAt，等待超时处理器扫描。`,
+      refType: 'task',
+      refId: task.taskId,
+      ageMinutes: task.ageMinutes,
+      createdAt: task.createdAt,
+    });
+  }
+  for (const execution of triggerExecutions.filter((item) => item.status === 'failed')) {
+    issues.push({
+      id: `trigger-execution:${execution.id}`,
+      severity: 'critical',
+      component: 'triggerDispatcher',
+      title: '触发器执行记录失败',
+      description: execution.errorMessage ?? `触发器执行 #${execution.id} 失败。`,
+      refType: 'triggerExecution',
+      refId: execution.id,
+      createdAt: execution.createdAt,
+    });
+  }
+  for (const event of outboxEvents.filter((item) => item.status === 'failed')) {
+    issues.push({
+      id: `outbox:${event.id}`,
+      severity: 'critical',
+      component: 'outbox',
+      title: '事件 Outbox 重放失败',
+      description: event.errorMessage ?? `事件 ${event.eventType} 重放失败。`,
+      refType: 'outbox',
+      refId: event.id,
+      ageMinutes: event.ageMinutes,
+      createdAt: event.createdAt,
+    });
+  }
+
+  const worstStatus = (statuses: Array<WorkflowEngineIntrospection['components'][number]['status']>) => {
+    if (statuses.includes('critical')) return 'critical';
+    if (statuses.includes('warning')) return 'warning';
+    return 'healthy';
+  };
+  const queueSnapshot = (
+    key: WorkflowEngineRuntimeTask['queue'] | 'eventOutbox',
+    name: string,
+    counts: { ready?: number; running?: number; delayed?: number; failed?: number; oldestAgeMinutes?: number | null; details?: Record<string, number | string | null> },
+  ): WorkflowEngineIntrospection['queues'][number] => {
+    const failed = counts.failed ?? 0;
+    const oldestAgeMinutes = counts.oldestAgeMinutes ?? null;
+    return {
+      key,
+      name,
+      status: failed > 0 ? 'critical' : oldestAgeMinutes != null && oldestAgeMinutes >= 60 ? 'warning' : 'healthy',
+      ready: counts.ready ?? 0,
+      running: counts.running ?? 0,
+      delayed: counts.delayed ?? 0,
+      failed,
+      oldestAgeMinutes,
+      details: counts.details ?? null,
+    };
+  };
+
+  const byQueue = (queue: WorkflowEngineRuntimeTask['queue']) => runtimeTasks.filter((item) => item.queue === queue);
+  const queues = [
+    queueSnapshot('humanTasks', '人工任务队列', {
+      ready: byQueue('humanTasks').length,
+      oldestAgeMinutes: byQueue('humanTasks').length ? Math.max(...byQueue('humanTasks').map((item) => item.ageMinutes)) : null,
+      details: { dueSoon: byQueue('humanTasks').filter((item) => item.timeoutAt).length },
+    }),
+    queueSnapshot('delayWakeups', '延时唤醒队列', {
+      ready: byQueue('delayWakeups').filter((item) => isMockDateTimeDue(item.wakeAt)).length,
+      delayed: byQueue('delayWakeups').filter((item) => item.wakeAt && !isMockDateTimeDue(item.wakeAt)).length,
+      oldestAgeMinutes: byQueue('delayWakeups').length ? Math.max(...byQueue('delayWakeups').map((item) => item.ageMinutes)) : null,
+    }),
+    queueSnapshot('timeouts', '超时处理队列', {
+      ready: byQueue('timeouts').length,
+      oldestAgeMinutes: byQueue('timeouts').length ? Math.max(...byQueue('timeouts').map((item) => item.ageMinutes)) : null,
+    }),
+    queueSnapshot('triggerDispatch', '触发器调度队列', {
+      ready: byQueue('triggerDispatch').filter((item) => item.triggerDispatchStatus === 'pending').length,
+      delayed: byQueue('triggerDispatch').filter((item) => item.triggerDispatchStatus === 'retrying').length,
+      failed: byQueue('triggerDispatch').filter((item) => item.triggerDispatchStatus === 'failed').length,
+      oldestAgeMinutes: byQueue('triggerDispatch').length ? Math.max(...byQueue('triggerDispatch').map((item) => item.ageMinutes)) : null,
+    }),
+    queueSnapshot('externalApprovals', '外部审批分派队列', { ready: 0, oldestAgeMinutes: null }),
+    queueSnapshot('subProcessJoin', '子流程汇聚队列', {
+      ready: byQueue('subProcessJoin').length,
+      oldestAgeMinutes: byQueue('subProcessJoin').length ? Math.max(...byQueue('subProcessJoin').map((item) => item.ageMinutes)) : null,
+    }),
+    queueSnapshot('eventOutbox', '工作流事件 Outbox', {
+      ready: outboxEvents.filter((item) => item.status === 'pending').length,
+      delayed: outboxEvents.filter((item) => item.status === 'retrying' || item.status === 'processing').length,
+      failed: outboxEvents.filter((item) => item.status === 'failed').length,
+      oldestAgeMinutes: outboxEvents.length ? Math.max(...outboxEvents.map((item) => item.ageMinutes)) : null,
+    }),
+  ];
+  const queueStatus = (key: WorkflowEngineIntrospection['queues'][number]['key']) => queues.find((item) => item.key === key)?.status ?? 'healthy';
+  const issueStatus = (component: WorkflowEngineIntrospection['components'][number]['key']) => worstStatus(issues.filter((issue) => issue.component === component).map((issue) => issue.severity === 'info' ? 'healthy' : issue.severity));
+  const components: WorkflowEngineIntrospection['components'] = [
+    {
+      key: 'dagExecutor',
+      name: 'DAG 执行器',
+      description: '流程图遍历、网关分支和节点推进规则。',
+      status: definitions.invalidPublished > 0 ? 'critical' : definitions.invalid > 0 ? 'warning' : 'healthy',
+      metrics: [
+        { label: '定义总数', value: definitions.total },
+        { label: '已发布', value: definitions.published },
+        { label: '校验失败', value: definitions.invalid, status: definitions.invalidPublished > 0 ? 'critical' : definitions.invalid > 0 ? 'warning' : 'healthy' },
+        { label: '节点数', value: Object.values(definitions.nodeTypeCounts).reduce((sum, value) => sum + value, 0) },
+        { label: '连线数', value: definitions.edgeCount },
+      ],
+      internals: { nodeTypeCounts: definitions.nodeTypeCounts },
+    },
+    {
+      key: 'taskMaterializer',
+      name: '任务物化器',
+      description: '将引擎输出的 TaskAction 展开成任务行。',
+      status: issueStatus('taskMaterializer'),
+      metrics: [
+        { label: '运行实例', value: runningInstances.length },
+        { label: '无活动任务实例', value: runningWithoutActiveTasks.length, status: runningWithoutActiveTasks.length > 0 ? 'critical' : 'healthy' },
+        { label: '活动任务', value: activeTasks.length },
+      ],
+    },
+    {
+      key: 'delayScheduler',
+      name: '延时调度器',
+      description: 'delay 节点唤醒队列与兜底恢复扫描。',
+      status: queueStatus('delayWakeups'),
+      metrics: [
+        { label: '等待唤醒', value: byQueue('delayWakeups').length },
+        { label: '已到期', value: queues.find((item) => item.key === 'delayWakeups')?.ready ?? 0, status: queueStatus('delayWakeups') },
+        { label: '队列 worker', value: '已注册', status: 'healthy' },
+      ],
+    },
+    {
+      key: 'timeoutProcessor',
+      name: '超时处理器',
+      description: '处理 timeoutAt 到期的审批任务。',
+      status: worstStatus([queueStatus('timeouts'), issueStatus('timeoutProcessor')]),
+      metrics: [
+        { label: '待处理超时', value: byQueue('timeouts').length, status: byQueue('timeouts').length > 0 ? 'warning' : 'healthy' },
+        { label: 'Cron Handler', value: '已注册', status: 'healthy' },
+      ],
+    },
+    {
+      key: 'triggerDispatcher',
+      name: '触发器调度器',
+      description: '执行 webhook/callback/updateData/deleteData 副作用。',
+      status: worstStatus([queueStatus('triggerDispatch'), issueStatus('triggerDispatcher')]),
+      metrics: [
+        { label: '任务数', value: byQueue('triggerDispatch').length },
+        { label: '重试中', value: byQueue('triggerDispatch').filter((item) => item.triggerDispatchStatus === 'retrying').length },
+        { label: '失败', value: byQueue('triggerDispatch').filter((item) => item.triggerDispatchStatus === 'failed').length, status: queueStatus('triggerDispatch') },
+      ],
+    },
+    {
+      key: 'externalApprover',
+      name: '外部审批分派',
+      description: '外部审批任务分派与公开回调确认。',
+      status: 'healthy',
+      metrics: [
+        { label: '等待外部回调', value: 0 },
+        { label: '分派失败', value: 0, status: 'healthy' },
+      ],
+    },
+    {
+      key: 'subProcessRecovery',
+      name: '子流程恢复器',
+      description: '子流程 spawn / resume / 多实例汇聚恢复。',
+      status: queueStatus('subProcessJoin'),
+      metrics: [
+        { label: '等待汇聚', value: byQueue('subProcessJoin').length },
+        { label: 'Cron Handler', value: '已注册', status: 'healthy' },
+      ],
+    },
+    {
+      key: 'eventBus',
+      name: '事件总线',
+      description: '进程内工作流事件派发器。',
+      status: 'healthy',
+      metrics: [
+        { label: '监听器总数', value: 7, status: 'healthy' },
+        { label: '事件类型', value: 5 },
+      ],
+      internals: {
+        listeners: [
+          { eventType: '__any__', listenerCount: 1 },
+          { eventType: 'node.entered', listenerCount: 2 },
+          { eventType: 'task.created', listenerCount: 2 },
+          { eventType: 'instance.approved', listenerCount: 1 },
+          { eventType: 'task.rejected', listenerCount: 1 },
+        ],
+      },
+    },
+    {
+      key: 'outbox',
+      name: '事件 Outbox',
+      description: '持久化工作流事件并兜底重放。',
+      status: worstStatus([queueStatus('eventOutbox'), issueStatus('outbox')]),
+      metrics: [
+        { label: 'pending', value: 0 },
+        { label: 'retrying', value: outboxEvents.filter((item) => item.status === 'retrying').length },
+        { label: 'failed', value: outboxEvents.filter((item) => item.status === 'failed').length, status: outboxEvents.some((item) => item.status === 'failed') ? 'critical' : 'healthy' },
+      ],
+    },
+    {
+      key: 'scheduler',
+      name: 'pg-boss 调度器',
+      description: '用户 Cron、系统周期任务、延时唤醒队列和恢复扫描。',
+      status: 'healthy',
+      metrics: [
+        { label: '初始化', value: '是', status: 'healthy' },
+        { label: '运行中 Job', value: 1 },
+        { label: '系统周期任务', value: 2 },
+        { label: '系统队列 Worker', value: 1 },
+      ],
+      internals: { wip: [{ name: 'workflow-delay-wakeup', count: 1 }] },
+    },
+  ];
+
+  return {
+    healthy: !issues.some((item) => item.severity === 'critical'),
+    generatedAt: mockDateTime(),
+    thresholdMinutes,
+    components,
+    queues,
+    definitions,
+    eventBus: {
+      totalListenerCount: 7,
+      listeners: [
+        { eventType: '__any__', listenerCount: 1 },
+        { eventType: 'node.entered', listenerCount: 2 },
+        { eventType: 'task.created', listenerCount: 2 },
+        { eventType: 'instance.approved', listenerCount: 1 },
+        { eventType: 'task.rejected', listenerCount: 1 },
+      ],
+    },
+    scheduler: {
+      initialized: true,
+      runningJobCount: 1,
+      registeredHandlers: ['processWorkflowTaskTimeouts', 'recoverStuckWorkflowSubProcesses', 'replayWorkflowEventOutbox'],
+      systemRecurringJobs: [
+        { name: 'workflow-timeout-scan', cronExpression: '*/5 * * * *', registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000) },
+        { name: 'workflow-subprocess-recovery', cronExpression: '*/10 * * * *', registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000) },
+      ],
+      systemQueueWorkers: [
+        { name: 'workflow-delay-wakeup', registeredAt: mockDateTimeOffset(-2 * 60 * 60 * 1000) },
+      ],
+      wip: [{ name: 'workflow-delay-wakeup', count: 1 }],
+    },
+    runtime: {
+      runningInstances: runningInstances.length,
+      runningWithoutActiveTasks,
+      taskQueue: runtimeTasks,
+      triggerExecutions,
+      outboxEvents,
+    },
+    issues,
   };
 }
 
@@ -478,6 +1004,12 @@ export const workflowHandlers = [
       .map(i => ({ ...withActiveNodes(i), tasks: undefined }));
 
     return ok({ stats, list: paged, total, page, pageSize });
+  }),
+
+  http.get('/api/workflows/engine/introspection', ({ request }) => {
+    const url = new URL(request.url);
+    const threshold = Number(url.searchParams.get('thresholdMinutes')) || 30;
+    return ok(buildMockWorkflowEngineIntrospection(Math.max(1, Math.min(threshold, 24 * 60))));
   }),
 
   http.get('/api/workflows/instances/:id/diagnostics', ({ params }) => {

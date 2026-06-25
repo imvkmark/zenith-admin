@@ -38,6 +38,7 @@ import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL } from '@/components/workflow/workflow-runtime';
 import { resolveWorkflowFlowData } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
+import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 
@@ -1259,6 +1260,9 @@ export default function WorkflowMonitorPage() {
         </TabPane>
         <TabPane tab="数据分析" itemKey="analytics">
           <WorkflowAnalyticsView definitions={definitions} />
+        </TabPane>
+        <TabPane tab="引擎诊断" itemKey="engine">
+          <WorkflowEngineDiagnosticsView />
         </TabPane>
       </Tabs>
 

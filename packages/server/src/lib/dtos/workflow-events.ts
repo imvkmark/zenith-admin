@@ -170,3 +170,192 @@ export const WorkflowHealthSummaryDTO = z
     issues: z.array(WorkflowHealthIssueDTO),
   })
   .openapi('WorkflowHealthSummary');
+
+const WorkflowEngineComponentStatusDTO = z.enum(['healthy', 'warning', 'critical']);
+const WorkflowEngineComponentKeyDTO = z.enum([
+  'dagExecutor',
+  'taskMaterializer',
+  'delayScheduler',
+  'timeoutProcessor',
+  'triggerDispatcher',
+  'externalApprover',
+  'subProcessRecovery',
+  'eventBus',
+  'outbox',
+  'scheduler',
+]);
+const WorkflowEngineQueueKeyDTO = z.enum([
+  'humanTasks',
+  'delayWakeups',
+  'timeouts',
+  'triggerDispatch',
+  'externalApprovals',
+  'subProcessJoin',
+  'eventOutbox',
+]);
+
+const WorkflowEngineMetricDTO = z.object({
+  label: z.string(),
+  value: z.union([z.number(), z.string()]),
+  unit: z.string().nullable().optional(),
+  hint: z.string().nullable().optional(),
+  status: WorkflowEngineComponentStatusDTO.nullable().optional(),
+});
+
+const WorkflowEngineComponentDTO = z.object({
+  key: WorkflowEngineComponentKeyDTO,
+  name: z.string(),
+  status: WorkflowEngineComponentStatusDTO,
+  description: z.string(),
+  metrics: z.array(WorkflowEngineMetricDTO),
+  internals: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
+const WorkflowEngineQueueSnapshotDTO = z.object({
+  key: WorkflowEngineQueueKeyDTO,
+  name: z.string(),
+  status: WorkflowEngineComponentStatusDTO,
+  ready: z.number().int(),
+  running: z.number().int(),
+  delayed: z.number().int(),
+  failed: z.number().int(),
+  oldestAgeMinutes: z.number().int().nullable(),
+  details: z.record(z.string(), z.union([z.number(), z.string(), z.null()])).nullable().optional(),
+});
+
+const WorkflowEngineDefinitionValidationItemDTO = z.object({
+  definitionId: z.number().int(),
+  name: z.string(),
+  status: z.enum(['draft', 'published', 'disabled']),
+  version: z.number().int(),
+  errors: z.array(z.string()),
+});
+
+const WorkflowEngineDefinitionSnapshotDTO = z.object({
+  total: z.number().int(),
+  published: z.number().int(),
+  invalid: z.number().int(),
+  invalidPublished: z.number().int(),
+  nodeTypeCounts: z.record(z.string(), z.number().int()),
+  edgeCount: z.number().int(),
+  invalidDefinitions: z.array(WorkflowEngineDefinitionValidationItemDTO),
+});
+
+const WorkflowEngineEventBusSnapshotDTO = z.object({
+  totalListenerCount: z.number().int(),
+  listeners: z.array(z.object({
+    eventType: z.string(),
+    listenerCount: z.number().int(),
+  })),
+});
+
+const WorkflowEngineSchedulerSnapshotDTO = z.object({
+  initialized: z.boolean(),
+  runningJobCount: z.number().int(),
+  registeredHandlers: z.array(z.string()),
+  systemRecurringJobs: z.array(z.object({
+    name: z.string(),
+    cronExpression: z.string(),
+    registeredAt: z.string(),
+  })),
+  systemQueueWorkers: z.array(z.object({
+    name: z.string(),
+    registeredAt: z.string(),
+  })),
+  wip: z.array(z.object({
+    name: z.string(),
+    count: z.number().int(),
+  })),
+});
+
+const WorkflowEngineRuntimeTaskDTO = z.object({
+  queue: WorkflowEngineQueueKeyDTO,
+  taskId: z.number().int(),
+  instanceId: z.number().int(),
+  instanceTitle: z.string(),
+  serialNo: z.string().nullable(),
+  definitionId: z.number().int(),
+  definitionName: z.string(),
+  nodeKey: z.string(),
+  nodeName: z.string(),
+  nodeType: z.string().nullable(),
+  status: z.enum(['pending', 'approved', 'rejected', 'skipped', 'waiting']),
+  assigneeId: z.number().int().nullable(),
+  assigneeName: z.string().nullable(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']),
+  externalCallbackId: z.string().nullable(),
+  externalDispatchStatus: z.enum(['pending', 'dispatched', 'failed', 'fallback']).nullable(),
+  triggerDispatchStatus: z.enum(['pending', 'running', 'success', 'failed', 'retrying']).nullable(),
+  triggerAttempt: z.number().int(),
+  triggerNextRetryAt: z.string().nullable(),
+  triggerLastError: z.string().nullable(),
+  timeoutAt: z.string().nullable(),
+  wakeAt: z.string().nullable(),
+  ageMinutes: z.number().int(),
+  createdAt: z.string(),
+});
+
+const WorkflowEngineOutboxEventDTO = z.object({
+  id: z.number().int(),
+  eventId: z.string(),
+  eventType: z.string(),
+  instanceId: z.number().int().nullable(),
+  instanceTitle: z.string().nullable(),
+  taskId: z.number().int().nullable(),
+  status: z.string(),
+  attempts: z.number().int(),
+  errorMessage: z.string().nullable(),
+  nextRetryAt: z.string().nullable(),
+  processedAt: z.string().nullable(),
+  ageMinutes: z.number().int(),
+  createdAt: z.string(),
+});
+
+const WorkflowEngineTriggerExecutionDTO = WorkflowTriggerExecutionDTO.extend({
+  instanceTitle: z.string().nullable(),
+});
+
+const WorkflowEngineRuntimeIssueDTO = z.object({
+  id: z.string(),
+  severity: z.enum(['info', 'warning', 'critical']),
+  component: WorkflowEngineComponentKeyDTO,
+  title: z.string(),
+  description: z.string(),
+  refType: z.enum(['definition', 'instance', 'task', 'triggerExecution', 'outbox', 'scheduler']).nullable().optional(),
+  refId: z.number().int().nullable().optional(),
+  ageMinutes: z.number().int().nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
+const WorkflowEngineRuntimeSnapshotDTO = z.object({
+  runningInstances: z.number().int(),
+  runningWithoutActiveTasks: z.array(z.object({
+    instanceId: z.number().int(),
+    title: z.string(),
+    serialNo: z.string().nullable(),
+    definitionId: z.number().int(),
+    definitionName: z.string().nullable(),
+    currentNodeKey: z.string().nullable(),
+    ageMinutes: z.number().int(),
+    createdAt: z.string(),
+  })),
+  taskQueue: z.array(WorkflowEngineRuntimeTaskDTO),
+  triggerExecutions: z.array(WorkflowEngineTriggerExecutionDTO),
+  outboxEvents: z.array(WorkflowEngineOutboxEventDTO),
+});
+
+export const WorkflowEngineIntrospectionDTO = z
+  .object({
+    healthy: z.boolean(),
+    generatedAt: z.string(),
+    thresholdMinutes: z.number().int(),
+    components: z.array(WorkflowEngineComponentDTO),
+    queues: z.array(WorkflowEngineQueueSnapshotDTO),
+    definitions: WorkflowEngineDefinitionSnapshotDTO,
+    eventBus: WorkflowEngineEventBusSnapshotDTO,
+    scheduler: WorkflowEngineSchedulerSnapshotDTO,
+    runtime: WorkflowEngineRuntimeSnapshotDTO,
+    issues: z.array(WorkflowEngineRuntimeIssueDTO),
+  })
+  .openapi('WorkflowEngineIntrospection');

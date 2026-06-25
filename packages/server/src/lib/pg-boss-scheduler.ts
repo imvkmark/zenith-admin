@@ -55,6 +55,8 @@ function queueName(jobId: number): string {
 // ─── pg-boss 实例（单例）─────────────────────────────────────────────────────
 
 let boss: PgBoss | null = null;
+const systemRecurringJobs = new Map<string, { name: string; cronExpression: string; registeredAt: string }>();
+const systemQueueWorkers = new Map<string, { name: string; registeredAt: string }>();
 
 function getBoss(): PgBoss {
   if (!boss) throw new Error('pg-boss not initialized. Call initCronScheduler() first.');
@@ -410,6 +412,25 @@ export function getRunningJobCount(): number {
   return boss.getWipData().filter(w => w.count > 0).reduce((sum, w) => sum + w.count, 0);
 }
 
+export function getSchedulerIntrospection(): {
+  initialized: boolean;
+  runningJobCount: number;
+  registeredHandlers: string[];
+  systemRecurringJobs: Array<{ name: string; cronExpression: string; registeredAt: string }>;
+  systemQueueWorkers: Array<{ name: string; registeredAt: string }>;
+  wip: Array<{ name: string; count: number }>;
+} {
+  const wip = boss?.getWipData().map((item) => ({ name: item.name, count: item.count })) ?? [];
+  return {
+    initialized: boss !== null,
+    runningJobCount: wip.filter((item) => item.count > 0).reduce((sum, item) => sum + item.count, 0),
+    registeredHandlers: getRegisteredHandlers(),
+    systemRecurringJobs: [...systemRecurringJobs.values()],
+    systemQueueWorkers: [...systemQueueWorkers.values()],
+    wip,
+  };
+}
+
 /**
  * 注册系统级周期任务（不写入 cron_jobs / cron_job_logs），用于工作流定时发起等内部调度。
  * 与用户可配置的 cron 任务隔离，避免污染任务日志。
@@ -423,6 +444,7 @@ export async function registerSystemRecurringJob(
   await b.createQueue(name);
   await b.work(name, async () => { await fn(); });
   await b.schedule(name, cronExpr, {}, { tz: 'Asia/Shanghai' });
+  systemRecurringJobs.set(name, { name, cronExpression: cronExpr, registeredAt: formatDateTime(new Date()) });
   logger.info(`pg-boss: system recurring job "${name}" scheduled (${cronExpr})`);
 }
 
@@ -438,6 +460,7 @@ export async function registerSystemQueueWorker<T extends object>(
       await handler(job.data);
     }
   });
+  systemQueueWorkers.set(name, { name, registeredAt: formatDateTime(new Date()) });
   logger.info(`pg-boss: system queue worker "${name}" registered`);
 }
 

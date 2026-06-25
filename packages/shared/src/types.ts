@@ -2768,6 +2768,180 @@ export interface WorkflowRuntimeDiagnostics {
   generatedAt: string;
 }
 
+export type WorkflowEngineComponentStatus = 'healthy' | 'warning' | 'critical';
+
+export type WorkflowEngineComponentKey =
+  | 'dagExecutor'
+  | 'taskMaterializer'
+  | 'delayScheduler'
+  | 'timeoutProcessor'
+  | 'triggerDispatcher'
+  | 'externalApprover'
+  | 'subProcessRecovery'
+  | 'eventBus'
+  | 'outbox'
+  | 'scheduler';
+
+export type WorkflowEngineQueueKey =
+  | 'humanTasks'
+  | 'delayWakeups'
+  | 'timeouts'
+  | 'triggerDispatch'
+  | 'externalApprovals'
+  | 'subProcessJoin'
+  | 'eventOutbox';
+
+export interface WorkflowEngineMetric {
+  label: string;
+  value: number | string;
+  unit?: string | null;
+  hint?: string | null;
+  status?: WorkflowEngineComponentStatus | null;
+}
+
+export interface WorkflowEngineComponent {
+  key: WorkflowEngineComponentKey;
+  name: string;
+  status: WorkflowEngineComponentStatus;
+  description: string;
+  metrics: WorkflowEngineMetric[];
+  internals?: Record<string, unknown> | null;
+}
+
+export interface WorkflowEngineQueueSnapshot {
+  key: WorkflowEngineQueueKey;
+  name: string;
+  status: WorkflowEngineComponentStatus;
+  ready: number;
+  running: number;
+  delayed: number;
+  failed: number;
+  oldestAgeMinutes: number | null;
+  details?: Record<string, number | string | null> | null;
+}
+
+export interface WorkflowEngineDefinitionValidationItem {
+  definitionId: number;
+  name: string;
+  status: WorkflowDefinitionStatus;
+  version: number;
+  errors: string[];
+}
+
+export interface WorkflowEngineDefinitionSnapshot {
+  total: number;
+  published: number;
+  invalid: number;
+  invalidPublished: number;
+  nodeTypeCounts: Record<string, number>;
+  edgeCount: number;
+  invalidDefinitions: WorkflowEngineDefinitionValidationItem[];
+}
+
+export interface WorkflowEngineEventBusSnapshot {
+  totalListenerCount: number;
+  listeners: Array<{ eventType: WorkflowEventType | '__any__'; listenerCount: number }>;
+}
+
+export interface WorkflowEngineSchedulerSnapshot {
+  initialized: boolean;
+  runningJobCount: number;
+  registeredHandlers: string[];
+  systemRecurringJobs: Array<{ name: string; cronExpression: string; registeredAt: string }>;
+  systemQueueWorkers: Array<{ name: string; registeredAt: string }>;
+  wip: Array<{ name: string; count: number }>;
+}
+
+export interface WorkflowEngineRuntimeTask {
+  queue: WorkflowEngineQueueKey;
+  taskId: number;
+  instanceId: number;
+  instanceTitle: string;
+  serialNo: string | null;
+  definitionId: number;
+  definitionName: string;
+  nodeKey: string;
+  nodeName: string;
+  nodeType: WorkflowNodeType | null;
+  status: WorkflowTaskStatus;
+  assigneeId: number | null;
+  assigneeName: string | null;
+  priority: WorkflowInstancePriority;
+  externalCallbackId: string | null;
+  externalDispatchStatus: WorkflowTaskExternalDispatchStatus | null;
+  triggerDispatchStatus: WorkflowTriggerExecutionStatus | null;
+  triggerAttempt: number;
+  triggerNextRetryAt: string | null;
+  triggerLastError: string | null;
+  timeoutAt: string | null;
+  wakeAt: string | null;
+  ageMinutes: number;
+  createdAt: string;
+}
+
+export interface WorkflowEngineOutboxEvent {
+  id: number;
+  eventId: string;
+  eventType: string;
+  instanceId: number | null;
+  instanceTitle: string | null;
+  taskId: number | null;
+  status: string;
+  attempts: number;
+  errorMessage: string | null;
+  nextRetryAt: string | null;
+  processedAt: string | null;
+  ageMinutes: number;
+  createdAt: string;
+}
+
+export interface WorkflowEngineTriggerExecution extends WorkflowTriggerExecution {
+  instanceTitle: string | null;
+}
+
+export interface WorkflowEngineRuntimeIssue {
+  id: string;
+  severity: WorkflowRuntimeIssueSeverity;
+  component: WorkflowEngineComponentKey;
+  title: string;
+  description: string;
+  refType?: 'definition' | 'instance' | 'task' | 'triggerExecution' | 'outbox' | 'scheduler' | null;
+  refId?: number | null;
+  ageMinutes?: number | null;
+  createdAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface WorkflowEngineRuntimeSnapshot {
+  runningInstances: number;
+  runningWithoutActiveTasks: Array<{
+    instanceId: number;
+    title: string;
+    serialNo: string | null;
+    definitionId: number;
+    definitionName: string | null;
+    currentNodeKey: string | null;
+    ageMinutes: number;
+    createdAt: string;
+  }>;
+  taskQueue: WorkflowEngineRuntimeTask[];
+  triggerExecutions: WorkflowEngineTriggerExecution[];
+  outboxEvents: WorkflowEngineOutboxEvent[];
+}
+
+export interface WorkflowEngineIntrospection {
+  healthy: boolean;
+  generatedAt: string;
+  thresholdMinutes: number;
+  components: WorkflowEngineComponent[];
+  queues: WorkflowEngineQueueSnapshot[];
+  definitions: WorkflowEngineDefinitionSnapshot;
+  eventBus: WorkflowEngineEventBusSnapshot;
+  scheduler: WorkflowEngineSchedulerSnapshot;
+  runtime: WorkflowEngineRuntimeSnapshot;
+  issues: WorkflowEngineRuntimeIssue[];
+}
+
 export type WorkflowHealthIssueType =
   | 'external_dispatch_failed'
   | 'external_dispatch_pending'

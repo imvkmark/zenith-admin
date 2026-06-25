@@ -59,6 +59,20 @@ class WorkflowEventBus {
     this.emitter.off(type, handler);
   }
 
+  introspect(): { totalListenerCount: number; listeners: Array<{ eventType: WorkflowEventType | typeof ANY_CHANNEL; listenerCount: number }> } {
+    const listeners = this.emitter.eventNames()
+      .filter((name): name is string => typeof name === 'string')
+      .map((name) => ({
+        eventType: name as WorkflowEventType | typeof ANY_CHANNEL,
+        listenerCount: this.emitter.listenerCount(name),
+      }))
+      .sort((a, b) => a.eventType.localeCompare(b.eventType));
+    return {
+      totalListenerCount: listeners.reduce((sum, item) => sum + item.listenerCount, 0),
+      listeners,
+    };
+  }
+
   private normalize(event: Omit<WorkflowEvent, 'eventId' | 'occurredAt'> & { eventId?: string; occurredAt?: string }): WorkflowEvent {
     return {
       ...event,
@@ -177,6 +191,10 @@ function eqId(id: number) {
 }
 
 export const workflowEventBus = new WorkflowEventBus();
+
+export function getWorkflowEventBusIntrospection(): ReturnType<WorkflowEventBus['introspect']> {
+  return workflowEventBus.introspect();
+}
 
 export async function replayWorkflowEventOutbox(): Promise<{ scanned: number; dispatched: number; failed: number }> {
   return workflowEventBus.replayPending();
