@@ -4,9 +4,10 @@ import { guard, setAuditBeforeData } from '../middleware/guard';
 import { idempotencyGuard } from '../middleware/idempotency';
 import { approveWorkflowTaskSchema, rejectWorkflowTaskSchema, createWorkflowInstanceWithDraftSchema, updateWorkflowInstanceSchema, transferWorkflowTaskSchema, delegateWorkflowTaskSchema, addSignWorkflowTaskSchema, reduceSignWorkflowTaskSchema, returnWorkflowTaskSchema, urgeWorkflowTaskSchema, addInstanceCcSchema, batchApproveWorkflowTaskSchema, batchRejectWorkflowTaskSchema, batchWithdrawWorkflowInstanceSchema, batchUrgeWorkflowInstanceSchema, forwardInstanceSchema, createWorkflowCommentSchema, jumpWorkflowInstanceSchema, reassignWorkflowTaskSchema, createWorkflowConsultSchema, replyWorkflowConsultSchema, recallWorkflowTaskSchema } from '@zenith/shared';
 import { ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okMsg, okPaginated, IdParam, okBody, okExcel, excelStreamBody } from '../lib/openapi-schemas';
-import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowTaskDTO, WorkflowTaskUrgeDTO, WorkflowCommentDTO, WorkflowBatchActionResponseDTO, WorkflowInstanceBatchActionResponseDTO, WorkflowAnalyticsDTO, WorkflowOverdueTaskDTO, WorkflowTaskConsultDTO, WorkflowRelationOptionDTO } from '../lib/openapi-dtos';
+import { WorkflowInstanceDTO, WorkflowInstanceListItemDTO, WorkflowInstanceAllDTO, WorkflowRuntimeDiagnosticsDTO, WorkflowTaskDTO, WorkflowTaskUrgeDTO, WorkflowCommentDTO, WorkflowBatchActionResponseDTO, WorkflowInstanceBatchActionResponseDTO, WorkflowAnalyticsDTO, WorkflowOverdueTaskDTO, WorkflowTaskConsultDTO, WorkflowRelationOptionDTO } from '../lib/openapi-dtos';
 import {
   listMyInstances, listPendingMine, listAllInstances, listMyCc, listMyHandled, getInstanceDetail,
+  getInstanceRuntimeDiagnostics,
   createInstance, withdrawInstance, cancelInstance, deleteInstance, getInstanceForAdminAudit,
   approveTask, rejectTask, getWorkflowInstanceBeforeAudit, getWorkflowTaskBeforeAudit,
   transferTask, delegateTask, addSignTask, reduceSignTask, returnTask,
@@ -141,6 +142,21 @@ const detailRoute = defineOpenAPIRoute({
     },
   }),
   handler: async (c) => c.json(okBody(await getInstanceDetail(c.req.valid('param').id)), 200),
+});
+
+const diagnosticsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/instances/{id}/diagnostics', tags: ['WorkflowInstances'], summary: '实例运行时技术诊断',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
+    request: { params: IdParam },
+    responses: {
+      ...commonErrorResponses,
+      ...ok(WorkflowRuntimeDiagnosticsDTO, 'ok'),
+      404: { content: jsonContent(ErrorResponse), description: '不存在或无权查看' },
+    },
+  }),
+  handler: async (c) => c.json(okBody(await getInstanceRuntimeDiagnostics(c.req.valid('param').id)), 200),
 });
 
 const createInstanceRoute = defineOpenAPIRoute({
@@ -773,7 +789,7 @@ const replyConsultRoute = defineOpenAPIRoute({
   handler: async (c) => c.json(okBody(await replyConsult(c.req.valid('param').id, c.req.valid('json')), '已回复'), 200),
 });
 
-router.openapiRoutes([listRoute, pendingMineRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, relationOptionsRoute, analyticsRoute, overdueRoute, exportRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, detailRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
+router.openapiRoutes([listRoute, pendingMineRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, relationOptionsRoute, analyticsRoute, overdueRoute, exportRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, detailRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
 router.openapiRoutes([withdrawRoute, forwardRoute, cancelInstanceRoute, jumpInstanceRoute, deleteInstanceRoute, batchApproveRoute, batchRejectRoute, approveRoute, rejectRoute, transferRoute, reassignRoute, recallRoute, consultRoute, replyConsultRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);
 
 export default router;

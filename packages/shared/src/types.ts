@@ -2729,6 +2729,45 @@ export interface WorkflowTriggerExecution {
   createdAt: string;
 }
 
+export type WorkflowRuntimeIssueSeverity = 'info' | 'warning' | 'critical';
+
+export interface WorkflowRuntimeIssue {
+  severity: WorkflowRuntimeIssueSeverity;
+  title: string;
+  description: string;
+  source: 'instance' | 'task' | 'trigger' | 'outbox';
+  taskId?: number | null;
+  nodeKey?: string | null;
+}
+
+export interface WorkflowRuntimeOutboxEvent {
+  id: number;
+  eventId: string;
+  eventType: string;
+  taskId: number | null;
+  status: string;
+  attempts: number;
+  errorMessage: string | null;
+  nextRetryAt: string | null;
+  processedAt: string | null;
+  createdAt: string;
+}
+
+export interface WorkflowRuntimeDiagnostics {
+  instance: WorkflowInstance;
+  tasks: WorkflowTask[];
+  activeTasks: WorkflowTask[];
+  triggerExecutions: WorkflowTriggerExecution[];
+  outboxEvents: WorkflowRuntimeOutboxEvent[];
+  issues: WorkflowRuntimeIssue[];
+  snapshot: {
+    formData: Record<string, unknown> | null;
+    formSnapshot: unknown;
+    definitionSnapshot: unknown;
+  };
+  generatedAt: string;
+}
+
 export type WorkflowHealthIssueType =
   | 'external_dispatch_failed'
   | 'external_dispatch_pending'

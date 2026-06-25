@@ -13,7 +13,7 @@ function err(message: string, code = 400) {
   return HttpResponse.json({ code, message });
 }
 
-const mockTriggerExecutions: WorkflowTriggerExecution[] = [
+export const mockWorkflowTriggerExecutions: WorkflowTriggerExecution[] = [
   {
     id: 1,
     instanceId: 1,
@@ -86,7 +86,7 @@ export const workflowTriggerExecutionsHandlers = [
     const nodeKey = (url.searchParams.get('nodeKey') ?? '').trim();
     const status = url.searchParams.get('status') as WorkflowTriggerExecutionStatus | null;
 
-    let list = [...mockTriggerExecutions];
+    let list = [...mockWorkflowTriggerExecutions];
     if (instanceId) list = list.filter((item) => item.instanceId === Number(instanceId));
     if (nodeKey) list = list.filter((item) => item.nodeKey.includes(nodeKey));
     if (status) list = list.filter((item) => item.status === status);
@@ -96,7 +96,7 @@ export const workflowTriggerExecutionsHandlers = [
   }),
 
   http.get('/api/workflows/trigger-executions/:id', ({ params }) => {
-    const row = mockTriggerExecutions.find((item) => item.id === Number(params.id));
+    const row = mockWorkflowTriggerExecutions.find((item) => item.id === Number(params.id));
     if (!row) return err('触发器执行记录不存在', 404);
     return ok(row);
   }),

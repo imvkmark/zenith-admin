@@ -3,6 +3,7 @@
  */
 import { z } from '@hono/zod-openapi';
 import { auditFields } from './_audit';
+import { WorkflowInstanceDTO, WorkflowTaskDTO } from './workflow';
 
 export const WorkflowEventSubscriptionDTO = z
   .object({
@@ -79,6 +80,49 @@ export const WorkflowTriggerExecutionDTO = z
     createdAt: z.string(),
   })
   .openapi('WorkflowTriggerExecution');
+
+export const WorkflowRuntimeOutboxEventDTO = z
+  .object({
+    id: z.number().int(),
+    eventId: z.string(),
+    eventType: z.string(),
+    taskId: z.number().int().nullable(),
+    status: z.string(),
+    attempts: z.number().int(),
+    errorMessage: z.string().nullable(),
+    nextRetryAt: z.string().nullable(),
+    processedAt: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('WorkflowRuntimeOutboxEvent');
+
+export const WorkflowRuntimeIssueDTO = z
+  .object({
+    severity: z.enum(['info', 'warning', 'critical']),
+    title: z.string(),
+    description: z.string(),
+    source: z.enum(['instance', 'task', 'trigger', 'outbox']),
+    taskId: z.number().int().nullable().optional(),
+    nodeKey: z.string().nullable().optional(),
+  })
+  .openapi('WorkflowRuntimeIssue');
+
+export const WorkflowRuntimeDiagnosticsDTO = z
+  .object({
+    instance: WorkflowInstanceDTO,
+    tasks: z.array(WorkflowTaskDTO),
+    activeTasks: z.array(WorkflowTaskDTO),
+    triggerExecutions: z.array(WorkflowTriggerExecutionDTO),
+    outboxEvents: z.array(WorkflowRuntimeOutboxEventDTO),
+    issues: z.array(WorkflowRuntimeIssueDTO),
+    snapshot: z.object({
+      formData: z.unknown().nullable(),
+      formSnapshot: z.unknown().nullable(),
+      definitionSnapshot: z.unknown().nullable(),
+    }),
+    generatedAt: z.string(),
+  })
+  .openapi('WorkflowRuntimeDiagnostics');
 
 export const WorkflowHealthIssueDTO = z
   .object({

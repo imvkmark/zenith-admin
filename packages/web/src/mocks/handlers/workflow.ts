@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -12,6 +12,7 @@ import {
 } from '@/mocks/data/workflow';
 import { mockWorkflowForms } from '@/mocks/data/workflow-forms';
 import { mockDateTime } from '@/mocks/utils/date';
+import { mockWorkflowTriggerExecutions } from './workflow-trigger-executions';
 
 function ok<T>(data: T, message = 'ok') {
   return HttpResponse.json({ code: 0, message, data });
@@ -477,6 +478,97 @@ export const workflowHandlers = [
       .map(i => ({ ...withActiveNodes(i), tasks: undefined }));
 
     return ok({ stats, list: paged, total, page, pageSize });
+  }),
+
+  http.get('/api/workflows/instances/:id/diagnostics', ({ params }) => {
+    const inst = mockWorkflowInstances.find(i => i.id === Number(params.id));
+    if (!inst) return err('流程实例不存在', 404);
+    const tasks = mockWorkflowTasks
+      .filter(t => t.instanceId === inst.id)
+      .sort((a, b) => a.id - b.id);
+    const activeTasks = tasks.filter(t => t.status === 'pending' || t.status === 'waiting');
+    const triggerExecutions = mockWorkflowTriggerExecutions.filter(item => item.instanceId === inst.id);
+    const outboxEvents = [
+      {
+        id: inst.id * 10 + 1,
+        eventId: `mock-node-entered-${inst.id}`,
+        eventType: 'node.entered',
+        taskId: activeTasks[0]?.id ?? null,
+        status: inst.status === 'running' ? 'success' : 'success',
+        attempts: 1,
+        errorMessage: null,
+        nextRetryAt: null,
+        processedAt: inst.updatedAt,
+        createdAt: inst.createdAt,
+      },
+      ...(inst.id === 2 ? [{
+        id: inst.id * 10 + 2,
+        eventId: `mock-trigger-retry-${inst.id}`,
+        eventType: 'task.created',
+        taskId: activeTasks[0]?.id ?? null,
+        status: 'retrying',
+        attempts: 2,
+        errorMessage: 'Demo：订阅者暂时不可用，等待重试',
+        nextRetryAt: mockDateTime(),
+        processedAt: null,
+        createdAt: inst.updatedAt,
+      }] : []),
+    ];
+    const issues: WorkflowRuntimeIssue[] = [];
+    if (inst.status === 'running' && activeTasks.length === 0) {
+      issues.push({
+        severity: 'critical',
+        source: 'instance',
+        title: '运行中实例没有活动任务',
+        description: 'Demo 诊断：实例处于运行中但没有可推进任务。',
+      });
+    }
+    for (const task of activeTasks) {
+      if (task.nodeType === 'trigger' && task.triggerDispatchStatus === 'failed') {
+        issues.push({
+          severity: 'critical',
+          source: 'trigger',
+          taskId: task.id,
+          nodeKey: task.nodeKey,
+          title: '触发器执行失败',
+          description: task.triggerLastError ?? 'Demo 诊断：触发器进入 failed 状态。',
+        });
+      }
+    }
+    for (const event of outboxEvents) {
+      if (event.status !== 'success') {
+        issues.push({
+          severity: 'warning',
+          source: 'outbox',
+          taskId: event.taskId,
+          title: 'Outbox 事件待处理',
+          description: `${event.eventType} 当前状态为 ${event.status}，attempts=${event.attempts}。`,
+        });
+      }
+    }
+    if (issues.length === 0) {
+      issues.push({
+        severity: 'info',
+        source: 'instance',
+        title: '未发现明显运行时异常',
+        description: 'Demo 诊断：任务、触发器和 outbox 均未命中异常规则。',
+      });
+    }
+    const diagnostics: WorkflowRuntimeDiagnostics = {
+      instance: { ...withDefinitionSnapshot(withActiveNodes(inst)), tasks },
+      tasks,
+      activeTasks,
+      triggerExecutions,
+      outboxEvents,
+      issues,
+      snapshot: {
+        formData: inst.formData ?? null,
+        formSnapshot: inst.formSnapshot ?? null,
+        definitionSnapshot: withDefinitionSnapshot(inst).definitionSnapshot ?? null,
+      },
+      generatedAt: mockDateTime(),
+    };
+    return ok(diagnostics);
   }),
 
   // 获取流程实例详情（含任务列表）

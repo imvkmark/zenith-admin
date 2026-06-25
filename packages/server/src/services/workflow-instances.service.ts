@@ -224,11 +224,11 @@ import { count, countDistinct, eq, ne, and, desc, ilike, or, inArray, sql, gt } 
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, inAppMessages, users, userRoles } from '../db/schema';
+import { workflowEventOutbox, workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, workflowTriggerExecutions, inAppMessages, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
 import { advanceFlow, getInitialTasks, validateFlowData, findReturnPrevTarget, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy } from '@zenith/shared';
+import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
@@ -2214,6 +2214,196 @@ export async function getInstanceDetail(id: number) {
     consults,
     includeDefinitionSnapshot: true,
   });
+}
+
+function mapRuntimeOutboxEvent(row: typeof workflowEventOutbox.$inferSelect): WorkflowRuntimeOutboxEvent {
+  return {
+    id: row.id,
+    eventId: row.eventId,
+    eventType: row.eventType,
+    taskId: row.taskId ?? null,
+    status: row.status,
+    attempts: row.attempts,
+    errorMessage: row.errorMessage ?? null,
+    nextRetryAt: formatNullableDateTime(row.nextRetryAt),
+    processedAt: formatNullableDateTime(row.processedAt),
+    createdAt: formatDateTime(row.createdAt),
+  };
+}
+
+function mapRuntimeTriggerExecution(row: typeof workflowTriggerExecutions.$inferSelect) {
+  return {
+    id: row.id,
+    instanceId: row.instanceId,
+    taskId: row.taskId ?? null,
+    nodeKey: row.nodeKey,
+    nodeName: row.nodeName ?? null,
+    triggerType: row.triggerType,
+    status: row.status,
+    attempt: row.attempt,
+    requestUrl: row.requestUrl ?? null,
+    requestMethod: row.requestMethod ?? null,
+    requestBody: row.requestBody ?? null,
+    responseStatus: row.responseStatus ?? null,
+    responseBody: row.responseBody ?? null,
+    errorMessage: row.errorMessage ?? null,
+    durationMs: row.durationMs ?? null,
+    tenantId: row.tenantId ?? null,
+    createdAt: formatDateTime(row.createdAt),
+  };
+}
+
+function buildRuntimeIssues(input: {
+  inst: typeof workflowInstances.$inferSelect;
+  tasks: ReturnType<typeof mapTask>[];
+  triggerExecutions: ReturnType<typeof mapRuntimeTriggerExecution>[];
+  outboxEvents: WorkflowRuntimeOutboxEvent[];
+}): WorkflowRuntimeIssue[] {
+  const issues: WorkflowRuntimeIssue[] = [];
+  const activeTasks = input.tasks.filter((task) => task.status === 'pending' || task.status === 'waiting');
+  if (input.inst.status === 'running' && activeTasks.length === 0) {
+    issues.push({
+      severity: 'critical',
+      source: 'instance',
+      title: '运行中实例没有活动任务',
+      description: '实例状态仍为 running，但没有 pending/waiting 任务，可能存在推进中断或状态未回写。',
+    });
+  }
+  for (const task of input.tasks) {
+    if (task.status !== 'pending' && task.status !== 'waiting') continue;
+    if (task.externalDispatchStatus === 'failed' || task.externalDispatchStatus === 'fallback') {
+      issues.push({
+        severity: 'critical',
+        source: 'task',
+        taskId: task.id,
+        nodeKey: task.nodeKey,
+        title: '外部审批分派失败',
+        description: `任务 externalDispatchStatus=${task.externalDispatchStatus}，需要检查外部审批配置或人工介入。`,
+      });
+    }
+    if (task.nodeType === 'trigger' && task.triggerDispatchStatus === 'failed') {
+      issues.push({
+        severity: 'critical',
+        source: 'trigger',
+        taskId: task.id,
+        nodeKey: task.nodeKey,
+        title: '触发器执行失败',
+        description: task.triggerLastError ?? '触发器已进入 failed 状态，流程仍在等待该节点。',
+      });
+    }
+    if (task.nodeType === 'trigger' && task.status === 'waiting' && !input.triggerExecutions.some((item) => item.taskId === task.id)) {
+      issues.push({
+        severity: 'warning',
+        source: 'trigger',
+        taskId: task.id,
+        nodeKey: task.nodeKey,
+        title: '触发器暂无执行记录',
+        description: '等待中的 trigger 任务未发现执行记录，可关注 outbox 是否重放失败或 dispatch 状态是否仍为 pending。',
+      });
+    }
+  }
+  for (const event of input.outboxEvents) {
+    if (event.status === 'failed') {
+      issues.push({
+        severity: 'critical',
+        source: 'outbox',
+        taskId: event.taskId,
+        title: 'Outbox 事件失败',
+        description: event.errorMessage ?? `事件 ${event.eventType} 已失败，请检查订阅者或事件处理日志。`,
+      });
+    } else if (event.status === 'pending' || event.status === 'retrying') {
+      issues.push({
+        severity: 'warning',
+        source: 'outbox',
+        taskId: event.taskId,
+        title: 'Outbox 事件待处理',
+        description: `事件 ${event.eventType} 当前为 ${event.status}，attempts=${event.attempts}。`,
+      });
+    }
+  }
+  if (issues.length === 0) {
+    issues.push({
+      severity: 'info',
+      source: 'instance',
+      title: '未发现明显运行时异常',
+      description: '任务状态、触发器执行和 outbox 事件未命中内置诊断规则。',
+    });
+  }
+  return issues;
+}
+
+export async function getInstanceRuntimeDiagnostics(id: number): Promise<WorkflowRuntimeDiagnostics> {
+  const user = currentUser();
+  const tc = tenantCondition(workflowInstances, user);
+  const conditions = [eq(workflowInstances.id, id)];
+  if (tc) conditions.push(tc);
+  const scopeCond = await getDataScopeCondition({
+    currentUserId: user.userId,
+    deptColumn: users.departmentId,
+    ownerColumn: workflowInstances.initiatorId,
+  });
+  if (scopeCond) conditions.push(scopeCond);
+
+  const row = await db.query.workflowInstances.findFirst({
+    where: and(...conditions),
+    with: {
+      definition: { columns: { name: true, categoryId: true }, with: { category: { columns: { name: true } } } },
+      initiator: { columns: { nickname: true, avatar: true } },
+      tasks: {
+        with: { assignee: { columns: { nickname: true, avatar: true } } },
+        orderBy: workflowTasks.id,
+      },
+    },
+  });
+  if (!row) throw new HTTPException(404, { message: '流程实例不存在或无权查看' });
+
+  const snapshot = row.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
+  const tasks = row.tasks.map((task) => {
+    const cfg = snapshot?.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
+    return mapTask(
+      task,
+      task.assignee?.nickname,
+      task.assignee?.avatar,
+      cfg?.actionButtons ?? null,
+      cfg?.operations?.includes('signature') ?? false,
+    );
+  });
+  const [triggerRows, outboxRows] = await Promise.all([
+    db.select().from(workflowTriggerExecutions)
+      .where(eq(workflowTriggerExecutions.instanceId, id))
+      .orderBy(desc(workflowTriggerExecutions.id))
+      .limit(50),
+    db.select().from(workflowEventOutbox)
+      .where(eq(workflowEventOutbox.instanceId, id))
+      .orderBy(desc(workflowEventOutbox.id))
+      .limit(80),
+  ]);
+  const triggerExecutions = triggerRows.map(mapRuntimeTriggerExecution);
+  const outboxEvents = outboxRows.map(mapRuntimeOutboxEvent);
+  const instance = mapInstance(row, {
+    definitionName: row.definition?.name ?? null,
+    categoryId: row.definition?.categoryId ?? null,
+    categoryName: row.definition?.category?.name ?? null,
+    initiatorName: row.initiator?.nickname ?? null,
+    initiatorAvatar: row.initiator?.avatar ?? null,
+    tasks,
+    includeDefinitionSnapshot: true,
+  });
+  const activeTasks = tasks.filter((task) => task.status === 'pending' || task.status === 'waiting');
+  return {
+    instance,
+    tasks,
+    activeTasks,
+    triggerExecutions,
+    outboxEvents,
+    issues: buildRuntimeIssues({ inst: row, tasks, triggerExecutions, outboxEvents }),
+    snapshot: {
+      formData: (row.formData ?? null) as Record<string, unknown> | null,
+      formSnapshot: row.formSnapshot ?? null,
+      definitionSnapshot: row.definitionSnapshot ?? null,
+    },
+    generatedAt: formatDateTime(new Date()),
+  };
 }
 
 export async function getWorkflowInstanceBeforeAudit(id: number) {

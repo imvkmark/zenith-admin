@@ -20,7 +20,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Download, MoreHorizontal, RotateCcw, Search } from 'lucide-react';
 import dayjs from 'dayjs';
-import type { WorkflowCategory, WorkflowDefinition, WorkflowInstance, WorkflowTask } from '@zenith/shared';
+import type { WorkflowCategory, WorkflowDefinition, WorkflowInstance, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTask, WorkflowTriggerExecution } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
@@ -47,6 +47,19 @@ const INSTANCE_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
 };
 
 const RUNNING_STATUSES = new Set(['draft', 'running']);
+
+const ISSUE_SEVERITY_MAP: Record<WorkflowRuntimeIssue['severity'], { text: string; color: TagColor }> = {
+  info: { text: '信息', color: 'blue' },
+  warning: { text: '警告', color: 'orange' },
+  critical: { text: '严重', color: 'red' },
+};
+
+const ISSUE_SOURCE_MAP: Record<WorkflowRuntimeIssue['source'], string> = {
+  instance: '实例',
+  task: '任务',
+  trigger: '触发器',
+  outbox: 'Outbox',
+};
 
 /** 计算流程耗时：运行中算到当前，已结束算到最后更新时间 */
 function formatDuration(start: string, end: string): string {
@@ -137,6 +150,9 @@ export default function WorkflowMonitorPage() {
 
   // 详情弹窗
   const [detailVisible, setDetailVisible] = useState(false);
+  const [diagnosticsVisible, setDiagnosticsVisible] = useState(false);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<WorkflowRuntimeDiagnostics | null>(null);
 
   // 流程定义（用于数据分析筛选 + 强制跳转节点选择）
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
@@ -235,6 +251,18 @@ export default function WorkflowMonitorPage() {
   const openDetail = (item: WorkflowInstance) => {
     setDetailVisible(true);
     loadDetail(item.id);
+  };
+
+  const openDiagnostics = (item: WorkflowInstance) => {
+    setDiagnosticsVisible(true);
+    setDiagnostics(null);
+    setDiagnosticsLoading(true);
+    request.get<WorkflowRuntimeDiagnostics>(`/api/workflows/instances/${item.id}/diagnostics`)
+      .then((res) => {
+        if (res.code === 0) setDiagnostics(res.data);
+        else Toast.error(res.message || '加载诊断信息失败');
+      })
+      .finally(() => setDiagnosticsLoading(false));
   };
 
   const handleCancel = (record: WorkflowInstance) => {
@@ -340,6 +368,116 @@ export default function WorkflowMonitorPage() {
     }
   };
 
+  const renderJsonBlock = (value: unknown) => (
+    <pre style={{
+      margin: 0,
+      padding: 12,
+      maxHeight: 360,
+      overflow: 'auto',
+      border: '1px solid var(--semi-color-border)',
+      borderRadius: 6,
+      background: 'var(--semi-color-fill-0)',
+      color: 'var(--semi-color-text-1)',
+      fontSize: 12,
+      lineHeight: 1.5,
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
+    }}
+    >
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  );
+
+  const renderDiagnostics = () => {
+    if (!diagnostics) return null;
+    const taskColumns: ColumnProps<WorkflowTask>[] = [
+      { title: 'ID', dataIndex: 'id', width: 70 },
+      { title: '节点', dataIndex: 'nodeName', width: 160, render: (_: unknown, row) => row.nodeName || row.nodeKey },
+      { title: '类型', dataIndex: 'nodeType', width: 100, render: (v: string | null) => v ?? '—' },
+      { title: '状态', dataIndex: 'status', width: 100 },
+      { title: '处理人', dataIndex: 'assigneeName', width: 120, render: (v: string | null) => v ?? '—' },
+      { title: '外部分派', dataIndex: 'externalDispatchStatus', width: 120, render: (v: string | null) => v ?? '—' },
+      { title: '触发器状态', dataIndex: 'triggerDispatchStatus', width: 130, render: (v: string | null) => v ?? '—' },
+      { title: '尝试', dataIndex: 'triggerAttempt', width: 70, render: (v: number | undefined) => v ?? '—' },
+      { title: '错误', dataIndex: 'triggerLastError', width: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
+      { title: '创建时间', dataIndex: 'createdAt', width: 170 },
+    ];
+    const triggerColumns: ColumnProps<WorkflowTriggerExecution>[] = [
+      { title: 'ID', dataIndex: 'id', width: 70 },
+      { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : '—' },
+      { title: '节点', dataIndex: 'nodeName', width: 140, render: (_: unknown, row) => row.nodeName || row.nodeKey },
+      { title: '类型', dataIndex: 'triggerType', width: 110 },
+      { title: '状态', dataIndex: 'status', width: 100 },
+      { title: '尝试', dataIndex: 'attempt', width: 70 },
+      { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '—' },
+      { title: '耗时', dataIndex: 'durationMs', width: 90, render: (v: number | null) => v != null ? `${v}ms` : '—' },
+      { title: '错误', dataIndex: 'errorMessage', width: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
+      { title: '创建时间', dataIndex: 'createdAt', width: 170 },
+    ];
+    const outboxColumns: ColumnProps<WorkflowRuntimeOutboxEvent>[] = [
+      { title: 'ID', dataIndex: 'id', width: 70 },
+      { title: '事件', dataIndex: 'eventType', width: 170 },
+      { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : '—' },
+      { title: '状态', dataIndex: 'status', width: 90 },
+      { title: '尝试', dataIndex: 'attempts', width: 70 },
+      { title: '下次重试', dataIndex: 'nextRetryAt', width: 170, render: (v: string | null) => v ?? '—' },
+      { title: '错误', dataIndex: 'errorMessage', width: 260, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
+      { title: '创建时间', dataIndex: 'createdAt', width: 170 },
+    ];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <div><Typography.Text type="tertiary" size="small">实例 ID</Typography.Text><div>#{diagnostics.instance.id}</div></div>
+          <div><Typography.Text type="tertiary" size="small">定义 ID</Typography.Text><div>#{diagnostics.instance.definitionId}</div></div>
+          <div><Typography.Text type="tertiary" size="small">Business Key</Typography.Text><div>{diagnostics.instance.bizType && diagnostics.instance.bizId ? `${diagnostics.instance.bizType}:${diagnostics.instance.bizId}` : '—'}</div></div>
+          <div><Typography.Text type="tertiary" size="small">活动任务</Typography.Text><div>{diagnostics.activeTasks.length}</div></div>
+          <div><Typography.Text type="tertiary" size="small">任务总数</Typography.Text><div>{diagnostics.tasks.length}</div></div>
+          <div><Typography.Text type="tertiary" size="small">生成时间</Typography.Text><div>{diagnostics.generatedAt}</div></div>
+        </div>
+
+        <div>
+          <Typography.Title heading={6}>诊断结论</Typography.Title>
+          <Space vertical align="start" spacing={8} style={{ width: '100%' }}>
+            {diagnostics.issues.map((issue, index) => {
+              const meta = ISSUE_SEVERITY_MAP[issue.severity];
+              return (
+                <div key={`${issue.source}-${issue.title}-${index}`} style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--semi-color-border)', borderRadius: 6 }}>
+                  <Space spacing={8} wrap>
+                    <Tag color={meta.color}>{meta.text}</Tag>
+                    <Tag color="grey">{ISSUE_SOURCE_MAP[issue.source]}</Tag>
+                    {issue.taskId != null && <Typography.Text type="tertiary">task #{issue.taskId}</Typography.Text>}
+                    {issue.nodeKey && <Typography.Text type="tertiary">{issue.nodeKey}</Typography.Text>}
+                  </Space>
+                  <div style={{ marginTop: 6 }}><Typography.Text strong>{issue.title}</Typography.Text></div>
+                  <Typography.Text type="tertiary" size="small">{issue.description}</Typography.Text>
+                </div>
+              );
+            })}
+          </Space>
+        </div>
+
+        <Tabs type="line">
+          <TabPane tab={`任务 ${diagnostics.tasks.length}`} itemKey="tasks">
+            <ConfigurableTable bordered columns={taskColumns} dataSource={diagnostics.tasks} rowKey="id" pagination={false} scroll={{ x: 1270 }} />
+          </TabPane>
+          <TabPane tab={`触发器 ${diagnostics.triggerExecutions.length}`} itemKey="triggers">
+            <ConfigurableTable bordered columns={triggerColumns} dataSource={diagnostics.triggerExecutions} rowKey="id" pagination={false} scroll={{ x: 1220 }} />
+          </TabPane>
+          <TabPane tab={`Outbox ${diagnostics.outboxEvents.length}`} itemKey="outbox">
+            <ConfigurableTable bordered columns={outboxColumns} dataSource={diagnostics.outboxEvents} rowKey="id" pagination={false} scroll={{ x: 1080 }} />
+          </TabPane>
+          <TabPane tab="FormData" itemKey="formData">
+            {renderJsonBlock(diagnostics.snapshot.formData)}
+          </TabPane>
+          <TabPane tab="定义快照" itemKey="definitionSnapshot">
+            {renderJsonBlock(diagnostics.snapshot.definitionSnapshot)}
+          </TabPane>
+        </Tabs>
+      </div>
+    );
+  };
+
   const columns: ColumnProps<WorkflowInstance>[] = [
     {
       title: '申请标题',
@@ -425,7 +563,7 @@ export default function WorkflowMonitorPage() {
     {
       title: '操作',
       key: 'action',
-      width: 130,
+      width: 160,
       fixed: 'right',
       render: (_: unknown, record: WorkflowInstance) => {
         const canCancel = hasPermission('workflow:instance:cancel') && record.status === 'running';
@@ -434,6 +572,7 @@ export default function WorkflowMonitorPage() {
         return (
           <Space>
             <Button theme="borderless" size="small" onClick={() => openDetail(record)}>详情</Button>
+            <Button theme="borderless" size="small" onClick={() => openDiagnostics(record)}>诊断</Button>
             {(canCancel || canDelete || canJump) && (
               <Dropdown
                 trigger="click"
@@ -623,6 +762,18 @@ export default function WorkflowMonitorPage() {
         ) : (
           <WorkflowInstanceDetailPanel instance={detail} definition={detailDef} loading={detailLoading} onOpenInstance={loadDetail} />
         )}
+      </SideSheet>
+
+      <SideSheet
+        title="运行时诊断"
+        visible={diagnosticsVisible}
+        onCancel={() => { setDiagnosticsVisible(false); setDiagnostics(null); }}
+        width={980}
+        bodyStyle={{ padding: 16 }}
+      >
+        {diagnosticsLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+        ) : renderDiagnostics()}
       </SideSheet>
 
       {/* 管理员：强制跳转节点 */}
