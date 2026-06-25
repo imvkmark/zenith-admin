@@ -8,7 +8,6 @@ import {
   ok,
   okMsg,
   okBody,
-  errBody,
   IdParam,
 } from '../lib/openapi-schemas';
 import { UserAiConfigDTO } from '../lib/openapi-dtos';

@@ -101,7 +101,6 @@ export const httpLoggerMiddleware = createMiddleware(async (c, next) => {
   // ─── 预先收集请求数据（Hono 会缓存 body，后续路由 handler 仍可读取）────────
   // 注意：此时还不知道最终日志级别（可能被路由中间件覆盖），
   //       但数据必须在 body 流被消费前读取，因此先全量收集，后续按级别筛选。
-  let rawRequestHeaders: Record<string, string> | undefined;
   let rawRequestBody: unknown;
 
   const ct = c.req.header('content-type') ?? '';
@@ -112,7 +111,7 @@ export const httpLoggerMiddleware = createMiddleware(async (c, next) => {
       // 读取失败（非 JSON 或空 body），跳过
     }
   }
-  rawRequestHeaders = headersToRecord(c.req.raw.headers);
+  const rawRequestHeaders = headersToRecord(c.req.raw.headers);
 
   // ─── 执行路由处理器（路由级覆盖在此期间写入 context）───────────────────────
   await next();

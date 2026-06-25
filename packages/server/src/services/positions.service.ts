@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { positions, userPositions, users } from '../db/schema';

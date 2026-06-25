@@ -166,7 +166,7 @@ async function detectNginx(): Promise<NginxDetectionResult> {
   let version: string | null = null;
   let configPath: string | null = null;
   let configDir: string | null = null;
-  let commandFound = false;
+  let commandFound: boolean;
 
   try {
     const { stdout, stderr } = await execFileAsync('nginx', ['-V'], { timeout: 5000 });

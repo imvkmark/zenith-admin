@@ -7,7 +7,6 @@ import {
   commonErrorResponses,
   ok,
   okMsg,
-  okPaginated,
   IdParam,
   okBody,
 } from '../lib/openapi-schemas';

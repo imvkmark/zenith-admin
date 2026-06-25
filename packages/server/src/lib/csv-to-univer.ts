@@ -25,48 +25,6 @@ const DEFAULTS = {
 };
 
 /**
- * 解析单行 CSV 为字段数组（RFC 4180）。
- * 处理：带引号字段、字段内换行、转义双引号（""）。
- */
-function parseCSVLine(line: string, delimiter = ','): string[] {
-  const fields: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  let i = 0;
-
-  while (i < line.length) {
-    const char = line[i];
-    if (inQuotes) {
-      if (char === '"') {
-        if (line[i + 1] === '"') {
-          // 转义双引号
-          current += '"';
-          i += 2;
-        } else {
-          inQuotes = false;
-          i++;
-        }
-      } else {
-        current += char;
-        i++;
-      }
-    } else if (char === '"') {
-      inQuotes = true;
-      i++;
-    } else if (char === delimiter) {
-      fields.push(current);
-      current = '';
-      i++;
-    } else {
-      current += char;
-      i++;
-    }
-  }
-  fields.push(current);
-  return fields;
-}
-
-/**
  * 将完整 CSV 文本解析为行列二维数组（兼容 \r\n 和 \n 换行）。
  * RFC 4180 允许字段内含换行，此处通过状态机逐字符处理。
  */

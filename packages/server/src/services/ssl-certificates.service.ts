@@ -131,7 +131,7 @@ async function parseCertInfo(certPath: string): Promise<ParsedCertInfo> {
       fingerprint: fingerprintLine ? fingerprintLine.slice(fingerprintLine.indexOf('=') + 1).trim() : null,
       serialNumber,
     };
-  } catch (error) {
+  } catch {
     if (process.platform === 'win32') return emptyCertInfo();
     throw new HTTPException(400, { message: '证书解析失败，请检查 PEM 内容或 openssl 环境' });
   }

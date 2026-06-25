@@ -160,8 +160,6 @@ const token = defineOpenAPIRoute({
 
 // ─── 令牌撤销（RFC 7009）──────────────────────────────────────────────────────
 
-const RevokeBody = z.object({ token: z.string() });
-
 const revoke = defineOpenAPIRoute({
   route: createRoute({
     method: 'post',
