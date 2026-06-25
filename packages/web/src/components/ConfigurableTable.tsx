@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePreferences } from '@/hooks/usePreferences';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 import { Button, Checkbox, Dropdown, Radio, RadioGroup, Space, Switch, Table } from '@douyinfe/semi-ui';
 import { RotateCcw, Rows3, Settings, Settings2, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import type { ColumnProps, Data, TableProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -208,12 +209,17 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   ...tableProps
 }: Readonly<ConfigurableTableProps<RecordType>>) {
   const { preferences } = usePreferences();
+  const isMobile = useIsMobile();
   const { bordered, className, onRow, size, pagination, ...restTableProps } = tableProps;
 
   const effectivePagination = useMemo(() => {
     if (!pagination || typeof pagination === 'boolean') return pagination;
-    return { showTotal: true, showSizeChanger: true, pageSizeOpts: [10, 20, 50, 100], ...pagination };
-  }, [pagination]);
+    // 移动端紧凑分页：隐藏每页条数选择器与总数文案、使用小尺寸；页面显式传入的分页配置仍可覆盖
+    const defaults = isMobile
+      ? { showTotal: false, showSizeChanger: false, size: 'small' as const, pageSizeOpts: [10, 20, 50, 100] }
+      : { showTotal: true, showSizeChanger: true, pageSizeOpts: [10, 20, 50, 100] };
+    return { ...defaults, ...pagination };
+  }, [pagination, isMobile]);
   const effectiveColumnSettings = (preferences.showTableColumnSettings ?? true) && columnSettings;
   const rawColumns = useMemo(() => (columns ?? []) as ConfigurableColumn<RecordType>[], [columns]);
   const alwaysVisibleKeys = useMemo(
