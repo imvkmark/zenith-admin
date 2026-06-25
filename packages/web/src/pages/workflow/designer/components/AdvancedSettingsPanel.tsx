@@ -2,7 +2,7 @@
  * 更多设置面板 — 步骤 ④ 更多设置
  */
 import dayjs from 'dayjs';
-import { Divider, Form, Input, InputNumber, Radio, Select, Switch, Typography } from '@douyinfe/semi-ui';
+import { Divider, Form, Radio, Typography } from '@douyinfe/semi-ui';
 import type { WorkflowSerialNoConfig, WorkflowNotifyChannels } from '@zenith/shared';
 import { WORKFLOW_APPROVER_DEDUP_OPTIONS, resolveApproverDedupMode } from '@zenith/shared';
 import type { AdvancedSettingsData } from './advanced-settings';
@@ -18,15 +18,7 @@ interface AdvancedSettingsProps {
 
 export default function AdvancedSettingsPanel({ settings, onChange, readOnly = false }: Readonly<AdvancedSettingsProps>) {
   const serialNo: Required<WorkflowSerialNoConfig> = { ...DEFAULT_SERIAL_NO, ...settings.serialNo };
-
-  const updateSerialNo = (patch: Partial<WorkflowSerialNoConfig>) => {
-    onChange({ ...settings, serialNo: { ...serialNo, ...patch } });
-  };
-
   const notify: WorkflowNotifyChannels = settings.notifyChannels ?? {};
-  const updateNotify = (patch: Partial<WorkflowNotifyChannels>) => {
-    onChange({ ...settings, notifyChannels: { ...notify, ...patch } });
-  };
 
   const datePart = serialNo.dateFormat !== 'none' ? dayjs().format(serialNo.dateFormat) : '';
   const seqPart = '1'.padStart(serialNo.seqLength, '0');
@@ -36,7 +28,12 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
     <div className="fd-basic-info">
       <div className="fd-basic-info__inner">
         <Form
-          initValues={{ ...settings, approverDedupMode: resolveApproverDedupMode(settings) } as unknown as Record<string, unknown>}
+          initValues={{
+            ...settings,
+            serialNo: { ...DEFAULT_SERIAL_NO, ...settings.serialNo },
+            notifyChannels: settings.notifyChannels ?? {},
+            approverDedupMode: resolveApproverDedupMode(settings),
+          } as unknown as Record<string, unknown>}
           labelPosition="left"
           labelWidth={180}
           disabled={readOnly}
@@ -63,94 +60,52 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
           <Form.Slot>
             <Divider margin="8px 0" />
           </Form.Slot>
-          <Form.Slot label="启用业务编号">
-            <Switch
-              checked={serialNo.enabled}
-              disabled={readOnly}
-              onChange={(checked) => updateSerialNo({ enabled: checked })}
-            />
-          </Form.Slot>
+          <Form.Switch field="serialNo.enabled" label="启用业务编号" />
 
-          {serialNo.enabled && (
-            <>
-              <Form.Slot label="前缀">
-                <Input
-                  value={serialNo.prefix}
-                  placeholder="BX-"
-                  style={{ width: '100%' }}
-                  disabled={readOnly}
-                  onChange={(v) => updateSerialNo({ prefix: v })}
-                />
-              </Form.Slot>
-              <Form.Slot label="日期格式">
-                <Select
-                  value={serialNo.dateFormat}
-                  style={{ width: '100%' }}
-                  disabled={readOnly}
-                  onChange={(v) => updateSerialNo({ dateFormat: v as WorkflowSerialNoConfig['dateFormat'] })}
-                >
-                  <Select.Option value="none">无</Select.Option>
-                  <Select.Option value="YYYYMMDD">年月日（YYYYMMDD）</Select.Option>
-                  <Select.Option value="YYYYMM">年月（YYYYMM）</Select.Option>
-                  <Select.Option value="YYYY">年（YYYY）</Select.Option>
-                </Select>
-              </Form.Slot>
-              <Form.Slot label="序号位数">
-                <InputNumber
-                  value={serialNo.seqLength}
-                  min={1}
-                  max={12}
-                  style={{ width: '100%' }}
-                  disabled={readOnly}
-                  onChange={(v) => updateSerialNo({ seqLength: typeof v === 'number' ? v : serialNo.seqLength })}
-                />
-              </Form.Slot>
-              <Form.Slot label="重置周期">
-                <Select
-                  value={serialNo.resetPeriod}
-                  style={{ width: '100%' }}
-                  disabled={readOnly}
-                  onChange={(v) => updateSerialNo({ resetPeriod: v as WorkflowSerialNoConfig['resetPeriod'] })}
-                >
-                  <Select.Option value="never">不重置</Select.Option>
-                  <Select.Option value="daily">每天</Select.Option>
-                  <Select.Option value="monthly">每月</Select.Option>
-                  <Select.Option value="yearly">每年</Select.Option>
-                </Select>
-              </Form.Slot>
-              <Form.Slot label="编号预览">
-                <Typography.Text
-                  type="tertiary"
-                  style={{ lineHeight: '32px', fontFamily: 'monospace' }}
-                >
-                  {preview || '（请设置前缀或日期格式）'}
-                </Typography.Text>
-              </Form.Slot>
-            </>
-          )}
+          <div style={{ display: serialNo.enabled ? undefined : 'none' }}>
+            <Form.Input field="serialNo.prefix" label="前缀" placeholder="BX-" style={{ width: '100%' }} />
+            <Form.Select
+              field="serialNo.dateFormat"
+              label="日期格式"
+              style={{ width: '100%' }}
+              optionList={[
+                { value: 'none', label: '无' },
+                { value: 'YYYYMMDD', label: '年月日（YYYYMMDD）' },
+                { value: 'YYYYMM', label: '年月（YYYYMM）' },
+                { value: 'YYYY', label: '年（YYYY）' },
+              ]}
+            />
+            <Form.InputNumber field="serialNo.seqLength" label="序号位数" min={1} max={12} style={{ width: '100%' }} />
+            <Form.Select
+              field="serialNo.resetPeriod"
+              label="重置周期"
+              style={{ width: '100%' }}
+              optionList={[
+                { value: 'never', label: '不重置' },
+                { value: 'daily', label: '每天' },
+                { value: 'monthly', label: '每月' },
+                { value: 'yearly', label: '每年' },
+              ]}
+            />
+            <Form.Slot label="编号预览">
+              <Typography.Text
+                type="tertiary"
+                style={{ lineHeight: '32px', fontFamily: 'monospace' }}
+              >
+                {preview || '（请设置前缀或日期格式）'}
+              </Typography.Text>
+            </Form.Slot>
+          </div>
 
           {/* 多渠道通知 */}
           <Form.Slot>
             <Divider margin="8px 0" />
           </Form.Slot>
-          <Form.Slot label="邮件通知">
-            <Switch checked={!!notify.email} disabled={readOnly} onChange={(checked) => updateNotify({ email: checked })} />
-          </Form.Slot>
-          <Form.Slot label="短信通知">
-            <Switch checked={!!notify.sms} disabled={readOnly} onChange={(checked) => updateNotify({ sms: checked })} />
-          </Form.Slot>
-          {notify.sms && (
-            <Form.Slot label="短信模板 ID">
-              <InputNumber
-                value={notify.smsTemplateId}
-                min={1}
-                style={{ width: '100%' }}
-                placeholder="短信模板库中的模板 ID"
-                disabled={readOnly}
-                onChange={(v) => updateNotify({ smsTemplateId: typeof v === 'number' ? v : undefined })}
-              />
-            </Form.Slot>
-          )}
+          <Form.Switch field="notifyChannels.email" label="邮件通知" />
+          <Form.Switch field="notifyChannels.sms" label="短信通知" />
+          <div style={{ display: notify.sms ? undefined : 'none' }}>
+            <Form.InputNumber field="notifyChannels.smsTemplateId" label="短信模板 ID" min={1} style={{ width: '100%' }} placeholder="短信模板库中的模板 ID" />
+          </div>
           <Form.Slot>
             <Typography.Text type="tertiary" size="small">
               站内信始终发送；开启后额外向处理人/发起人发送邮件 / 短信（需先在系统中配置邮件服务 / 短信服务商）。
