@@ -224,18 +224,39 @@ export default function MonitorAlertsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索规则名称..."
-          value={keyword}
-          onChange={setKeyword}
-          showClear
-          style={{ width: 220 }}
-        />
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchRules(); }}>重置</Button>
-        {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索规则名称..."
+              value={keyword}
+              onChange={setKeyword}
+              showClear
+              style={{ width: 220 }}
+            />
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchRules(); }}>重置</Button>
+            {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索规则名称..."
+              value={keyword}
+              onChange={setKeyword}
+              showClear
+              style={{ width: 220 }}
+            />
+            {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
+          </>
+        )}
+        mobileActions={(
+          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchRules(); }}>重置</Button>
+        )}
+        actionTitle="告警规则操作"
+      />
 
       <ConfigurableTable
         bordered

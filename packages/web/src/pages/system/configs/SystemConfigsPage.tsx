@@ -188,7 +188,9 @@ export default function SystemConfigsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
           <Input
             prefix={<Search size={14} />}
             placeholder="搜索配置键/描述"
@@ -208,6 +210,10 @@ export default function SystemConfigsPage() {
           />
           <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        actions={(
+          <>
           <SplitButtonGroup>
             <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
             <Dropdown
@@ -227,7 +233,46 @@ export default function SystemConfigsPage() {
           {hasPermission('system:config:create') && (
             <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingConfig(null); setModalVisible(true); }}>新增</Button>
           )}
-      </SearchToolbar>
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索配置键/描述"
+              value={searchParams.keyword}
+              onChange={(value) => setSearchParams((p) => ({ ...p, keyword: value }))}
+              onEnterPress={handleSearch}
+              style={{ width: 240 }}
+              showClear
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {hasPermission('system:config:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingConfig(null); setModalVisible(true); }}>新增</Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <Select
+            placeholder="配置类型"
+            value={searchParams.configType || undefined}
+            onChange={(v) => setSearchParams((p) => ({ ...p, configType: (v as string) ?? '' }))}
+            style={{ width: 140 }}
+            optionList={configTypeFilterOptions}
+            loading={configTypeLoading}
+          />
+        )}
+        mobileActions={(
+          <>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
+            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+          </>
+        )}
+        filterTitle="配置筛选"
+        actionTitle="配置操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

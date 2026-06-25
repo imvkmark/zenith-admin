@@ -148,19 +148,41 @@ export default function OnlineSessionsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索用户名/昵称/IP"
-            value={searchParams.keyword}
-            onChange={(v) => setSearchParams({ keyword: v })}
-            onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
-            style={{ width: 240 }}
-            showClear
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索用户名/昵称/IP"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ keyword: v })}
+              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              style={{ width: 240 }}
+              showClear
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}>重置</Button>
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索用户名/昵称/IP"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ keyword: v })}
+              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              style={{ width: 240 }}
+              showClear
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchData(1, pageSize); }}>查询</Button>
+          </>
+        )}
+        mobileActions={(
           <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setSearchParams(defaultSearchParams); setPage(1); void fetchData(1, pageSize, defaultSearchParams); }}>重置</Button>
-      </SearchToolbar>
+        )}
+        actionTitle="会话操作"
+      />
 
       <ConfigurableTable
         bordered

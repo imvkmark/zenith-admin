@@ -210,22 +210,50 @@ export default function ServicesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="搜索服务名 / 描述" showClear value={keyword} onChange={setKeyword} style={{ width: 240 }} />
-        <Select placeholder="全部状态" value={stateFilter || undefined} onChange={(v) => setStateFilter((v as string) ?? '')} showClear style={{ width: 130 }}
-          optionList={[
-            { label: '运行中', value: 'active' },
-            { label: '已停止', value: 'inactive' },
-            { label: '失败', value: 'failed' },
-            { label: '激活中', value: 'activating' },
-          ]} />
-        {failedCount > 0 && (
-          <Button size="default" type={stateFilter === 'failed' ? 'primary' : 'tertiary'} theme={stateFilter === 'failed' ? 'solid' : 'light'} onClick={() => setStateFilter(stateFilter === 'failed' ? '' : 'failed')}>
-            失败服务 {failedCount}
-          </Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索服务名 / 描述" showClear value={keyword} onChange={setKeyword} style={{ width: 240 }} />
+            <Select placeholder="全部状态" value={stateFilter || undefined} onChange={(v) => setStateFilter((v as string) ?? '')} showClear style={{ width: 130 }}
+              optionList={[
+                { label: '运行中', value: 'active' },
+                { label: '已停止', value: 'inactive' },
+                { label: '失败', value: 'failed' },
+                { label: '激活中', value: 'activating' },
+              ]} />
+            {failedCount > 0 && (
+              <Button size="default" type={stateFilter === 'failed' ? 'primary' : 'tertiary'} theme={stateFilter === 'failed' ? 'solid' : 'light'} onClick={() => setStateFilter(stateFilter === 'failed' ? '' : 'failed')}>
+                失败服务 {failedCount}
+              </Button>
+            )}
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchServices()}>刷新</Button>
+          </>
         )}
-        <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchServices()}>刷新</Button>
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索服务名 / 描述" showClear value={keyword} onChange={setKeyword} style={{ width: 240 }} />
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void fetchServices()}>刷新</Button>
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select placeholder="全部状态" value={stateFilter || undefined} onChange={(v) => setStateFilter((v as string) ?? '')} showClear style={{ width: 130 }}
+              optionList={[
+                { label: '运行中', value: 'active' },
+                { label: '已停止', value: 'inactive' },
+                { label: '失败', value: 'failed' },
+                { label: '激活中', value: 'activating' },
+              ]} />
+            {failedCount > 0 && (
+              <Button size="default" type={stateFilter === 'failed' ? 'primary' : 'tertiary'} theme={stateFilter === 'failed' ? 'solid' : 'light'} onClick={() => setStateFilter(stateFilter === 'failed' ? '' : 'failed')}>
+                失败服务 {failedCount}
+              </Button>
+            )}
+          </>
+        )}
+        filterTitle="服务筛选"
+        onFilterReset={() => setStateFilter('')}
+      />
       <ConfigurableTable
         bordered rowKey="name" dataSource={filtered} columns={columns} loading={loading}
         onRefresh={() => void fetchServices()} refreshLoading={loading}

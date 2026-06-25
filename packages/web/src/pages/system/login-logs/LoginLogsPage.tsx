@@ -111,79 +111,145 @@ export default function LoginLogsPage() {
     }
   };
 
+  const renderUsernameSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="请输入用户名"
+      value={searchParams.username}
+      onChange={(v) => setSearchParams({ ...searchParams, username: v })}
+      onEnterPress={handleSearch}
+      style={{ width: 180 }}
+      showClear
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="请选择状态"
+      value={searchParams.status || undefined}
+      onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
+      style={{ width: 150 }}
+    >
+      <Select.Option value="">全部</Select.Option>
+      <Select.Option value="success">成功</Select.Option>
+      <Select.Option value="fail">失败</Select.Option>
+    </Select>
+  );
+
+  const renderTimeRangeFilter = () => (
+    <DatePicker
+      type="dateTimeRange"
+      placeholder={['开始时间', '结束时间']}
+      value={searchParams.timeRange ?? undefined}
+      onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
+      style={{ width: 360 }}
+    />
+  );
+
+  const renderExportButtons = () => (
+    <SplitButtonGroup>
+      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        clickToHide
+        render={(
+          <Dropdown.Menu>
+            <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
+            <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/login-logs/export/csv', '登录日志.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
+          </Dropdown.Menu>
+        )}
+      >
+        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+
+  const renderMobileExportActions = () => (
+    <>
+      <Button icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Button>
+      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/login-logs/export/csv', '登录日志.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Button>
+    </>
+  );
+
+  const renderClearButtons = () => (
+    <SplitButtonGroup>
+      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(12)}>清除日志</Button>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        clickToHide
+        render={(
+          <Dropdown.Menu>
+            {([12, 6, 3, 1] as const).map((m) => (
+              <Dropdown.Item key={m} onClick={() => handleClearLogs(m)}>清除{clearLogsLabels[m]}前的日志</Dropdown.Item>
+            ))}
+            <Dropdown.Divider />
+            <Dropdown.Item type="danger" onClick={() => handleClearLogs(0)}>清除全部日志</Dropdown.Item>
+          </Dropdown.Menu>
+        )}
+      >
+        <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
+      </Dropdown>
+    </SplitButtonGroup>
+  );
+
+  const renderMobileClearActions = () => (
+    <>
+      {([12, 6, 3, 1] as const).map((m) => (
+        <Button key={m} type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(m)}>
+          清除{clearLogsLabels[m]}前的日志
+        </Button>
+      ))}
+      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(0)}>
+        清除全部日志
+      </Button>
+    </>
+  );
+
   return (
     <div className="page-container">
       <Tabs type="line">
         <TabPane tab="日志列表" itemKey="list">
-          <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="请输入用户名"
-            value={searchParams.username}
-            onChange={(v) => setSearchParams({ ...searchParams, username: v })}
-            onEnterPress={handleSearch}
-            style={{ width: 180 }}
-            showClear
+          <SearchToolbar
+            primary={(
+              <>
+                {renderUsernameSearch()}
+                {renderStatusFilter()}
+                {renderTimeRangeFilter()}
+                <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+                <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+              </>
+            )}
+            actions={(
+              <>
+                {renderExportButtons()}
+                {renderClearButtons()}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                {renderUsernameSearch()}
+                <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+              </>
+            )}
+            mobileFilters={(
+              <>
+                {renderStatusFilter()}
+                {renderTimeRangeFilter()}
+              </>
+            )}
+            mobileActions={(
+              <>
+                {renderMobileExportActions()}
+                {renderMobileClearActions()}
+              </>
+            )}
+            filterTitle="登录日志筛选"
+            actionTitle="日志操作"
+            onFilterApply={handleSearch}
+            onFilterReset={handleReset}
           />
-          <Select
-            placeholder="请选择状态"
-            value={searchParams.status || undefined}
-            onChange={(v) => setSearchParams({ ...searchParams, status: v as string })}
-            style={{ width: 150 }}
-          >
-            <Select.Option value="">全部</Select.Option>
-            <Select.Option value="success">成功</Select.Option>
-            <Select.Option value="fail">失败</Select.Option>
-          </Select>
-          <DatePicker
-            type="dateTimeRange"
-            placeholder={["开始时间", "结束时间"]}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(v) => setSearchParams({ ...searchParams, timeRange: v ? (v as [Date, Date]) : null })}
-            style={{ width: 360 }}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-            查询
-          </Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-            重置
-          </Button>
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/login-logs/export', '登录日志.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/login-logs/export/csv', '登录日志.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
-          <SplitButtonGroup>
-            <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={clearLogsLoading} onClick={() => handleClearLogs(12)}>清除日志</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  {([12, 6, 3, 1] as const).map((m) => (
-                    <Dropdown.Item key={m} onClick={() => handleClearLogs(m)}>清除{clearLogsLabels[m]}前的日志</Dropdown.Item>
-                  ))}
-                  <Dropdown.Divider />
-                  <Dropdown.Item type="danger" onClick={() => handleClearLogs(0)}>清除全部日志</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
-            </Dropdown>
-          </SplitButtonGroup>
-      </SearchToolbar>
 
           <LoginLogsTable
             dataSource={data}

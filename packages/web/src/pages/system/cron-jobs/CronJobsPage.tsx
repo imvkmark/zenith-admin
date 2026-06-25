@@ -485,50 +485,99 @@ export default function CronJobsPage() {
     <div className="page-container">
       <Tabs type="line" lazyRender>
         <Tabs.TabPane tab="任务管理" itemKey="jobs">
-          <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索任务名称/处理器"
-            value={searchParams.keyword}
-            onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
-            onEnterPress={handleSearch}
-            style={{ width: 240 }}
-            showClear
+          <SearchToolbar
+            primary={(
+              <>
+                <Input
+                  prefix={<Search size={14} />}
+                  placeholder="搜索任务名称/处理器"
+                  value={searchParams.keyword}
+                  onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+                  onEnterPress={handleSearch}
+                  style={{ width: 240 }}
+                  showClear
+                />
+                <Select
+                  placeholder="状态"
+                  value={searchParams.status || undefined}
+                  onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+                  style={{ width: 140 }}
+                  optionList={[
+                    { value: '', label: '全部' },
+                    { value: 'enabled', label: '启用' },
+                    { value: 'disabled', label: '禁用' },
+                  ]}
+                />
+                <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+                <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+              </>
+            )}
+            actions={(
+              <>
+                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
+                <SplitButtonGroup>
+                  <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+                  <Dropdown
+                    trigger="click"
+                    position="bottomRight"
+                    clickToHide
+                    render={(
+                      <Dropdown.Menu>
+                        <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
+                        <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+                      </Dropdown.Menu>
+                    )}
+                  >
+                    <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+                  </Dropdown>
+                </SplitButtonGroup>
+                {hasPermission('system:cronjob:create') && (
+                  <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
+                )}
+              </>
+            )}
+            mobilePrimary={(
+              <>
+                <Input
+                  prefix={<Search size={14} />}
+                  placeholder="搜索任务名称/处理器"
+                  value={searchParams.keyword}
+                  onChange={(v) => setSearchParams((p) => ({ ...p, keyword: v }))}
+                  onEnterPress={handleSearch}
+                  style={{ width: 240 }}
+                  showClear
+                />
+                <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+                {hasPermission('system:cronjob:create') && (
+                  <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
+                )}
+              </>
+            )}
+            mobileFilters={(
+              <Select
+                placeholder="状态"
+                value={searchParams.status || undefined}
+                onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
+                style={{ width: 140 }}
+                optionList={[
+                  { value: '', label: '全部' },
+                  { value: 'enabled', label: '启用' },
+                  { value: 'disabled', label: '禁用' },
+                ]}
+              />
+            )}
+            mobileActions={(
+              <>
+                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
+                <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
+                <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+              </>
+            )}
+            filterTitle="定时任务筛选"
+            actionTitle="定时任务操作"
+            onFilterApply={handleSearch}
+            onFilterReset={handleReset}
           />
-          <Select
-            placeholder="状态"
-            value={searchParams.status || undefined}
-            onChange={(v) => setSearchParams((p) => ({ ...p, status: (v as string) ?? '' }))}
-            style={{ width: 140 }}
-            optionList={[
-              { value: '', label: '全部' },
-              { value: 'enabled', label: '启用' },
-              { value: 'disabled', label: '禁用' },
-            ]}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); void fetchAllLogs(1, null); }}>全部执行日志</Button>
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
-          {hasPermission('system:cronjob:create') && (
-            <Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingJob(null); setCronExprValue(''); setModalVisible(true); }}>新增</Button>
-          )}
-      </SearchToolbar>
 
       <ConfigurableTable
         bordered

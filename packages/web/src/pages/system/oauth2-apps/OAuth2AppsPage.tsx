@@ -328,22 +328,45 @@ export default function OAuth2AppsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索应用名称"
-          value={searchParams.keyword}
-          onChange={(v) => setSearchParams({ keyword: v })}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ width: 220 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {canManage && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索应用名称"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ keyword: v })}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 220 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {canManage && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索应用名称"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ keyword: v })}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 220 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {canManage && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
+        )}
+        mobileActions={<Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>}
+        actionTitle="应用操作"
+      />
 
       <ConfigurableTable
         bordered

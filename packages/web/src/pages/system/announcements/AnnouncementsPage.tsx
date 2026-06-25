@@ -174,6 +174,24 @@ export default function AnnouncementsPage() {
     fetchData(1, pageSize, empty);
   };
 
+  const handleExportExcel = async () => {
+    setExportLoading(true);
+    try {
+      await request.download('/api/announcements/export', '公告列表.xlsx');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/announcements/export/csv', '公告列表.csv');
+    } finally {
+      setExportCsvLoading(false);
+    }
+  };
+
   const fetchStatsData = async (notice: Announcement, page: number, tab: 'read' | 'unread') => {
     setStatsLoading(true);
     try {
@@ -705,54 +723,119 @@ export default function AnnouncementsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索标题"
-            value={searchParams.title}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
-            onEnterPress={handleSearch}
-            style={{ width: 200 }}
-            showClear
-          />
-          <Select
-            placeholder="公告类型"
-            value={searchParams.type || undefined}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
-            optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
-            showClear
-            style={{ width: 140 }}
-          />
-          <Select
-            placeholder="发布状态"
-            value={searchParams.publishStatus || undefined}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
-            optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
-            showClear
-            style={{ width: 140 }}
-          />
-          <DatePicker
-            type="dateTimeRange"
-            placeholder={["开始时间", "结束时间"]}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
-            style={{ width: 360 }}
-          />
-          <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
-          <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
-              <SplitButtonGroup>
-                <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/announcements/export', '公告列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-                <Dropdown trigger="click" position="bottomRight" clickToHide render={<Dropdown.Menu><Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/announcements/export', '公告列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item><Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/announcements/export/csv', '公告列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item></Dropdown.Menu>}>
-                  <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-                </Dropdown>
-              </SplitButtonGroup>
-          {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
-            <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
-              批量删除 ({selectedRowKeys.length})
-            </Button>
-          )}
-          {hasPermission('system:announcement:create') && <Button icon={<Plus size={14} />} type="primary" onClick={openCreateModal}>新增</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索标题"
+              value={searchParams.title}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
+              onEnterPress={handleSearch}
+              style={{ width: 200 }}
+              showClear
+            />
+            <Select
+              placeholder="公告类型"
+              value={searchParams.type || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
+              optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 140 }}
+            />
+            <Select
+              placeholder="发布状态"
+              value={searchParams.publishStatus || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 140 }}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
+              style={{ width: 360 }}
+            />
+            <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
+            <Button icon={<RotateCcw size={14} />} type="tertiary" onClick={handleReset}>重置</Button>
+          </>
+        )}
+        actions={(
+          <>
+            <SplitButtonGroup>
+              <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
+              <Dropdown trigger="click" position="bottomRight" clickToHide render={<Dropdown.Menu><Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item><Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item></Dropdown.Menu>}>
+                <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+              </Dropdown>
+            </SplitButtonGroup>
+            {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
+            {hasPermission('system:announcement:create') && <Button icon={<Plus size={14} />} type="primary" onClick={openCreateModal}>新增</Button>}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索标题"
+              value={searchParams.title}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, title: v }))}
+              onEnterPress={handleSearch}
+              style={{ width: 200 }}
+              showClear
+            />
+            <Button icon={<Search size={14} />} type="primary" onClick={handleSearch}>查询</Button>
+            {hasPermission('system:announcement:create') && <Button icon={<Plus size={14} />} type="primary" onClick={openCreateModal}>新增</Button>}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select
+              placeholder="公告类型"
+              value={searchParams.type || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, type: typeof v === 'string' ? v : '' }))}
+              optionList={typeItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 140 }}
+            />
+            <Select
+              placeholder="发布状态"
+              value={searchParams.publishStatus || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, publishStatus: typeof v === 'string' ? v : '' }))}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 140 }}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, timeRange: v ? (v as [Date, Date]) : null }))}
+              style={{ width: 360 }}
+            />
+          </>
+        )}
+        mobileActions={(
+          <>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+            {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
+          </>
+        )}
+        filterTitle="公告筛选"
+        actionTitle="公告操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

@@ -183,19 +183,44 @@ export default function SmsTemplatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码"
-          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
-        <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
-          optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
-        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
-          optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {can('system:sms-template:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+            <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
+              optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
+            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {can('system:sms-template:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 220 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {can('system:sms-template:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select placeholder="服务商" value={searchParams.filterProvider} onChange={(v) => setSearchParams({ ...searchParams, filterProvider: v as SmsProvider | undefined })}
+              optionList={PROVIDER_OPTIONS} showClear style={{ width: 120 }} />
+            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
+          </>
+        )}
+        filterTitle="短信模板筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
         pagination={buildPagination(total, fetchList)}

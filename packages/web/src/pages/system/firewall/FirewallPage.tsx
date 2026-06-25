@@ -301,19 +301,43 @@ export default function FirewallPage() {
         </div>
       </div>
 
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索端口/来源/目标/备注"
-          value={keyword}
-          onChange={setKeyword}
-          showClear
-          style={{ width: 240 }}
-        />
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchAll(); }}>重置</Button>
-        <Button icon={<RefreshCw size={14} />} loading={listLoading} onClick={() => void fetchAll()}>刷新</Button>
-        {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索端口/来源/目标/备注"
+              value={keyword}
+              onChange={setKeyword}
+              showClear
+              style={{ width: 240 }}
+            />
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchAll(); }}>重置</Button>
+            <Button icon={<RefreshCw size={14} />} loading={listLoading} onClick={() => void fetchAll()}>刷新</Button>
+            {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索端口/来源/目标/备注"
+              value={keyword}
+              onChange={setKeyword}
+              showClear
+              style={{ width: 240 }}
+            />
+            {canManage && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>}
+          </>
+        )}
+        mobileActions={(
+          <>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={() => { setKeyword(''); void fetchAll(); }}>重置</Button>
+            <Button icon={<RefreshCw size={14} />} loading={listLoading} onClick={() => void fetchAll()}>刷新</Button>
+          </>
+        )}
+        actionTitle="防火墙操作"
+      />
 
       <ConfigurableTable
         bordered

@@ -362,49 +362,97 @@ export default function TagsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索标签名称或描述"
-          value={searchParams.keyword}
-          onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ width: 200 }}
-        />
-        <Select
-          placeholder="所属分组"
-          value={searchParams.filterGroup}
-          onChange={(v) => setSearchParams({ ...searchParams, filterGroup: v as string | undefined })}
-          optionList={groupOptions}
-          showClear
-          style={{ width: 160 }}
-        />
-        <Select
-          placeholder="状态"
-          value={searchParams.filterStatus}
-          onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
-          optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
-          showClear
-          style={{ width: 100 }}
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>
-          查询
-        </Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>
-          重置
-        </Button>
-        {can('system:tag:delete') && selectedRowKeys.length > 0 && (
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索标签名称或描述"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="所属分组"
+              value={searchParams.filterGroup}
+              onChange={(v) => setSearchParams({ ...searchParams, filterGroup: v as string | undefined })}
+              optionList={groupOptions}
+              showClear
+              style={{ width: 160 }}
+            />
+            <Select
+              placeholder="状态"
+              value={searchParams.filterStatus}
+              onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 100 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        actions={(
+          <>
+            {can('system:tag:delete') && selectedRowKeys.length > 0 && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
+            {can('system:tag:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索标签名称或描述"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams({ ...searchParams, keyword: v })}
+              onEnterPress={handleSearch}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {can('system:tag:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select
+              placeholder="所属分组"
+              value={searchParams.filterGroup}
+              onChange={(v) => setSearchParams({ ...searchParams, filterGroup: v as string | undefined })}
+              optionList={groupOptions}
+              showClear
+              style={{ width: 160 }}
+            />
+            <Select
+              placeholder="状态"
+              value={searchParams.filterStatus}
+              onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))}
+              showClear
+              style={{ width: 100 }}
+            />
+          </>
+        )}
+        mobileActions={can('system:tag:delete') && selectedRowKeys.length > 0 ? (
           <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>
             批量删除 ({selectedRowKeys.length})
           </Button>
-        )}
-        {can('system:tag:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>
-            新增
-          </Button>
-        )}
-      </SearchToolbar>
+        ) : null}
+        filterTitle="标签筛选"
+        actionTitle="标签操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

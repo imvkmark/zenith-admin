@@ -378,46 +378,103 @@ export default function DataMaskPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索实体 / 字段"
-          value={searchParams.keyword}
-          onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-          onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
-          showClear
-          style={{ width: 200 }}
-        />
-        <Select
-          placeholder="脉敏类型"
-          value={searchParams.maskType || undefined}
-          onChange={(v) => setSearchParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
-          showClear
-          style={{ width: 160 }}
-        >
-          {MASK_TYPE_OPTIONS.map((o) => (
-            <Select.Option key={o.value} value={o.value}>{MASK_TYPE_LABELS[o.value]}</Select.Option>
-          ))}
-        </Select>
-        <Select
-          placeholder="启用状态"
-          value={searchParams.enabled || undefined}
-          onChange={(v) => setSearchParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
-          showClear
-          style={{ width: 120 }}
-        >
-          <Select.Option value="true">启用</Select.Option>
-          <Select.Option value="false">停用</Select.Option>
-        </Select>
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {hasPermission('system:data-mask:list') && (
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索实体 / 字段"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="脱敏类型"
+              value={searchParams.maskType || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
+              showClear
+              style={{ width: 160 }}
+            >
+              {MASK_TYPE_OPTIONS.map((o) => (
+                <Select.Option key={o.value} value={o.value}>{MASK_TYPE_LABELS[o.value]}</Select.Option>
+              ))}
+            </Select>
+            <Select
+              placeholder="启用状态"
+              value={searchParams.enabled || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
+              showClear
+              style={{ width: 120 }}
+            >
+              <Select.Option value="true">启用</Select.Option>
+              <Select.Option value="false">停用</Select.Option>
+            </Select>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        actions={(
+          <>
+            {hasPermission('system:data-mask:list') && (
+              <Button icon={<Database size={14} />} onClick={openScan}>扫描敏感字段</Button>
+            )}
+            {hasPermission('system:data-mask:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>
+            )}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索实体 / 字段"
+              value={searchParams.keyword}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+              onEnterPress={() => { setPage(1); void fetchData(1, pageSize); }}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {hasPermission('system:data-mask:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select
+              placeholder="脱敏类型"
+              value={searchParams.maskType || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, maskType: typeof v === 'string' ? v : '' }))}
+              showClear
+              style={{ width: 160 }}
+            >
+              {MASK_TYPE_OPTIONS.map((o) => (
+                <Select.Option key={o.value} value={o.value}>{MASK_TYPE_LABELS[o.value]}</Select.Option>
+              ))}
+            </Select>
+            <Select
+              placeholder="启用状态"
+              value={searchParams.enabled || undefined}
+              onChange={(v) => setSearchParams((prev) => ({ ...prev, enabled: typeof v === 'string' ? v : '' }))}
+              showClear
+              style={{ width: 120 }}
+            >
+              <Select.Option value="true">启用</Select.Option>
+              <Select.Option value="false">停用</Select.Option>
+            </Select>
+          </>
+        )}
+        mobileActions={hasPermission('system:data-mask:list') ? (
           <Button icon={<Database size={14} />} onClick={openScan}>扫描敏感字段</Button>
-        )}
-        {hasPermission('system:data-mask:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增规则</Button>
-        )}
-      </SearchToolbar>
+        ) : null}
+        filterTitle="数据脱敏筛选"
+        actionTitle="数据脱敏操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

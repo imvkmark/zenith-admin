@@ -107,28 +107,60 @@ function IpAccessLogsTab() {
 
   return (
     <>
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索 IP 地址"
-          value={filterIp}
-          onChange={(v) => { setFilterIp(v); setSearchParams((prev) => ({ ...prev, filterIp: v })); }}
-          showClear
-          style={{ width: 200 }}
-        />
-        <Select
-          placeholder="拦截类型"
-          value={filterBlockType}
-          onChange={(v) => { setFilterBlockType(v as string | undefined); setSearchParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
-          showClear
-          style={{ width: 140 }}
-        >
-          <Select.Option value="blacklist">黑名单</Select.Option>
-          <Select.Option value="whitelist">白名单</Select.Option>
-        </Select>
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索 IP 地址"
+              value={filterIp}
+              onChange={(v) => { setFilterIp(v); setSearchParams((prev) => ({ ...prev, filterIp: v })); }}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="拦截类型"
+              value={filterBlockType}
+              onChange={(v) => { setFilterBlockType(v as string | undefined); setSearchParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
+              showClear
+              style={{ width: 140 }}
+            >
+              <Select.Option value="blacklist">黑名单</Select.Option>
+              <Select.Option value="whitelist">白名单</Select.Option>
+            </Select>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索 IP 地址"
+              value={filterIp}
+              onChange={(v) => { setFilterIp(v); setSearchParams((prev) => ({ ...prev, filterIp: v })); }}
+              showClear
+              style={{ width: 200 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          </>
+        )}
+        mobileFilters={(
+          <Select
+            placeholder="拦截类型"
+            value={filterBlockType}
+            onChange={(v) => { setFilterBlockType(v as string | undefined); setSearchParams((prev) => ({ ...prev, filterBlockType: v as string | undefined })); }}
+            showClear
+            style={{ width: 140 }}
+          >
+            <Select.Option value="blacklist">黑名单</Select.Option>
+            <Select.Option value="whitelist">白名单</Select.Option>
+          </Select>
+        )}
+        filterTitle="IP 访问筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
       <ConfigurableTable
         bordered
         columns={columns}

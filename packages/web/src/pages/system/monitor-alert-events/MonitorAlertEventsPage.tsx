@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Select, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Search } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { request } from '@/utils/request';
@@ -101,34 +101,72 @@ export default function MonitorAlertEventsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Select
-          placeholder="全部指标"
-          value={filters.metric}
-          onChange={(v) => setFilters((p) => ({ ...p, metric: v as string }))}
-          showClear
-          style={{ width: 150 }}
-          optionList={METRIC_OPTIONS}
-        />
-        <Select
-          placeholder="全部级别"
-          value={filters.level}
-          onChange={(v) => setFilters((p) => ({ ...p, level: v as string }))}
-          showClear
-          style={{ width: 120 }}
-          optionList={Object.entries(LEVEL_CONFIG).map(([v, c]) => ({ value: v, label: c.label }))}
-        />
-        <Select
-          placeholder="全部状态"
-          value={filters.status}
-          onChange={(v) => setFilters((p) => ({ ...p, status: v as string }))}
-          showClear
-          style={{ width: 120 }}
-          optionList={[{ value: 'firing', label: '告警中' }, { value: 'resolved', label: '已恢复' }]}
-        />
-        <Button type="primary" onClick={() => { setPage(1); void fetchEvents(1, pageSize); }}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Select
+              placeholder="全部指标"
+              value={filters.metric}
+              onChange={(v) => setFilters((p) => ({ ...p, metric: v as string }))}
+              showClear
+              style={{ width: 150 }}
+              optionList={METRIC_OPTIONS}
+            />
+            <Select
+              placeholder="全部级别"
+              value={filters.level}
+              onChange={(v) => setFilters((p) => ({ ...p, level: v as string }))}
+              showClear
+              style={{ width: 120 }}
+              optionList={Object.entries(LEVEL_CONFIG).map(([v, c]) => ({ value: v, label: c.label }))}
+            />
+            <Select
+              placeholder="全部状态"
+              value={filters.status}
+              onChange={(v) => setFilters((p) => ({ ...p, status: v as string }))}
+              showClear
+              style={{ width: 120 }}
+              optionList={[{ value: 'firing', label: '告警中' }, { value: 'resolved', label: '已恢复' }]}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchEvents(1, pageSize); }}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        mobilePrimary={(
+          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchEvents(1, pageSize); }}>查询</Button>
+        )}
+        mobileFilters={(
+          <>
+            <Select
+              placeholder="全部指标"
+              value={filters.metric}
+              onChange={(v) => setFilters((p) => ({ ...p, metric: v as string }))}
+              showClear
+              style={{ width: 150 }}
+              optionList={METRIC_OPTIONS}
+            />
+            <Select
+              placeholder="全部级别"
+              value={filters.level}
+              onChange={(v) => setFilters((p) => ({ ...p, level: v as string }))}
+              showClear
+              style={{ width: 120 }}
+              optionList={Object.entries(LEVEL_CONFIG).map(([v, c]) => ({ value: v, label: c.label }))}
+            />
+            <Select
+              placeholder="全部状态"
+              value={filters.status}
+              onChange={(v) => setFilters((p) => ({ ...p, status: v as string }))}
+              showClear
+              style={{ width: 120 }}
+              optionList={[{ value: 'firing', label: '告警中' }, { value: 'resolved', label: '已恢复' }]}
+            />
+          </>
+        )}
+        filterTitle="告警事件筛选"
+        onFilterApply={() => { setPage(1); void fetchEvents(1, pageSize); }}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable
         bordered

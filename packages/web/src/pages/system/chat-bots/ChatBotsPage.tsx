@@ -315,22 +315,45 @@ export default function ChatBotsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索机器人名称"
-          value={keyword}
-          onChange={setKeyword}
-          onEnterPress={handleSearch}
-          style={{ width: 260 }}
-          showClear
-        />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {hasPermission('chat:bot:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreateModal}>新增</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索机器人名称"
+              value={keyword}
+              onChange={setKeyword}
+              onEnterPress={handleSearch}
+              style={{ width: 260 }}
+              showClear
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {hasPermission('chat:bot:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreateModal}>新增</Button>
+            )}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索机器人名称"
+              value={keyword}
+              onChange={setKeyword}
+              onEnterPress={handleSearch}
+              style={{ width: 260 }}
+              showClear
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {hasPermission('chat:bot:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreateModal}>新增</Button>
+            )}
+          </>
+        )}
+        mobileActions={<Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>}
+        actionTitle="机器人操作"
+      />
 
       <ConfigurableTable
         bordered

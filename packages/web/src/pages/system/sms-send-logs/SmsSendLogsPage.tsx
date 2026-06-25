@@ -159,39 +159,77 @@ export default function SmsSendLogsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="内容关键词"
-          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 180 }} />
-        <Input placeholder="手机号" value={searchParams.phone} onChange={(v) => setSearchParams({ ...searchParams, phone: v })}
-          onEnterPress={handleSearch} showClear style={{ width: 160 }} />
-        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as SendStatus | undefined })}
-          optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
-        <Select placeholder="来源" value={searchParams.filterSource} onChange={(v) => setSearchParams({ ...searchParams, filterSource: v as string | undefined })}
-          optionList={SOURCE_OPTIONS} showClear style={{ width: 110 }} />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {can('system:sms-send-log:export') && (
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="内容关键词"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 180 }} />
+            <Input placeholder="手机号" value={searchParams.phone} onChange={(v) => setSearchParams({ ...searchParams, phone: v })}
+              onEnterPress={handleSearch} showClear style={{ width: 160 }} />
+            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as SendStatus | undefined })}
+              optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
+            <Select placeholder="来源" value={searchParams.filterSource} onChange={(v) => setSearchParams({ ...searchParams, filterSource: v as string | undefined })}
+              optionList={SOURCE_OPTIONS} showClear style={{ width: 110 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
         )}
-        {can('system:sms-send-log:send') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openTest}>测试发送</Button>
+        actions={(
+          <>
+            {can('system:sms-send-log:export') && (
+              <SplitButtonGroup>
+                <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出</Button>
+                <Dropdown
+                  trigger="click"
+                  position="bottomRight"
+                  clickToHide
+                  render={(
+                    <Dropdown.Menu>
+                      <Dropdown.Item onClick={handleExport}>导出 Excel</Dropdown.Item>
+                      <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+                    </Dropdown.Menu>
+                  )}
+                >
+                  <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+                </Dropdown>
+              </SplitButtonGroup>
+            )}
+            {can('system:sms-send-log:send') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openTest}>测试发送</Button>
+            )}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="内容关键词"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 180 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {can('system:sms-send-log:send') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openTest}>测试发送</Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Input placeholder="手机号" value={searchParams.phone} onChange={(v) => setSearchParams({ ...searchParams, phone: v })}
+              onEnterPress={handleSearch} showClear style={{ width: 160 }} />
+            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as SendStatus | undefined })}
+              optionList={STATUS_OPTIONS} showClear style={{ width: 110 }} />
+            <Select placeholder="来源" value={searchParams.filterSource} onChange={(v) => setSearchParams({ ...searchParams, filterSource: v as string | undefined })}
+              optionList={SOURCE_OPTIONS} showClear style={{ width: 110 }} />
+          </>
+        )}
+        mobileActions={can('system:sms-send-log:export') ? (
+          <>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExport}>导出 Excel</Button>
+            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+          </>
+        ) : null}
+        filterTitle="短信发送日志筛选"
+        actionTitle="短信日志操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
         pagination={buildPagination(total, fetchList)}

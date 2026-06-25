@@ -191,22 +191,51 @@ export default function InAppMessagesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="标题/内容关键词"
-          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-        <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
-          optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-        <Select placeholder="阅读状态" value={searchParams.filterRead} onChange={(v) => setSearchParams({ ...searchParams, filterRead: v as string | undefined })}
-          optionList={READ_OPTIONS} showClear style={{ width: 120 }} />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {can('system:in-app-message:update') && (
+      <SearchToolbar
+        primary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="标题/内容关键词"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+              optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
+            <Select placeholder="阅读状态" value={searchParams.filterRead} onChange={(v) => setSearchParams({ ...searchParams, filterRead: v as string | undefined })}
+              optionList={READ_OPTIONS} showClear style={{ width: 120 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {can('system:in-app-message:update') && (
+              <Button type="tertiary" icon={<CheckCheck size={14} />} onClick={handleMarkAllRead}>全部已读</Button>
+            )}
+            {can('system:in-app-message:send') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openSend}>发送站内信</Button>
+            )}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="标题/内容关键词"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 200 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {can('system:in-app-message:send') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openSend}>发送站内信</Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+              optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
+            <Select placeholder="阅读状态" value={searchParams.filterRead} onChange={(v) => setSearchParams({ ...searchParams, filterRead: v as string | undefined })}
+              optionList={READ_OPTIONS} showClear style={{ width: 120 }} />
+          </>
+        )}
+        mobileActions={can('system:in-app-message:update') ? (
           <Button type="tertiary" icon={<CheckCheck size={14} />} onClick={handleMarkAllRead}>全部已读</Button>
-        )}
-        {can('system:in-app-message:send') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openSend}>发送站内信</Button>
-        )}
-      </SearchToolbar>
+        ) : null}
+        filterTitle="站内信筛选"
+        actionTitle="站内信操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
         pagination={buildPagination(total, fetchList)}

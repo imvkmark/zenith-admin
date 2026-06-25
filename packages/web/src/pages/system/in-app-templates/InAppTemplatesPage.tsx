@@ -186,19 +186,44 @@ export default function InAppTemplatesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/标题"
-          value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
-        <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
-          optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
-        <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
-          optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
-        <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-        <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-        {can('system:in-app-template:create') && (
-          <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/标题"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
+            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+              optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
+            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+            {can('system:in-app-template:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
         )}
-      </SearchToolbar>
+        mobilePrimary={(
+          <>
+            <Input prefix={<Search size={14} />} placeholder="搜索模板名称/编码/标题"
+              value={searchParams.keyword} onChange={(v) => setSearchParams({ ...searchParams, keyword: v })} onEnterPress={handleSearch} showClear style={{ width: 240 }} />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {can('system:in-app-template:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select placeholder="类型" value={searchParams.filterType} onChange={(v) => setSearchParams({ ...searchParams, filterType: v as InAppMessageType | undefined })}
+              optionList={TYPE_OPTIONS} showClear style={{ width: 110 }} />
+            <Select placeholder="状态" value={searchParams.filterStatus} onChange={(v) => setSearchParams({ ...searchParams, filterStatus: v as string | undefined })}
+              optionList={statusItems.map((i) => ({ label: i.label, value: i.value }))} showClear style={{ width: 110 }} />
+          </>
+        )}
+        filterTitle="站内信模板筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <ConfigurableTable bordered loading={loading} onRefresh={() => void fetchList()} refreshLoading={loading} columns={columns} dataSource={list} rowKey="id"
         pagination={buildPagination(total, fetchList)}

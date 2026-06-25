@@ -268,6 +268,24 @@ export default function FileStorageConfigsPage() {
     void fetchConfigs(1, pageSize, defaultSearchParams);
   };
 
+  const handleExportExcel = async () => {
+    setExportLoading(true);
+    try {
+      await request.download('/api/file-storage-configs/export', '文件配置列表.xlsx');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setExportCsvLoading(true);
+    try {
+      await request.download('/api/file-storage-configs/export/csv', '文件配置列表.csv');
+    } finally {
+      setExportCsvLoading(false);
+    }
+  };
+
   const openCreate = () => {
     setEditingConfig(null);
     setFormProvider('local');
@@ -604,44 +622,89 @@ export default function FileStorageConfigsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-          <Select
-            placeholder="请选择状态"
-            value={searchParams.status || undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
-            style={{ width: 140 }}
-          >
-            <Select.Option value="">全部状态</Select.Option>
-            <Select.Option value="enabled">启用</Select.Option>
-            <Select.Option value="disabled">禁用</Select.Option>
-          </Select>
-          <DatePicker
-            type="dateTimeRange"
-            placeholder={["开始时间", "结束时间"]}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-            style={{ width: 360 }}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          <SplitButtonGroup>
-            <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={async () => { setExportLoading(true); try { await request.download('/api/file-storage-configs/export', '文件配置列表.xlsx'); } finally { setExportLoading(false); } }}>导出</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={async () => { setExportLoading(true); try { await request.download('/api/file-storage-configs/export', '文件配置列表.xlsx'); } finally { setExportLoading(false); } }}>导出 Excel</Dropdown.Item>
-                  <Dropdown.Item onClick={async () => { setExportCsvLoading(true); try { await request.download('/api/file-storage-configs/export/csv', '文件配置列表.csv'); } finally { setExportCsvLoading(false); } }}>导出 CSV</Dropdown.Item>
-                </Dropdown.Menu>
-              )}
+      <SearchToolbar
+        primary={(
+          <>
+            <Select
+              placeholder="请选择状态"
+              value={searchParams.status || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              style={{ width: 140 }}
             >
-              <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-            </Dropdown>
-          </SplitButtonGroup>
-          {hasPermission('system:file:config:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
-      </SearchToolbar>
+              <Select.Option value="">全部状态</Select.Option>
+              <Select.Option value="enabled">启用</Select.Option>
+              <Select.Option value="disabled">禁用</Select.Option>
+            </Select>
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 360 }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        actions={(
+          <>
+            <SplitButtonGroup>
+              <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
+              <Dropdown
+                trigger="click"
+                position="bottomRight"
+                clickToHide
+                render={(
+                  <Dropdown.Menu>
+                    <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
+                    <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
+                  </Dropdown.Menu>
+                )}
+              >
+                <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
+              </Dropdown>
+            </SplitButtonGroup>
+            {hasPermission('system:file:config:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {hasPermission('system:file:config:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select
+              placeholder="请选择状态"
+              value={searchParams.status || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, status: (value as string) ?? '' }))}
+              style={{ width: 140 }}
+            >
+              <Select.Option value="">全部状态</Select.Option>
+              <Select.Option value="enabled">启用</Select.Option>
+              <Select.Option value="disabled">禁用</Select.Option>
+            </Select>
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 360 }}
+            />
+          </>
+        )}
+        mobileActions={(
+          <>
+            <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+            <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+          </>
+        )}
+        filterTitle="文件配置筛选"
+        actionTitle="文件配置操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
       <div className="storage-configs-tip" style={{ marginBottom: 0, marginTop: -4 }}>
         <Text type="secondary">当前支持多文件服务配置，但上传时会优先走"默认文件服务"。切换默认服务不会影响历史文件记录。</Text>
       </div>
