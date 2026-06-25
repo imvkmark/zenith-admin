@@ -35,6 +35,8 @@ import { useLockScreen } from '@/hooks/useLockScreen';
 import { useFavoriteMenus } from '@/hooks/useFavoriteMenus';
 import { useRecentMenus } from '@/hooks/useRecentMenus';
 import { usePageTracker } from '@/hooks/usePageTracker';
+import { useMediaQuery, useIsMobile } from '@/hooks/useMediaQuery';
+import { mediaDown } from '@/lib/breakpoints';
 import './AdminLayout.css';
 
 // 主题图标
@@ -182,7 +184,9 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   const autoCollapsedRef = useRef(false);
   // hover 模式：鼠标悬浮时侧边栏临时滑出
   const [sidebarHovered, setSidebarHovered] = useState(false);
-  const [isMobileNav, setIsMobileNav] = useState(false);
+  // 响应式断点统一走 useMediaQuery，断点值来自 @/lib/breakpoints（与 CSS 对齐）
+  const isMobileNav = useIsMobile();                 // < 768：启用移动端导航
+  const isBelowLg = useMediaQuery(mediaDown('lg'));  // < 992：侧边栏自动收起
   const [mobileNavVisible, setMobileNavVisible] = useState(false);
   const [mobilePagesVisible, setMobilePagesVisible] = useState(false);
   const [menuTree, setMenuTree] = useState<Menu[]>(presetMenus || []);
@@ -210,37 +214,24 @@ export default function AdminLayout({ user: userProp, onLogout, presetMenus }: A
   }, [setThemeMode]);
 
   // ─── 响应式侧边栏断点 ──────────────────────────────────────────────────────
+  // < 992：自动收起侧栏；变宽时仅在「自动收起」状态下还原，尊重用户的手动操作
   useEffect(() => {
-    const lgMq = globalThis.matchMedia('(max-width: 991px)');
-    const mobileMq = globalThis.matchMedia('(max-width: 767px)');
+    if (isBelowLg) {
+      autoCollapsedRef.current = true;
+      setCollapsed(true);
+    } else if (autoCollapsedRef.current) {
+      autoCollapsedRef.current = false;
+      setCollapsed(false);
+    }
+  }, [isBelowLg]);
 
-    const handleLg = (e: MediaQueryList | MediaQueryListEvent) => {
-      if (e.matches) {
-        autoCollapsedRef.current = true;
-        setCollapsed(true);
-      } else if (autoCollapsedRef.current) {
-        autoCollapsedRef.current = false;
-        setCollapsed(false);
-      }
-    };
-    const handleMobile = (e: MediaQueryList | MediaQueryListEvent) => {
-      setIsMobileNav(e.matches);
-      if (!e.matches) {
-        setMobileNavVisible(false);
-        setMobilePagesVisible(false);
-      }
-    };
-
-    handleLg(lgMq);
-    handleMobile(mobileMq);
-
-    lgMq.addEventListener('change', handleLg);
-    mobileMq.addEventListener('change', handleMobile);
-    return () => {
-      lgMq.removeEventListener('change', handleLg);
-      mobileMq.removeEventListener('change', handleMobile);
-    };
-  }, []);
+  // 离开移动端时关闭移动导航相关浮层
+  useEffect(() => {
+    if (!isMobileNav) {
+      setMobileNavVisible(false);
+      setMobilePagesVisible(false);
+    }
+  }, [isMobileNav]);
 
   const handleCollapseChange = useCallback((isCollapsed: boolean) => {
     autoCollapsedRef.current = false;
