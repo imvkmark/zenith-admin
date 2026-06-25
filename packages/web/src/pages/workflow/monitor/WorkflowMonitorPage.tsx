@@ -234,6 +234,147 @@ function formatDuration(start: string, end: string): string {
   return `${sec}秒`;
 }
 
+type FocusSeverity = 'success' | 'info' | 'warning' | 'critical';
+
+const FOCUS_SEVERITY_META: Record<FocusSeverity, { text: string; color: TagColor; borderColor: string }> = {
+  success: { text: '正常', color: 'green', borderColor: 'var(--semi-color-success)' },
+  info: { text: '运行中', color: 'blue', borderColor: 'var(--semi-color-primary)' },
+  warning: { text: '需关注', color: 'orange', borderColor: 'var(--semi-color-warning)' },
+  critical: { text: '有风险', color: 'red', borderColor: 'var(--semi-color-danger)' },
+};
+
+interface FocusMetric {
+  label: string;
+  value: string;
+  hint?: string;
+}
+
+interface FocusRiskTag {
+  label: string;
+  color: TagColor;
+}
+
+interface FocusDiagnosis {
+  severity: FocusSeverity;
+  title: string;
+  description: string;
+  nextAction: string;
+  metrics: FocusMetric[];
+  riskTags: FocusRiskTag[];
+  activeTasks: WorkflowTask[];
+}
+
+function diffSeconds(start: string | null | undefined, end: string | null | undefined): number {
+  if (!start || !end) return 0;
+  return Math.max(0, dayjs(end).diff(dayjs(start), 'second'));
+}
+
+function uniqueTexts(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value))];
+}
+
+function summarizeNames(values: Array<string | null | undefined>, emptyText: string): string {
+  const names = uniqueTexts(values);
+  if (names.length === 0) return emptyText;
+  if (names.length <= 3) return names.join('、');
+  return `${names.slice(0, 3).join('、')} 等 ${names.length} 人`;
+}
+
+function getTaskEndTime(task: WorkflowTask, generatedAt: string): string {
+  if (task.status === 'pending' || task.status === 'waiting') return generatedAt;
+  return task.actionAt || task.createdAt;
+}
+
+function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes: DiagNode[]): FocusDiagnosis {
+  const inst = diagnostics.instance;
+  const activeTasks = diagnostics.activeTasks.slice().sort((a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf());
+  const oldestActiveTask = activeTasks[0];
+  const oldestActiveNode = oldestActiveTask ? diagNodes.find((node) => node.key === oldestActiveTask.nodeKey) : undefined;
+  const longestTask = diagnostics.tasks
+    .map((task) => ({ task, seconds: diffSeconds(task.createdAt, getTaskEndTime(task, diagnostics.generatedAt)) }))
+    .sort((a, b) => b.seconds - a.seconds)[0];
+
+  const criticalIssues = diagnostics.issues.filter((issue) => issue.severity === 'critical');
+  const warningIssues = diagnostics.issues.filter((issue) => issue.severity === 'warning');
+  const failedTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'failed');
+  const retryingTriggers = diagnostics.triggerExecutions.filter((item) => item.status === 'retrying' || item.status === 'running');
+  const failedOutbox = diagnostics.outboxEvents.filter((item) => item.status.toLowerCase() === 'failed');
+  const pendingOutbox = diagnostics.outboxEvents.filter((item) => ['pending', 'retrying'].includes(item.status.toLowerCase()));
+  const externalFailedTasks = diagnostics.tasks.filter((task) => task.externalDispatchStatus === 'failed');
+  const triggerFailedTasks = diagnostics.tasks.filter((task) => task.triggerDispatchStatus === 'failed');
+  const emptyAssigneeTasks = activeTasks.filter((task) => task.assigneeId == null && !task.assigneeName);
+  const longestActiveWaitingSec = oldestActiveTask ? diffSeconds(oldestActiveTask.createdAt, diagnostics.generatedAt) : 0;
+  const longWaitingCritical = longestActiveWaitingSec >= 72 * 3600;
+  const longWaitingWarning = longestActiveWaitingSec >= 24 * 3600;
+
+  const riskTags: FocusRiskTag[] = [];
+  if (criticalIssues.length > 0) riskTags.push({ label: `严重 ${criticalIssues.length}`, color: 'red' });
+  if (warningIssues.length > 0) riskTags.push({ label: `警告 ${warningIssues.length}`, color: 'orange' });
+  if (failedTriggers.length > 0) riskTags.push({ label: `触发器失败 ${failedTriggers.length}`, color: 'red' });
+  if (failedOutbox.length > 0) riskTags.push({ label: `Outbox失败 ${failedOutbox.length}`, color: 'red' });
+  if (externalFailedTasks.length > 0) riskTags.push({ label: `外部分派失败 ${externalFailedTasks.length}`, color: 'red' });
+  if (triggerFailedTasks.length > 0) riskTags.push({ label: `任务触发失败 ${triggerFailedTasks.length}`, color: 'red' });
+  if (retryingTriggers.length > 0) riskTags.push({ label: `触发器重试中 ${retryingTriggers.length}`, color: 'orange' });
+  if (pendingOutbox.length > 0) riskTags.push({ label: `Outbox待处理 ${pendingOutbox.length}`, color: 'orange' });
+  if (emptyAssigneeTasks.length > 0) riskTags.push({ label: `处理人为空 ${emptyAssigneeTasks.length}`, color: 'orange' });
+  if (longWaitingCritical) riskTags.push({ label: '等待超3天', color: 'red' });
+  else if (longWaitingWarning) riskTags.push({ label: '等待超24小时', color: 'orange' });
+  if (activeTasks.length > 0) riskTags.push({ label: `活动任务 ${activeTasks.length}`, color: 'light-blue' });
+  if (riskTags.length === 0) riskTags.push({ label: '未发现阻断项', color: 'green' });
+
+  const hasCriticalRisk = criticalIssues.length > 0 || failedTriggers.length > 0 || failedOutbox.length > 0 || externalFailedTasks.length > 0 || triggerFailedTasks.length > 0 || longWaitingCritical;
+  const hasWarningRisk = warningIssues.length > 0 || retryingTriggers.length > 0 || pendingOutbox.length > 0 || emptyAssigneeTasks.length > 0 || longWaitingWarning;
+  const running = RUNNING_STATUSES.has(inst.status);
+  const severity: FocusSeverity = hasCriticalRisk ? 'critical' : hasWarningRisk || (running && activeTasks.length === 0) ? 'warning' : running ? 'info' : 'success';
+
+  const activeNodeText = oldestActiveTask ? (oldestActiveTask.nodeName || oldestActiveTask.nodeKey) : '—';
+  const assigneeText = summarizeNames(activeTasks.map((task) => task.assigneeName), '未指定处理人');
+  const waitText = oldestActiveTask ? formatDuration(oldestActiveTask.createdAt, diagnostics.generatedAt) : '—';
+  const assigneeSource = oldestActiveNode?.config.assigneeType ? ASSIGNEE_TYPE_LABEL[oldestActiveNode.config.assigneeType] ?? oldestActiveNode.config.assigneeType : '—';
+  const longestStayText = longestTask && longestTask.seconds > 0
+    ? `${longestTask.task.nodeName || longestTask.task.nodeKey} ${formatDuration(longestTask.task.createdAt, getTaskEndTime(longestTask.task, diagnostics.generatedAt))}`
+    : '—';
+
+  let title = '流程已结束';
+  let description = '该实例没有活动任务，可在任务、表单数据和定义快照中核对历史执行依据。';
+  let nextAction = '确认终态和历史审批记录即可；如结果异常，优先查看任务列表和定义快照。';
+
+  if (running && oldestActiveTask) {
+    title = `当前卡在「${activeNodeText}」`;
+    description = `最早活动任务 #${oldestActiveTask.id} 已等待 ${waitText}，当前处理人：${assigneeText}。`;
+    nextAction = '联系当前处理人继续审批；若处理人不合适，可使用改派处理人或强制跳转。';
+    if (oldestActiveTask.status === 'waiting' || oldestActiveTask.externalCallbackId) {
+      nextAction = '该任务正在等待外部系统回调，优先检查外部分派状态、回调地址和外部系统处理结果。';
+    } else if (oldestActiveTask.nodeType === 'trigger' || oldestActiveTask.triggerDispatchStatus) {
+      nextAction = '该节点依赖触发器执行，优先打开“触发器”标签查看请求、响应、错误和重试状态。';
+    }
+  } else if (running) {
+    title = '运行中但无活动任务';
+    description = '实例仍处于运行态，但诊断接口未返回 pending / waiting 任务，可能需要检查流程推进或任务生成逻辑。';
+    nextAction = '查看“节点”和“定义快照”，确认当前节点是否应该生成任务；必要时使用强制跳转恢复流程。';
+  }
+
+  if (failedOutbox.length > 0) nextAction = '优先打开“Outbox”标签查看失败事件、错误信息和下次重试时间，必要时检查订阅地址或重试投递。';
+  if (failedTriggers.length > 0) nextAction = '优先打开“触发器”标签查看失败请求、HTTP 状态、响应体和最近错误。';
+  if (externalFailedTasks.length > 0) nextAction = '优先检查外部分派配置和外部系统回调；若无法恢复，可改派到人工处理。';
+  if (criticalIssues.length > 0) nextAction = '优先处理诊断结论中的严重项，再回到节点和任务列表确认流程是否恢复。';
+
+  return {
+    severity,
+    title,
+    description,
+    nextAction,
+    activeTasks,
+    riskTags,
+    metrics: [
+      { label: '当前等待', value: waitText, hint: oldestActiveTask ? `task #${oldestActiveTask.id}` : '无活动任务' },
+      { label: '处理人', value: assigneeText, hint: assigneeSource !== '—' ? `来源：${assigneeSource}` : undefined },
+      { label: '最久停留', value: longestStayText, hint: longestTask ? `task #${longestTask.task.id}` : undefined },
+      { label: '外部事件', value: `${diagnostics.triggerExecutions.length} 触发器 · ${diagnostics.outboxEvents.length} Outbox`, hint: `${failedTriggers.length + failedOutbox.length} 个失败` },
+    ],
+  };
+}
+
 interface MonitorStats {
   total: number;
   running: number;
@@ -594,6 +735,8 @@ export default function WorkflowMonitorPage() {
     const currentNodeText = inst.currentNodeNames && inst.currentNodeNames.length > 0
       ? inst.currentNodeNames.join('、')
       : (inst.currentNodeName || '—');
+    const focusDiagnosis = buildFocusDiagnosis(diagnostics, diagNodes);
+    const focusMeta = FOCUS_SEVERITY_META[focusDiagnosis.severity];
 
     const renderNodeConfigSummary = (node: DiagNode) => {
       const items = getNodeConfigItems(node.config);
@@ -701,6 +844,88 @@ export default function WorkflowMonitorPage() {
               查看流程定义
             </Button>
           </Tooltip>
+        </div>
+
+        <div
+          style={{
+            border: '1px solid var(--semi-color-border)',
+            borderLeft: `4px solid ${focusMeta.borderColor}`,
+            borderRadius: 6,
+            padding: 14,
+            background: 'var(--semi-color-bg-1)',
+          }}
+        >
+          <Space spacing={8} wrap align="center" style={{ marginBottom: 8 }}>
+            <Tag color={focusMeta.color}>{focusMeta.text}</Tag>
+            <Typography.Text strong>{focusDiagnosis.title}</Typography.Text>
+            {focusDiagnosis.riskTags.map((tag) => (
+              <Tag key={tag.label} size="small" color={tag.color}>{tag.label}</Tag>
+            ))}
+          </Space>
+          <Typography.Text type="tertiary" size="small">{focusDiagnosis.description}</Typography.Text>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 12 }}>
+            {focusDiagnosis.metrics.map((metric) => (
+              <div
+                key={metric.label}
+                style={{
+                  border: '1px solid var(--semi-color-fill-1)',
+                  borderRadius: 6,
+                  padding: '8px 10px',
+                  minWidth: 0,
+                }}
+              >
+                <Typography.Text type="tertiary" size="small">{metric.label}</Typography.Text>
+                <div style={{ fontWeight: 600, marginTop: 2 }}>{metric.value}</div>
+                {metric.hint && <Typography.Text type="tertiary" size="small">{metric.hint}</Typography.Text>}
+              </div>
+            ))}
+          </div>
+
+          {focusDiagnosis.activeTasks.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <Typography.Text type="tertiary" size="small">当前活动任务</Typography.Text>
+              <Space vertical spacing={6} style={{ width: '100%', marginTop: 6 }}>
+                {focusDiagnosis.activeTasks.slice(0, 3).map((task) => (
+                  <div
+                    key={task.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      flexWrap: 'wrap',
+                      padding: '7px 10px',
+                      border: '1px solid var(--semi-color-fill-1)',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Typography.Text type="tertiary" size="small">#{task.id}</Typography.Text>
+                    <Tag size="small" color={NODE_RT_STATUS_COLOR[task.status]}>{NODE_RT_STATUS_LABEL[task.status]}</Tag>
+                    <Typography.Text strong size="small">{task.nodeName || task.nodeKey}</Typography.Text>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <UserAvatar name={task.assigneeName || '未指定'} avatar={task.assigneeAvatar} size={20} />
+                      <Typography.Text size="small">{task.assigneeName || '未指定'}</Typography.Text>
+                    </span>
+                    <Typography.Text type="tertiary" size="small">
+                      等待 {formatDuration(task.createdAt, diagnostics.generatedAt)}
+                    </Typography.Text>
+                    {task.externalDispatchStatus && <Tag size="small" color="grey">外部 {task.externalDispatchStatus}</Tag>}
+                    {task.triggerDispatchStatus && <Tag size="small" color="grey">触发 {task.triggerDispatchStatus}</Tag>}
+                  </div>
+                ))}
+                {focusDiagnosis.activeTasks.length > 3 && (
+                  <Typography.Text type="tertiary" size="small">
+                    还有 {focusDiagnosis.activeTasks.length - 3} 个活动任务，可在“任务”标签查看全部。
+                  </Typography.Text>
+                )}
+              </Space>
+            </div>
+          )}
+
+          <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 6, background: 'var(--semi-color-fill-0)' }}>
+            <Typography.Text type="tertiary" size="small">建议动作：</Typography.Text>
+            <Typography.Text size="small">{focusDiagnosis.nextAction}</Typography.Text>
+          </div>
         </div>
 
         <div>
