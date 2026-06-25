@@ -45,13 +45,25 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
     const businessFormApi = useRef<WorkflowBusinessFormApi | null>(null);
     const { userOptions } = useUserOptions({ immediate: true });
 
+    // 当前登录人通过 /api/auth/me 异步加载，标题需等其就绪后再回填，避免出现占位「我」
+    const lastDefId = useRef<number | null>(null);
+    const autoTitleRef = useRef('');
     useEffect(() => {
       const who = user?.nickname || user?.username || '我';
       const title = initialTitle?.trim() || `${def.name} - ${who} - ${dayjs().format('YYYY-MM-DD')}`;
-      const timer = setTimeout(() => formApi.current?.setValue('title', title), 0);
+      const defChanged = lastDefId.current !== def.id;
+      lastDefId.current = def.id;
+      const timer = setTimeout(() => {
+        const current = (formApi.current?.getValue('title') as string | undefined)?.trim() ?? '';
+        // 切换流程时重置标题；同一流程内仅在标题未被手动修改时刷新（如登录人加载完成）
+        if (defChanged || !current || current === autoTitleRef.current) {
+          formApi.current?.setValue('title', title);
+          autoTitleRef.current = title;
+        }
+      }, 0);
       return () => clearTimeout(timer);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [def.id]);
+    }, [def.id, user?.nickname, user?.username]);
 
     useImperativeHandle(ref, () => ({
       collectFormData: async () => {
