@@ -507,6 +507,94 @@ export default function WorkflowDefinitionsPage() {
     },
   ];
 
+  const renderCategoryButton = () => (
+    <Button
+      theme="borderless"
+      icon={<Layers size={14} />}
+      onClick={() => setShowCategorySidebar(true)}
+      style={{ display: isLayoutNarrow ? undefined : 'none' }}
+    >分类</Button>
+  );
+
+  const renderKeywordSearch = () => (
+    <Input
+      prefix={<Search size={14} />}
+      placeholder="搜索流程名称"
+      value={searchParams.keyword}
+      onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
+      showClear
+      style={{ width: 200 }}
+    />
+  );
+
+  const renderStatusFilter = () => (
+    <Select
+      placeholder="状态"
+      value={searchParams.status || undefined}
+      onChange={(v) => setSearchParams((prev) => ({ ...prev, status: typeof v === 'string' ? v : '' }))}
+      showClear
+      style={{ width: 120 }}
+    >
+      <Select.Option value="draft">草稿</Select.Option>
+      <Select.Option value="published">已发布</Select.Option>
+      <Select.Option value="disabled">已禁用</Select.Option>
+    </Select>
+  );
+
+  const renderSearchButton = () => (
+    <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+  );
+
+  const renderResetButton = () => (
+    <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+  );
+
+  const renderCreateButton = () => hasPermission('workflow:definition:create') ? (
+    <Button type="primary" icon={<Plus size={14} />} onClick={() => {
+      const qs = searchParams.selectedCategoryId === null ? '' : `?categoryId=${searchParams.selectedCategoryId}`;
+      navigate(`/workflow/designer/new${qs}`);
+    }}>
+      新建流程
+    </Button>
+  ) : null;
+
+  const renderImportButton = () => hasPermission('workflow:definition:create') ? (
+    <Button
+      type="primary"
+      icon={<Upload size={14} />}
+      loading={importing}
+      onClick={() => importInputRef.current?.click()}
+    >
+      导入
+    </Button>
+  ) : null;
+
+  const renderTemplateButton = () => hasPermission('workflow:definition:create') ? (
+    <Button type="tertiary" icon={<LayoutTemplate size={14} />} onClick={() => setTemplateGalleryVisible(true)}>
+      从模板新建
+    </Button>
+  ) : null;
+
+  const renderBatchButtons = () => (
+    <>
+      {selectedRowKeys.length > 0 && hasPermission('workflow:definition:publish') && (
+        <Button type="warning" icon={<Ban size={14} />} onClick={batchDisable}>
+          批量禁用 ({selectedRowKeys.length})
+        </Button>
+      )}
+      {selectedRowKeys.length > 0 && hasPermission('workflow:definition:publish') && (
+        <Button type="tertiary" icon={<CircleCheck size={14} />} onClick={batchEnable}>
+          批量启用 ({selectedRowKeys.length})
+        </Button>
+      )}
+      {selectedRowKeys.length > 0 && hasPermission('workflow:definition:delete') && (
+        <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDelete}>
+          批量删除 ({selectedRowKeys.length})
+        </Button>
+      )}
+    </>
+  );
+
   return (
     <div className="page-container">
     <MasterDetailLayout
@@ -527,80 +615,48 @@ export default function WorkflowDefinitionsPage() {
       }
       detail={
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <SearchToolbar>
-            <Button
-              theme="borderless"
-              icon={<Layers size={14} />}
-              onClick={() => setShowCategorySidebar(true)}
-              style={{ display: isLayoutNarrow ? undefined : 'none' }}
-            >分类</Button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json,.json"
-              style={{ display: 'none' }}
-              onChange={(event) => { void handleImportFile(event); }}
-            />
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="搜索流程名称"
-              value={searchParams.keyword}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, keyword: v }))}
-              showClear
-              style={{ width: 200 }}
-            />
-            <Select
-              placeholder="状态"
-              value={searchParams.status || undefined}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, status: typeof v === 'string' ? v : '' }))}
-              showClear
-              style={{ width: 120 }}
-            >
-              <Select.Option value="draft">草稿</Select.Option>
-              <Select.Option value="published">已发布</Select.Option>
-              <Select.Option value="disabled">已禁用</Select.Option>
-            </Select>
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-            {hasPermission('workflow:definition:create') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={() => {
-                const qs = searchParams.selectedCategoryId === null ? '' : `?categoryId=${searchParams.selectedCategoryId}`;
-                navigate(`/workflow/designer/new${qs}`);
-              }}>
-                新建流程
-              </Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(event) => { void handleImportFile(event); }}
+          />
+          <SearchToolbar
+            primary={(
+              <>
+                {renderCategoryButton()}
+                {renderKeywordSearch()}
+                {renderStatusFilter()}
+                {renderSearchButton()}
+                {renderResetButton()}
+                {renderCreateButton()}
+                {renderImportButton()}
+                {renderTemplateButton()}
+                {renderBatchButtons()}
+              </>
             )}
-            {hasPermission('workflow:definition:create') && (
-              <Button
-                type="primary"
-                icon={<Upload size={14} />}
-                loading={importing}
-                onClick={() => importInputRef.current?.click()}
-              >
-                导入
-              </Button>
+            mobilePrimary={(
+              <>
+                {renderCategoryButton()}
+                {renderKeywordSearch()}
+                {renderSearchButton()}
+                {renderCreateButton()}
+              </>
             )}
-            {hasPermission('workflow:definition:create') && (
-              <Button type="tertiary" icon={<LayoutTemplate size={14} />} onClick={() => setTemplateGalleryVisible(true)}>
-                从模板新建
-              </Button>
+            mobileFilters={renderStatusFilter()}
+            mobileActions={(
+              <>
+                {renderResetButton()}
+                {renderImportButton()}
+                {renderTemplateButton()}
+                {renderBatchButtons()}
+              </>
             )}
-            {selectedRowKeys.length > 0 && hasPermission('workflow:definition:publish') && (
-              <Button type="warning" icon={<Ban size={14} />} onClick={batchDisable}>
-                批量禁用 ({selectedRowKeys.length})
-              </Button>
-            )}
-            {selectedRowKeys.length > 0 && hasPermission('workflow:definition:publish') && (
-              <Button type="tertiary" icon={<CircleCheck size={14} />} onClick={batchEnable}>
-                批量启用 ({selectedRowKeys.length})
-              </Button>
-            )}
-            {selectedRowKeys.length > 0 && hasPermission('workflow:definition:delete') && (
-              <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDelete}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
-            )}
-          </SearchToolbar>
+            filterTitle="流程定义筛选"
+            onFilterApply={handleSearch}
+            onFilterReset={handleReset}
+          />
           <ConfigurableTable
             bordered
             columns={columns}
