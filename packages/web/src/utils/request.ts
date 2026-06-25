@@ -1,7 +1,7 @@
-import { Toast } from '@douyinfe/semi-ui';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse } from '@zenith/shared';
 import { config } from '@/config';
+import { showRequestErrorToast, showRequestWarningToast } from './request-toast';
 
 /** ApiResponse 扩展：限流时携带 retryAfterSeconds */
 export type ApiResponseWithMeta<T> = ApiResponse<T> & { retryAfterSeconds?: number };
@@ -75,7 +75,7 @@ class Request {
       });
     } catch {
       const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
-      if (!silent) Toast.error(errResp.message);
+      if (!silent) showRequestErrorToast(errResp.message);
       return errResp;
     }
 
@@ -100,7 +100,7 @@ class Request {
           });
         } catch {
           const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
-          if (!silent) Toast.error(errResp.message);
+          if (!silent) showRequestErrorToast(errResp.message);
           return errResp;
         }
         if (res.status === 401) {
@@ -122,11 +122,11 @@ class Request {
       const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : undefined;
       try {
         const data = await res.json() as ApiResponse<T>;
-        if (!silent) Toast.error(data.message || '请求过于频繁，请稍后再试');
+        if (!silent) showRequestErrorToast(data.message || '请求过于频繁，请稍后再试');
         return retryAfterSeconds ? { ...data, retryAfterSeconds } : data;
       } catch {
         const msg = '请求过于频繁，请稍后再试';
-        if (!silent) Toast.error(msg);
+        if (!silent) showRequestErrorToast(msg);
         return { code: 429, message: msg, data: null as unknown as T, ...(retryAfterSeconds ? { retryAfterSeconds } : {}) };
       }
     }
@@ -137,7 +137,7 @@ class Request {
         const parsed = await res.json() as { message: string; data: typeof detail };
         detail = parsed.data ?? {};
         globalThis.dispatchEvent(new CustomEvent('maintenance:enabled', { detail }));
-        if (!silent) Toast.warning(parsed.message || '系统维护中，请稍后重试');
+        if (!silent) showRequestWarningToast(parsed.message || '系统维护中，请稍后重试');
         return { code: 503, message: parsed.message || '系统维护中，请稍后重试', data: null as unknown as T };
       } catch {
         globalThis.dispatchEvent(new CustomEvent('maintenance:enabled', { detail }));
@@ -148,12 +148,12 @@ class Request {
     try {
       const data: ApiResponse<T> = await res.json();
       if (data.code !== 0 && !silent) {
-        Toast.error(data.message || '操作失败');
+        showRequestErrorToast(data.message || '操作失败');
       }
       return data;
     } catch {
       const errResp = { code: -1, message: '响应解析失败', data: null as unknown as T };
-      if (!silent) Toast.error(errResp.message);
+      if (!silent) showRequestErrorToast(errResp.message);
       return errResp;
     }
   }
@@ -194,17 +194,17 @@ class Request {
       xhr.addEventListener('load', () => {
         try {
           const data = JSON.parse(xhr.responseText) as ApiResponse<T>;
-          if (data.code !== 0 && !restOpts.silent) Toast.error(data.message || '操作失败');
+          if (data.code !== 0 && !restOpts.silent) showRequestErrorToast(data.message || '操作失败');
           resolve(data);
         } catch {
           const errResp = { code: -1, message: '响应解析失败', data: null as unknown as T };
-          if (!restOpts.silent) Toast.error(errResp.message);
+          if (!restOpts.silent) showRequestErrorToast(errResp.message);
           resolve(errResp);
         }
       });
       xhr.addEventListener('error', () => {
         const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
-        if (!restOpts.silent) Toast.error(errResp.message);
+        if (!restOpts.silent) showRequestErrorToast(errResp.message);
         resolve(errResp);
       });
       xhr.send(body);
@@ -221,7 +221,7 @@ class Request {
     try {
       res = await fetch(`${this.baseUrl}${url}`, { headers });
     } catch {
-      Toast.error('网络请求失败，请检查网络连接');
+      showRequestErrorToast('网络请求失败，请检查网络连接');
       return;
     }
 
@@ -234,7 +234,7 @@ class Request {
         try {
           res = await fetch(`${this.baseUrl}${url}`, { headers: retryHeaders });
         } catch {
-          Toast.error('网络请求失败，请检查网络连接');
+          showRequestErrorToast('网络请求失败，请检查网络连接');
           return;
         }
         if (res.status === 401) {
@@ -254,9 +254,9 @@ class Request {
     if (!res.ok) {
       try {
         const data = await res.json();
-        Toast.error(data?.message || '下载失败');
+        showRequestErrorToast(data?.message || '下载失败');
       } catch {
-        Toast.error('下载失败');
+        showRequestErrorToast('下载失败');
       }
       return;
     }

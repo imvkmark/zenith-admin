@@ -1,7 +1,7 @@
-import { Toast } from '@douyinfe/semi-ui';
 import { MEMBER_TOKEN_KEY, MEMBER_REFRESH_TOKEN_KEY } from '@zenith/shared';
 import type { ApiResponse } from '@zenith/shared';
 import { config } from '@/config';
+import { showRequestErrorToast } from '@/utils/request-toast';
 
 /**
  * 会员前台专用 HTTP 客户端（与后台 admin request 完全隔离）。
@@ -87,7 +87,7 @@ class MemberRequest {
       });
     } catch {
       const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
-      if (!silent) Toast.error(errResp.message);
+      if (!silent) showRequestErrorToast(errResp.message);
       return errResp;
     }
 
@@ -108,7 +108,7 @@ class MemberRequest {
           });
         } catch {
           const errResp = { code: -1, message: '网络请求失败，请检查网络连接', data: null as unknown as T };
-          if (!silent) Toast.error(errResp.message);
+          if (!silent) showRequestErrorToast(errResp.message);
           return errResp;
         }
         if (res.status === 401) {
@@ -124,11 +124,11 @@ class MemberRequest {
     if (res.status === 429) {
       try {
         const data = await res.json() as ApiResponse<T>;
-        if (!silent) Toast.error(data.message || '请求过于频繁，请稍后再试');
+        if (!silent) showRequestErrorToast(data.message || '请求过于频繁，请稍后再试');
         return data;
       } catch {
         const msg = '请求过于频繁，请稍后再试';
-        if (!silent) Toast.error(msg);
+        if (!silent) showRequestErrorToast(msg);
         return { code: 429, message: msg, data: null as unknown as T };
       }
     }
@@ -136,12 +136,12 @@ class MemberRequest {
     try {
       const data: ApiResponse<T> = await res.json();
       if (data.code !== 0 && !silent) {
-        Toast.error(data.message || '操作失败');
+        showRequestErrorToast(data.message || '操作失败');
       }
       return data;
     } catch {
       const errResp = { code: -1, message: '响应解析失败', data: null as unknown as T };
-      if (!silent) Toast.error(errResp.message);
+      if (!silent) showRequestErrorToast(errResp.message);
       return errResp;
     }
   }
