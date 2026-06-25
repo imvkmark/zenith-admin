@@ -9,8 +9,8 @@ Zenith Admin 专为 AI 辅助开发场景设计，提供了一套开箱即用的
 | 文件 / 目录 | 用途 |
 | --- | --- |
 | `AGENTS.md` | 项目根目录，AI 工具的"项目说明书"，包含架构约定、常用命令、陷阱提示 |
-| `.claude/skills/zenith/SKILL.md` | Zenith CRUD Skill 入口，描述完整的模块开发工作流 |
-| `.claude/skills/zenith/references/` | Skill 参考文档，包含后端、前端、Mock、菜单种子、模块修改、发布和排错流程 |
+| `.agents/skills/zenith/SKILL.md` | Zenith CRUD Skill 入口，描述完整的模块开发工作流 |
+| `.agents/skills/zenith/references/` | Skill 参考文档，包含后端、前端、Mock、菜单种子、模块修改、发布和排错流程 |
 
 ---
 

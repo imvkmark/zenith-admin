@@ -216,7 +216,7 @@ Zenith Admin 专为 AI 辅助开发场景设计，让 GitHub Copilot、Claude、
 | 文件 / 目录 | 用途 |
 | --- | --- |
 | [`AGENTS.md`](./AGENTS.md) | AI 工具的"项目说明书"，包含架构约定、常用命令与注意事项 |
-| [`.claude/skills/zenith/`](./.claude/skills/zenith/) | Zenith CRUD Skill：完整的模块开发工作流，一句话触发全流程自动化生成 |
+| [`.agents/skills/zenith/`](.agents/skills/zenith) | Zenith CRUD Skill：完整的模块开发工作流，一句话触发全流程自动化生成 |
 
 在支持 Skills 的 AI 工具中描述需求，即可自动完成 **Schema → 迁移 → 类型 → 路由 → 前端页面 → Mock 数据** 的端到端生成。详见文档站：[AI 辅助开发](https://iwangbowen.github.io/zenith-admin/ai/)。
 
