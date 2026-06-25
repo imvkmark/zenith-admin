@@ -5,11 +5,11 @@
  * 提交审批时通过 workflow-biz-bridge 发起并关联工作流实例（businessKey = biz_leave + leaveId），
  * 业务数据不进入流程；流程终态由 biz-leave-subscribers 回写本表状态。
  */
-import { and, desc, eq, like, inArray } from 'drizzle-orm';
+import { and, desc, eq, isNull, like, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { BizLeave, BizLeaveStatus, WorkflowInstanceStatus } from '@zenith/shared';
 import { db } from '../db';
-import { bizLeaves, users, workflowDefinitions, workflowTasks, type BizLeaveRow } from '../db/schema';
+import { bizLeaves, users, workflowDefinitions, workflowInstances, workflowTasks, type BizLeaveRow } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { formatDate, formatDateTime, parseDateRangeStart } from '../lib/datetime';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
@@ -79,6 +79,22 @@ async function ensureLeaveDefinitionId(): Promise<number> {
     .limit(1);
   if (!def) throw new HTTPException(400, { message: `未找到已发布的「${LEAVE_WORKFLOW_NAME}」流程定义，请先在流程定义中发布` });
   return def.id;
+}
+
+async function findExistingLeaveWorkflow(leaveId: number) {
+  const [instance] = await db.select().from(workflowInstances)
+    .where(and(eq(workflowInstances.bizType, BIZ_LEAVE_TYPE), eq(workflowInstances.bizId, String(leaveId))))
+    .orderBy(desc(workflowInstances.id))
+    .limit(1);
+  return instance ?? null;
+}
+
+async function linkLeaveWorkflow(leaveId: number, instance: { id: number; status: WorkflowInstanceStatus }) {
+  await db.update(bizLeaves).set({
+    status: 'pending',
+    workflowInstanceId: instance.id,
+    workflowStatus: instance.status,
+  }).where(eq(bizLeaves.id, leaveId));
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────

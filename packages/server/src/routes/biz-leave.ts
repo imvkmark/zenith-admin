@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { createBizLeaveSchema, updateBizLeaveSchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
+import { idempotencyGuard } from '../middleware/idempotency';
 import {
   jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, okBody, IdParam, PaginationQuery,
@@ -74,7 +75,7 @@ const submitRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post', path: '/{id}/submit', tags: ['BizLeave'], summary: '提交审批（发起并关联工作流）',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware] as const,
+    middleware: [authMiddleware, idempotencyGuard({ ttlSeconds: 10 })] as const,
     request: { params: IdParam },
     responses: { ...commonErrorResponses, ...ok(BizLeaveDTO, '已提交审批') },
   }),
