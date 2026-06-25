@@ -600,79 +600,172 @@ export default function FilesPage() {
     <div className="page-container">
       <Tabs defaultActiveKey="list" type="line">
         <TabPane tab="文件列表" itemKey="list">
-      <SearchToolbar>
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="搜索文件名 / 对象键 / 文件服务"
-            value={searchParams.keyword}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
-            onEnterPress={handleSearch}
-            style={{ width: 'min(280px, 100%)' }}
-            showClear
-          />
-          <Select
-            placeholder="存储类型"
-            value={searchParams.provider || undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
-            style={{ width: 140 }}
-            optionList={[
-              { value: '', label: '全部类型' },
-              { value: 'local', label: '本地磁盘' },
-              { value: 'oss', label: '阿里云 OSS' },
-              { value: 's3', label: 'S3 存储' },
-              { value: 'cos', label: '腾讯云 COS' },
-            ]}
-          />
-          <Select
-            placeholder="文件类型"
-            value={searchParams.fileType || undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
-            style={{ width: 120 }}
-            optionList={[
-              { value: '', label: '全部' },
-              { value: 'image', label: '图片' },
-              { value: 'video', label: '视频' },
-              { value: 'audio', label: '音频' },
-              { value: 'document', label: '文档' },
-            ]}
-          />
-          <DatePicker
-            type="dateTimeRange"
-            placeholder={["开始时间", "结束时间"]}
-            value={searchParams.timeRange ?? undefined}
-            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-            style={{ width: 'min(360px, 100%)' }}
-          />
-          <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-          <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
-          {selectedRowKeys.length > 0 && (
-            <Button type="tertiary" theme="light" icon={<FolderDown size={14} />} loading={batchDownloadLoading} onClick={handleBatchDownload}>
-              批量下载 ({selectedRowKeys.length})
-            </Button>
-          )}
-          {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
-            <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteLoading} onClick={handleBatchDelete}>
-              批量删除 ({selectedRowKeys.length})
-            </Button>
-          )}
-          {selectedRowKeys.length > 0 && (
-            <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
-              取消选择
-            </Button>
-          )}
-          {hasPermission('system:file:upload') && (
-            <Button
-              type="primary"
-              icon={<Plus size={14} />}
-              loading={uploadProgressVisible && uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
-              disabled={!defaultConfig}
-              onClick={handlePickFile}
-            >
-              上传文件
-            </Button>
-          )}
-          <input ref={fileInputRef} type="file" hidden multiple onChange={handleUpload} />
-      </SearchToolbar>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索文件名 / 对象键 / 文件服务"
+              value={searchParams.keyword}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              onEnterPress={handleSearch}
+              style={{ width: 'min(280px, 100%)' }}
+              showClear
+            />
+            <Select
+              placeholder="存储类型"
+              value={searchParams.provider || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
+              style={{ width: 140 }}
+              optionList={[
+                { value: '', label: '全部类型' },
+                { value: 'local', label: '本地磁盘' },
+                { value: 'oss', label: '阿里云 OSS' },
+                { value: 's3', label: 'S3 存储' },
+                { value: 'cos', label: '腾讯云 COS' },
+              ]}
+            />
+            <Select
+              placeholder="文件类型"
+              value={searchParams.fileType || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
+              style={{ width: 120 }}
+              optionList={[
+                { value: '', label: '全部' },
+                { value: 'image', label: '图片' },
+                { value: 'video', label: '视频' },
+                { value: 'audio', label: '音频' },
+                { value: 'document', label: '文档' },
+              ]}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 'min(360px, 100%)' }}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        actions={(
+          <>
+            {selectedRowKeys.length > 0 && (
+              <Button type="tertiary" theme="light" icon={<FolderDown size={14} />} loading={batchDownloadLoading} onClick={handleBatchDownload}>
+                批量下载 ({selectedRowKeys.length})
+              </Button>
+            )}
+            {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteLoading} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
+            {selectedRowKeys.length > 0 && (
+              <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
+                取消选择
+              </Button>
+            )}
+            {hasPermission('system:file:upload') && (
+              <Button
+                type="primary"
+                icon={<Plus size={14} />}
+                loading={uploadProgressVisible && uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
+                disabled={!defaultConfig}
+                onClick={handlePickFile}
+              >
+                上传文件
+              </Button>
+            )}
+            <input ref={fileInputRef} type="file" hidden multiple onChange={handleUpload} />
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="搜索文件名 / 对象键 / 文件服务"
+              value={searchParams.keyword}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, keyword: value }))}
+              onEnterPress={handleSearch}
+              style={{ width: 'min(280px, 100%)' }}
+              showClear
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {hasPermission('system:file:upload') && (
+              <Button
+                type="primary"
+                icon={<Plus size={14} />}
+                loading={uploadProgressVisible && uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
+                disabled={!defaultConfig}
+                onClick={handlePickFile}
+              >
+                上传文件
+              </Button>
+            )}
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select
+              placeholder="存储类型"
+              value={searchParams.provider || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, provider: (value as string) ?? '' }))}
+              style={{ width: 140 }}
+              optionList={[
+                { value: '', label: '全部类型' },
+                { value: 'local', label: '本地磁盘' },
+                { value: 'oss', label: '阿里云 OSS' },
+                { value: 's3', label: 'S3 存储' },
+                { value: 'cos', label: '腾讯云 COS' },
+              ]}
+            />
+            <Select
+              placeholder="文件类型"
+              value={searchParams.fileType || undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, fileType: (value as string) ?? '' }))}
+              style={{ width: 120 }}
+              optionList={[
+                { value: '', label: '全部' },
+                { value: 'image', label: '图片' },
+                { value: 'video', label: '视频' },
+                { value: 'audio', label: '音频' },
+                { value: 'document', label: '文档' },
+              ]}
+            />
+            <DatePicker
+              type="dateTimeRange"
+              placeholder={['开始时间', '结束时间']}
+              value={searchParams.timeRange ?? undefined}
+              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+              style={{ width: 'min(360px, 100%)' }}
+            />
+          </>
+        )}
+        mobileActions={(
+          <>
+            {selectedRowKeys.length > 0 && (
+              <Button type="tertiary" theme="light" icon={<FolderDown size={14} />} loading={batchDownloadLoading} onClick={handleBatchDownload}>
+                批量下载 ({selectedRowKeys.length})
+              </Button>
+            )}
+            {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
+              <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={batchDeleteLoading} onClick={handleBatchDelete}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            )}
+            {selectedRowKeys.length > 0 && (
+              <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
+                取消选择
+              </Button>
+            )}
+          </>
+        )}
+        filterTitle="文件筛选"
+        actionTitle="文件操作"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
 
       <div className="files-default-tip" style={{ padding: '8px 0' }}>
         <Space>
