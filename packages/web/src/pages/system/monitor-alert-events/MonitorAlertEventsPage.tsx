@@ -133,9 +133,6 @@ export default function MonitorAlertEventsPage() {
           </>
         )}
         mobilePrimary={(
-          <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchEvents(1, pageSize); }}>查询</Button>
-        )}
-        mobileFilters={(
           <>
             <Select
               placeholder="全部指标"
@@ -145,6 +142,11 @@ export default function MonitorAlertEventsPage() {
               style={{ width: 150 }}
               optionList={METRIC_OPTIONS}
             />
+            <Button type="primary" icon={<Search size={14} />} onClick={() => { setPage(1); void fetchEvents(1, pageSize); }}>查询</Button>
+          </>
+        )}
+        mobileFilters={(
+          <>
             <Select
               placeholder="全部级别"
               value={filters.level}

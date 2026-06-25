@@ -176,14 +176,6 @@ export default function DbBackupsPage() {
         )}
         mobilePrimary={(
           <>
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            {hasPermission('system:db-backup:create') && (
-              <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增备份</Button>
-            )}
-          </>
-        )}
-        mobileFilters={(
-          <>
             <Select
               placeholder="备份类型"
               value={searchParams.type}
@@ -196,21 +188,27 @@ export default function DbBackupsPage() {
               style={{ width: 150 }}
               showClear
             />
-            <Select
-              placeholder="状态"
-              value={searchParams.status}
-              onChange={(v) => setSearchParams((prev) => ({ ...prev, status: v as string }))}
-              optionList={[
-                { label: '全部状态', value: '' },
-                { label: '等待中', value: 'pending' },
-                { label: '执行中', value: 'running' },
-                { label: '成功', value: 'success' },
-                { label: '失败', value: 'failed' },
-              ]}
-              style={{ width: 130 }}
-              showClear
-            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {hasPermission('system:db-backup:create') && (
+              <Button type="primary" icon={<Plus size={14} />} onClick={() => setCreateVisible(true)}>新增备份</Button>
+            )}
           </>
+        )}
+        mobileFilters={(
+          <Select
+            placeholder="状态"
+            value={searchParams.status}
+            onChange={(v) => setSearchParams((prev) => ({ ...prev, status: v as string }))}
+            optionList={[
+              { label: '全部状态', value: '' },
+              { label: '等待中', value: 'pending' },
+              { label: '执行中', value: 'running' },
+              { label: '成功', value: 'success' },
+              { label: '失败', value: 'failed' },
+            ]}
+            style={{ width: 130 }}
+            showClear
+          />
         )}
         filterTitle="备份筛选"
         onFilterApply={handleSearch}

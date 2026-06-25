@@ -669,12 +669,6 @@ export default function FileStorageConfigsPage() {
         )}
         mobilePrimary={(
           <>
-            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
-            {hasPermission('system:file:config:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
-          </>
-        )}
-        mobileFilters={(
-          <>
             <Select
               placeholder="请选择状态"
               value={searchParams.status || undefined}
@@ -685,14 +679,18 @@ export default function FileStorageConfigsPage() {
               <Select.Option value="enabled">启用</Select.Option>
               <Select.Option value="disabled">禁用</Select.Option>
             </Select>
-            <DatePicker
-              type="dateTimeRange"
-              placeholder={['开始时间', '结束时间']}
-              value={searchParams.timeRange ?? undefined}
-              onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
-              style={{ width: 360 }}
-            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            {hasPermission('system:file:config:create') && <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>}
           </>
+        )}
+        mobileFilters={(
+          <DatePicker
+            type="dateTimeRange"
+            placeholder={['开始时间', '结束时间']}
+            value={searchParams.timeRange ?? undefined}
+            onChange={(value) => setSearchParams((prev) => ({ ...prev, timeRange: value ? (value as [Date, Date]) : null }))}
+            style={{ width: 360 }}
+          />
         )}
         mobileActions={(
           <>
