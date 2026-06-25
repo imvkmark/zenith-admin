@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Modal, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowDefinition, WorkflowDefinitionVersion } from '@zenith/shared';
 import { request } from '@/utils/request';
@@ -59,21 +60,19 @@ export default function WorkflowVersionsModal({
     { title: '名称', dataIndex: 'name' },
     { title: '发布人', dataIndex: 'publishedByName', width: 120, render: (v?: string) => v ?? '-' },
     { title: '发布时间', dataIndex: 'publishedAt', width: 170 },
-    {
-      title: '操作',
+    createOperationColumn<WorkflowDefinitionVersion>({
       width: 100,
-      fixed: 'right',
-      render: (_: unknown, record: WorkflowDefinitionVersion) => (
-        <Button
-          theme="borderless"
-          size="small"
-          onClick={() => handleRestore(record)}
-          disabled={record.version === currentVersion && currentStatus === 'published'}
-        >
-          恢复
-        </Button>
-      ),
-    },
+      desktopInlineKeys: ['restore'],
+      actions: (record) => [
+        {
+          key: 'restore',
+          label: '恢复',
+          disabled: record.version === currentVersion && currentStatus === 'published',
+          disabledReason: '当前已发布版本无需恢复',
+          onClick: () => handleRestore(record),
+        },
+      ],
+    }),
   ];
 
   return (

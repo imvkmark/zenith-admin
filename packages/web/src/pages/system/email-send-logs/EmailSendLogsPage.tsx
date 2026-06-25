@@ -10,6 +10,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../../utils/table-columns';
 
 const STATUS_OPTIONS: { label: string; value: SendStatus; color: 'orange' | 'green' | 'red' }[] = [
@@ -146,13 +147,18 @@ export default function EmailSendLogsPage() {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
       render: (v: SendStatus) => <StatusTag value={v} />,
     },
-    {
-      title: '操作', key: 'actions', width: 90, fixed: 'right' as const,
-      render: (_: unknown, record: EmailSendLog) =>
-        can('system:email-send-log:delete') ? (
-          <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(record.id)}>删除</Button>
-        ) : null,
-    },
+    createOperationColumn<EmailSendLog>({
+      width: 90,
+      actions: (record) => [
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !can('system:email-send-log:delete'),
+          onClick: () => handleDelete(record.id),
+        },
+      ],
+    }),
   ];
 
   return (

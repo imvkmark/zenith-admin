@@ -545,56 +545,53 @@ export default function FilesPage() {
       ellipsis: true,
       render: (value: string) => renderEllipsis(value || '—'),
     },
-    {
-      title: '操作',
-      fixed: 'right',
+    createOperationColumn<ManagedFile>({
       width: 180,
-      align: 'center',
-      render: (_: unknown, record: ManagedFile) => {
+      desktopInlineKeys: ['preview', 'download'],
+      actions: (record) => {
         const isPreviewable = canPreviewFile(record.mimeType);
-        return (
-        <Space>
-          <Button theme="borderless" size="small" disabled={!isPreviewable} loading={previewLoadingId === record.id} onClick={() => handlePreview(record)}>预览</Button>
-          <Button theme="borderless" size="small" loading={downloadLoadingId === record.id} onClick={() => handleDownload(record)}>下载</Button>
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={() => void handleOpenDetail(record)}>详情</Dropdown.Item>
-                <Dropdown.Item onClick={() => handleCopyUrl(record)}>复制链接</Dropdown.Item>
-                {hasPermission('system:file:delete') && (
-                  <>
-                    <Dropdown.Divider />
-                    <Dropdown.Item
-                      type="danger"
-                      onClick={() => { Modal.confirm({
-                        title: '确认删除此文件？',
-                        content: '删除文件记录后，将同步尝试删除实际存储对象。',
-                        okButtonProps: { type: 'danger', theme: 'solid' },
-                        onOk: () => handleDelete(record),
-                      }); }}
-                    >删除</Dropdown.Item>
-                  </>
-                )}
-              </Dropdown.Menu>
-            }
-          >
-            <span style={{ display: 'inline-block' }}>
-              <Button
-                theme="borderless"
-                size="small"
-                icon={<MoreHorizontal size={14} />}
-                loading={downloadLoadingId === record.id}
-                onClick={(e) => { e.nativeEvent.stopImmediatePropagation(); }}
-              />
-            </span>
-          </Dropdown>
-        </Space>
-        );
+        return [
+          {
+            key: 'preview',
+            label: '预览',
+            disabled: !isPreviewable,
+            loading: previewLoadingId === record.id,
+            onClick: () => handlePreview(record),
+          },
+          {
+            key: 'download',
+            label: '下载',
+            loading: downloadLoadingId === record.id,
+            onClick: () => handleDownload(record),
+          },
+          {
+            key: 'detail',
+            label: '详情',
+            onClick: () => { void handleOpenDetail(record); },
+          },
+          {
+            key: 'copy-url',
+            label: '复制链接',
+            onClick: () => handleCopyUrl(record),
+          },
+          {
+            key: 'delete',
+            label: '删除',
+            danger: true,
+            dividerBefore: true,
+            hidden: !hasPermission('system:file:delete'),
+            onClick: () => {
+              Modal.confirm({
+                title: '确认删除此文件？',
+                content: '删除文件记录后，将同步尝试删除实际存储对象。',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => handleDelete(record),
+              });
+            },
+          },
+        ];
       },
-    },
+    }),
   ];
 
   return (
