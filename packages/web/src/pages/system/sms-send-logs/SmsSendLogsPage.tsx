@@ -9,6 +9,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -148,13 +149,18 @@ export default function SmsSendLogsPage() {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
       render: (v: SendStatus) => <StatusTag value={v} />,
     },
-    {
-      title: '操作', key: 'actions', width: 90, fixed: 'right' as const,
-      render: (_: unknown, record: SmsSendLog) =>
-        can('system:sms-send-log:delete') ? (
-          <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(record.id)}>删除</Button>
-        ) : null,
-    },
+    createOperationColumn<SmsSendLog>({
+      width: 90,
+      actions: (record) => [
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !can('system:sms-send-log:delete'),
+          onClick: () => handleDelete(record.id),
+        },
+      ],
+    }),
   ];
 
   return (

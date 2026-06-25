@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin,
+import { Button, Col, Form, Input, Modal, Row, Select, Spin,
   Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -10,6 +10,7 @@ import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -166,19 +167,24 @@ export default function SmsTemplatesPage() {
         />
       ),
     },
-    {
-      title: '操作', key: 'actions', width: 130, fixed: 'right' as const,
-      render: (_: unknown, record: SmsTemplate) => (
-        <Space>
-          {can('system:sms-template:update') && (
-            <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>
-          )}
-          {can('system:sms-template:delete') && (
-            <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(record.id)}>删除</Button>
-          )}
-        </Space>
-      ),
-    },
+    createOperationColumn<SmsTemplate>({
+      width: 130,
+      actions: (record) => [
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !can('system:sms-template:update'),
+          onClick: () => openEdit(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !can('system:sms-template:delete'),
+          onClick: () => handleDelete(record.id),
+        },
+      ],
+    }),
   ];
 
   return (

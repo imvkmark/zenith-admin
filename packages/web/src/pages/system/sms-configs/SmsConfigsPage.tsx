@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Button, Col, Form, Input, Modal, Row, Select, Space, Spin, Tag,
+import { Button, Col, Form, Input, Modal, Row, Select, Spin, Tag,
   Toast, Switch } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { Plus, RotateCcw, Search } from 'lucide-react';
@@ -10,6 +10,7 @@ import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 
@@ -181,22 +182,30 @@ export default function SmsConfigsPage() {
         />
       ),
     },
-    {
-      title: '操作', key: 'actions', width: 200, fixed: 'right' as const,
-      render: (_: unknown, record: SmsConfig) => (
-        <Space>
-          {can('system:sms-config:update') && !record.isDefault && (
-            <Button theme="borderless" size="small" onClick={() => handleSetDefault(record)}>设为默认</Button>
-          )}
-          {can('system:sms-config:update') && (
-            <Button theme="borderless" size="small" onClick={() => openEdit(record)}>编辑</Button>
-          )}
-          {can('system:sms-config:delete') && (
-            <Button theme="borderless" type="danger" size="small" onClick={() => handleDelete(record.id)}>删除</Button>
-          )}
-        </Space>
-      ),
-    },
+    createOperationColumn<SmsConfig>({
+      width: 200,
+      actions: (record) => [
+        {
+          key: 'default',
+          label: '设为默认',
+          hidden: !can('system:sms-config:update') || record.isDefault,
+          onClick: () => handleSetDefault(record),
+        },
+        {
+          key: 'edit',
+          label: '编辑',
+          hidden: !can('system:sms-config:update'),
+          onClick: () => openEdit(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: !can('system:sms-config:delete'),
+          onClick: () => handleDelete(record.id),
+        },
+      ],
+    }),
   ];
 
   return (
