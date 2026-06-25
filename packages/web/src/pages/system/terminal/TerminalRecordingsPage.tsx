@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Button, Input, Modal, Tag, Toast, Popconfirm, Dropdown, SplitButtonGroup, Typography, Space } from '@douyinfe/semi-ui';
+import { Button, Input, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, RotateCcw, Trash2, ChevronDown, Copy, Terminal } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import RecordingPlayer from './RecordingPlayer';
 
@@ -220,24 +221,35 @@ export default function TerminalRecordingsPage() {
       dataIndex: 'createdAt',
       width: 200,
     },
-    {
-      title: '操作',
+    createOperationColumn<Recording>({
       width: 200,
-      fixed: 'right' as const,
-      render: (_: unknown, r: Recording) => (
-        <div style={{ display: 'flex', gap: 4 }}>
-          <Button size="small" theme="borderless" loading={playLoading} onClick={() => void handlePlay(r.id)}>
-            播放
-          </Button>
-          <Button size="small" theme="borderless" loading={detailLoading} onClick={() => void handleDetail(r.id)}>
-            详情
-          </Button>
-          <Popconfirm title="确定删除这条录屏吗？" okType="danger" onConfirm={() => void handleDelete(r.id)}>
-            <Button size="small" theme="borderless" type="danger">删除</Button>
-          </Popconfirm>
-        </div>
-      ),
-    },
+      actions: (record) => [
+        {
+          key: 'play',
+          label: '播放',
+          loading: playLoading,
+          onClick: () => { void handlePlay(record.id); },
+        },
+        {
+          key: 'detail',
+          label: '详情',
+          loading: detailLoading,
+          onClick: () => { void handleDetail(record.id); },
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定删除这条录屏吗？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleDelete(record.id); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (

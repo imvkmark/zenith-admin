@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, Select, Space, Tag, Toast, Typography, Popconfirm, SideSheet, Switch } from '@douyinfe/semi-ui';
+import { Button, Input, Modal, Select, Space, Tag, Toast, Typography, SideSheet, Switch } from '@douyinfe/semi-ui';
 import { Search, RotateCcw, Monitor as MonitorIcon } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Terminal } from '@xterm/xterm';
@@ -12,6 +12,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useThemeController } from '@/providers/theme-controller';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { renderEllipsis } from '../../../utils/table-columns';
 import { useTerminalPreferences } from './useTerminalPreferences';
@@ -216,19 +217,29 @@ export default function TerminalSessionsPage() {
         </Space>
       ),
     },
-    {
-      title: '操作', fixed: 'right', width: 180,
-      render: (_: unknown, record: TerminalSessionItem) => (
-        <Space>
-          <Button theme="borderless" size="small" onClick={() => openWatch(record)}>监控</Button>
-          {hasPermission('system:terminal:monitor') && (
-            <Popconfirm title="确定强制终止该会话？" okType="danger" onConfirm={() => void handleTerminate(record)}>
-              <Button theme="borderless" type="danger" size="small">强制终止</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
+    createOperationColumn<TerminalSessionItem>({
+      width: 180,
+      actions: (record) => [
+        {
+          key: 'watch',
+          label: '监控',
+          onClick: () => openWatch(record),
+        },
+        {
+          key: 'terminate',
+          label: '强制终止',
+          danger: true,
+          hidden: !hasPermission('system:terminal:monitor'),
+          onClick: () => {
+            Modal.confirm({
+              title: '确定强制终止该会话？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleTerminate(record); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (

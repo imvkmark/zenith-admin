@@ -3,7 +3,7 @@ import {
   Button, Tag, Toast, SideSheet, Typography, Input, Empty, Select,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RefreshCw, Search, Play, Square } from 'lucide-react';
+import { FileText, RefreshCw, Search, Play, Square } from 'lucide-react';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config } from '@/config';
 import { request } from '@/utils/request';

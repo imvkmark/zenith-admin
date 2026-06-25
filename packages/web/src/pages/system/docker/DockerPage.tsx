@@ -4,7 +4,6 @@ import {
   Button,
   Tag,
   Toast,
-  Popconfirm,
   SideSheet,
   Typography,
   Tooltip,
@@ -30,12 +29,12 @@ import {
   Info,
   Plus,
   Download,
-  MoreHorizontal,
   Trash2,
 } from 'lucide-react';
 import { request } from '@/utils/request';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { formatDateTime } from '@/utils/date';
 
 // ─── Prune（清理）辅助 ──────────────────────────────────────────────────────────
@@ -302,35 +301,54 @@ function ContainersTab() {
         return formatDateTime(new Date(v * 1000));
       },
     },
-    {
-      title: '操作', width: 180, fixed: 'right' as const,
-      render: (_: unknown, r: ContainerInfo) => {
-        if (isGroup(r)) return null;
-        const isRunning = r.state === 'running';
-        const busy = !!actionLoading[r.id];
-        return (
-          <div style={{ display: 'flex', gap: 4 }}>
-            {isRunning ? (
-              <Popconfirm title={`确定停止 ${r.names[0] ?? r.shortId}？`} okType="danger" onConfirm={() => void handleAction(r.id, 'stop')}>
-                <Button size="small" theme="borderless" type="danger" loading={busy}>停止</Button>
-              </Popconfirm>
-            ) : (
-              <Button size="small" theme="borderless" loading={busy} onClick={() => void handleAction(r.id, 'start')}>启动</Button>
-            )}
-            <Button size="small" theme="borderless" onClick={() => void openLogs(r)}>日志</Button>
-            <Dropdown trigger="click" position="bottomRight" render={
-              <Dropdown.Menu>
-                <Dropdown.Item icon={<RotateCcw size={13} />} onClick={() => void handleAction(r.id, 'restart')}>重启</Dropdown.Item>
-                <Dropdown.Item icon={<Activity size={13} />} onClick={() => void openStats(r)}>资源占用</Dropdown.Item>
-                <Dropdown.Item icon={<Info size={13} />} onClick={() => void openInspect(r)}>检查详情</Dropdown.Item>
-              </Dropdown.Menu>
-            }>
-              <Button size="small" theme="borderless" icon={<MoreHorizontal size={14} />} />
-            </Dropdown>
-          </div>
-        );
+    createOperationColumn<ContainerInfo>({
+      width: 180,
+      desktopInlineKeys: ['toggle', 'logs'],
+      actions: (record) => {
+        if (isGroup(record)) return [];
+        const isRunning = record.state === 'running';
+        const busy = !!actionLoading[record.id];
+        return [
+          {
+            key: 'toggle',
+            label: isRunning ? '停止' : '启动',
+            danger: isRunning,
+            loading: busy,
+            onClick: () => {
+              if (!isRunning) {
+                void handleAction(record.id, 'start');
+                return;
+              }
+              Modal.confirm({
+                title: `确定停止 ${record.names[0] ?? record.shortId}？`,
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => { void handleAction(record.id, 'stop'); },
+              });
+            },
+          },
+          {
+            key: 'logs',
+            label: '日志',
+            onClick: () => { void openLogs(record); },
+          },
+          {
+            key: 'restart',
+            label: '重启',
+            onClick: () => { void handleAction(record.id, 'restart'); },
+          },
+          {
+            key: 'stats',
+            label: '资源占用',
+            onClick: () => { void openStats(record); },
+          },
+          {
+            key: 'inspect',
+            label: '检查详情',
+            onClick: () => { void openInspect(record); },
+          },
+        ];
       },
-    },
+    }),
   ];
 
   return (
@@ -608,17 +626,24 @@ function ImagesTab() {
           : formatDateTime(new Date(v * 1000))
       ),
     },
-    {
-      title: '操作', width: 100, fixed: 'right' as const,
-      render: (_: unknown, r: ImageRow) => {
-        if (r.isGroup) return null;
-        return (
-          <Popconfirm title="确定删除此镜像？运行中的容器使用的镜像无法删除。" okType="danger" onConfirm={() => void handleRemove(r.id)}>
-            <Button size="small" theme="borderless" type="danger">删除</Button>
-          </Popconfirm>
-        );
-      },
-    },
+    createOperationColumn<ImageRow>({
+      width: 100,
+      actions: (record) => [
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: record.isGroup,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定删除此镜像？运行中的容器使用的镜像无法删除。',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleRemove(record.id); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (
@@ -757,17 +782,27 @@ function NetworksTab() {
     { title: '容器数', dataIndex: 'containers', width: 90, render: (v: number) => <Tag size="small" color={v > 0 ? 'green' : 'grey'}>{v}</Tag> },
     { title: '内部网络', dataIndex: 'internal', width: 100, render: (v: boolean) => v ? <Tag size="small" color="orange">内部</Tag> : null },
     { title: '创建时间', dataIndex: 'created', width: 180, render: (v: string) => (v ? formatDateTime(new Date(v)) : '—') },
-    {
-      title: '操作', width: 90, fixed: 'right' as const,
-      render: (_: unknown, r: NetworkInfo) => {
-        if (SYSTEM_NETWORKS.has(r.name)) return <Typography.Text type="tertiary" size="small">系统网络</Typography.Text>;
-        return (
-          <Popconfirm title={`确定删除网络 ${r.name}？`} okType="danger" onConfirm={() => void handleRemove(r.id)}>
-            <Button size="small" theme="borderless" type="danger">删除</Button>
-          </Popconfirm>
-        );
-      },
-    },
+    createOperationColumn<NetworkInfo>({
+      width: 90,
+      emptyContent: (record) => SYSTEM_NETWORKS.has(record.name)
+        ? <Typography.Text type="tertiary" size="small">系统网络</Typography.Text>
+        : undefined,
+      actions: (record) => [
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          hidden: SYSTEM_NETWORKS.has(record.name),
+          onClick: () => {
+            Modal.confirm({
+              title: `确定删除网络 ${record.name}？`,
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleRemove(record.id); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (
@@ -875,14 +910,23 @@ function VolumesTab() {
       render: (v: string) => <Tooltip content={v}><code style={{ fontSize: 11 }}>{v.length > 50 ? `...${v.slice(-48)}` : v}</code></Tooltip>,
     },
     { title: '创建时间', dataIndex: 'created', width: 180, render: (v: string) => (v ? formatDateTime(new Date(v)) : '—') },
-    {
-      title: '操作', width: 90, fixed: 'right' as const,
-      render: (_: unknown, r: VolumeInfo) => (
-        <Popconfirm title={`确定删除存储卷 ${r.name}？此操作不可恢复。`} okType="danger" onConfirm={() => void handleRemove(r.name)}>
-          <Button size="small" theme="borderless" type="danger">删除</Button>
-        </Popconfirm>
-      ),
-    },
+    createOperationColumn<VolumeInfo>({
+      width: 90,
+      actions: (record) => [
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          onClick: () => {
+            Modal.confirm({
+              title: `确定删除存储卷 ${record.name}？此操作不可恢复。`,
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => { void handleRemove(record.name); },
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   return (
