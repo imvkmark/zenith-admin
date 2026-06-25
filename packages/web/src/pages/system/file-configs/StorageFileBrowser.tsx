@@ -15,7 +15,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Folder, MoreHorizontal, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon } from 'lucide-react';
+import { Folder, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon } from 'lucide-react';
 import type { FileStorageConfig, FolderEntry, ManagedFile, StorageBrowseResult } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { request } from '@/utils/request';
@@ -26,6 +26,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FileGridCard } from '../files/components/FileGridCard';
 import './StorageFileBrowser.css';
 
@@ -302,59 +303,62 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
         return renderEllipsis(formatDateTime(record.createdAt));
       },
     },
-    {
-      title: '操作',
-      fixed: 'right' as const,
+    createOperationColumn<ManagedFile | FolderEntry>({
       width: 180,
-      align: 'center' as const,
-      render: (_: unknown, record: ManagedFile | FolderEntry) => {
+      desktopInlineKeys: ['open', 'preview', 'download'],
+      actions: (record) => {
         if (!('id' in record)) {
-          return (
-            <Button theme="borderless" size="small" onClick={() => navigateToFolder(record)}>
-              打开
-            </Button>
-          );
+          return [
+            {
+              key: 'open',
+              label: '打开',
+              onClick: () => navigateToFolder(record),
+            },
+          ];
         }
         const isPreviewable = canPreviewFile(record.mimeType);
-        return (
-          <Space>
-            <Button theme="borderless" size="small" disabled={!isPreviewable} loading={previewLoadingId === record.id} onClick={() => handlePreview(record)}>预览</Button>
-            <Button theme="borderless" size="small" loading={downloadLoadingId === record.id} onClick={() => handleDownload(record)}>下载</Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={
-                <Dropdown.Menu>
-                  <Dropdown.Item onClick={() => void handleOpenDetail(record)}>详情</Dropdown.Item>
-                  <Dropdown.Item onClick={() => handleCopyUrl(record)}>复制链接</Dropdown.Item>
-                  {hasPermission('system:file:delete') && (
-                    <>
-                      <Dropdown.Divider />
-                      <Dropdown.Item
-                        type="danger"
-                        onClick={() => {
-                          Modal.confirm({
-                            title: '确认删除此文件？',
-                            content: '删除文件记录后，将同步尝试删除实际存储对象。',
-                            okButtonProps: { type: 'danger', theme: 'solid' },
-                            onOk: () => handleDelete(record),
-                          });
-                        }}
-                      >删除</Dropdown.Item>
-                    </>
-                  )}
-                </Dropdown.Menu>
-              }
-            >
-              <span style={{ display: 'inline-block' }}>
-                <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} onClick={(e) => { e.nativeEvent.stopImmediatePropagation(); }} />
-              </span>
-            </Dropdown>
-          </Space>
-        );
+        return [
+          {
+            key: 'preview',
+            label: '预览',
+            disabled: !isPreviewable,
+            loading: previewLoadingId === record.id,
+            onClick: () => handlePreview(record),
+          },
+          {
+            key: 'download',
+            label: '下载',
+            loading: downloadLoadingId === record.id,
+            onClick: () => handleDownload(record),
+          },
+          {
+            key: 'detail',
+            label: '详情',
+            onClick: () => { void handleOpenDetail(record); },
+          },
+          {
+            key: 'copy-url',
+            label: '复制链接',
+            onClick: () => handleCopyUrl(record),
+          },
+          {
+            key: 'delete',
+            label: '删除',
+            danger: true,
+            dividerBefore: true,
+            hidden: !hasPermission('system:file:delete'),
+            onClick: () => {
+              Modal.confirm({
+                title: '确认删除此文件？',
+                content: '删除文件记录后，将同步尝试删除实际存储对象。',
+                okButtonProps: { type: 'danger', theme: 'solid' },
+                onOk: () => handleDelete(record),
+              });
+            },
+          },
+        ];
       },
-    },
+    }),
   ];
 
   const allItems: (ManagedFile | FolderEntry)[] = [

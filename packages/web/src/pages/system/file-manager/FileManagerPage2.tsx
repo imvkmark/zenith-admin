@@ -13,13 +13,14 @@ import {
   Search, RotateCcw, LayoutGrid, List as ListIcon,
   FolderPlus, FilePlus, Upload as UploadIcon,
   Trash2, Copy, Scissors, Archive, Home,
-  MoreHorizontal, FolderOpen,
+  FolderOpen,
   Eye, EyeOff, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { request } from '@/utils/request';
 import { TOKEN_KEY } from '@zenith/shared';
 import { config as appConfig } from '@/config';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import FilePreviewModal from '@/components/FilePreviewModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import AppModal from '@/components/AppModal';
@@ -915,53 +916,85 @@ export default function FileManagerPage() {
     { title: '权限', dataIndex: 'permissions', width: 110, render: (v?: string) => v ? <Tag size="small" color="grey">{v}</Tag> : '—' },
     { title: 'UID', dataIndex: 'uid', width: 70, render: (v?: number) => v ?? '—' },
     { title: 'GID', dataIndex: 'gid', width: 70, render: (v?: number) => v ?? '—' },
-    {
-      title: '操作',
-      fixed: 'right' as const,
+    createOperationColumn<FsEntry>({
       width: 170,
-      render: (_: unknown, r: FsEntry) => (
-        <Space>
-          {r.type === 'dir' ? (
-            <Button size="small" theme="borderless" onClick={() => void navigateTo(r.path)}>打开</Button>
-          ) : (
-            <>
-              <Button size="small" theme="borderless" onClick={() => void handlePreview(r)}>预览</Button>
-              <Button size="small" theme="borderless" onClick={() => handleDownload(r)}>下载</Button>
-            </>
-          )}
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={() => setDialog({ mode: 'rename', entry: r, value: r.name })}>重命名</Dropdown.Item>
-                <Dropdown.Item onClick={() => setFolderPicker({ mode: 'copy', entries: [r] })}>复制到…</Dropdown.Item>
-                <Dropdown.Item onClick={() => setFolderPicker({ mode: 'move', entries: [r] })}>移动到…</Dropdown.Item>
-                <Dropdown.Item onClick={() => setDialog({ mode: 'compress', selEntries: [r], value: `${r.name}.zip` })}>压缩为 ZIP</Dropdown.Item>
-                {r.type !== 'dir' && isArchive(r.name) && (
-                  <Dropdown.Item onClick={() => void handleExtract(r)}>解压到此处</Dropdown.Item>
-                )}
-                {r.type !== 'dir' && (
-                  <Dropdown.Item onClick={() => void fetchChecksum(r, 'sha256')}>校验和</Dropdown.Item>
-                )}
-                <Dropdown.Item onClick={() => setDialog({ mode: 'chmod', entry: r, value: permStringToOctal(r.permissions) })}>修改权限</Dropdown.Item>
-                <Dropdown.Item onClick={() => setPropsEntry(r)}>属性</Dropdown.Item>
-                <Dropdown.Divider />
-                <Dropdown.Item
-                  type="danger"
-                  onClick={() => Modal.confirm({ title: '确定删除此项吗？', okType: 'danger', onOk: () => handleDelete([r.path]) })}
-                >
-                  删除
-                </Dropdown.Item>
-              </Dropdown.Menu>
-            }
-          >
-            <Button size="small" theme="borderless" icon={<MoreHorizontal size={13} />} />
-          </Dropdown>
-        </Space>
-      ),
-    },
+      desktopInlineKeys: ['open', 'preview', 'download'],
+      actions: (record) => [
+        ...(record.type === 'dir'
+          ? [{
+              key: 'open',
+              label: '打开',
+              onClick: () => { void navigateTo(record.path); },
+            }]
+          : [
+              {
+                key: 'preview',
+                label: '预览',
+                onClick: () => { void handlePreview(record); },
+              },
+              {
+                key: 'download',
+                label: '下载',
+                onClick: () => handleDownload(record),
+              },
+            ]),
+        {
+          key: 'rename',
+          label: '重命名',
+          onClick: () => setDialog({ mode: 'rename', entry: record, value: record.name }),
+        },
+        {
+          key: 'copy',
+          label: '复制到...',
+          onClick: () => setFolderPicker({ mode: 'copy', entries: [record] }),
+        },
+        {
+          key: 'move',
+          label: '移动到...',
+          onClick: () => setFolderPicker({ mode: 'move', entries: [record] }),
+        },
+        {
+          key: 'compress',
+          label: '压缩为 ZIP',
+          onClick: () => setDialog({ mode: 'compress', selEntries: [record], value: `${record.name}.zip` }),
+        },
+        {
+          key: 'extract',
+          label: '解压到此处',
+          hidden: record.type === 'dir' || !isArchive(record.name),
+          onClick: () => { void handleExtract(record); },
+        },
+        {
+          key: 'checksum',
+          label: '校验和',
+          hidden: record.type === 'dir',
+          onClick: () => { void fetchChecksum(record, 'sha256'); },
+        },
+        {
+          key: 'chmod',
+          label: '修改权限',
+          onClick: () => setDialog({ mode: 'chmod', entry: record, value: permStringToOctal(record.permissions) }),
+        },
+        {
+          key: 'props',
+          label: '属性',
+          onClick: () => setPropsEntry(record),
+        },
+        {
+          key: 'delete',
+          label: '删除',
+          danger: true,
+          dividerBefore: true,
+          onClick: () => {
+            Modal.confirm({
+              title: '确定删除此项吗？',
+              okButtonProps: { type: 'danger', theme: 'solid' },
+              onOk: () => handleDelete([record.path]),
+            });
+          },
+        },
+      ],
+    }),
   ];
 
   // ── 渲染内容区 ────────────────────────────────────────────────────────────
