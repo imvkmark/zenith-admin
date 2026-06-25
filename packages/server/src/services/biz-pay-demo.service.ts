@@ -8,10 +8,11 @@
  *   3) 监听 paymentEventBus 'payment.succeeded'（见 biz-pay-demo-subscribers）按
  *      bizType 过滤后履约：markBizPayDemoPaid 幂等置 paid 并发放示例权益。
  *
- * 「模拟支付成功」为演示专用：通过 paymentEventBus.dispatch 同步驱动真实订阅器，
- * 使「下单 → 支付成功 → 履约」闭环在未配置真实微信/支付宝渠道时也能跑通。
+ * 「模拟支付成功」为演示专用：直接调用与真实支付成功订阅器完全相同的履约逻辑
+ * （markBizPayDemoPaid），使「下单 → 支付成功 → 履约」闭环在未配置真实微信/支付宝渠道
+ * 时也能跑通；它不派发全局支付事件，避免对支付台账 / 手续费等产生副作用。
  */
-import { and, desc, eq, like } from 'drizzle-orm';
+import { and, desc, eq, inArray, like } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { BizPayDemo, BizPayDemoStatus, PaymentMethod, CreatePaymentResult } from '@zenith/shared';
 import { db } from '../db';
@@ -22,7 +23,6 @@ import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { escapeLike } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 import logger from '../lib/logger';
-import { paymentEventBus } from '../lib/payment-event-bus';
 import { createPayment } from './payment.service';
 
 /** 业务类型标识（与订阅器、支付门面 bizType 保持一致） */
@@ -145,32 +145,23 @@ export async function payBizPayDemo(
 }
 
 /**
- * 模拟支付成功（演示专用）：同步派发一条 payment.succeeded 事件，驱动真实订阅器履约。
- * 真实环境的履约由支付回调 / 主动查单确认成功后经 Outbox 投递触发，逻辑完全一致。
+ * 模拟支付成功（演示专用）：直接调用与真实订阅器相同的履约逻辑（markBizPayDemoPaid）。
+ * 真实环境的履约由支付回调 / 主动查单确认成功后经 Outbox 投递、再由订阅器触发，逻辑一致；
+ * 此处不派发全局支付事件，避免对支付台账 / 手续费等其它订阅者产生副作用。
  */
 export async function simulateBizPayDemoPaid(id: number): Promise<BizPayDemo> {
-  const user = currentUser();
   const row = await getOwnRow(id);
   if (row.status === 'paid') return mapBizPayDemo(row);
+  if (row.status === 'closed') throw new HTTPException(400, { message: '已关闭的示例单无法支付' });
   const orderNo = row.paymentOrderNo ?? `PAYDEMO${Date.now()}${row.id}`;
-  await paymentEventBus.dispatch({
-    type: 'payment.succeeded',
-    orderNo,
-    outTradeNo: orderNo,
-    bizType: BIZ_PAY_DEMO_TYPE,
-    bizId: String(row.id),
-    channel: 'wechat',
-    amount: row.amount,
-    userId: user.userId,
-    tenantId: row.tenantId,
-  });
+  await markBizPayDemoPaid({ bizId: String(row.id), orderNo, amount: row.amount });
   return getBizPayDemo(id);
 }
 
 /**
  * 履约（幂等）：支付成功后置 paid 并发放示例权益。
  * 由订阅器在请求上下文之外调用，故不依赖 currentUser；按主键 + 状态条件保证幂等，
- * 同一笔支付成功事件被重复投递（at-least-once）也只履约一次。
+ * 仅当订单处于待支付/支付中（pending/paying）时才履约，重复投递（at-least-once）只生效一次。
  */
 export async function markBizPayDemoPaid(event: { bizId: string; orderNo: string; amount: number }): Promise<void> {
   const demoId = Number(event.bizId);
@@ -185,21 +176,9 @@ export async function markBizPayDemoPaid(event: { bizId: string; orderNo: string
       paymentOrderNo: event.orderNo,
       fulfillRemark: '支付成功，已自动发放示例权益（演示履约）',
     })
-    .where(and(eq(bizPayDemos.id, demoId), eq(bizPayDemos.status, 'paying')))
+    .where(and(eq(bizPayDemos.id, demoId), inArray(bizPayDemos.status, ['pending', 'paying'])))
     .returning({ id: bizPayDemos.id });
 
-  if (updated.length === 0) {
-    // 兼容「模拟支付」直接从 pending 履约：再尝试非 paid 态更新一次
-    const fallback = await db.update(bizPayDemos)
-      .set({
-        status: 'paid',
-        paidAt: new Date(),
-        paymentOrderNo: event.orderNo,
-        fulfillRemark: '支付成功，已自动发放示例权益（演示履约）',
-      })
-      .where(and(eq(bizPayDemos.id, demoId), eq(bizPayDemos.status, 'pending')))
-      .returning({ id: bizPayDemos.id });
-    if (fallback.length === 0) return; // 已履约或不存在，幂等跳过
-  }
+  if (updated.length === 0) return; // 已履约 / 已关闭 / 不存在，幂等跳过
   logger.info('[biz-pay-demo] 履约完成', { demoId, orderNo: event.orderNo, amount: event.amount });
 }

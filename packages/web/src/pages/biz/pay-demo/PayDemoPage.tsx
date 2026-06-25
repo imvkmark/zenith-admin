@@ -203,7 +203,7 @@ export default function PayDemoPage() {
             <Button theme="borderless" size="small" type="primary" onClick={() => openPay(record)}>发起支付</Button>
           )}
           {record.status !== 'paid' && record.status !== 'closed' && (
-            <Popconfirm title="模拟支付成功？" content="将派发一条支付成功事件驱动后端履约（演示用）" onConfirm={() => void handleSimulate(record)}>
+            <Popconfirm title="模拟支付成功？" content="触发后端履约（执行与真实支付成功相同的履约逻辑，演示用）" onConfirm={() => void handleSimulate(record)}>
               <Button theme="borderless" size="small" loading={simulatingId === record.id}>模拟支付成功</Button>
             </Popconfirm>
           )}

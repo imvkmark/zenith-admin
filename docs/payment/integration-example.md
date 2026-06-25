@@ -142,20 +142,20 @@ const { payParams } = res.data;     // { orderNo, codeUrl?, payUrl?, ... }
 
 ## 5. 模拟支付成功（演示专用）
 
-真实环境的履约由支付回调 / 主动查单确认成功后经 Outbox 投递触发。为便于在**未配置真实微信/支付宝渠道**时演示完整闭环，示例提供「模拟支付成功」：同步派发一条 `payment.succeeded` 事件，驱动**真实订阅器**履约，逻辑与线上完全一致。
+真实环境的履约由支付回调 / 主动查单确认成功后经 Outbox 投递、再由订阅器触发。为便于在**未配置真实微信/支付宝渠道**时演示完整闭环，示例提供「模拟支付成功」：**直接调用与订阅器完全相同的履约函数** `markBizPayDemoPaid`，使「下单 → 支付成功 → 履约」闭环跑通，且**不派发全局支付事件**，避免对支付台账 / 手续费等其它订阅者产生副作用。
 
 ```ts
-// 仅演示用：dispatch 会同步等待所有订阅器执行完成
-await paymentEventBus.dispatch({
-  type: 'payment.succeeded',
-  orderNo, outTradeNo: orderNo,
-  bizType: BIZ_PAY_DEMO_TYPE, bizId: String(id),
-  channel: 'wechat', amount: row.amount,
-  userId: currentUser().userId, tenantId: row.tenantId,
-});
+// 仅演示用：直接调用与真实订阅器相同的履约逻辑（不派发全局支付事件）
+export async function simulateBizPayDemoPaid(id: number) {
+  const row = await getOwnRow(id);
+  if (row.status === 'paid') return mapBizPayDemo(row);
+  const orderNo = row.paymentOrderNo ?? `PAYDEMO${Date.now()}${row.id}`;
+  await markBizPayDemoPaid({ bizId: String(row.id), orderNo, amount: row.amount });
+  return getBizPayDemo(id);
+}
 ```
 
-> 生产业务请勿暴露此类「模拟成功」接口；正式履约入口只应由支付回调 / 查单驱动。
+> 生产业务请勿暴露此类「模拟成功」接口；正式履约入口只应由支付回调 / 查单经事件订阅驱动。
 
 ## 6. 接入清单
 
