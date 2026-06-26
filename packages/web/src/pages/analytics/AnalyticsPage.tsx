@@ -24,7 +24,6 @@ import {
   LineChart,
   PieChart,
   ScatterChart,
-  HeatmapChart,
   chartOptions,
   makeAreaSpec,
   makeBarSpec,
@@ -34,11 +33,9 @@ import {
   makeCommonTooltip,
   axisNumber,
   datumNumber,
-  datumText,
   useChartPalette,
   type ChartDatum,
   type IScatterChartSpec,
-  type IHeatmapChartSpec,
 } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -758,16 +755,16 @@ function RetentionTab() {
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 4, minWidth: 720 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500 }}>同期群</th>
-                <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500 }}>人数</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px 8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500, width: '1%', whiteSpace: 'nowrap' }}>同期群</th>
+                <th style={{ textAlign: 'right', padding: '8px 14px 8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500, width: '1%', whiteSpace: 'nowrap' }}>人数</th>
                 {data.periods.map((period) => <th key={period} style={{ textAlign: 'center', padding: '8px 6px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500 }}>Day{period}</th>)}
               </tr>
             </thead>
             <tbody>
               {data.cohorts.map((cohort) => (
                 <tr key={cohort.cohortDate}>
-                  <td style={{ padding: '8px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{cohort.cohortDate}</td>
-                  <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--semi-color-text-1)' }}>{numberText(cohort.cohortSize)}</td>
+                  <td style={{ padding: '8px 12px 8px 10px', fontWeight: 600, whiteSpace: 'nowrap', width: '1%' }}>{cohort.cohortDate}</td>
+                  <td style={{ padding: '8px 14px 8px 10px', textAlign: 'right', color: 'var(--semi-color-text-1)', whiteSpace: 'nowrap', width: '1%' }}>{numberText(cohort.cohortSize)}</td>
                   {data.periods.map((period, index) => {
                     const value = cohort.values[index];
                     const ratio = value == null ? 0 : Math.min(1, value / periodMax);
