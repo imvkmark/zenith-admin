@@ -11,7 +11,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Plus, RotateCcw, Search } from 'lucide-react';
+import { Info, Plus, RotateCcw, Search } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PAYMENT_METHOD_LABELS } from '@zenith/shared';
 import type { BizPayDemo, BizPayDemoStatus, CreatePaymentResult, PaymentMethod, PaginatedResponse } from '@zenith/shared';
@@ -39,6 +39,13 @@ const codeStyle: CSSProperties = {
   background: 'var(--semi-color-fill-0)', borderRadius: 6, padding: 12, margin: 0,
   overflowX: 'auto', fontSize: 12, lineHeight: 1.6,
   fontFamily: 'var(--semi-font-family-mono, ui-monospace, monospace)',
+};
+
+const payDemoBannerStyle: CSSProperties = {
+  marginBottom: 12,
+  background: 'var(--semi-color-primary-light-default)',
+  borderColor: 'var(--semi-color-primary-light-active)',
+  color: 'var(--semi-color-primary)',
 };
 
 const SNIPPET_BACKEND_PAY = `// 后端 · 发起支付：调用统一支付门面 createPayment（services/biz-pay-demo.service.ts）
@@ -284,7 +291,8 @@ export default function PayDemoPage() {
       <Banner
         type="info"
         closeIcon={null}
-        style={{ marginBottom: 12 }}
+        icon={<Info size={18} style={{ color: 'var(--semi-color-primary)' }} />}
+        style={payDemoBannerStyle}
         description="本页演示业务模块如何对接支付中心：新建示例单 → 发起支付（拿到二维码/跳转链接）→ 支付成功后由事件订阅器自动履约。未配置真实微信/支付宝渠道时，可点「模拟支付成功」跑通完整闭环。展开下方「前后端集成示例代码」查看接入方式。"
       />
 
