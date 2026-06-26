@@ -740,34 +740,31 @@ export default function WorkflowSimulationDrawer({
 
   const resultMeta = result ? RESULT_META[result.result] : null;
   const canDecide = nodeTypeCanDecide(currentItem);
+  const renderGraphControls = () => (
+    <div className="fd-simulation-controls">
+      <Button size="small" type="tertiary" theme="borderless" icon={<RotateCcw size={14} />} onClick={resetResult}>重置</Button>
+      {result && totalSteps > 0 ? (
+        <>
+          <Button size="small" icon={<ChevronLeft size={14} />} onClick={() => moveStep(currentStep - 1)} disabled={currentStep <= 1}>上一步</Button>
+          <Button size="small" type="primary" icon={<ChevronRight size={14} />} onClick={() => moveStep(currentStep + 1)} disabled={currentStep >= totalSteps}>
+            {currentStep >= totalSteps ? '已到终点' : '下一步'}
+          </Button>
+          <Button size="small" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation(undefined, undefined, '仿真已重新启动')}>重新启动</Button>
+        </>
+      ) : (
+        <Button size="small" type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>启动仿真</Button>
+      )}
+    </div>
+  );
 
   return (
     <SideSheet
       title="流程仿真"
       visible={visible}
       placement="right"
-      width="92vw"
+      width="96vw"
       onCancel={onClose}
       className="fd-simulation-drawer"
-      footer={
-        <div className="fd-simulation-drawer__footer">
-          <Button type="tertiary" theme="borderless" icon={<RotateCcw size={14} />} onClick={resetResult}>重置</Button>
-          <Space>
-            <Button onClick={onClose}>关闭</Button>
-            {result && totalSteps > 0 ? (
-              <>
-                <Button icon={<ChevronLeft size={14} />} onClick={() => moveStep(currentStep - 1)} disabled={currentStep <= 1}>上一步</Button>
-                <Button type="primary" icon={<ChevronRight size={14} />} onClick={() => moveStep(currentStep + 1)} disabled={currentStep >= totalSteps}>
-                  {currentStep >= totalSteps ? '已到终点' : '下一步'}
-                </Button>
-                <Button icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation(undefined, undefined, '仿真已重新启动')}>重新启动</Button>
-              </>
-            ) : (
-              <Button type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>启动仿真</Button>
-            )}
-          </Space>
-        </div>
-      }
     >
       <div className="fd-simulation-drawer__body">
         <aside className="fd-simulation-panel">
@@ -878,6 +875,7 @@ export default function WorkflowSimulationDrawer({
                 <Typography.Text type="tertiary" size="small">启动后在这里逐步呈现节点状态</Typography.Text>
               )}
             </div>
+            {renderGraphControls()}
             <div className="fd-toolbar__zoom">
               <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphZoom((z) => Math.max(z - 10, 50))} />
               <span>{graphZoom}%</span>
