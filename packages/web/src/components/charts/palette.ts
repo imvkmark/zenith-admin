@@ -34,6 +34,19 @@ export function cssVar(name: string, fallback: string): string {
 }
 
 const RISK_COLOR = '#f43f5e';
+const SEMI_SMALL_DATA_COLOR_INDICES = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18] as const;
+const SEMI_SMALL_DATA_COLOR_FALLBACKS = [
+  '#1664ff',
+  '#1ac6ff',
+  '#ff8a00',
+  '#3cc780',
+  '#7442d4',
+  '#ffc400',
+  '#304d77',
+  '#b48deb',
+  '#009488',
+  '#ff7dda',
+] as const;
 
 export function readChartPalette(isDark: boolean): ChartPalette {
   const primary = cssVar('--semi-color-primary', isDark ? '#6aa1ff' : '#1664ff');
@@ -57,18 +70,9 @@ export function readChartPalette(isDark: boolean): ChartPalette {
     bg1: cssVar('--semi-color-bg-1', isDark ? '#16161a' : '#ffffff'),
     tooltipBg: cssVar('--semi-color-bg-2', isDark ? '#2f3037' : '#ffffff'),
     tooltipShadow: isDark ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.10)',
-    dataColors: Array.from({ length: 10 }, (_, i) => cssVar(`--semi-color-data-${i}`, [
-      '#1664ff',
-      '#1ac6ff',
-      '#ff8a00',
-      '#3cc780',
-      '#7442d4',
-      '#f54f63',
-      '#00a8a8',
-      '#b88400',
-      '#7c5cff',
-      '#6b7280',
-    ][i])),
+    dataColors: SEMI_SMALL_DATA_COLOR_INDICES.map((index, i) => (
+      cssVar(`--semi-color-data-${index}`, SEMI_SMALL_DATA_COLOR_FALLBACKS[i])
+    )),
     heatColors: isDark
       ? [fill1, 'rgba(106, 161, 255, 0.22)', 'rgba(106, 161, 255, 0.42)', 'rgba(106, 161, 255, 0.66)', primary]
       : [fill1, 'rgba(22, 100, 255, 0.14)', 'rgba(22, 100, 255, 0.30)', 'rgba(22, 100, 255, 0.56)', primary],
