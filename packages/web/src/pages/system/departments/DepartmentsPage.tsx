@@ -426,9 +426,10 @@ export default function DepartmentsPage() {
 
   const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={() => void fetchDepartments()}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
-  const renderExpandButton = () => (
+  const renderExpandButton = (flat = false) => (
     <Button
       type="primary"
+      theme={flat ? 'borderless' : undefined}
       icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
       onClick={toggleExpandAll}
     >
@@ -455,8 +456,8 @@ export default function DepartmentsPage() {
   );
   const renderMobileExportActions = () => (
     <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
+      <Button type="primary" theme="borderless" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
+      <Button type="primary" theme="borderless" icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
     </>
   );
   const renderCreateButton = () => hasPermission('system:department:create') ? (
@@ -497,7 +498,7 @@ export default function DepartmentsPage() {
         mobileFilters={renderStatusFilter()}
         mobileActions={(
           <>
-            {renderExpandButton()}
+            {renderExpandButton(true)}
             {renderMobileExportActions()}
           </>
         )}
