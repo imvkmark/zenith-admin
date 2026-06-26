@@ -151,7 +151,6 @@ export default function TerminalRecordingsPage() {
       setList(res.data.list);
       setTotal(res.data.total);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 初始加载
@@ -276,7 +275,7 @@ export default function TerminalRecordingsPage() {
       width: 200,
     },
     createOperationColumn<Recording>({
-      width: 200,
+      width: 260,
       actions: (record) => [
         {
           key: 'play',
