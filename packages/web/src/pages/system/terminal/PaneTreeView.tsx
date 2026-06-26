@@ -21,6 +21,7 @@ interface PaneTreeViewProps {
   readonly onClosePane: (id: string) => void;
   readonly onDirtyChange: (id: string, dirty: boolean) => void;
   readonly onTitleChange?: (paneId: string, newTitle: string) => void;
+  readonly onOpenTerminalAt?: (cwd: string) => void;
 }
 
 export default function PaneTreeView({
@@ -32,6 +33,7 @@ export default function PaneTreeView({
   onClosePane,
   onDirtyChange,
   onTitleChange,
+  onOpenTerminalAt,
 }: PaneTreeViewProps) {
   const leafCount = collectLeaves(root).length;
   const showFocus = leafCount > 1;
@@ -80,7 +82,14 @@ export default function PaneTreeView({
         </div>
         <div className="terminal-pane__body">
           {leaf.kind === 'terminal' ? (
-            <TerminalTab sessionId={leaf.stableSessionId} active={sessionActive} shell={leaf.shell ?? ''} cwd={leaf.cwd} onTitleChange={onTitleChange ? (t) => onTitleChange(leaf.id, t) : undefined} />
+            <TerminalTab
+              sessionId={leaf.stableSessionId}
+              active={sessionActive}
+              shell={leaf.shell ?? ''}
+              cwd={leaf.cwd}
+              onTitleChange={onTitleChange ? (t) => onTitleChange(leaf.id, t) : undefined}
+              onOpenTerminalAt={onOpenTerminalAt}
+            />
           ) : (
             <EditorTab
               filePath={leaf.filePath ?? ''}

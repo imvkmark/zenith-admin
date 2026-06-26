@@ -1,5 +1,17 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
-import { ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Dropdown, Toast } from '@douyinfe/semi-ui';
+import {
+  ChevronUp,
+  ChevronDown,
+  X,
+  Copy,
+  Clipboard,
+  Eraser,
+  Search,
+  CheckSquare,
+  FolderOpen,
+  SquareTerminal,
+} from 'lucide-react';
 import { useThemeController } from '@/providers/theme-controller';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme } from './themes';
@@ -13,16 +25,21 @@ interface TerminalTabProps {
   readonly cwd?: string;
   /** CWD 变化时回调（OSC 7），用于更新 Tab 标题 */
   readonly onTitleChange?: (newTitle: string) => void;
+  /** 在当前目录打开新终端（仅本地终端使用） */
+  readonly onOpenTerminalAt?: (cwd: string) => void;
 }
 
-export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChange }: TerminalTabProps) {
+export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChange, onOpenTerminalAt }: TerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { isDark } = useThemeController();
   const { terminal } = useTerminalPreferences();
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const contextCwd = contextMenu ? (terminalSessionStore.getCwd(sessionId) ?? cwd) : undefined;
+  const canOpenLocalTerminalAt = !!contextCwd && !shell.startsWith('ssh:') && !shell.startsWith('docker-exec:');
 
   const currentTheme = useMemo(
     () => resolveTheme(isDark ? terminal.themeDark : terminal.themeLight, isDark ? 'dark' : 'light'),
@@ -81,6 +98,68 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
     setSearchText('');
     terminalSessionStore.clearSearch(sessionId);
   }, [sessionId]);
+
+  const copySelection = useCallback(async () => {
+    try {
+      const copied = await terminalSessionStore.copySelection(sessionId);
+      if (copied) Toast.success('已复制');
+      else Toast.warning('请先选中文本');
+    } catch {
+      Toast.error('复制失败，请检查浏览器剪贴板权限');
+    } finally {
+      setContextMenu(null);
+    }
+  }, [sessionId]);
+
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      const pasted = await terminalSessionStore.pasteFromClipboard(sessionId);
+      if (!pasted) Toast.warning('剪贴板为空');
+    } catch {
+      Toast.error('粘贴失败，请检查浏览器剪贴板权限');
+    } finally {
+      setContextMenu(null);
+    }
+  }, [sessionId]);
+
+  const selectAll = useCallback(() => {
+    terminalSessionStore.selectAll(sessionId);
+    setContextMenu(null);
+  }, [sessionId]);
+
+  const clearTerminal = useCallback(() => {
+    terminalSessionStore.clear(sessionId);
+    setContextMenu(null);
+  }, [sessionId]);
+
+  const openSearchFromMenu = useCallback(() => {
+    openSearch();
+    setContextMenu(null);
+  }, [openSearch]);
+
+  const copyCurrentPath = useCallback(async () => {
+    const path = terminalSessionStore.getCwd(sessionId) ?? cwd;
+    if (!path) {
+      Toast.warning('当前终端尚未上报路径');
+      setContextMenu(null);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(path);
+      Toast.success('已复制当前路径');
+    } catch {
+      Toast.error('复制失败，请检查浏览器剪贴板权限');
+    } finally {
+      setContextMenu(null);
+    }
+  }, [cwd, sessionId]);
+
+  const openLocalTerminalAtCurrentPath = useCallback(() => {
+    const path = terminalSessionStore.getCwd(sessionId) ?? cwd;
+    if (!path || !onOpenTerminalAt) return;
+    onOpenTerminalAt(path);
+    setContextMenu(null);
+  }, [cwd, onOpenTerminalAt, sessionId]);
 
   // refs 用于在闭包中访问最新的回调/状态（避免 stale closure）
   const openSearchRef = useRef(openSearch);
@@ -173,7 +252,62 @@ export default function TerminalTab({ sessionId, active, shell, cwd, onTitleChan
   ]);
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        terminalSessionStore.focus(sessionId);
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
+    >
+      {contextMenu && (
+        <Dropdown
+          trigger="click"
+          visible
+          clickToHide
+          position="bottomLeft"
+          onVisibleChange={(v) => { if (!v) setContextMenu(null); }}
+          render={(
+            <Dropdown.Menu>
+              <Dropdown.Item icon={<Copy size={14} />} onClick={() => void copySelection()}>
+                复制
+              </Dropdown.Item>
+              <Dropdown.Item icon={<Clipboard size={14} />} onClick={() => void pasteFromClipboard()}>
+                粘贴
+              </Dropdown.Item>
+              <Dropdown.Item icon={<CheckSquare size={14} />} onClick={selectAll}>
+                全选
+              </Dropdown.Item>
+              <Dropdown.Divider />
+              <Dropdown.Item icon={<Search size={14} />} onClick={openSearchFromMenu}>
+                搜索
+              </Dropdown.Item>
+              {searchVisible && (
+                <Dropdown.Item icon={<X size={14} />} onClick={closeSearch}>
+                  关闭搜索
+                </Dropdown.Item>
+              )}
+              <Dropdown.Divider />
+              <Dropdown.Item icon={<FolderOpen size={14} />} disabled={!contextCwd} onClick={() => void copyCurrentPath()}>
+                复制当前路径
+              </Dropdown.Item>
+              <Dropdown.Item
+                icon={<SquareTerminal size={14} />}
+                disabled={!canOpenLocalTerminalAt || !onOpenTerminalAt}
+                onClick={openLocalTerminalAtCurrentPath}
+              >
+                在当前目录新建终端
+              </Dropdown.Item>
+              <Dropdown.Divider />
+              <Dropdown.Item icon={<Eraser size={14} />} onClick={clearTerminal}>
+                清屏
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          )}
+        >
+          <span style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, width: 1, height: 1 }} />
+        </Dropdown>
+      )}
       {/* 搜索栏（Ctrl+F 唤出，Escape 关闭） */}
       {searchVisible && (
         <div style={{

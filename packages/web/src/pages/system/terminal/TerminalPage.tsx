@@ -733,6 +733,7 @@ export default function TerminalPage() {
               onClosePane={(pid) => handleClosePane(s.id, pid)}
               onDirtyChange={setDirty}
               onTitleChange={(pid, title) => handleTitleChange(s.id, pid, title)}
+              onOpenTerminalAt={openTerminalAt}
             />
           </div>
         ))}
