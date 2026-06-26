@@ -90,7 +90,7 @@ const DIMENSION_OPTIONS = [
   { label: '页面', value: 'page' },
 ];
 
-const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#64748b'];
+const ACCENT_COLORS = ['#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#64748b'];
 
 const sectionStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 16 };
 const gridStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 };
@@ -120,12 +120,12 @@ function StatCard({
   label,
   value,
   sub,
-  color = '#3b82f6',
+  color = 'var(--semi-color-primary)',
 }: Readonly<{ icon: ReactNode; label: string; value: ReactNode; sub?: ReactNode; color?: string }>) {
   return (
     <Card bodyStyle={{ padding: 16 }} style={{ borderRadius: 14 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <div style={{ width: 38, height: 38, borderRadius: 12, display: 'grid', placeItems: 'center', color, background: `${color}18` }}>
+        <div style={{ width: 38, height: 38, borderRadius: 12, display: 'grid', placeItems: 'center', color, background: `color-mix(in srgb, ${color} 10%, transparent)` }}>
           {icon}
         </div>
         <div style={{ minWidth: 0 }}>
@@ -161,6 +161,10 @@ function emptyOrSpin(loading: boolean, description = '暂无数据') {
 
 type ChartRow = Record<string, number | string>;
 
+function chartColor(index: number, primary: string): string {
+  return index === 0 ? primary : ACCENT_COLORS[(index - 1) % ACCENT_COLORS.length];
+}
+
 function OverviewTab() {
   const palette = useChartPalette();
   const [days, setDays] = useState(7);
@@ -195,12 +199,16 @@ function OverviewTab() {
   const trendSpec = useMemo(() => makeLineSpec({
     data: chartData,
     xField: 'date',
-    series: (trends?.series ?? []).map((item, index) => ({ field: item.key, name: item.name, color: COLORS[index % COLORS.length] })),
+    series: (trends?.series ?? []).map((item, index) => ({
+      field: item.key,
+      name: item.name,
+      color: index === 0 ? palette.primary : ACCENT_COLORS[(index - 1) % ACCENT_COLORS.length],
+    })),
     palette,
   }), [chartData, palette, trends?.series]);
 
   const cards = overview ? [
-    { label: '浏览量 PV', value: numberText(overview.pv), icon: <Eye size={19} />, color: '#3b82f6', sub: <DeltaText value={overview.pvDelta} /> },
+    { label: '浏览量 PV', value: numberText(overview.pv), icon: <Eye size={19} />, color: palette.primary, sub: <DeltaText value={overview.pvDelta} /> },
     { label: '访客 UV', value: numberText(overview.uv), icon: <Users size={19} />, color: '#22c55e', sub: <DeltaText value={overview.uvDelta} /> },
     { label: '会话', value: numberText(overview.sessions), icon: <Activity size={19} />, color: '#8b5cf6', sub: <DeltaText value={overview.sessionsDelta} /> },
     { label: '事件', value: numberText(overview.events), icon: <Flame size={19} />, color: '#f59e0b' },
@@ -272,7 +280,7 @@ function RealtimeTab() {
   const realtimeAreaSpec = useMemo(() => makeAreaSpec({
     data: data?.perMinute ?? [],
     xField: 'minute',
-    series: [{ field: 'events', name: '事件数', color: '#3b82f6' }],
+    series: [{ field: 'events', name: '事件数', color: palette.primary }],
     palette,
   }), [data?.perMinute, palette]);
 
@@ -281,7 +289,7 @@ function RealtimeTab() {
       <SectionHeader title="实时看板" description="每 10 秒自动刷新" extra={<Button icon={<RefreshCcw size={14} />} onClick={() => void fetchData()} loading={loading}>刷新</Button>} />
       <div style={gridStyle}>
         <StatCard label="实时在线" value={numberText(data?.activeUsers ?? 0)} icon={<Users size={19} />} color="#22c55e" />
-        <StatCard label="近30分钟浏览" value={numberText(data?.pageViewsLast30Min ?? 0)} icon={<Eye size={19} />} color="#3b82f6" />
+        <StatCard label="近30分钟浏览" value={numberText(data?.pageViewsLast30Min ?? 0)} icon={<Eye size={19} />} color={palette.primary} />
         <StatCard label="近1分钟事件" value={numberText(data?.eventsLastMinute ?? 0)} icon={<Zap size={19} />} color="#f59e0b" />
       </div>
       <div style={chartGridStyle}>
@@ -327,6 +335,7 @@ function RealtimeTab() {
 type PageStatsRow = PageStats['items'][number] & { id: string };
 
 function DwellTab() {
+  const palette = useChartPalette();
   const [days, setDays] = useState(7);
   const [data, setData] = useState<PageStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -383,7 +392,7 @@ function DwellTab() {
         extra={<Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />}
       />
       <div style={gridStyle}>
-        <StatCard label="总访问" value={numberText(data?.totalVisits ?? 0)} icon={<Eye size={19} />} color="#3b82f6" />
+        <StatCard label="总访问" value={numberText(data?.totalVisits ?? 0)} icon={<Eye size={19} />} color={palette.primary} />
         <StatCard label="统计页面" value={numberText(rows.length)} icon={<BarChart3 size={19} />} color="#8b5cf6" />
         <StatCard label="平均停留" value={msToReadable(avgDwell)} icon={<Clock size={19} />} color="#06b6d4" />
       </div>
@@ -638,17 +647,17 @@ function FunnelTab() {
 
   const funnelChartData = useMemo(() => (result?.steps ?? []).map((step, index) => ({
     ...step,
-    __fill: COLORS[index % COLORS.length],
-  })), [result?.steps]);
+    __fill: chartColor(index, palette.primary),
+  })), [palette.primary, result?.steps]);
 
   const funnelBarSpec = useMemo(() => makeBarSpec({
     data: funnelChartData,
     xField: 'label',
-    series: [{ field: 'conversionRate', name: '总转化率', color: COLORS[0] }],
+    series: [{ field: 'conversionRate', name: '总转化率', color: palette.primary }],
     palette,
     horizontal: true,
     categoryAxisWidth: 96,
-    colorByDatum: (datum) => String(datum?.__fill ?? COLORS[0]),
+    colorByDatum: (datum) => String(datum?.__fill ?? palette.primary),
     tooltip: { value: (value) => `${Number(value).toFixed(1)}%` },
     axis: { yLabel: (value) => `${value}%` },
   }), [funnelChartData, palette]);
@@ -710,7 +719,7 @@ function FunnelTab() {
                   <Typography.Text>{numberText(step.users)} 人 · 总转化 {percentText(step.conversionRate)} · 上步转化 {percentText(step.stepConversionRate)} · 流失 {numberText(step.dropoff)}</Typography.Text>
                 </div>
                 <div style={{ height: 20, borderRadius: 999, background: 'var(--semi-color-fill-0)', overflow: 'hidden' }}>
-                  <div style={{ width: `${Math.max(2, Math.min(100, step.conversionRate))}%`, height: '100%', borderRadius: 999, background: COLORS[index % COLORS.length] }} />
+                  <div style={{ width: `${Math.max(2, Math.min(100, step.conversionRate))}%`, height: '100%', borderRadius: 999, background: chartColor(index, palette.primary) }} />
                 </div>
               </div>
             ))}
@@ -794,6 +803,7 @@ function RetentionTab() {
 }
 
 function PathTab() {
+  const palette = useChartPalette();
   const [days, setDays] = useState(7);
   const [data, setData] = useState<PathResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -833,7 +843,7 @@ function PathTab() {
                   <Typography.Text>{numberText(link.value)} 次</Typography.Text>
                 </div>
                 <div style={{ height: 12, borderRadius: 999, background: 'var(--semi-color-fill-0)', overflow: 'hidden' }}>
-                  <div style={{ width: `${Math.max(3, (link.value / maxValue) * 100)}%`, height: '100%', borderRadius: 999, background: COLORS[index % COLORS.length] }} />
+                  <div style={{ width: `${Math.max(3, (link.value / maxValue) * 100)}%`, height: '100%', borderRadius: 999, background: chartColor(index, palette.primary) }} />
                 </div>
               </div>
             ))}
@@ -1003,7 +1013,7 @@ function DimensionTab() {
     categoryField: 'name',
     valueField: 'value',
     donut: true,
-    colors: rows.map((_, index) => COLORS[index % COLORS.length]),
+    colors: rows.map((_, index) => chartColor(index, palette.primary)),
     palette,
   }), [palette, rows]);
   const columns: ColumnProps<DimensionRow>[] = [
