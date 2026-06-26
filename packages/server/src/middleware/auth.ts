@@ -24,6 +24,7 @@ export type AuthEnv = {
   Variables: JwtVariables<JwtPayload> & {
     user: JwtPayload;
     auditBeforeData?: string;
+    auditAfterData?: string;
   };
 };
 
@@ -107,5 +108,6 @@ declare module 'hono' {
   interface ContextVariableMap {
     user: JwtPayload;
     auditBeforeData: string | undefined;
+    auditAfterData: string | undefined;
   }
 }

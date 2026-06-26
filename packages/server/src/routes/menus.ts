@@ -12,6 +12,7 @@ import {
   updateMenu,
   deleteMenu,
   getMenuBeforeAudit,
+  getMenuCascadeBeforeAudit,
 } from '../services/menus.service';
 
 const menusRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -170,7 +171,7 @@ const deleteMenuRoute = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const before = await getMenuBeforeAudit(id);
+    const before = await getMenuCascadeBeforeAudit(id);
     if (before) setAuditBeforeData(c, before);
     await deleteMenu(id);
     return c.json(okBody(null, '删除成功'), 200);

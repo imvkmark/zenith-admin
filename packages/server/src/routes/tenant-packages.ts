@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { createMiddleware } from 'hono/factory';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { isPlatformAdmin } from '../lib/tenant';
 import type { AppEnv } from '../lib/context';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, BatchIdsBody, okBody, errBody } from '../lib/openapi-schemas';
@@ -16,6 +16,7 @@ import {
   batchDeleteTenantPackages,
   assignTenantPackageMenus,
   getTenantPackageBeforeAudit,
+  getTenantPackagesBeforeAudit,
 } from '../services/tenant-packages.service';
 
 const tenantPackagesRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -109,7 +110,11 @@ const assignMenusRouteDef = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { menuIds } = c.req.valid('json');
+    const before = await getTenantPackageBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await assignTenantPackageMenus(id, menuIds);
+    const after = await getTenantPackageBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '菜单已更新'), 200);
   },
 });
@@ -124,6 +129,8 @@ const batchDeleteRouteDef = defineOpenAPIRoute({
   }),
   handler: async (c) => {
     const { ids } = c.req.valid('json');
+    const before = await getTenantPackagesBeforeAudit(ids);
+    if (before.length > 0) setAuditBeforeData(c, before);
     await batchDeleteTenantPackages(ids);
     return c.json(okBody(null, `已删除 ${ids.length} 条记录`), 200);
   },

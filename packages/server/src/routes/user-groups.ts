@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody } from '../lib/openapi-schemas';
 import { UserGroupDTO, UserGroupMemberDTO } from '../lib/openapi-dtos';
 import {
@@ -17,6 +17,7 @@ import {
   setGroupMembers,
   addGroupMembers,
   removeGroupMembers,
+  getUserGroupMembersBeforeAudit,
 } from '../services/user-groups.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -154,7 +155,11 @@ const setMembersRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { userIds } = c.req.valid('json');
+    const before = await getUserGroupMembersBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await setGroupMembers(id, userIds);
+    const after = await getUserGroupMembersBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);
   },
 });
@@ -170,7 +175,11 @@ const addMembersRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { userIds } = c.req.valid('json');
+    const before = await getUserGroupMembersBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await addGroupMembers(id, userIds);
+    const after = await getUserGroupMembersBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '添加成功'), 200);
   },
 });
@@ -186,7 +195,11 @@ const removeMembersRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { userIds } = c.req.valid('json');
+    const before = await getUserGroupMembersBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await removeGroupMembers(id, userIds);
+    const after = await getUserGroupMembersBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '移除成功'), 200);
   },
 });

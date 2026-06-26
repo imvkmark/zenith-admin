@@ -170,3 +170,17 @@ export async function getMenuBeforeAudit(id: number) {
   if (!row) return null;
   return mapMenu(row);
 }
+
+export async function getMenuCascadeBeforeAudit(id: number) {
+  const all = await db.select().from(menus).orderBy(asc(menus.sort), asc(menus.id));
+  const toDelete = new Set<number>();
+  const queue = [id];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    toDelete.add(cur);
+    all.filter((menu) => menu.parentId === cur).forEach((menu) => queue.push(menu.id));
+  }
+  const rows = all.filter((menu) => toDelete.has(menu.id));
+  if (rows.length === 0) return null;
+  return rows.map(mapMenu);
+}

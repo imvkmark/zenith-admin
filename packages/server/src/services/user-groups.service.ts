@@ -202,6 +202,22 @@ export async function getUserGroupsBeforeAudit(ids: number[]) {
   return rows.map(mapGroup);
 }
 
+export async function getUserGroupMembersBeforeAudit(groupId: number) {
+  const group = await getUserGroupBeforeAudit(groupId);
+  if (!group) return null;
+  const members = await listGroupMembers(groupId);
+  return {
+    ...group,
+    memberIds: members.map((member) => member.id),
+    members: members.map((member) => ({
+      id: member.id,
+      username: member.username,
+      nickname: member.nickname,
+      departmentName: member.departmentName,
+    })),
+  };
+}
+
 // ─── 成员管理 ────────────────────────────────────────────────────────────────
 
 async function ensureGroupAccessible(groupId: number) {

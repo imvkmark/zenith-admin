@@ -331,6 +331,18 @@ export async function getUserBeforeAudit(id: number) {
   return mapUser(full);
 }
 
+export async function getUserRoleAssignmentAudit(id: number) {
+  const before = await getUserBeforeAudit(id);
+  if (!before) return null;
+  return {
+    id: before.id,
+    username: before.username,
+    nickname: before.nickname,
+    roleIds: before.roles.map((role) => role.id),
+    roles: before.roles.map((role) => ({ id: role.id, name: role.name, code: role.code })),
+  };
+}
+
 export interface UpdateUserInput {
   username?: string; nickname?: string; email?: string; phone?: string; gender?: string | null;
   departmentId?: number | null;
@@ -653,6 +665,17 @@ export async function getUserMenuPermissions(userId: number) {
   return { directMenuIds, roleMenuIds };
 }
 
+export async function getUserMenuPermissionsBeforeAudit(userId: number) {
+  const before = await getUserBeforeAudit(userId);
+  if (!before) return null;
+  return {
+    id: before.id,
+    username: before.username,
+    nickname: before.nickname,
+    ...(await getUserMenuPermissions(userId)),
+  };
+}
+
 export async function assignUserMenus(userId: number, menuIds: number[]) {
   const exists = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { id: true } });
   if (!exists) throw new HTTPException(404, { message: '用户不存在' });
@@ -713,6 +736,17 @@ export async function getUserDataPermission(userId: number) {
     deptScopeIds: user.userDeptScopes.map((ds) => ds.deptId),
     roleDataScope,
     roleDeptScopeIds,
+  };
+}
+
+export async function getUserDataPermissionBeforeAudit(userId: number) {
+  const before = await getUserBeforeAudit(userId);
+  if (!before) return null;
+  return {
+    id: before.id,
+    username: before.username,
+    nickname: before.nickname,
+    ...(await getUserDataPermission(userId)),
   };
 }
 

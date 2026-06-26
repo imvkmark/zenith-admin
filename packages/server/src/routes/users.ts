@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelBody, excelStreamBody, BatchIdsBody, okCsv, csvStreamBody,
@@ -14,6 +14,9 @@ import {
   getUserMenuPermissions, assignUserMenus,
   getUserDataPermission, updateUserDataPermission, getUserEffectivePermissions,
   assignRolesToUser,
+  getUserRoleAssignmentAudit,
+  getUserMenuPermissionsBeforeAudit,
+  getUserDataPermissionBeforeAudit,
 } from '../services/users.service';
 
 const usersRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -312,7 +315,11 @@ const assignUserRolesRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { roleIds } = c.req.valid('json');
+    const before = await getUserRoleAssignmentAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await assignRolesToUser(id, roleIds);
+    const after = await getUserRoleAssignmentAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);
   },
 });
@@ -339,7 +346,7 @@ const assignUserMenusRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}/menus', tags: ['Users'], summary: '分配用户菜单权限',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:user:assign' })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:user:assign', audit: { description: '分配用户菜单权限', module: '用户管理' } })] as const,
     request: {
       params: IdParam,
       body: { content: { 'application/json': { schema: z.object({ menuIds: z.array(z.number().int()).default([]) }) } }, required: true },
@@ -352,7 +359,11 @@ const assignUserMenusRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { menuIds } = c.req.valid('json');
+    const before = await getUserMenuPermissionsBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await assignUserMenus(id, menuIds);
+    const after = await getUserMenuPermissionsBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);
   },
 });
@@ -379,7 +390,7 @@ const updateUserDataPermissionRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'put', path: '/{id}/data-permission', tags: ['Users'], summary: '设置用户数据权限',
     security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:user:assign' })] as const,
+    middleware: [authMiddleware, guard({ permission: 'system:user:assign', audit: { description: '设置用户数据权限', module: '用户管理' } })] as const,
     request: {
       params: IdParam,
       body: {
@@ -402,7 +413,11 @@ const updateUserDataPermissionRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const data = c.req.valid('json');
+    const before = await getUserDataPermissionBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await updateUserDataPermission(id, data);
+    const after = await getUserDataPermissionBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);
   },
 });

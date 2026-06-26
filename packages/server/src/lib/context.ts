@@ -67,6 +67,16 @@ export function setAuditBefore(data: unknown): void {
   ctx.set('auditBeforeData', JSON.stringify(data));
 }
 
+/**
+ * 在 Service/Route 层写入"操作后实体快照"，用于响应体 data 为 null
+ * 但仍需要审计日志 diff 的场景（如成员分配、权限分配）。
+ */
+export function setAuditAfter(data: unknown): void {
+  const ctx = tryGetContext<AppEnv>();
+  if (!ctx) return;
+  ctx.set('auditAfterData', JSON.stringify(data));
+}
+
 // ─── 快捷工具：无需 DB，直接从 JWT Payload 取 ─────────────────────────────────
 
 /** 快捷获取当前登录用户 ID。 */

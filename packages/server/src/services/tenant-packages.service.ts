@@ -84,9 +84,27 @@ export async function getTenantPackage(id: number) {
 }
 
 export async function getTenantPackageBeforeAudit(id: number) {
-  const [row] = await db.select().from(tenantPackages).where(eq(tenantPackages.id, id)).limit(1);
+  const row = await db.query.tenantPackages.findFirst({
+    where: eq(tenantPackages.id, id),
+    with: { packageMenus: { columns: { menuId: true } } },
+  });
   if (!row) return null;
-  return mapTenantPackage(row);
+  const menuIds = row.packageMenus.map((m) => m.menuId);
+  return mapTenantPackage(row, { menuIds, menuCount: menuIds.length });
+}
+
+export async function getTenantPackagesBeforeAudit(ids: number[]) {
+  const validIds = ids.filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+  if (validIds.length === 0) return [];
+  const rows = await db.query.tenantPackages.findMany({
+    where: inArray(tenantPackages.id, validIds),
+    with: { packageMenus: { columns: { menuId: true } } },
+    orderBy: tenantPackages.id,
+  });
+  return rows.map((row) => {
+    const menuIds = row.packageMenus.map((m) => m.menuId);
+    return mapTenantPackage(row, { menuIds, menuCount: menuIds.length });
+  });
 }
 
 export async function ensureTenantPackageExists(id: number) {

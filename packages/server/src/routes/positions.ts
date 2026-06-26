@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
-import { guard, setAuditBeforeData } from '../middleware/guard';
+import { guard, setAuditAfterData, setAuditBeforeData } from '../middleware/guard';
 import { PaginationQuery, jsonContent, validationHook, commonErrorResponses, ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody } from '../lib/openapi-schemas';
 import { PositionDTO, PositionUserPreviewDTO } from '../lib/openapi-dtos';
 import {
@@ -16,6 +16,7 @@ import {
   getPosition,
   listPositionMembers,
   setPositionMembers,
+  getPositionMembersBeforeAudit,
 } from '../services/positions.service';
 
 const positionsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -181,7 +182,11 @@ const setMembersRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     const { userIds } = c.req.valid('json');
+    const before = await getPositionMembersBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
     await setPositionMembers(id, userIds);
+    const after = await getPositionMembersBeforeAudit(id);
+    if (after) setAuditAfterData(c, after);
     return c.json(okBody(null, '保存成功'), 200);
   },
 });

@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import type { JwtPayload } from './auth';
-import { setAuditBefore, type AppEnv } from '../lib/context';
+import { setAuditAfter, setAuditBefore, type AppEnv } from '../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { sanitizeBody } from '../lib/sanitize';
 import { db } from '../db';
@@ -20,6 +20,11 @@ export interface AuditLogOptions {
 /** 在路由处理器中调用，记录操作前的实体快照，用于 diff 展示 */
 export function setAuditBeforeData(_c: Context, data: unknown): void {
   setAuditBefore(data);
+}
+
+/** 在路由处理器中调用，记录操作后的实体快照，用于响应 data 为 null 的变更操作 */
+export function setAuditAfterData(_c: Context, data: unknown): void {
+  setAuditAfter(data);
 }
 
 export interface GuardOptions {
@@ -126,8 +131,9 @@ export function guard(opts: GuardOptions) {
       const body = await resolveAuditRequestBody(c, opts.audit);
       // 捕获操作前快照（由路由处理器通过 setAuditBeforeData 注入）
       const beforeData = c.get('auditBeforeData') as string | undefined;
+      const manualAfterData = c.get('auditAfterData') as string | undefined;
       // 捕获响应体作为操作后快照，同时记录完整响应体
-      let afterData: string | undefined;
+      let afterData: string | undefined = manualAfterData;
       let responseBodyStr: string | undefined;
       try {
         const cloned = c.res.clone();
@@ -135,7 +141,7 @@ export function guard(opts: GuardOptions) {
         // 完整响应体（限长 16KB，避免超大 payload）
         if (rawText) responseBodyStr = rawText.length > 16384 ? `${rawText.slice(0, 16384)}…` : rawText;
         const resJson = JSON.parse(rawText) as { code?: number; data?: unknown };
-        if (resJson.code === 0 && resJson.data != null) {
+        if (afterData === undefined && resJson.code === 0 && resJson.data != null) {
           afterData = JSON.stringify(resJson.data);
         }
       } catch {

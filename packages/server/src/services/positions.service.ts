@@ -185,6 +185,22 @@ export async function getPositionBeforeAudit(id: number) {
   return mapPosition(row);
 }
 
+export async function getPositionMembersBeforeAudit(positionId: number) {
+  const position = await getPositionBeforeAudit(positionId);
+  if (!position) return null;
+  const members = await listPositionMembers(positionId);
+  return {
+    ...position,
+    memberIds: members.map((member) => member.id),
+    members: members.map((member) => ({
+      id: member.id,
+      username: member.username,
+      nickname: member.nickname,
+      departmentName: member.departmentName,
+    })),
+  };
+}
+
 // ─── 成员管理 ────────────────────────────────────────────────────────────────
 
 async function ensurePositionAccessible(positionId: number) {
