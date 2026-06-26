@@ -728,7 +728,6 @@ function FunnelTab() {
 }
 
 function RetentionTab() {
-  const palette = useChartPalette();
   const [days, setDays] = useState(14);
   const [data, setData] = useState<RetentionResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -745,70 +744,55 @@ function RetentionTab() {
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  const retentionSpec = useMemo<Partial<IHeatmapChartSpec>>(() => {
-    const cohorts = data?.cohorts ?? [];
-    const periods = data?.periods ?? [];
-    const sizeByCohort = new Map(cohorts.map((c) => [c.cohortDate, c.cohortSize]));
-    const cells: { period: string; cohort: string; value: number }[] = [];
-    cohorts.forEach((cohort) => {
-      periods.forEach((period, index) => {
-        const v = cohort.values[index];
-        if (v != null) cells.push({ period: `Day${period}`, cohort: cohort.cohortDate, value: v });
-      });
-    });
-    const retentionColor = (v: number) => `rgba(59, 130, 246, ${Math.max(0.08, Math.min(0.85, v / 100))})`;
-    return {
-      ...makeCommonCartesianSpec(palette),
-      padding: { top: 8, right: 16, bottom: 8, left: 92 },
-      data: [{ id: 'retention', values: cells }],
-      xField: 'period',
-      yField: 'cohort',
-      valueField: 'value',
-      cell: {
-        style: {
-          fill: (datum: ChartDatum) => retentionColor(datumNumber(datum, 'value')),
-          stroke: palette.bg1,
-          lineWidth: 3,
-          cornerRadius: 6,
-        },
-      },
-      label: {
-        visible: true,
-        formatMethod: (_text: unknown, datum: ChartDatum) => `${datumNumber(datum, 'value').toFixed(1)}%`,
-        style: {
-          fontSize: 11,
-          fill: (datum: ChartDatum) => (datumNumber(datum, 'value') > 55 ? '#ffffff' : palette.text1),
-        },
-      },
-      axes: [
-        { orient: 'top', type: 'band', tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text2, fontSize: 11 } } },
-        { orient: 'left', type: 'band', inverse: true, tick: { visible: false }, domainLine: { visible: false }, grid: { visible: false }, label: { style: { fill: palette.text1, fontSize: 11 } } },
-      ],
-      tooltip: {
-        ...makeCommonTooltip(palette),
-        mark: {
-          title: { value: (d?: ChartDatum) => `${datumText(d, 'cohort')} · ${datumText(d, 'period')}` },
-          content: [
-            { key: '同期群人数', value: (d?: ChartDatum) => String(sizeByCohort.get(datumText(d, 'cohort')) ?? 0) },
-            { key: '留存率', value: (d?: ChartDatum) => `${datumNumber(d, 'value').toFixed(1)}%` },
-          ],
-        },
-      },
-    };
-  }, [data, palette]);
-
-  const retentionHeight = Math.max(280, (data?.cohorts.length ?? 0) * 40 + 64);
+  const periodMax = data ? Math.max(1, ...data.cohorts.flatMap((c) => c.values.filter((v): v is number => v != null))) : 100;
 
   return (
     <div style={sectionStyle}>
       <SectionHeader
         title="用户留存"
-        description="按首访日期形成 cohort"
+        description="按首访日期形成 cohort，单元格颜色越深表示留存率越高"
         extra={<Select value={days} optionList={RETENTION_DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />}
       />
       <Card bodyStyle={{ padding: 16, overflowX: 'auto' }}>
         {loading && !data ? emptyOrSpin(true) : !data?.cohorts.length ? <Empty description="暂无留存数据" /> : (
-          <HeatmapChart {...retentionSpec} options={chartOptions} height={retentionHeight} />
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 4, minWidth: 720 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500 }}>同期群</th>
+                <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500 }}>人数</th>
+                {data.periods.map((period) => <th key={period} style={{ textAlign: 'center', padding: '8px 6px', fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 500 }}>Day{period}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {data.cohorts.map((cohort) => (
+                <tr key={cohort.cohortDate}>
+                  <td style={{ padding: '8px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{cohort.cohortDate}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--semi-color-text-1)' }}>{numberText(cohort.cohortSize)}</td>
+                  {data.periods.map((period, index) => {
+                    const value = cohort.values[index];
+                    const ratio = value == null ? 0 : Math.min(1, value / periodMax);
+                    const opacity = value == null ? 0 : 0.12 + ratio * 0.73;
+                    return (
+                      <td
+                        key={period}
+                        style={{
+                          textAlign: 'center',
+                          padding: '8px 6px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontVariantNumeric: 'tabular-nums',
+                          background: value == null ? 'transparent' : `rgba(59, 130, 246, ${opacity})`,
+                          color: value == null ? 'var(--semi-color-text-3)' : ratio > 0.55 ? '#ffffff' : 'var(--semi-color-text-0)',
+                        }}
+                      >
+                        {value == null ? '·' : `${value.toFixed(1)}%`}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
     </div>

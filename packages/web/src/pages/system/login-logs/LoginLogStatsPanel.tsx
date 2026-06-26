@@ -305,7 +305,7 @@ export default function LoginLogStatsPanel() {
         </div>
 
         <ChartShell title="每日登录趋势（成功 / 失败）">
-          {isEmptyValues(trendData) ? <EmptyChart height={230} /> : (
+          {isEmptyValues(filledDailyStats) ? <EmptyChart height={230} /> : (
             <AreaChart {...trendSpec} options={chartOptions} height={230} />
           )}
         </ChartShell>
