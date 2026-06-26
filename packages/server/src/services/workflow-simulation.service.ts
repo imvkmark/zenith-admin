@@ -6,20 +6,26 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { users, workflowDefinitions } from '../db/schema';
 import { currentUser } from '../lib/context';
-import { advanceFlow, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
+import { advanceFlow, evaluateCondition, evaluateConditionGroups, getInitialTasks, validateFlowData, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
 import { tenantCondition } from '../lib/tenant';
 import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type {
   SimulateWorkflowInput,
+  WorkflowConditionGroup,
+  WorkflowEdge,
+  WorkflowEdgeCondition,
   WorkflowFlowData,
   WorkflowNodeConfig,
   WorkflowSimulationEdgeResult,
+  WorkflowSimulationHealthIssue,
   WorkflowSimulationNodeState,
   WorkflowSimulationResult,
   WorkflowSimulationTimelineItem,
+  WorkflowStarterContext,
 } from '@zenith/shared';
 
 type SimulatedRuntimeStatus = 'pending' | 'waiting' | 'approved' | 'rejected' | 'skipped';
+type SimulationDecision = NonNullable<SimulateWorkflowInput['decisions']>[number];
 
 interface SimulatedTask {
   nodeKey: string;
@@ -35,6 +41,7 @@ interface SimulationContext {
   flowData: WorkflowFlowData;
   formData: Record<string, unknown>;
   initiatorId: number;
+  starter: WorkflowStarterContext;
   maxSteps: number;
   timeline: WorkflowSimulationTimelineItem[];
   nodeStates: Record<string, WorkflowSimulationNodeState>;
@@ -42,6 +49,8 @@ interface SimulationContext {
   pendingTasks: SimulatedTask[];
   warnings: string[];
   visitedNodeKeys: Set<string>;
+  decisionsByNode: Map<string, SimulationDecision[]>;
+  terminalResult?: WorkflowSimulationResult['result'];
 }
 
 const BLOCKING_NODE_TYPES = new Set<WorkflowNodeConfig['type']>(['delay', 'trigger', 'subProcess']);
@@ -282,7 +291,102 @@ function getNodeByKey(flowData: WorkflowFlowData, nodeKey: string): WorkflowNode
   return flowData.nodes.find((node) => node.data.key === nodeKey)?.data ?? null;
 }
 
-function buildEdgeResults(flowData: WorkflowFlowData, visitedNodeKeys: Set<string>): WorkflowSimulationEdgeResult[] {
+function edgeHasCondition(edge: WorkflowEdge): boolean {
+  return !!edge.condition || !!edge.conditions?.length;
+}
+
+function isDefaultEdge(edge: WorkflowEdge, targetNode?: WorkflowNodeConfig): boolean {
+  return !!edge.isDefault || !!targetNode?.isDefault || !edgeHasCondition(edge);
+}
+
+const CONDITION_OPERATOR_LABEL: Record<WorkflowEdgeCondition['operator'], string> = {
+  eq: '=',
+  neq: '!=',
+  gt: '>',
+  gte: '>=',
+  lt: '<',
+  lte: '<=',
+  in: '属于',
+  notIn: '不属于',
+  contains: '包含',
+  isEmpty: '为空',
+  isNotEmpty: '不为空',
+  between: '介于',
+  withinDays: '距今 N 天内',
+  beforeDays: '早于 N 天前',
+};
+
+function valueText(value: unknown): string {
+  if (value === undefined) return '未填写';
+  if (value === null) return '空';
+  if (Array.isArray(value)) return value.map(valueText).join('、');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function describeCondition(condition: WorkflowEdgeCondition): string {
+  const source = condition.source === 'starter' ? '发起人' : '表单';
+  const aggregate = condition.aggregate
+    ? `.${condition.aggregate}${condition.aggregateField ? `(${condition.aggregateField})` : ''}`
+    : '';
+  const operator = CONDITION_OPERATOR_LABEL[condition.operator] ?? condition.operator;
+  if (condition.operator === 'isEmpty' || condition.operator === 'isNotEmpty') {
+    return `${source}.${condition.field}${aggregate} ${operator}`;
+  }
+  return `${source}.${condition.field}${aggregate} ${operator} ${valueText(condition.value)}`;
+}
+
+function describeConditionGroups(groups: WorkflowConditionGroup[]): string {
+  return groups.map((group) => {
+    const joiner = group.type === 'or' ? ' 或 ' : ' 且 ';
+    return group.rules.map(describeCondition).join(joiner);
+  }).join('；');
+}
+
+function actualConditionValue(
+  condition: WorkflowEdgeCondition,
+  formData: Record<string, unknown>,
+  starter: WorkflowStarterContext,
+): unknown {
+  if (condition.source === 'starter') {
+    if (condition.field === 'user') return starter.userId;
+    if (condition.field === 'dept') return starter.deptIds;
+    if (condition.field === 'role') return starter.roleIds;
+    if (condition.field === 'post') return starter.postIds;
+    return undefined;
+  }
+
+  const raw = formData[condition.field];
+  if (!condition.aggregate) return raw;
+  const rows = Array.isArray(raw) ? raw : [];
+  if (condition.aggregate === 'count') return rows.length;
+  const nums = rows
+    .map((row) => Number(condition.aggregateField ? (row as Record<string, unknown>)?.[condition.aggregateField] : row))
+    .filter((num) => Number.isFinite(num));
+  const sum = nums.reduce((total, num) => total + num, 0);
+  return condition.aggregate === 'sum' ? sum : (nums.length > 0 ? sum / nums.length : 0);
+}
+
+function firstCondition(edge: WorkflowEdge): WorkflowEdgeCondition | null {
+  return edge.condition ?? edge.conditions?.find((group) => group.rules.length > 0)?.rules[0] ?? null;
+}
+
+function evaluateEdgeCondition(
+  edge: WorkflowEdge,
+  formData: Record<string, unknown>,
+  starter: WorkflowStarterContext,
+): boolean | null {
+  if (edge.conditions?.length) return evaluateConditionGroups(edge.conditions, formData, starter);
+  if (edge.condition) return evaluateCondition(edge.condition, formData, starter);
+  return null;
+}
+
+function buildEdgeResults(
+  flowData: WorkflowFlowData,
+  visitedNodeKeys: Set<string>,
+  formData: Record<string, unknown>,
+  starter: WorkflowStarterContext,
+): WorkflowSimulationEdgeResult[] {
   const nodeById = new Map(flowData.nodes.map((node) => [node.id, node.data]));
   return flowData.edges
     .filter((edge) => {
@@ -295,6 +399,20 @@ function buildEdgeResults(flowData: WorkflowFlowData, visitedNodeKeys: Set<strin
       const taken = !!sourceNode?.key && !!targetNode?.key
         && visitedNodeKeys.has(sourceNode.key)
         && visitedNodeKeys.has(targetNode.key);
+      const conditionMatched = evaluateEdgeCondition(edge, formData, starter);
+      const conditionSummary = edge.conditions?.length
+        ? describeConditionGroups(edge.conditions)
+        : edge.condition
+          ? describeCondition(edge.condition)
+          : null;
+      const first = firstCondition(edge);
+      const actualValue = first ? valueText(actualConditionValue(first, formData, starter)) : null;
+      const defaultEdge = isDefaultEdge(edge, targetNode);
+      const reason = conditionMatched !== null
+        ? `${conditionMatched ? '条件命中' : '条件未命中'}${conditionSummary ? `：${conditionSummary}` : ''}`
+        : defaultEdge
+          ? (taken ? '默认分支被采用' : '默认分支未采用')
+          : (taken ? '仿真路径经过此连线' : '仿真未经过此连线');
       return {
         edgeId: edge.id,
         source: edge.source,
@@ -303,9 +421,145 @@ function buildEdgeResults(flowData: WorkflowFlowData, visitedNodeKeys: Set<strin
         targetKey: targetNode?.key,
         label: edge.label ?? null,
         taken,
-        reason: taken ? '仿真路径经过此连线' : undefined,
+        reason,
+        conditionMatched,
+        conditionSummary,
+        actualValue,
       };
     });
+}
+
+function buildDecisionMap(decisions: SimulateWorkflowInput['decisions']): Map<string, SimulationDecision[]> {
+  const map = new Map<string, SimulationDecision[]>();
+  for (const decision of decisions ?? []) {
+    const list = map.get(decision.nodeKey) ?? [];
+    list.push(decision);
+    map.set(decision.nodeKey, list);
+  }
+  return map;
+}
+
+function findDecision(task: SimulatedTask, ctx: SimulationContext): SimulationDecision | null {
+  const decisions = ctx.decisionsByNode.get(task.nodeKey) ?? [];
+  return decisions.find((decision) => !decision.assigneeId || decision.assigneeId === task.assigneeId) ?? null;
+}
+
+function attachNextNodeKeys(ctx: SimulationContext, result: AdvanceResult | null): void {
+  if (!result || ctx.timeline.length === 0) return;
+  const keys = [
+    ...result.currentNodeKeys,
+    ...result.tasksToCreate.map((task) => task.nodeKey),
+  ];
+  if (result.finished) {
+    const endKeys = ctx.flowData.nodes
+      .filter((node) => node.data.type === 'end')
+      .map((node) => node.data.key);
+    keys.push(...endKeys);
+  }
+  const nextNodeKeys = [...new Set(keys.filter(Boolean))];
+  if (nextNodeKeys.length === 0) return;
+  ctx.timeline[ctx.timeline.length - 1] = {
+    ...ctx.timeline[ctx.timeline.length - 1],
+    nextNodeKeys,
+  };
+}
+
+function appendFlowHealthIssue(
+  issues: WorkflowSimulationHealthIssue[],
+  issue: WorkflowSimulationHealthIssue,
+): void {
+  issues.push(issue);
+}
+
+function buildHealthIssues(flowData: WorkflowFlowData, validationErrors: string[] = []): WorkflowSimulationHealthIssue[] {
+  const issues: WorkflowSimulationHealthIssue[] = validationErrors.map((message) => ({
+    level: 'error',
+    scope: 'flow',
+    message,
+    suggestion: '请先修复流程结构错误后再启动仿真',
+  }));
+  const nodeById = new Map(flowData.nodes.map((node) => [node.id, node.data]));
+  const inCount = new Map<string, number>();
+  const outCount = new Map<string, number>();
+  for (const edge of flowData.edges) {
+    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) {
+      appendFlowHealthIssue(issues, {
+        level: 'error',
+        scope: 'edge',
+        edgeId: edge.id,
+        message: '连线引用了不存在的节点',
+        suggestion: '删除异常连线或重新连接到有效节点',
+      });
+      continue;
+    }
+    outCount.set(edge.source, (outCount.get(edge.source) ?? 0) + 1);
+    inCount.set(edge.target, (inCount.get(edge.target) ?? 0) + 1);
+  }
+
+  const startNodes = flowData.nodes.filter((node) => node.data.type === 'start');
+  const endNodes = flowData.nodes.filter((node) => node.data.type === 'end');
+  if (startNodes.length === 0) {
+    appendFlowHealthIssue(issues, {
+      level: 'error',
+      scope: 'flow',
+      message: '流程缺少发起节点',
+      suggestion: '请保留一个发起人节点作为流程入口',
+    });
+  }
+  if (endNodes.length === 0) {
+    appendFlowHealthIssue(issues, {
+      level: 'warning',
+      scope: 'flow',
+      message: '流程缺少结束节点',
+      suggestion: '建议补充结束节点，便于判断流程是否自然完成',
+    });
+  }
+
+  for (const node of flowData.nodes) {
+    const data = node.data;
+    if (data.type !== 'start' && (inCount.get(node.id) ?? 0) === 0) {
+      appendFlowHealthIssue(issues, {
+        level: data.type === 'end' ? 'warning' : 'error',
+        scope: 'node',
+        nodeKey: data.key,
+        message: `${data.label || data.key} 没有上游连线`,
+        suggestion: '请确认该节点是否应接入主流程',
+      });
+    }
+    if (data.type !== 'end' && (outCount.get(node.id) ?? 0) === 0) {
+      appendFlowHealthIssue(issues, {
+        level: data.type === 'start' ? 'error' : 'warning',
+        scope: 'node',
+        nodeKey: data.key,
+        message: `${data.label || data.key} 没有下游连线`,
+        suggestion: '请为该节点连接下一步，或确认它是有意阻塞的节点',
+      });
+    }
+    if ((data.type === 'approve' || data.type === 'handler') && !data.assigneeType && data.approvalType !== 'autoApprove' && data.approvalType !== 'autoReject') {
+      appendFlowHealthIssue(issues, {
+        level: 'warning',
+        scope: 'node',
+        nodeKey: data.key,
+        message: `${data.label || data.key} 未配置处理人策略`,
+        suggestion: '建议配置处理人，或明确设置为空审批人处理策略',
+      });
+    }
+    if ((data.type === 'exclusiveGateway' || data.type === 'routeGateway' || data.type === 'inclusiveGateway') && (outCount.get(node.id) ?? 0) > 1) {
+      const outs = flowData.edges.filter((edge) => edge.source === node.id);
+      const hasDefault = outs.some((edge) => isDefaultEdge(edge, nodeById.get(edge.target)));
+      if (!hasDefault) {
+        appendFlowHealthIssue(issues, {
+          level: 'warning',
+          scope: 'node',
+          nodeKey: data.key,
+          message: `${data.label || data.key} 缺少默认分支`,
+          suggestion: '建议保留一个默认分支，避免测试数据不命中任何条件时流程停住',
+        });
+      }
+    }
+  }
+
+  return issues;
 }
 
 async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promise<AdvanceResult | null> {
@@ -313,6 +567,8 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
   const assignees = task.assigneeId
     ? [{ id: task.assigneeId, name: nameMap.get(task.assigneeId) ?? `用户#${task.assigneeId}` }]
     : [];
+  const decision = findDecision(task, ctx);
+  if (decision?.formPatch) Object.assign(ctx.formData, decision.formPatch);
 
   ctx.visitedNodeKeys.add(task.nodeKey);
 
@@ -325,8 +581,10 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
       assignees,
       decision: 'auto',
       reason: task.reason ?? '节点自动拒绝',
+      detail: '节点配置或空审批人策略触发了自动拒绝',
     });
     markNode(ctx, task.nodeKey, { status: 'error', message: task.reason });
+    ctx.terminalResult = 'rejected';
     return null;
   }
 
@@ -339,10 +597,62 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
       assignees,
       decision: 'auto',
       reason: task.reason,
+      detail: task.status === 'approved' ? '无需人工操作，仿真自动继续推进' : '该节点不阻塞流程，仿真自动跳过',
     });
     ctx.completedKeys.add(task.nodeKey);
     markNode(ctx, task.nodeKey, { status: 'done', message: task.reason });
-    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, await buildStarterContext(ctx.initiatorId));
+    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
+  }
+
+  if (decision?.action === 'reject') {
+    const reason = decision.reason ?? '仿真手动拒绝';
+    appendTimeline(ctx, {
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType,
+      status: 'rejected',
+      assignees,
+      decision: 'reject',
+      reason,
+      detail: '按当前仿真用例的预设动作终止流程',
+    });
+    markNode(ctx, task.nodeKey, { status: 'error', message: reason });
+    ctx.terminalResult = 'rejected';
+    return null;
+  }
+
+  if (decision?.action === 'wait') {
+    const reason = decision.reason ?? '仿真手动暂停在此节点';
+    appendTimeline(ctx, {
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType,
+      status: 'waiting',
+      assignees,
+      decision: 'wait',
+      reason,
+      detail: '仿真按用户选择停在当前节点，便于观察待办状态',
+    });
+    markNode(ctx, task.nodeKey, { status: 'active', message: reason });
+    ctx.terminalResult = 'waiting';
+    return null;
+  }
+
+  if (decision?.action === 'skip') {
+    const reason = decision.reason ?? '仿真手动跳过';
+    appendTimeline(ctx, {
+      nodeKey: task.nodeKey,
+      nodeName: task.nodeName,
+      nodeType: task.nodeType,
+      status: 'skipped',
+      assignees,
+      decision: 'skip',
+      reason,
+      detail: '按当前仿真用例跳过该节点并继续推进',
+    });
+    ctx.completedKeys.add(task.nodeKey);
+    markNode(ctx, task.nodeKey, { status: 'skipped', message: reason });
+    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
   }
 
   if (BLOCKING_NODE_TYPES.has(task.nodeType)) {
@@ -353,12 +663,14 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
       status: 'waiting',
       assignees,
       reason: `${task.reason}，仿真已模拟继续`,
+      detail: '当前仿真启用了模拟继续，不会真实等待、不触发外呼、也不会创建子流程',
     });
     ctx.completedKeys.add(task.nodeKey);
     markNode(ctx, task.nodeKey, { status: 'done', message: '仿真模拟继续' });
-    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, await buildStarterContext(ctx.initiatorId));
+    return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
   }
 
+  const manualApprove = decision?.action === 'approve';
   appendTimeline(ctx, {
     nodeKey: task.nodeKey,
     nodeName: task.nodeName,
@@ -366,38 +678,43 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
     status: 'approved',
     assignees,
     decision: 'approve',
-    reason: '仿真默认通过',
+    reason: manualApprove ? (decision.reason ?? '仿真手动通过') : '仿真默认通过',
+    detail: manualApprove ? '按当前仿真用例的预设动作继续推进' : '未预设动作，仿真默认通过当前人工节点',
   });
   ctx.completedKeys.add(task.nodeKey);
   markNode(ctx, task.nodeKey, { status: 'done' });
-  return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, await buildStarterContext(ctx.initiatorId));
+  return advanceFlow(ctx.flowData, task.nodeKey, ctx.formData, ctx.completedKeys, ctx.starter);
 }
 
 export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<WorkflowSimulationResult> {
   const flowData = await resolveFlowData(input);
+  const requestUser = currentUser();
+  const initiatorId = input.starterUserId ?? requestUser.userId;
+  const starter = await buildStarterContext(initiatorId);
+  const maxSteps = input.options?.maxSteps ?? 100;
+  const formData = { ...(input.formData ?? {}) };
   const validation = validateFlowData(flowData);
   const warnings: string[] = [];
+  const healthIssues = buildHealthIssues(flowData, validation.errors);
   if (!validation.valid) {
     return {
       valid: false,
       warnings: validation.errors,
       result: 'invalid',
       timeline: [],
-      edgeResults: buildEdgeResults(flowData, new Set()),
+      edgeResults: buildEdgeResults(flowData, new Set(), formData, starter),
       nodeStates: {},
+      healthIssues,
+      pathSignature: [],
     };
   }
 
-  const requestUser = currentUser();
-  const initiatorId = input.starterUserId ?? requestUser.userId;
-  const starter = await buildStarterContext(initiatorId);
-  const maxSteps = input.options?.maxSteps ?? 100;
-  const formData = { ...(input.formData ?? {}) };
   const startNodeKey = flowData.nodes.find((node) => node.data.type === 'start')?.data.key ?? 'start';
   const ctx: SimulationContext = {
     flowData,
     formData,
     initiatorId,
+    starter,
     maxSteps,
     timeline: [],
     nodeStates: {},
@@ -405,6 +722,7 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
     pendingTasks: [],
     warnings,
     visitedNodeKeys: new Set(['start', startNodeKey]),
+    decisionsByNode: buildDecisionMap(input.decisions),
   };
 
   const starterNameMap = await resolveUserNames([initiatorId]);
@@ -425,15 +743,13 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
     if (advanceResults.length > 0) {
       const next = advanceResults.shift();
       if (!next) continue;
-      if (next.rejected) {
-        result = 'rejected';
-        break;
-      }
       if (next.finished) {
         result = 'finished';
       }
       await materializeResult(next, ctx);
-      if (next.finished && ctx.pendingTasks.length === 0 && advanceResults.length === 0) break;
+      attachNextNodeKeys(ctx, next);
+      if (next.rejected) result = 'rejected';
+      if ((next.finished || next.rejected) && ctx.pendingTasks.length === 0 && advanceResults.length === 0) break;
       continue;
     }
 
@@ -446,8 +762,9 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
     const nodeConfig = getNodeByKey(flowData, task.nodeKey);
     if (nodeConfig) ctx.visitedNodeKeys.add(nodeConfig.key);
     const completion = await completeTask(task, ctx);
-    if (task.status === 'rejected') {
-      result = 'rejected';
+    attachNextNodeKeys(ctx, completion);
+    if (ctx.terminalResult) {
+      result = ctx.terminalResult;
       break;
     }
     if (completion) advanceResults.push(completion);
@@ -469,7 +786,9 @@ export async function simulateWorkflow(input: SimulateWorkflowInput): Promise<Wo
     warnings: ctx.warnings,
     result,
     timeline: ctx.timeline,
-    edgeResults: buildEdgeResults(flowData, ctx.visitedNodeKeys),
+    edgeResults: buildEdgeResults(flowData, ctx.visitedNodeKeys, ctx.formData, ctx.starter),
     nodeStates: ctx.nodeStates,
+    healthIssues,
+    pathSignature: ctx.timeline.map((item) => item.nodeKey),
   };
 }

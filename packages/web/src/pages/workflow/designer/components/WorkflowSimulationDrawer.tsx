@@ -1,12 +1,13 @@
 /**
  * 流程设计器仿真抽屉：收集测试表单数据并展示 dry-run 时间线。
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Banner, Button, Empty, Select, SideSheet, Space, Spin, Tag, TextArea, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, Flag, Minus, Play, Plus, RotateCcw, Send, XCircle } from 'lucide-react';
-import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationResult } from '@zenith/shared';
+import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, Flag, GitCompare, ListChecks, Minus, Pause, Play, Plus, RotateCcw, Save, Send, Wand2, XCircle } from 'lucide-react';
+import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared';
 import { request } from '@/utils/request';
+import { formatDateForApi, formatDateTimeForApi } from '@/utils/date';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import FlowRenderer from './FlowRenderer';
 import { timelineDot } from '@/components/workflow/timeline-dot';
@@ -28,6 +29,17 @@ interface WorkflowSimulationDrawerProps {
   onClose: () => void;
 }
 
+interface SavedSimulationCase {
+  id: string;
+  name: string;
+  createdAt: string;
+  starterUserId?: number;
+  formData: Record<string, unknown>;
+  decisions: WorkflowSimulationDecision[];
+}
+
+const SAVED_CASE_STORAGE_KEY = 'zenith.workflow.simulation.cases';
+
 const RESULT_META: Record<WorkflowSimulationResult['result'], { label: string; color: 'green' | 'red' | 'orange' | 'grey' | 'blue' }> = {
   finished: { label: '已完成', color: 'green' },
   rejected: { label: '已拒绝', color: 'red' },
@@ -45,6 +57,12 @@ const STATUS_META: Record<WorkflowSimulationResult['timeline'][number]['status']
   autoApproved: { label: '自动通过', color: 'var(--semi-color-success)', icon: CheckCircle2 },
   skipped: { label: '跳过', color: 'var(--semi-color-tertiary)', icon: CircleDashed },
   blocked: { label: '阻塞', color: 'var(--semi-color-warning)', icon: AlertTriangle },
+};
+
+const HEALTH_META: Record<WorkflowSimulationHealthIssue['level'], { label: string; color: 'red' | 'orange' | 'blue' }> = {
+  error: { label: '错误', color: 'red' },
+  warning: { label: '风险', color: 'orange' },
+  info: { label: '提示', color: 'blue' },
 };
 
 function parseJsonRecord(raw: string): Record<string, unknown> | null {
@@ -88,18 +106,178 @@ function pickValidationMessage(error: unknown): string {
   return readMessage(error) ?? '请先补全仿真表单必填项';
 }
 
+function visitFormFields(fields: WorkflowFormField[], visitor: (field: WorkflowFormField) => void): void {
+  for (const field of fields) {
+    visitor(field);
+    if (field.children) visitFormFields(field.children, visitor);
+    if (field.columns) field.columns.forEach((col) => visitFormFields(col.fields, visitor));
+    if (field.panes) field.panes.forEach((pane) => visitFormFields(pane.fields, visitor));
+  }
+}
+
 function defaultFormDataFromFields(fields: WorkflowFormField[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const visit = (items: WorkflowFormField[]) => {
-    for (const field of items) {
-      if (field.defaultValue !== undefined) out[field.key] = field.defaultValue;
-      if (field.children) visit(field.children);
-      if (field.columns) field.columns.forEach((col) => visit(col.fields));
-      if (field.panes) field.panes.forEach((pane) => visit(pane.fields));
-    }
-  };
-  visit(fields);
+  visitFormFields(fields, (field) => {
+    if (field.defaultValue !== undefined) out[field.key] = field.defaultValue;
+  });
   return out;
+}
+
+function firstOption(field: WorkflowFormField): string | undefined {
+  return field.optionItems?.find((item) => !item.disabled)?.value ?? field.options?.[0];
+}
+
+function mockValueForField(field: WorkflowFormField, users: UserOption[]): unknown {
+  if (field.defaultValue !== undefined) return field.defaultValue;
+  const option = firstOption(field) ?? '选项A';
+  const firstUserId = users[0]?.id ?? 1;
+  switch (field.type) {
+    case 'text':
+    case 'textarea':
+    case 'autoComplete':
+    case 'richtext':
+      return `测试${field.label}`;
+    case 'phone':
+      return '13800138000';
+    case 'email':
+      return 'test@example.com';
+    case 'url':
+      return 'https://example.com';
+    case 'idCard':
+      return '110101199001011234';
+    case 'password':
+    case 'pinCode':
+      return '123456';
+    case 'number':
+    case 'amount':
+    case 'slider':
+    case 'rate':
+    case 'formula':
+      return field.min ?? 100;
+    case 'date':
+      return formatDateForApi(new Date());
+    case 'dateRange':
+      return [formatDateForApi(new Date()), formatDateForApi(new Date())];
+    case 'time':
+      return '09:00';
+    case 'select':
+    case 'radio':
+    case 'dictSelect':
+      return option;
+    case 'multiSelect':
+    case 'checkbox':
+    case 'tags':
+      return [option];
+    case 'switch':
+      return true;
+    case 'colorPicker':
+      return '#1677ff';
+    case 'userSelect':
+      return field.multiple ? [firstUserId] : firstUserId;
+    case 'deptSelect':
+      return field.multiple ? [1] : 1;
+    case 'detail': {
+      const row: Record<string, unknown> = {};
+      for (const child of field.children ?? []) {
+        const value = mockValueForField(child, users);
+        if (value !== undefined) row[child.key] = value;
+      }
+      return Object.keys(row).length > 0 ? [row] : [];
+    }
+    case 'attachment':
+    case 'image':
+      return [{ name: '测试附件.pdf', url: 'https://example.com/mock.pdf', size: 1024 }];
+    case 'signature':
+      return 'data:image/png;base64,simulation-signature';
+    case 'relation':
+      return null;
+    case 'serialNumber':
+    case 'description':
+    case 'row':
+    case 'divider':
+    case 'group':
+    case 'tabs':
+    case 'steps':
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+function generateMockFormData(fields: WorkflowFormField[], users: UserOption[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  visitFormFields(fields, (field) => {
+    const value = mockValueForField(field, users);
+    if (value !== undefined) out[field.key] = value;
+  });
+  return out;
+}
+
+function readSavedCases(): SavedSimulationCase[] {
+  try {
+    const raw = localStorage.getItem(SAVED_CASE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is SavedSimulationCase => !!item && typeof item === 'object' && typeof (item as SavedSimulationCase).id === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedCases(cases: SavedSimulationCase[]): void {
+  localStorage.setItem(SAVED_CASE_STORAGE_KEY, JSON.stringify(cases.slice(0, 20)));
+}
+
+function buildLocalHealthIssues(flowData: WorkflowFlowData): WorkflowSimulationHealthIssue[] {
+  const issues: WorkflowSimulationHealthIssue[] = [];
+  const nodeById = new Map(flowData.nodes.map((node) => [node.id, node.data]));
+  const inCount = new Map<string, number>();
+  const outCount = new Map<string, number>();
+
+  for (const edge of flowData.edges) {
+    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) {
+      issues.push({ level: 'error', scope: 'edge', edgeId: edge.id, message: '连线引用了不存在的节点', suggestion: '请删除异常连线后重新连接' });
+      continue;
+    }
+    outCount.set(edge.source, (outCount.get(edge.source) ?? 0) + 1);
+    inCount.set(edge.target, (inCount.get(edge.target) ?? 0) + 1);
+  }
+
+  if (!flowData.nodes.some((node) => node.data.type === 'start')) {
+    issues.push({ level: 'error', scope: 'flow', message: '流程缺少发起节点', suggestion: '请保留一个发起人节点作为入口' });
+  }
+  if (!flowData.nodes.some((node) => node.data.type === 'end')) {
+    issues.push({ level: 'warning', scope: 'flow', message: '流程缺少结束节点', suggestion: '建议补充结束节点，便于判断流程完成' });
+  }
+
+  for (const node of flowData.nodes) {
+    if (node.data.type !== 'start' && (inCount.get(node.id) ?? 0) === 0) {
+      issues.push({ level: node.data.type === 'end' ? 'warning' : 'error', scope: 'node', nodeKey: node.data.key, message: `${node.data.label || node.data.key} 没有上游连线`, suggestion: '请确认该节点是否应接入主流程' });
+    }
+    if (node.data.type !== 'end' && (outCount.get(node.id) ?? 0) === 0) {
+      issues.push({ level: node.data.type === 'start' ? 'error' : 'warning', scope: 'node', nodeKey: node.data.key, message: `${node.data.label || node.data.key} 没有下游连线`, suggestion: '请为该节点连接下一步' });
+    }
+  }
+  return issues;
+}
+
+function nodeLabel(flowData: WorkflowFlowData, key?: string): string {
+  if (!key) return '-';
+  return flowData.nodes.find((node) => node.data.key === key)?.data.label ?? key;
+}
+
+function nodeTypeCanDecide(item: WorkflowSimulationResult['timeline'][number] | null): boolean {
+  return !!item && ['approve', 'handler'].includes(String(item.nodeType));
+}
+
+function uniquePath(result: WorkflowSimulationResult | null): string[] {
+  return result?.pathSignature?.length ? result.pathSignature : (result?.timeline.map((item) => item.nodeKey) ?? []);
+}
+
+function pathText(result: WorkflowSimulationResult | null, flowData: WorkflowFlowData): string {
+  const keys = uniquePath(result);
+  return keys.length ? keys.map((key) => nodeLabel(flowData, key)).join(' -> ') : '暂无路径';
 }
 
 export default function WorkflowSimulationDrawer({
@@ -113,22 +291,72 @@ export default function WorkflowSimulationDrawer({
   onClose,
 }: Readonly<WorkflowSimulationDrawerProps>) {
   const formApi = useRef<FormApi | null>(null);
+  const replayTimer = useRef<number | null>(null);
   const [starterUserId, setStarterUserId] = useState<number | undefined>(undefined);
   const [formData, setFormData] = useState<Record<string, unknown>>(() => defaultFormDataFromFields(formFields));
+  const [formRenderKey, setFormRenderKey] = useState(0);
   const [jsonDraft, setJsonDraft] = useState('{}');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<WorkflowSimulationResult | null>(null);
+  const [previousResult, setPreviousResult] = useState<WorkflowSimulationResult | null>(null);
   const [activeStep, setActiveStep] = useState(0);
   const [graphZoom, setGraphZoom] = useState(90);
+  const [decisions, setDecisions] = useState<WorkflowSimulationDecision[]>([]);
+  const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
+  const [savedCases, setSavedCases] = useState<SavedSimulationCase[]>(() => readSavedCases());
+  const [selectedCaseId, setSelectedCaseId] = useState<string | undefined>(undefined);
+
+  useEffect(() => () => {
+    if (replayTimer.current !== null) window.clearInterval(replayTimer.current);
+  }, []);
 
   const userOptions = useMemo(
     () => users.map((user) => ({ value: user.id, label: `${user.nickname} (#${user.id})` })),
     [users],
   );
+  const savedCaseOptions = useMemo(
+    () => savedCases.map((item) => ({ value: item.id, label: `${item.name} · ${item.createdAt}` })),
+    [savedCases],
+  );
+  const localHealthIssues = useMemo(() => buildLocalHealthIssues(flowData), [flowData]);
+  const healthIssues = result?.healthIssues?.length ? result.healthIssues : localHealthIssues;
   const totalSteps = result?.timeline.length ?? 0;
   const currentStep = result && totalSteps > 0 ? Math.min(Math.max(activeStep, 1), totalSteps) : 0;
   const currentItem = currentStep > 0 ? result?.timeline[currentStep - 1] : null;
   const progressPercent = totalSteps > 0 ? Math.round((currentStep / totalSteps) * 100) : 0;
+  const currentDecision = currentItem ? decisions.find((item) => item.nodeKey === currentItem.nodeKey) : undefined;
+  const currentEdges = useMemo(() => {
+    if (!result || !currentItem) return [];
+    const outgoing = result.edgeResults.filter((edge) => edge.sourceKey === currentItem.nodeKey);
+    if (outgoing.length > 0) return outgoing;
+    return result.edgeResults.filter((edge) => edge.targetKey === currentItem.nodeKey || edge.taken);
+  }, [currentItem, result]);
+  const pathCompare = useMemo(() => {
+    if (!previousResult || !result) return null;
+    const before = uniquePath(previousResult);
+    const after = uniquePath(result);
+    const changedIndex = after.findIndex((key, index) => key !== before[index]);
+    return {
+      before: pathText(previousResult, flowData),
+      after: pathText(result, flowData),
+      added: after.filter((key) => !before.includes(key)).map((key) => nodeLabel(flowData, key)),
+      removed: before.filter((key) => !after.includes(key)).map((key) => nodeLabel(flowData, key)),
+      changedAt: changedIndex >= 0 ? changedIndex + 1 : null,
+    };
+  }, [flowData, previousResult, result]);
+
+  const stopReplay = () => {
+    if (replayTimer.current !== null) {
+      window.clearInterval(replayTimer.current);
+      replayTimer.current = null;
+    }
+  };
+
+  const applyFormValues = (values: Record<string, unknown>) => {
+    setFormData(values);
+    setJsonDraft(JSON.stringify(values, null, 2));
+    setFormRenderKey((key) => key + 1);
+  };
 
   const effectiveFormData = async () => {
     if (formFields.length > 0 && formApi.current) {
@@ -148,16 +376,23 @@ export default function WorkflowSimulationDrawer({
     return parsed;
   };
 
-  const runSimulation = async () => {
-    const values = await effectiveFormData();
+  const runSimulation = async (
+    overrideValues?: Record<string, unknown>,
+    overrideDecisions?: WorkflowSimulationDecision[],
+    toastText = '仿真已启动',
+  ) => {
+    const values = overrideValues ?? await effectiveFormData();
     if (!values) return;
+    const nextDecisions = overrideDecisions ?? decisions;
     setSubmitting(true);
+    stopReplay();
     try {
       const res = await request.post<WorkflowSimulationResult>('/api/workflows/definitions/simulate', {
         definitionId: definitionId ?? undefined,
         flowData,
         formData: values,
         starterUserId,
+        decisions: nextDecisions,
         options: {
           maxSteps: 160,
           mockDelay: true,
@@ -166,9 +401,12 @@ export default function WorkflowSimulationDrawer({
         },
       });
       if (res.code === 0 && res.data) {
+        if (result) setPreviousResult(result);
         setResult(res.data);
+        setFormData(values);
+        setDecisions(nextDecisions);
         setActiveStep(res.data.timeline.length > 0 ? 1 : 0);
-        Toast.success('仿真已启动');
+        Toast.success(toastText);
       }
     } finally {
       setSubmitting(false);
@@ -176,19 +414,123 @@ export default function WorkflowSimulationDrawer({
   };
 
   const resetResult = () => {
+    stopReplay();
     setResult(null);
+    setPreviousResult(null);
     setActiveStep(0);
     setJsonDraft('{}');
-    setFormData(defaultFormDataFromFields(formFields));
+    setDecisions([]);
+    setBreakpoints(new Set());
+    setSelectedCaseId(undefined);
+    applyFormValues(defaultFormDataFromFields(formFields));
     formApi.current?.reset();
   };
 
   const moveStep = (nextStep: number) => {
+    stopReplay();
     if (!result || totalSteps === 0) {
       setActiveStep(0);
       return;
     }
     setActiveStep(Math.max(1, Math.min(totalSteps, nextStep)));
+  };
+
+  const generateTestData = () => {
+    const values = formFields.length > 0
+      ? generateMockFormData(formFields, users)
+      : { amount: 1200, reason: '测试申请', urgent: false };
+    applyFormValues(values);
+    Toast.success('已生成测试表单数据');
+  };
+
+  const upsertDecision = (action: WorkflowSimulationDecision['action']) => {
+    if (!currentItem) return;
+    const reason = action === 'approve'
+      ? '调试器手动通过'
+      : action === 'reject'
+        ? '调试器手动拒绝'
+        : action === 'skip'
+          ? '调试器手动跳过'
+          : '调试器暂停等待';
+    const next = decisions.filter((item) => item.nodeKey !== currentItem.nodeKey);
+    next.push({ nodeKey: currentItem.nodeKey, action, reason });
+    setDecisions(next);
+    void runSimulation(undefined, next, `已按「${reason.replace('调试器手动', '').replace('调试器', '')}」重放仿真`);
+  };
+
+  const clearCurrentDecision = () => {
+    if (!currentItem) return;
+    const next = decisions.filter((item) => item.nodeKey !== currentItem.nodeKey);
+    setDecisions(next);
+    void runSimulation(undefined, next, '已清除当前节点动作并重放');
+  };
+
+  const toggleBreakpoint = () => {
+    if (!currentItem) return;
+    setBreakpoints((prev) => {
+      const next = new Set(prev);
+      if (next.has(currentItem.nodeKey)) next.delete(currentItem.nodeKey);
+      else next.add(currentItem.nodeKey);
+      return next;
+    });
+  };
+
+  const replay = () => {
+    if (!result || totalSteps === 0) return;
+    stopReplay();
+    let nextStep = 1;
+    setActiveStep(nextStep);
+    replayTimer.current = window.setInterval(() => {
+      nextStep += 1;
+      if (nextStep > totalSteps) {
+        stopReplay();
+        return;
+      }
+      setActiveStep(nextStep);
+      const item = result.timeline[nextStep - 1];
+      if (nextStep > 1 && item && breakpoints.has(item.nodeKey)) stopReplay();
+    }, 720);
+  };
+
+  const runToBreakpoint = () => {
+    if (!result || totalSteps === 0) return;
+    const index = result.timeline.findIndex((item, i) => i + 1 > currentStep && breakpoints.has(item.nodeKey));
+    moveStep(index >= 0 ? index + 1 : totalSteps);
+  };
+
+  const saveCase = async () => {
+    const values = await effectiveFormData();
+    if (!values) return;
+    const name = window.prompt('请输入用例名称', `仿真用例 ${savedCases.length + 1}`);
+    if (!name?.trim()) return;
+    const item: SavedSimulationCase = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: name.trim(),
+      createdAt: formatDateTimeForApi(new Date()),
+      starterUserId,
+      formData: values,
+      decisions,
+    };
+    const next = [item, ...savedCases.filter((saved) => saved.name !== item.name)].slice(0, 20);
+    setSavedCases(next);
+    writeSavedCases(next);
+    setSelectedCaseId(item.id);
+    Toast.success('仿真用例已保存');
+  };
+
+  const loadCase = (caseId: string | number | unknown) => {
+    const id = typeof caseId === 'string' ? caseId : undefined;
+    setSelectedCaseId(id);
+    if (!id) return;
+    const item = savedCases.find((saved) => saved.id === id);
+    if (!item) return;
+    setStarterUserId(item.starterUserId);
+    setDecisions(item.decisions);
+    applyFormValues(item.formData);
+    setResult(null);
+    setPreviousResult(null);
+    setActiveStep(0);
+    Toast.success('已载入仿真用例');
   };
 
   const simulationNodeRuntime = useMemo(() => {
@@ -290,6 +632,7 @@ export default function WorkflowSimulationDrawer({
                 <div className="fd-simulation-timeline-item__head">
                   <Typography.Text strong>{item.nodeName}</Typography.Text>
                   <Tag size="small" color="grey">{item.nodeType}</Tag>
+                  {breakpoints.has(item.nodeKey) && <Tag size="small" color="orange">断点</Tag>}
                   <Tag size="small" color={future ? 'grey' : item.status === 'rejected' ? 'red' : item.status === 'waiting' ? 'orange' : active ? 'blue' : 'green'}>
                     {statusLabel}
                   </Tag>
@@ -316,6 +659,7 @@ export default function WorkflowSimulationDrawer({
   };
 
   const resultMeta = result ? RESULT_META[result.result] : null;
+  const canDecide = nodeTypeCanDecide(currentItem);
 
   return (
     <SideSheet
@@ -332,29 +676,14 @@ export default function WorkflowSimulationDrawer({
             <Button onClick={onClose}>关闭</Button>
             {result && totalSteps > 0 ? (
               <>
-                <Button
-                  icon={<ChevronLeft size={14} />}
-                  onClick={() => moveStep(currentStep - 1)}
-                  disabled={currentStep <= 1}
-                >
-                  上一步
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<ChevronRight size={14} />}
-                  onClick={() => moveStep(currentStep + 1)}
-                  disabled={currentStep >= totalSteps}
-                >
+                <Button icon={<ChevronLeft size={14} />} onClick={() => moveStep(currentStep - 1)} disabled={currentStep <= 1}>上一步</Button>
+                <Button type="primary" icon={<ChevronRight size={14} />} onClick={() => moveStep(currentStep + 1)} disabled={currentStep >= totalSteps}>
                   {currentStep >= totalSteps ? '已到终点' : '下一步'}
                 </Button>
-                <Button icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>
-                  重新启动
-                </Button>
+                <Button icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation(undefined, undefined, '仿真已重新启动')}>重新启动</Button>
               </>
             ) : (
-              <Button type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>
-                启动仿真
-              </Button>
+              <Button type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>启动仿真</Button>
             )}
           </Space>
         </div>
@@ -363,9 +692,15 @@ export default function WorkflowSimulationDrawer({
       <div className="fd-simulation-drawer__body">
         <aside className="fd-simulation-panel">
           <section className="fd-simulation-section">
-            <div className="fd-simulation-section__title">仿真输入</div>
+            <div className="fd-simulation-section__title">
+              仿真输入
+              <Space spacing={4}>
+                <Button size="small" type="tertiary" icon={<Wand2 size={13} />} onClick={generateTestData}>生成测试数据</Button>
+                <Button size="small" type="tertiary" icon={<Save size={13} />} onClick={() => void saveCase()}>保存用例</Button>
+              </Space>
+            </div>
             <Select
-              style={{ width: '100%', marginBottom: 12 }}
+              style={{ width: '100%', marginBottom: 10 }}
               placeholder="默认使用当前登录用户发起"
               showClear
               filter
@@ -373,9 +708,19 @@ export default function WorkflowSimulationDrawer({
               value={starterUserId}
               onChange={(v) => setStarterUserId(typeof v === 'number' ? v : undefined)}
             />
+            <Select
+              style={{ width: '100%', marginBottom: 12 }}
+              placeholder="载入已保存的仿真用例"
+              showClear
+              filter
+              optionList={savedCaseOptions}
+              value={selectedCaseId}
+              onChange={loadCase}
+            />
             {formFields.length > 0 ? (
               <div className="fd-simulation-form-box">
                 <WorkflowFormRenderer
+                  key={formRenderKey}
                   fields={formFields}
                   initValues={formData}
                   getFormApi={(api) => { formApi.current = api; }}
@@ -384,12 +729,34 @@ export default function WorkflowSimulationDrawer({
                 />
               </div>
             ) : (
-              <TextArea
-                value={jsonDraft}
-                onChange={setJsonDraft}
-                rows={8}
-                placeholder={'{\n  "amount": 1200\n}'}
-              />
+              <TextArea value={jsonDraft} onChange={setJsonDraft} rows={8} placeholder={'{\n  "amount": 1200\n}'} />
+            )}
+          </section>
+
+          <section className="fd-simulation-section">
+            <div className="fd-simulation-section__title">
+              <span><Bug size={14} /> 体检</span>
+              <Tag color={healthIssues.some((item) => item.level === 'error') ? 'red' : healthIssues.length ? 'orange' : 'green'}>
+                {healthIssues.length ? `${healthIssues.length} 项` : '通过'}
+              </Tag>
+            </div>
+            {healthIssues.length > 0 ? (
+              <div className="fd-simulation-health-list">
+                {healthIssues.slice(0, 5).map((item, index) => {
+                  const meta = HEALTH_META[item.level];
+                  return (
+                    <div className="fd-simulation-health-item" key={`${item.scope}-${item.nodeKey ?? item.edgeId ?? index}`}>
+                      <Tag size="small" color={meta.color}>{meta.label}</Tag>
+                      <div>
+                        <Typography.Text size="small">{item.message}</Typography.Text>
+                        {item.suggestion && <Typography.Text size="small" type="tertiary">{item.suggestion}</Typography.Text>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <Typography.Text size="small" type="tertiary">流程结构未发现阻塞级问题。</Typography.Text>
             )}
           </section>
 
@@ -407,19 +774,17 @@ export default function WorkflowSimulationDrawer({
                   <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
                   {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
                 </div>
-                <div className="fd-simulation-player__bar">
-                  <span style={{ width: `${progressPercent}%` }} />
-                </div>
-                {currentItem?.reason && (
-                  <Typography.Text size="small" type="tertiary">
-                    {currentItem.reason}
-                  </Typography.Text>
-                )}
+                <div className="fd-simulation-player__bar"><span style={{ width: `${progressPercent}%` }} /></div>
+                <Space wrap spacing={6}>
+                  <Button size="small" icon={<Play size={13} />} onClick={replay}>重播</Button>
+                  <Button size="small" icon={<FastForward size={13} />} onClick={runToBreakpoint} disabled={breakpoints.size === 0}>运行到断点</Button>
+                  <Button size="small" icon={<Bookmark size={13} />} onClick={toggleBreakpoint} disabled={!currentItem}>
+                    {currentItem && breakpoints.has(currentItem.nodeKey) ? '取消断点' : '设为断点'}
+                  </Button>
+                </Space>
               </div>
             )}
-            <div className="fd-simulation-timeline">
-              {renderTimeline()}
-            </div>
+            <div className="fd-simulation-timeline">{renderTimeline()}</div>
           </section>
         </aside>
 
@@ -439,6 +804,70 @@ export default function WorkflowSimulationDrawer({
               <Button icon={<Plus size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphZoom((z) => Math.min(z + 10, 160))} />
               <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphZoom(90)} />
             </div>
+          </div>
+          <div className="fd-simulation-graph__meta">
+            <section className="fd-simulation-detail">
+              <div className="fd-simulation-detail__title">
+                <ListChecks size={14} />
+                <Typography.Text strong>当前步骤详情</Typography.Text>
+              </div>
+              {currentItem ? (
+                <>
+                  <div className="fd-simulation-detail__grid">
+                    <span>节点</span><strong>{currentItem.nodeName}</strong>
+                    <span>状态</span><strong>{STATUS_META[currentItem.status].label}</strong>
+                    <span>处理人</span><strong>{currentItem.assignees?.map((user) => user.name).join('、') || '-'}</strong>
+                    <span>下一步</span><strong>{currentItem.nextNodeKeys?.map((key) => nodeLabel(flowData, key)).join('、') || '-'}</strong>
+                  </div>
+                  {(currentItem.reason || currentItem.detail) && (
+                    <Typography.Text size="small" type="tertiary">{currentItem.detail ?? currentItem.reason}</Typography.Text>
+                  )}
+                  {canDecide && (
+                    <Space wrap spacing={6}>
+                      <Button size="small" type={currentDecision?.action === 'approve' ? 'primary' : 'tertiary'} icon={<CheckCircle2 size={13} />} onClick={() => upsertDecision('approve')}>通过</Button>
+                      <Button size="small" type={currentDecision?.action === 'reject' ? 'danger' : 'tertiary'} icon={<XCircle size={13} />} onClick={() => upsertDecision('reject')}>拒绝</Button>
+                      <Button size="small" type={currentDecision?.action === 'skip' ? 'primary' : 'tertiary'} icon={<CircleDashed size={13} />} onClick={() => upsertDecision('skip')}>跳过</Button>
+                      <Button size="small" type={currentDecision?.action === 'wait' ? 'primary' : 'tertiary'} icon={<Pause size={13} />} onClick={() => upsertDecision('wait')}>等待</Button>
+                      {currentDecision && <Button size="small" onClick={clearCurrentDecision}>清除动作</Button>}
+                    </Space>
+                  )}
+                </>
+              ) : (
+                <Typography.Text size="small" type="tertiary">启动仿真后可查看每一步的处理人、动作、下一节点和原因。</Typography.Text>
+              )}
+            </section>
+            <section className="fd-simulation-detail">
+              <div className="fd-simulation-detail__title">
+                <GitCompare size={14} />
+                <Typography.Text strong>路径与分支</Typography.Text>
+              </div>
+              {pathCompare && (
+                <div className="fd-simulation-path-compare">
+                  <Typography.Text size="small" type="tertiary">上次：{pathCompare.before}</Typography.Text>
+                  <Typography.Text size="small">本次：{pathCompare.after}</Typography.Text>
+                  <Typography.Text size="small" type="tertiary">
+                    {pathCompare.changedAt ? `第 ${pathCompare.changedAt} 步开始出现差异` : '路径没有变化'}
+                    {pathCompare.added.length ? `；新增 ${pathCompare.added.join('、')}` : ''}
+                    {pathCompare.removed.length ? `；未经过 ${pathCompare.removed.join('、')}` : ''}
+                  </Typography.Text>
+                </div>
+              )}
+              <div className="fd-simulation-edge-list">
+                {currentEdges.slice(0, 6).map((edge) => (
+                  <div className={`fd-simulation-edge-item${edge.taken ? ' fd-simulation-edge-item--taken' : ''}`} key={edge.edgeId}>
+                    <Tag size="small" color={edge.taken ? 'green' : 'grey'}>{edge.taken ? '命中' : '未命中'}</Tag>
+                    <div>
+                      <Typography.Text size="small">{nodeLabel(flowData, edge.sourceKey)}{' -> '}{nodeLabel(flowData, edge.targetKey)}</Typography.Text>
+                      <Typography.Text size="small" type="tertiary">
+                        {edge.reason ?? edge.conditionSummary ?? edge.label ?? '普通连线'}
+                        {edge.actualValue ? `；实际值：${edge.actualValue}` : ''}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                ))}
+                {currentEdges.length === 0 && <Typography.Text size="small" type="tertiary">当前步骤暂无可展示的分支判断。</Typography.Text>}
+              </div>
+            </section>
           </div>
           <div className="fd-simulation-graph__canvas">
             <div style={{ transform: `scale(${graphZoom / 100})`, transformOrigin: 'top center' }}>
