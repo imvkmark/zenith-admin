@@ -1,11 +1,11 @@
 /**
  * 报表数据集 Service
  * CRUD + 取数执行（preview 试跑 / data 取数）。
- * - sql：复用 db-admin 的 executeReadonlyQuery（只读事务 + 超时 + 分页上限）。
- * - api：统一走 http-client 的 httpRequest（防 SSRF），按 itemsPath 提取数组。
+ * - sql：只读事务（READ ONLY + statement_timeout + 行上限）+ ${param} 绑定参数（防注入）。
+ * - api：统一走 http-client 的 httpRequest（防 SSRF），按 itemsPath 提取数组，运行时参数注入。
  */
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
 import { reportDatasets } from '../db/schema';
 import { pageOffset } from '../lib/pagination';
@@ -13,11 +13,10 @@ import { escapeLike } from '../lib/where-helpers';
 import { formatDateTime } from '../lib/datetime';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { httpRequest } from '../lib/http-client';
-import { executeReadonlyQuery } from './db-admin.service';
 import { ensureDatasourceExists } from './report-datasource.service';
 import type { ReportDatasetRow } from '../db/schema';
 import type {
-  ReportDataset, ReportDataResult, ReportField, ReportDatasetContent,
+  ReportDataset, ReportDataResult, ReportField, ReportFieldType, ReportDatasetContent, ReportDatasetParam,
   ReportDatasourceType, ReportDatasourceConfig,
   ReportApiDatasourceConfig, ReportApiDatasetContent, ReportSqlDatasetContent,
   CreateReportDatasetInput, UpdateReportDatasetInput, ReportDatasetPreviewInput,
@@ -25,6 +24,7 @@ import type {
 
 const PREVIEW_LIMIT = 100;
 const MAX_LIMIT = 5000;
+const QUERY_TIMEOUT = '15s';
 
 type DatasetRowWithDs = ReportDatasetRow & { datasource?: { name: string } | null };
 
@@ -37,6 +37,7 @@ export function mapDataset(row: DatasetRowWithDs): ReportDataset {
     type: row.type,
     content: (row.content ?? {}) as ReportDatasetContent,
     fields: (row.fields ?? []) as ReportField[],
+    params: (row.params ?? []) as ReportDatasetParam[],
     status: row.status,
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
@@ -68,6 +69,67 @@ function navigatePath(json: unknown, path?: string | null): unknown {
     (acc, key) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[key.trim()] : undefined),
     json,
   );
+}
+
+function coerceParam(value: unknown, type: ReportFieldType): unknown {
+  if (value === null || value === undefined || value === '') return null;
+  if (type === 'number') { const n = Number(value); return Number.isFinite(n) ? n : null; }
+  if (type === 'boolean') return value === true || value === 'true' || value === 1 || value === '1';
+  return String(value);
+}
+
+/** 解析有效参数：数据集默认值 + 运行时传入，required 校验 */
+export function resolveDatasetParams(defs: ReportDatasetParam[] | undefined, provided?: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(provided ?? {}) };
+  for (const d of defs ?? []) {
+    const raw = provided?.[d.name];
+    const val = (raw === undefined || raw === null || raw === '') ? (d.defaultValue ?? null) : coerceParam(raw, d.type);
+    out[d.name] = val;
+    if (d.required && (val === null || val === undefined)) {
+      throw new HTTPException(400, { message: `缺少必填参数：${d.label || d.name}` });
+    }
+  }
+  return out;
+}
+
+/** 把 ${name} 编译为绑定参数（防注入）；未提供的绑定 null */
+function buildParamSql(text: string, params: Record<string, unknown>): SQL {
+  const segments = text.split(/\$\{\s*(\w+)\s*\}/g);
+  const chunks: SQL[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    if (i % 2 === 0) {
+      if (segments[i]) chunks.push(sql.raw(segments[i]));
+    } else {
+      const v = params[segments[i]];
+      chunks.push(sql`${v === undefined ? null : v}`);
+    }
+  }
+  return sql.join(chunks, sql.raw(''));
+}
+
+/** 只读执行 SQL（READ ONLY 事务 + 超时 + 行上限 + 参数绑定）*/
+async function runReadonlySql(text: string, params: Record<string, unknown>, limit: number): Promise<ReportDataResult> {
+  const trimmed = text.trim().replace(/;\s*$/, '');
+  if (!trimmed) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
+  const capped = Math.max(1, Math.min(limit || PREVIEW_LIMIT, MAX_LIMIT));
+  const isSelect = !/;/.test(trimmed) && /^(select|with)\b/i.test(trimmed);
+  const inner = buildParamSql(trimmed, params);
+  try {
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql.raw('SET LOCAL TRANSACTION READ ONLY'));
+      await tx.execute(sql.raw(`SET LOCAL statement_timeout = '${QUERY_TIMEOUT}'`));
+      if (isSelect) return await tx.execute(sql`SELECT * FROM (${inner}) AS _sub LIMIT ${capped}`);
+      return await tx.execute(inner);
+    });
+    const arr = (rows as unknown as Record<string, unknown>[]) ?? [];
+    const sliced = arr.slice(0, capped);
+    const columns = sliced.length ? Object.keys(sliced[0]) : [];
+    return { columns, rows: sliced, total: arr.length };
+  } catch (err) {
+    if (err instanceof HTTPException) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new HTTPException(400, { message: `SQL 执行失败：${msg}` });
+  }
 }
 
 export async function ensureDatasetExists(id: number): Promise<ReportDatasetRow> {
@@ -121,6 +183,7 @@ export async function createDataset(input: CreateReportDatasetInput): Promise<Re
       type: ds.type,
       content,
       fields: (input.fields ?? []) as ReportField[],
+      params: (input.params ?? []) as ReportDatasetParam[],
       status: input.status ?? 'enabled',
       remark: input.remark,
     }).returning();
@@ -147,6 +210,7 @@ export async function updateDataset(id: number, input: UpdateReportDatasetInput)
       type: typeChanged ? type : undefined,
       content,
       fields: input.fields as ReportField[] | undefined,
+      params: input.params as ReportDatasetParam[] | undefined,
       status: input.status,
       remark: input.remark,
     }).where(eq(reportDatasets.id, id)).returning();
@@ -165,11 +229,12 @@ export async function deleteDataset(id: number): Promise<void> {
 
 // ─── 取数核心 ────────────────────────────────────────────────────────────────
 
-/** 按数据源类型执行取数；sql 走只读执行器，api 走 http-client */
+/** 按数据源类型执行取数；sql 走只读绑定执行器，api 走 http-client */
 export async function runReportData(
   type: ReportDatasourceType,
   config: ReportDatasourceConfig,
   content: ReportDatasetContent,
+  params: Record<string, unknown> = {},
   limit = PREVIEW_LIMIT,
 ): Promise<ReportDataResult> {
   const cappedLimit = Math.max(1, Math.min(limit || PREVIEW_LIMIT, MAX_LIMIT));
@@ -177,12 +242,7 @@ export async function runReportData(
   if (type === 'sql') {
     const sqlText = ((content as ReportSqlDatasetContent).sql ?? '').trim();
     if (!sqlText) throw new HTTPException(400, { message: '数据集 SQL 不能为空' });
-    const res = await executeReadonlyQuery(sqlText, { page: 1, pageSize: cappedLimit });
-    return {
-      columns: res.columns.map((c) => c.name),
-      rows: res.rows,
-      total: res.total ?? res.rowCount,
-    };
+    return runReadonlySql(sqlText, params, cappedLimit);
   }
 
   // api
@@ -190,16 +250,18 @@ export async function runReportData(
   if (!apiCfg?.url) throw new HTTPException(400, { message: '数据源未配置 URL' });
   const apiContent = (content ?? {}) as ReportApiDatasetContent;
   const method = apiCfg.method === 'POST' ? 'POST' : 'GET';
+  // 合并静态 content.params 与运行时 params（运行时优先），剔除空值
+  const merged: Record<string, unknown> = { ...(apiContent.params ?? {}), ...params };
+  const effective = Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== undefined && v !== null && v !== ''));
   let url = apiCfg.url;
   let body: Record<string, unknown> | undefined;
-  const params = apiContent.params ?? undefined;
-  if (params && Object.keys(params).length > 0) {
+  if (Object.keys(effective).length > 0) {
     if (method === 'GET') {
       const u = new URL(apiCfg.url);
-      for (const [k, v] of Object.entries(params)) u.searchParams.set(k, String(v));
+      for (const [k, v] of Object.entries(effective)) u.searchParams.set(k, String(v));
       url = u.toString();
     } else {
-      body = { ...params };
+      body = { ...effective };
     }
   }
 
@@ -222,15 +284,16 @@ export async function runReportData(
   return { columns, rows: sliced, total: arr.length };
 }
 
-/** 试跑预览（不落库）：用未保存的数据源 + content 直接取数 */
+/** 试跑预览（不落库）：用未保存的数据源 + content + 运行时参数取数 */
 export async function previewDataset(input: ReportDatasetPreviewInput): Promise<ReportDataResult> {
   const ds = await ensureDatasourceExists(input.datasourceId);
   const content = normalizeDatasetContent(ds.type, input.content);
-  return runReportData(ds.type, (ds.config ?? {}) as ReportDatasourceConfig, content, input.limit ?? PREVIEW_LIMIT);
+  const params = (input.params ?? {}) as Record<string, unknown>;
+  return runReportData(ds.type, (ds.config ?? {}) as ReportDatasourceConfig, content, params, input.limit ?? PREVIEW_LIMIT);
 }
 
-/** 取已保存数据集的数据（供仪表盘组件运行时调用） */
-export async function getDatasetData(id: number, limit?: number): Promise<ReportDataResult> {
+/** 取已保存数据集的数据（供仪表盘组件运行时调用，支持参数）*/
+export async function getDatasetData(id: number, params?: Record<string, unknown>, limit?: number): Promise<ReportDataResult> {
   const row = await db.query.reportDatasets.findFirst({
     where: eq(reportDatasets.id, id),
     with: { datasource: { columns: { config: true } } },
@@ -238,5 +301,6 @@ export async function getDatasetData(id: number, limit?: number): Promise<Report
   if (!row) throw new HTTPException(404, { message: '数据集不存在' });
   if (row.status !== 'enabled') throw new HTTPException(400, { message: '数据集已停用' });
   const config = (row.datasource?.config ?? {}) as ReportDatasourceConfig;
-  return runReportData(row.type, config, (row.content ?? {}) as ReportDatasetContent, limit ?? PREVIEW_LIMIT);
+  const resolved = resolveDatasetParams((row.params ?? []) as ReportDatasetParam[], params);
+  return runReportData(row.type, config, (row.content ?? {}) as ReportDatasetContent, resolved, limit ?? PREVIEW_LIMIT);
 }

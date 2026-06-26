@@ -2,7 +2,7 @@ import { pgTable, serial, varchar, timestamp, pgEnum, integer, bigint, boolean, 
 import { relations, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
-import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget } from '@zenith/shared';
+import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportDashboardVersionSnapshot } from '@zenith/shared';
 
 export const statusEnum = pgEnum('status', ['enabled', 'disabled']);
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
@@ -4412,6 +4412,8 @@ export const reportDatasets = pgTable('report_datasets', {
   content: jsonb('content').$type<ReportDatasetContent>().notNull().default(sql`'{}'::jsonb`),
   /** 字段（列）定义 */
   fields: jsonb('fields').$type<ReportField[]>().notNull().default(sql`'[]'::jsonb`),
+  /** 参数定义（SQL ${name} / API 注入）*/
+  params: jsonb('params').$type<ReportDatasetParam[]>().notNull().default(sql`'[]'::jsonb`),
   status: statusEnum('status').notNull().default('enabled'),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
@@ -4429,6 +4431,12 @@ export const reportDashboards = pgTable('report_dashboards', {
   layout: jsonb('layout').$type<ReportGridItem[]>().notNull().default(sql`'[]'::jsonb`),
   /** 组件配置数组 */
   widgets: jsonb('widgets').$type<ReportWidget[]>().notNull().default(sql`'[]'::jsonb`),
+  /** 全局筛选器 */
+  filters: jsonb('filters').$type<ReportFilter[]>().notNull().default(sql`'[]'::jsonb`),
+  /** 全局配置（主题/大屏/自动刷新）*/
+  config: jsonb('config').$type<ReportDashboardConfig>().notNull().default(sql`'{}'::jsonb`),
+  /** 分类（可空）*/
+  categoryId: integer('category_id').references((): AnyPgColumn => reportDashboardCategories.id, { onDelete: 'set null' }),
   status: statusEnum('status').notNull().default('enabled'),
   remark: varchar('remark', { length: 256 }),
   ...auditColumns(),
@@ -4443,4 +4451,87 @@ export const reportDatasourcesRelations = relations(reportDatasources, ({ many }
 }));
 export const reportDatasetsRelations = relations(reportDatasets, ({ one }) => ({
   datasource: one(reportDatasources, { fields: [reportDatasets.datasourceId], references: [reportDatasources.id] }),
+}));
+
+/** 仪表盘分类 */
+export const reportDashboardCategories = pgTable('report_dashboard_categories', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 64 }).notNull().unique(),
+  sort: integer('sort').notNull().default(0),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ReportDashboardCategoryRow = typeof reportDashboardCategories.$inferSelect;
+export type NewReportDashboardCategory = typeof reportDashboardCategories.$inferInsert;
+
+/** 仪表盘版本快照（追加型）*/
+export const reportDashboardVersions = pgTable('report_dashboard_versions', {
+  id: serial('id').primaryKey(),
+  dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  snapshot: jsonb('snapshot').$type<ReportDashboardVersionSnapshot>().notNull(),
+  remark: varchar('remark', { length: 256 }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [uniqueIndex('report_dashboard_versions_dash_ver_uq').on(t.dashboardId, t.version)]);
+export type ReportDashboardVersionRow = typeof reportDashboardVersions.$inferSelect;
+export type NewReportDashboardVersion = typeof reportDashboardVersions.$inferInsert;
+
+/** 公开分享链接 */
+export const reportDashboardShares = pgTable('report_dashboard_shares', {
+  id: serial('id').primaryKey(),
+  dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
+  token: varchar('token', { length: 64 }).notNull().unique(),
+  passwordHash: varchar('password_hash', { length: 100 }),
+  enabled: boolean('enabled').notNull().default(true),
+  expireAt: timestamp('expire_at', { withTimezone: true }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ReportDashboardShareRow = typeof reportDashboardShares.$inferSelect;
+export type NewReportDashboardShare = typeof reportDashboardShares.$inferInsert;
+
+/** 仪表盘收藏（用户 ↔ 仪表盘，纯关联表）*/
+export const reportDashboardFavorites = pgTable('report_dashboard_favorites', {
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.userId, t.dashboardId] })]);
+export type ReportDashboardFavoriteRow = typeof reportDashboardFavorites.$inferSelect;
+
+/** 订阅推送（按 Cron 推送报表摘要）*/
+export const reportDashboardSubscriptions = pgTable('report_dashboard_subscriptions', {
+  id: serial('id').primaryKey(),
+  dashboardId: integer('dashboard_id').notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
+  cron: varchar('cron', { length: 64 }).notNull(),
+  channels: jsonb('channels').$type<Array<'email' | 'inApp'>>().notNull().default(sql`'[]'::jsonb`),
+  recipients: varchar('recipients', { length: 512 }),
+  enabled: boolean('enabled').notNull().default(true),
+  remark: varchar('remark', { length: 256 }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+export type ReportDashboardSubscriptionRow = typeof reportDashboardSubscriptions.$inferSelect;
+export type NewReportDashboardSubscription = typeof reportDashboardSubscriptions.$inferInsert;
+
+export const reportDashboardsRelations = relations(reportDashboards, ({ one, many }) => ({
+  category: one(reportDashboardCategories, { fields: [reportDashboards.categoryId], references: [reportDashboardCategories.id] }),
+  versions: many(reportDashboardVersions),
+  shares: many(reportDashboardShares),
+  subscriptions: many(reportDashboardSubscriptions),
+}));
+export const reportDashboardVersionsRelations = relations(reportDashboardVersions, ({ one }) => ({
+  dashboard: one(reportDashboards, { fields: [reportDashboardVersions.dashboardId], references: [reportDashboards.id] }),
+}));
+export const reportDashboardSharesRelations = relations(reportDashboardShares, ({ one }) => ({
+  dashboard: one(reportDashboards, { fields: [reportDashboardShares.dashboardId], references: [reportDashboards.id] }),
+}));
+export const reportDashboardSubscriptionsRelations = relations(reportDashboardSubscriptions, ({ one }) => ({
+  dashboard: one(reportDashboards, { fields: [reportDashboardSubscriptions.dashboardId], references: [reportDashboards.id] }),
 }));

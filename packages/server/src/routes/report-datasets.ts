@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
-import { createReportDatasetSchema, updateReportDatasetSchema, reportDatasetPreviewSchema } from '@zenith/shared';
+import { createReportDatasetSchema, updateReportDatasetSchema, reportDatasetPreviewSchema, reportDatasetDataBodySchema } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
@@ -48,17 +48,17 @@ const previewRoute = defineOpenAPIRoute({
 
 const dataRoute = defineOpenAPIRoute({
   route: createRoute({
-    method: 'get', path: '/{id}/data',
-    tags: ['报表数据集'], summary: '取数据集数据',
+    method: 'post', path: '/{id}/data',
+    tags: ['报表数据集'], summary: '取数据集数据（带参数）',
     security: [{ BearerAuth: [] }],
     middleware: [authMiddleware, guard({ permission: 'report:dataset:list' })] as const,
-    request: { params: IdParam, query: z.object({ limit: z.coerce.number().int().min(1).max(5000).optional() }) },
+    request: { params: IdParam, body: { content: jsonContent(reportDatasetDataBodySchema), required: false } },
     responses: { ...commonErrorResponses, ...ok(ReportDataResultDTO, '取数结果'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
   }),
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { limit } = c.req.valid('query');
-    return c.json(okBody(await getDatasetData(id, limit)), 200);
+    const body = c.req.valid('json');
+    return c.json(okBody(await getDatasetData(id, body?.params, body?.limit)), 200);
   },
 });
 

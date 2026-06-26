@@ -2245,8 +2245,9 @@ export interface WorkflowApproverPreviewNode {
 /** 流程仿真中对指定节点预设的处理动作 */
 export interface WorkflowSimulationDecision {
   nodeKey: string;
-  action: 'approve' | 'reject';
+  action: 'approve' | 'reject' | 'skip' | 'wait';
   assigneeId?: number;
+  reason?: string;
   formPatch?: Record<string, unknown>;
 }
 
@@ -2261,6 +2262,7 @@ export interface WorkflowSimulationOptions {
 export type WorkflowSimulationResultStatus = 'finished' | 'rejected' | 'waiting' | 'blocked' | 'invalid' | 'stepLimit';
 export type WorkflowSimulationTimelineStatus = 'entered' | 'waiting' | 'approved' | 'rejected' | 'autoApproved' | 'skipped' | 'blocked';
 export type WorkflowSimulationNodeStateStatus = 'pending' | 'active' | 'done' | 'skipped' | 'error';
+export type WorkflowSimulationHealthLevel = 'error' | 'warning' | 'info';
 
 /** 流程仿真时间线节点 */
 export interface WorkflowSimulationTimelineItem {
@@ -2270,8 +2272,10 @@ export interface WorkflowSimulationTimelineItem {
   nodeType: WorkflowNodeType | string;
   status: WorkflowSimulationTimelineStatus;
   assignees?: Array<{ id: number; name: string }>;
-  decision?: 'approve' | 'reject' | 'auto';
+  decision?: 'approve' | 'reject' | 'skip' | 'wait' | 'auto';
   reason?: string;
+  detail?: string;
+  nextNodeKeys?: string[];
 }
 
 /** 流程仿真连线命中结果 */
@@ -2284,12 +2288,25 @@ export interface WorkflowSimulationEdgeResult {
   label?: string | null;
   taken: boolean;
   reason?: string;
+  conditionMatched?: boolean | null;
+  conditionSummary?: string | null;
+  actualValue?: string | null;
 }
 
 /** 流程仿真节点状态 */
 export interface WorkflowSimulationNodeState {
   status: WorkflowSimulationNodeStateStatus;
   message?: string;
+}
+
+/** 流程仿真体检问题 */
+export interface WorkflowSimulationHealthIssue {
+  level: WorkflowSimulationHealthLevel;
+  scope: 'flow' | 'node' | 'edge';
+  nodeKey?: string;
+  edgeId?: string;
+  message: string;
+  suggestion?: string;
 }
 
 /** 流程仿真结果 */
@@ -2300,6 +2317,8 @@ export interface WorkflowSimulationResult {
   timeline: WorkflowSimulationTimelineItem[];
   edgeResults: WorkflowSimulationEdgeResult[];
   nodeStates: Record<string, WorkflowSimulationNodeState>;
+  healthIssues: WorkflowSimulationHealthIssue[];
+  pathSignature: string[];
 }
 
 /** 关联审批单可选项（relation 字段检索结果） */
@@ -5137,7 +5156,10 @@ export type ReportDatasourceType = 'api' | 'sql';
 /** 数据集字段（列）数据类型 */
 export type ReportFieldType = 'string' | 'number' | 'date' | 'boolean';
 /** 仪表盘组件类型 */
-export type ReportWidgetType = 'kpi' | 'table' | 'bar' | 'line' | 'pie';
+export type ReportWidgetType =
+  | 'kpi' | 'table' | 'pivot' | 'text'
+  | 'bar' | 'line' | 'area' | 'dualAxis'
+  | 'pie' | 'scatter' | 'radar' | 'funnel' | 'gauge' | 'treemap';
 
 /** API 数据源连接配置 */
 export interface ReportApiDatasourceConfig {
@@ -5202,6 +5224,8 @@ export interface ReportDataset {
   type: ReportDatasourceType;
   content: ReportDatasetContent;
   fields: ReportField[];
+  /** 参数定义（SQL ${name} 占位 / API 注入） */
+  params: ReportDatasetParam[];
   status: 'enabled' | 'disabled';
   remark?: string | null;
   createdBy?: number | null;
@@ -5243,6 +5267,54 @@ export interface ReportWidgetOptions {
   unit?: string;
   /** 表格：展示列（留空=全部字段） */
   columns?: ReportField[];
+  // ── 图表通用 ──
+  /** 折线/面积：平滑曲线 */
+  smooth?: boolean;
+  /** 柱/面积：堆叠 */
+  stack?: boolean;
+  /** 柱/面积：百分比堆叠 */
+  percent?: boolean;
+  /** 柱：水平条形 */
+  horizontal?: boolean;
+  /** 是否显示数据标签 */
+  showLabel?: boolean;
+  // ── 组合图（双轴）──
+  /** 右轴（次坐标）指标字段 */
+  secondaryFields?: string[];
+  /** 右轴渲染为折线（否则柱） */
+  secondaryAsLine?: boolean;
+  // ── 排序 / TopN ──
+  sortField?: string;
+  sortOrder?: 'asc' | 'desc';
+  topN?: number;
+  // ── 指标卡增强 ──
+  /** 对比字段（环比/同比基准） */
+  compareField?: string;
+  /** 目标值（常量） */
+  targetValue?: number;
+  /** 迷你趋势字段（按 categoryField 排列） */
+  trendField?: string;
+  // ── 数值格式 ──
+  decimals?: number;
+  prefix?: string;
+  // ── 表格增强 ──
+  /** 分页大小（0=不分页） */
+  pageSize?: number;
+  /** 显示合计行 */
+  showSummary?: boolean;
+  /** 条件格式规则 */
+  conditionalFormats?: ReportConditionalFormat[];
+  // ── 透视表 ──
+  pivotRows?: string[];
+  pivotColumns?: string[];
+  pivotValueField?: string;
+  pivotAggregate?: 'sum' | 'avg' | 'max' | 'min' | 'count';
+  // ── 文本组件 ──
+  /** 文本内容（支持 ${filterId} 占位） */
+  text?: string;
+  // ── 仪表盘 gauge / 雷达 ──
+  min?: number;
+  max?: number;
   [key: string]: unknown;
 }
 
@@ -5254,6 +5326,14 @@ export interface ReportWidget {
   title: string;
   datasetId?: number | null;
   options: ReportWidgetOptions;
+  /** 全局筛选器 → 数据集参数 绑定 */
+  paramBindings?: ReportWidgetParamBinding[];
+  /** 点击联动：点击分类写入某筛选器 */
+  interaction?: ReportWidgetInteraction;
+  /** 钻取配置 */
+  drilldown?: ReportWidgetDrilldown;
+  /** 组件样式 */
+  style?: ReportWidgetStyle;
 }
 
 export interface ReportDashboard {
@@ -5261,10 +5341,173 @@ export interface ReportDashboard {
   name: string;
   layout: ReportGridItem[];
   widgets: ReportWidget[];
+  /** 全局筛选器 */
+  filters: ReportFilter[];
+  /** 全局配置（主题/大屏/自动刷新） */
+  config: ReportDashboardConfig;
+  categoryId?: number | null;
+  categoryName?: string | null;
+  /** 当前用户是否已收藏（列表/详情按需附加） */
+  favorited?: boolean;
   status: 'enabled' | 'disabled';
   remark?: string | null;
   createdBy?: number | null;
   updatedBy?: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── 报表中心 · 第二/三期扩展类型 ──────────────────────────────────────────────
+
+/** 数据集参数定义 */
+export interface ReportDatasetParam {
+  name: string;
+  label: string;
+  type: ReportFieldType;
+  required?: boolean;
+  defaultValue?: string | number | boolean | null;
+}
+
+/** 表格条件格式规则 */
+export interface ReportConditionalFormat {
+  field: string;
+  op: 'gte' | 'lte' | 'gt' | 'lt' | 'eq' | 'neq' | 'between';
+  value: number;
+  value2?: number;
+  color?: string;
+  background?: string;
+}
+
+/** 全局筛选器类型 */
+export type ReportFilterType = 'date' | 'daterange' | 'select' | 'multiSelect' | 'input' | 'numberRange';
+
+/** 筛选器选项来源 */
+export interface ReportFilterOptionSource {
+  kind: 'static' | 'dataset';
+  options?: { value: string; label: string }[];
+  datasetId?: number | null;
+  valueField?: string;
+  labelField?: string;
+}
+
+/** 仪表盘全局筛选器 */
+export interface ReportFilter {
+  id: string;
+  label: string;
+  type: ReportFilterType;
+  defaultValue?: unknown;
+  optionSource?: ReportFilterOptionSource;
+  /** 栅格宽度（1-24） */
+  width?: number;
+}
+
+/** 筛选器 → 数据集参数 绑定 */
+export interface ReportWidgetParamBinding {
+  filterId: string;
+  param: string;
+}
+
+/** 点击联动配置 */
+export interface ReportWidgetInteraction {
+  enabled?: boolean;
+  /** 点击分类时写入的目标筛选器 id */
+  setFilterId?: string;
+}
+
+/** 钻取配置 */
+export interface ReportWidgetDrilldown {
+  enabled?: boolean;
+  type?: 'fields' | 'dashboard' | 'url';
+  /** type=fields：维度层级（逐层替换 categoryField） */
+  fields?: string[];
+  /** type=dashboard：目标仪表盘 */
+  targetDashboardId?: number | null;
+  /** type=url：目标外链（支持 {value} 占位） */
+  url?: string;
+  /** 传参：点击值写入目标筛选器/参数名 */
+  paramName?: string;
+}
+
+/** 组件样式 */
+export interface ReportWidgetStyle {
+  background?: string;
+  showHeader?: boolean;
+  borderless?: boolean;
+}
+
+/** 仪表盘全局配置 */
+export interface ReportDashboardConfig {
+  theme?: 'light' | 'dark';
+  /** 大屏模式（全屏自适应缩放） */
+  screen?: boolean;
+  /** 自动刷新间隔（秒，0=关闭） */
+  refreshInterval?: number;
+}
+
+/** 仪表盘分类 */
+export interface ReportDashboardCategory {
+  id: number;
+  name: string;
+  sort: number;
+  remark?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 仪表盘版本快照内容 */
+export interface ReportDashboardVersionSnapshot {
+  layout: ReportGridItem[];
+  widgets: ReportWidget[];
+  filters: ReportFilter[];
+  config: ReportDashboardConfig;
+}
+
+/** 仪表盘版本 */
+export interface ReportDashboardVersion {
+  id: number;
+  dashboardId: number;
+  version: number;
+  snapshot: ReportDashboardVersionSnapshot;
+  remark?: string | null;
+  createdBy?: number | null;
+  createdAt: string;
+}
+
+/** 公开分享链接 */
+export interface ReportDashboardShare {
+  id: number;
+  dashboardId: number;
+  token: string;
+  enabled: boolean;
+  hasPassword?: boolean;
+  expireAt?: string | null;
+  createdBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 订阅推送（按 Cron 推送报表摘要） */
+export interface ReportDashboardSubscription {
+  id: number;
+  dashboardId: number;
+  dashboardName?: string | null;
+  cron: string;
+  channels: ('email' | 'inApp')[];
+  /** 收件人邮箱（逗号分隔）；inApp 推给创建者 */
+  recipients?: string | null;
+  enabled: boolean;
+  remark?: string | null;
+  lastRunAt?: string | null;
+  createdBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 公开分享渲染 DTO（精简、无敏感字段） */
+export interface ReportPublicDashboard {
+  name: string;
+  layout: ReportGridItem[];
+  widgets: ReportWidget[];
+  filters: ReportFilter[];
+  config: ReportDashboardConfig;
 }

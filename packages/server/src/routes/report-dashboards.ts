@@ -6,11 +6,12 @@ import {
   ErrorResponse, PaginationQuery, jsonContent, validationHook, commonErrorResponses,
   ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
-import { ReportDashboardDTO } from '../lib/openapi-dtos';
+import { ReportDashboardDTO, ReportDashboardDataDTO } from '../lib/openapi-dtos';
 import {
   listDashboards, getDashboard, createDashboard, updateDashboard,
-  deleteDashboard, ensureDashboardExists,
+  deleteDashboard, ensureDashboardExists, getDashboardData,
 } from '../services/report-dashboard.service';
+import type { ReportWidget } from '@zenith/shared';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -24,11 +25,38 @@ const listRoute = defineOpenAPIRoute({
       query: PaginationQuery.extend({
         keyword: z.string().optional(),
         status: z.enum(['enabled', 'disabled']).optional(),
+        categoryId: z.coerce.number().int().positive().optional(),
+        favorited: z.coerce.boolean().optional(),
       }),
     },
     responses: { ...commonErrorResponses, ...okPaginated(ReportDashboardDTO, 'ok') },
   }),
   handler: async (c) => c.json(okBody(await listDashboards(c.req.valid('query'))), 200),
+});
+
+// ── 批量取数（按全局筛选器值）──
+const dataRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/{id}/data',
+    tags: ['报表仪表盘'], summary: '仪表盘批量取数',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'report:dashboard:list' })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(z.object({
+        filters: z.record(z.string(), z.unknown()).optional(),
+        limit: z.number().int().min(1).max(5000).optional(),
+      })), required: false },
+    },
+    responses: { ...commonErrorResponses, ...ok(ReportDashboardDataDTO, '批量取数结果'), 404: { content: jsonContent(ErrorResponse), description: '不存在' } },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const dash = await ensureDashboardExists(id);
+    const data = await getDashboardData((dash.widgets ?? []) as ReportWidget[], (body?.filters ?? {}) as Record<string, unknown>, body?.limit);
+    return c.json(okBody(data), 200);
+  },
 });
 
 const getOneRoute = defineOpenAPIRoute({
@@ -90,6 +118,6 @@ const deleteRoute_ = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_] as const);
+router.openapiRoutes([listRoute, dataRoute, getOneRoute, createRoute_, updateRoute_, deleteRoute_] as const);
 
 export default router;
