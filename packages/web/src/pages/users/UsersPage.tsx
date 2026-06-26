@@ -15,13 +15,11 @@ import {
   Row,
   Col,
   Tree,
-  Dropdown,
-  SplitButtonGroup,
   Spin,
   Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, Building2, ArrowLeft, KeyRound, ToggleLeft, ToggleRight, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, Download, Trash2, FileUp, ChevronsUpDown, ChevronsDownUp, Building2, ArrowLeft, KeyRound, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { User, Role, PaginatedResponse, Department, Position } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -44,6 +42,7 @@ import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
 import { UserMenuPermissionModal } from './UserMenuPermissionModal';
 import { UserDataScopeModal } from './UserDataScopeModal';
 import { UserAvatarModal } from './UserAvatarModal';
+import ExportButton from '@/components/ExportButton';
 
 interface SearchParams {
   keyword: string;
@@ -65,8 +64,6 @@ export default function UsersPage() {
   const passwordFormApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<PaginatedResponse<User> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination();
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
@@ -338,6 +335,19 @@ export default function UsersPage() {
     void fetchUsers(1, pageSize, defaultSearchParams);
   }
 
+  const buildExportQuery = useCallback((params: SearchParams = searchParamsRef.current) => ({
+    ...(params.keyword ? { keyword: params.keyword } : {}),
+    ...(params.phone ? { phone: params.phone } : {}),
+    ...(params.departmentId ? { departmentId: params.departmentId } : {}),
+    ...(params.status ? { status: params.status } : {}),
+    ...(params.timeRange
+      ? {
+          startTime: formatDateTimeForApi(params.timeRange[0]),
+          endTime: formatDateTimeForApi(params.timeRange[1]),
+        }
+      : {}),
+  }), []);
+
   const handleModalOk = async () => {
     let values;
     try {
@@ -443,24 +453,6 @@ export default function UsersPage() {
     setImportModalVisible(true);
     setImportResult(null);
     importFileRef.current = null;
-  };
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/users/export', '用户列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/users/export/csv', '用户列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
   };
 
   const handleDelete = async (id: number) => {
@@ -830,30 +822,14 @@ export default function UsersPage() {
     </>
   );
 
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
+  const renderExportButtons = () => hasPermission('system:user:export')
+    ? <ExportButton entity="system.users" query={buildExportQuery()} />
+    : null;
 
   const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
+    hasPermission('system:user:export')
+      ? <ExportButton entity="system.users" query={buildExportQuery()} label="导出" />
+      : null
   );
 
   const renderImportButton = () => hasPermission('system:user:import') ? (

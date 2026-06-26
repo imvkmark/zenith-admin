@@ -9,6 +9,10 @@ export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button'])
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']);
 export const dataScopeEnum = pgEnum('data_scope', ['all', 'custom', 'dept_only', 'dept', 'self']);
 export const maskTypeEnum = pgEnum('mask_type', ['phone', 'email', 'id_card', 'name', 'bank_card', 'custom']);
+export const exportJobFormatEnum = pgEnum('export_job_format', ['xlsx', 'csv']);
+export const exportJobStatusEnum = pgEnum('export_job_status', ['pending', 'running', 'success', 'failed', 'cancelled', 'expired']);
+export const exportJobExecutionModeEnum = pgEnum('export_job_execution_mode', ['sync', 'async']);
+export const exportJobDeleteReasonEnum = pgEnum('export_job_delete_reason', ['expired', 'manual', 'file_missing']);
 
 /**
  * 通用审计列：`created_by` / `updated_by` 指向 `users.id`（保留 set null）。
@@ -399,6 +403,63 @@ export const uploadChunks = pgTable('upload_chunks', {
 
 export type UploadChunkRow = typeof uploadChunks.$inferSelect;
 export type NewUploadChunk = typeof uploadChunks.$inferInsert;
+
+// ─── 导出中心任务 ──────────────────────────────────────────────────────────────
+export const exportJobs = pgTable('export_jobs', {
+  id: serial('id').primaryKey(),
+  entity: varchar('entity', { length: 64 }).notNull(),
+  moduleName: varchar('module_name', { length: 64 }).notNull(),
+  format: exportJobFormatEnum('format').notNull(),
+  status: exportJobStatusEnum('status').notNull().default('pending'),
+  executionMode: exportJobExecutionModeEnum('execution_mode').notNull().default('async'),
+  query: jsonb('query').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  columns: jsonb('columns').$type<string[]>(),
+  rowCount: integer('row_count'),
+  fileId: pgUuid('file_id').references(() => managedFiles.id, { onDelete: 'set null' }),
+  filename: varchar('filename', { length: 256 }),
+  fileSize: integer('file_size'),
+  raw: boolean('raw').notNull().default(false),
+  masked: boolean('masked').notNull().default(true),
+  sensitive: boolean('sensitive').notNull().default(false),
+  watermark: boolean('watermark').notNull().default(true),
+  errorMessage: text('error_message'),
+  expiresAt: timestamp('expires_at'),
+  fileDeletedAt: timestamp('file_deleted_at'),
+  deleteReason: exportJobDeleteReasonEnum('delete_reason'),
+  downloadCount: integer('download_count').notNull().default(0),
+  lastDownloadedAt: timestamp('last_downloaded_at'),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [
+  index('export_jobs_entity_idx').on(t.entity),
+  index('export_jobs_status_idx').on(t.status),
+  index('export_jobs_created_by_idx').on(t.createdBy),
+  index('export_jobs_tenant_idx').on(t.tenantId),
+  index('export_jobs_expires_at_idx').on(t.expiresAt),
+]);
+
+export type ExportJobRow = typeof exportJobs.$inferSelect;
+export type NewExportJob = typeof exportJobs.$inferInsert;
+
+export const exportJobDownloads = pgTable('export_job_downloads', {
+  id: serial('id').primaryKey(),
+  jobId: integer('job_id').notNull().references(() => exportJobs.id, { onDelete: 'cascade' }),
+  downloadedBy: integer('downloaded_by').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ip: varchar('ip', { length: 64 }),
+  userAgent: varchar('user_agent', { length: 512 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('export_job_downloads_job_idx').on(t.jobId),
+  index('export_job_downloads_downloaded_by_idx').on(t.downloadedBy),
+]);
+
+export type ExportJobDownloadRow = typeof exportJobDownloads.$inferSelect;
+export type NewExportJobDownload = typeof exportJobDownloads.$inferInsert;
 
 // ─── 登录日志表 ─────────────────────────────────────────────────────────────────
 export const loginStatusEnum = pgEnum('login_status', ['success', 'fail']);
@@ -2593,6 +2654,8 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   dicts: many(dicts),
   userGroups: many(userGroups),
   managedFiles: many(managedFiles),
+  exportJobs: many(exportJobs),
+  exportJobDownloads: many(exportJobDownloads),
   announcements: many(announcements),
   systemConfigs: many(systemConfigs),
   workflowDefinitions: many(workflowDefinitions),
@@ -2646,6 +2709,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   leadingDepartments: many(departments, { relationName: 'departmentLeader' }),
   userMenus: many(userMenus),
   userDeptScopes: many(userDeptScopes),
+  exportJobs: many(exportJobs),
+  exportJobDownloads: many(exportJobDownloads),
 }));
 
 export const rolesRelations = relations(roles, ({ one, many }) => ({
@@ -2721,6 +2786,19 @@ export const uploadSessionsRelations = relations(uploadSessions, ({ one, many })
 
 export const uploadChunksRelations = relations(uploadChunks, ({ one }) => ({
   session: one(uploadSessions, { fields: [uploadChunks.uploadSessionId], references: [uploadSessions.id] }),
+}));
+
+export const exportJobsRelations = relations(exportJobs, ({ one, many }) => ({
+  file: one(managedFiles, { fields: [exportJobs.fileId], references: [managedFiles.id] }),
+  tenant: one(tenants, { fields: [exportJobs.tenantId], references: [tenants.id] }),
+  createdByUser: one(users, { fields: [exportJobs.createdBy], references: [users.id] }),
+  downloads: many(exportJobDownloads),
+}));
+
+export const exportJobDownloadsRelations = relations(exportJobDownloads, ({ one }) => ({
+  job: one(exportJobs, { fields: [exportJobDownloads.jobId], references: [exportJobs.id] }),
+  user: one(users, { fields: [exportJobDownloads.downloadedBy], references: [users.id] }),
+  tenant: one(tenants, { fields: [exportJobDownloads.tenantId], references: [tenants.id] }),
 }));
 
 export const cronJobsRelations = relations(cronJobs, ({ many }) => ({

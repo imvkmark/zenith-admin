@@ -203,6 +203,12 @@ handlerRegistry.set('cleanupUploadSessions', async () => {
   return `清理分片上传：过期会话 ${r.staleSessions} 个、孤儿临时目录 ${r.orphanDirs} 个，释放约 ${(r.freedBytes / 1024 / 1024).toFixed(2)} MB`;
 });
 
+handlerRegistry.set('dispatchReportSubscriptions', async () => {
+  const { dispatchDueSubscriptions } = await import('../services/report-subscription.service');
+  const r = await dispatchDueSubscriptions();
+  return `报表订阅分发：检查 ${r.checked} 个，推送 ${r.pushed} 个`;
+});
+
 /** 已注册 handler 名称列表（供前端下拉选择） */
 export function getRegisteredHandlers(): string[] {
   return Array.from(handlerRegistry.keys());
@@ -471,6 +477,14 @@ export async function sendSystemJobAfter<T extends object>(
   options?: SendOptions,
 ): Promise<string | null> {
   return getBoss().sendAfter(name, data, options ?? null, runAt);
+}
+
+export async function sendSystemJob<T extends object>(
+  name: string,
+  data: T,
+  options?: SendOptions,
+): Promise<string | null> {
+  return getBoss().send(name, data, options);
 }
 
 export async function deleteSystemJob(name: string, id: string): Promise<void> {

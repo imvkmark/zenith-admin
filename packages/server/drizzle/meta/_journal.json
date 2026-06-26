@@ -1184,6 +1184,13 @@
       "when": 1782486657181,
       "tag": "0168_noisy_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1782490212155,
+      "tag": "0169_quiet_manta",
+      "breakpoints": true
     }
   ]
 }

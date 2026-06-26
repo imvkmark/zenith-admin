@@ -30,6 +30,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { xlsxBufferToWorkbookData } from '../lib/xlsx-to-univer';
 import { csvTextToWorkbookData } from '../lib/csv-to-univer';
+import { runAsUser } from '../lib/audit-context';
 
 const SPREADSHEET_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -239,6 +240,43 @@ export async function uploadManagedFile(file: File) {
     })
     .returning();
   return mapManagedFile(created);
+}
+
+export async function saveGeneratedManagedFile(input: {
+  buffer: Buffer | Uint8Array | ArrayBuffer;
+  filename: string;
+  mimeType: string;
+  tenantId: number | null;
+  createdBy: number;
+}) {
+  const bytes = input.buffer instanceof ArrayBuffer ? new Uint8Array(input.buffer) : input.buffer;
+  const blob = new Blob([bytes as BlobPart], { type: input.mimeType });
+  const file = new File([blob], input.filename, { type: input.mimeType });
+  const [defaultConfig] = await db
+    .select()
+    .from(fileStorageConfigs)
+    .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
+    .limit(1);
+  if (!defaultConfig) throw new HTTPException(400, { message: '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务' });
+  const uploaded = await uploadFileByConfig(defaultConfig, file);
+  const [created] = await runAsUser(input.createdBy, () =>
+    db
+      .insert(managedFiles)
+      .values({
+        storageConfigId: defaultConfig.id,
+        storageName: defaultConfig.name,
+        provider: defaultConfig.provider,
+        originalName: input.filename,
+        objectKey: uploaded.objectKey,
+        bucketName: uploaded.bucketName,
+        size: uploaded.size,
+        mimeType: uploaded.mimeType,
+        extension: uploaded.extension,
+        tenantId: input.tenantId,
+      })
+      .returning(),
+  );
+  return created;
 }
 
 export async function batchDeleteFiles(ids: string[]) {

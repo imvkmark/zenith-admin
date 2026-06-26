@@ -623,15 +623,21 @@ async function seedRest() {
   await db.execute(sql`SELECT setval('report_datasources_id_seq', GREATEST((SELECT MAX(id) FROM report_datasources), 1))`);
 
   await db.insert(reportDatasets).values(
-    SEED_REPORT_DATASETS.map(({ id, name, datasourceId, type, content, fields, status, remark }) => ({ id, name, datasourceId, type, content, fields, status, remark })),
-  ).onConflictDoNothing({ target: reportDatasets.id });
+    SEED_REPORT_DATASETS.map(({ id, name, datasourceId, type, content, fields, params, status, remark }) => ({ id, name, datasourceId, type, content, fields, params, status, remark })),
+  ).onConflictDoUpdate({
+    target: reportDatasets.id,
+    set: { content: sql`excluded.content`, fields: sql`excluded.fields`, params: sql`excluded.params`, updatedAt: new Date() },
+  });
   await db.execute(sql`SELECT setval('report_datasets_id_seq', GREATEST((SELECT MAX(id) FROM report_datasets), 1))`);
 
   await db.insert(reportDashboards).values(
-    SEED_REPORT_DASHBOARDS.map(({ id, name, layout, widgets, status, remark }) => ({ id, name, layout, widgets, status, remark })),
-  ).onConflictDoNothing({ target: reportDashboards.id });
+    SEED_REPORT_DASHBOARDS.map(({ id, name, layout, widgets, filters, config, status, remark }) => ({ id, name, layout, widgets, filters, config, status, remark })),
+  ).onConflictDoUpdate({
+    target: reportDashboards.id,
+    set: { layout: sql`excluded.layout`, widgets: sql`excluded.widgets`, filters: sql`excluded.filters`, config: sql`excluded.config`, updatedAt: new Date() },
+  });
   await db.execute(sql`SELECT setval('report_dashboards_id_seq', GREATEST((SELECT MAX(id) FROM report_dashboards), 1))`);
-  logger.info('  ✔ Report center seeded (onConflictDoNothing)');
+  logger.info('  ✔ Report center seeded');
 }
 
 try {
