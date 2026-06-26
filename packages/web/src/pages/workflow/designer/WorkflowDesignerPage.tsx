@@ -4,14 +4,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, RadioGroup, Radio, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload, X } from 'lucide-react';
-import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig, WorkflowSimulationResult } from '@zenith/shared';
+import { ArrowLeft, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Undo2, Upload } from 'lucide-react';
+import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared';
 import { WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_LABELS, resolveApproverDedupMode } from '@zenith/shared';
 import { request } from '@/utils/request';
 
 import WorkflowVersionsModal from '../components/WorkflowVersionsModal';
 
-import type { FlowNode, FlowBranch, FlowNodeType, FlowProcess, BranchNodeType, ConditionGroup, NodeRuntimeInfo } from './types';
+import type { FlowNode, FlowBranch, FlowNodeType, FlowProcess, BranchNodeType, ConditionGroup } from './types';
 import {
   createDefaultProcess,
   createNode,
@@ -121,9 +121,6 @@ export default function WorkflowDesignerPage({
 
   // 仿真
   const [simulationVisible, setSimulationVisible] = useState(false);
-  const [simulationResult, setSimulationResult] = useState<WorkflowSimulationResult | null>(null);
-  const [simulationStep, setSimulationStep] = useState(0);
-
   // 历史版本
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
 
@@ -572,107 +569,6 @@ export default function WorkflowDesignerPage({
     }
   };
 
-  const simulationTotalSteps = simulationResult?.timeline.length ?? 0;
-  const normalizedSimulationStep = Math.min(simulationStep, simulationTotalSteps);
-
-  const handleSimulationResult = useCallback((next: WorkflowSimulationResult | null) => {
-    setSimulationResult(next);
-    setSimulationStep(next?.timeline.length ? 1 : 0);
-  }, []);
-
-  const handleSimulationStepChange = useCallback((nextStep: number) => {
-    if (nextStep <= 0) {
-      setSimulationStep(0);
-      return;
-    }
-    const total = simulationResult?.timeline.length ?? 0;
-    if (!simulationResult || total === 0) {
-      setSimulationStep(0);
-      return;
-    }
-    setSimulationStep(Math.max(1, Math.min(total, nextStep)));
-  }, [simulationResult]);
-
-  const handleExitSimulation = useCallback(() => {
-    setSimulationResult(null);
-    setSimulationStep(0);
-  }, []);
-
-  const simulationNodeRuntime = useMemo(() => {
-    if (!simulationResult || normalizedSimulationStep <= 0) return undefined;
-    const visibleTimeline = simulationResult.timeline.slice(0, normalizedSimulationStep);
-    const currentItem = visibleTimeline[visibleTimeline.length - 1];
-    const byNode = new Map<string, WorkflowSimulationResult['timeline']>();
-    for (const item of visibleTimeline) {
-      const arr = byNode.get(item.nodeKey) ?? [];
-      arr.push(item);
-      byNode.set(item.nodeKey, arr);
-    }
-    const map = new Map<string, NodeRuntimeInfo>();
-    byNode.forEach((items, nodeKey) => {
-      const last = items[items.length - 1];
-      const isCurrentNode = currentItem?.nodeKey === nodeKey && last.step === currentItem.step;
-      let status: NodeRuntimeInfo['status'];
-      if (isCurrentNode && !['rejected', 'waiting', 'blocked', 'skipped'].includes(last.status)) status = 'pending';
-      else if (last.status === 'rejected') status = 'rejected';
-      else if (last.status === 'waiting' || last.status === 'blocked') status = 'waiting';
-      else if (last.status === 'skipped') status = 'skipped';
-      else status = 'approved';
-      const approvers = items
-        .flatMap((item) => item.assignees ?? [])
-        .map((user) => ({
-          name: user.name,
-          status,
-          actionAt: null,
-          comment: isCurrentNode ? '当前仿真步骤' : last.reason ?? null,
-        }));
-      map.set(nodeKey, {
-        status,
-        active: isCurrentNode,
-        approvers: approvers.length > 0
-          ? approvers
-          : [{ name: isCurrentNode ? '当前步骤' : last.reason ?? '仿真经过', status, actionAt: null, comment: last.reason ?? null }],
-      });
-    });
-    return map;
-  }, [normalizedSimulationStep, simulationResult]);
-
-  const simulationDimmedBranchIds = useMemo(() => {
-    if (!simulationResult || normalizedSimulationStep <= 0) return undefined;
-    const visibleNodeKeys = new Set(
-      simulationResult.timeline.slice(0, normalizedSimulationStep).map((item) => item.nodeKey),
-    );
-    const skippedNodeKeys = new Set(
-      Object.entries(simulationResult.nodeStates)
-        .filter(([, state]) => state.status === 'skipped')
-        .map(([key]) => key),
-    );
-    const dimmed = new Set<string>();
-    const visit = (node: FlowNode | undefined) => {
-      if (!node) return;
-      node.branches?.forEach((branch) => {
-        const first = branch.children;
-        const branchStartKeys = node.branches
-          ?.map((item) => item.children ? item.children.key ?? item.children.id : null)
-          .filter((key): key is string => !!key) ?? [];
-        const hasReachedThisDecision = branchStartKeys.some((key) => visibleNodeKeys.has(key));
-        if (first && hasReachedThisDecision && skippedNodeKeys.has(first.key ?? first.id)) dimmed.add(branch.id);
-        visit(first);
-      });
-      visit(node.children);
-    };
-    visit(process.initiator);
-    return dimmed;
-  }, [normalizedSimulationStep, process, simulationResult]);
-
-  const simulationInstanceStatus = simulationResult && normalizedSimulationStep >= simulationTotalSteps
-    ? simulationResult.result === 'finished'
-      ? 'approved'
-      : simulationResult.result === 'rejected'
-        ? 'rejected'
-        : undefined
-    : undefined;
-
   // ─── 缩放 ─────────────────────────────────────────────────────────
 
   const handleZoomIn = () => setZoom(z => Math.min(z + 10, 200));
@@ -919,34 +815,6 @@ export default function WorkflowDesignerPage({
                 <Button icon={<Play size={14} />} type="tertiary" theme="borderless" onClick={() => setSimulationVisible(true)}>
                   仿真
                 </Button>
-                {simulationResult && simulationTotalSteps > 0 && (
-                  <div className="fd-simulation-player fd-simulation-player--toolbar">
-                    <Button
-                      icon={<ChevronLeft size={14} />}
-                      type="tertiary"
-                      theme="borderless"
-                      size="small"
-                      onClick={() => handleSimulationStepChange(normalizedSimulationStep - 1)}
-                      disabled={normalizedSimulationStep <= 1}
-                    />
-                    <span>仿真 {normalizedSimulationStep}/{simulationTotalSteps}</span>
-                    <Button
-                      icon={<ChevronRight size={14} />}
-                      type="tertiary"
-                      theme="borderless"
-                      size="small"
-                      onClick={() => handleSimulationStepChange(normalizedSimulationStep + 1)}
-                      disabled={normalizedSimulationStep >= simulationTotalSteps}
-                    />
-                    <Button
-                      icon={<X size={14} />}
-                      type="tertiary"
-                      theme="borderless"
-                      size="small"
-                      onClick={handleExitSimulation}
-                    />
-                  </div>
-                )}
                 <span className="fd-canvas__toolbar-divider" />
               </>
             )}
@@ -965,9 +833,6 @@ export default function WorkflowDesignerPage({
                 readOnlyInteractive
                 onEditNode={handleEditNode}
                 formFields={formFields}
-                nodeRuntime={simulationNodeRuntime}
-                dimmedBranchIds={simulationDimmedBranchIds}
-                instanceStatus={simulationInstanceStatus}
               />
             ) : (
               <FlowRenderer
@@ -982,9 +847,6 @@ export default function WorkflowDesignerPage({
                 onEditBranch={handleEditBranch}
                 onMoveBranch={handleMoveBranch}
                 formFields={formFields}
-                nodeRuntime={simulationNodeRuntime}
-                dimmedBranchIds={simulationDimmedBranchIds}
-                instanceStatus={simulationInstanceStatus}
               />
             )}
           </div>
@@ -1011,12 +873,9 @@ export default function WorkflowDesignerPage({
         visible={simulationVisible}
         definitionId={!isNew && id ? Number(id) : null}
         flowData={buildCurrentFlowData()}
+        process={process}
         formFields={localFormFields}
         users={users}
-        result={simulationResult}
-        activeStep={normalizedSimulationStep}
-        onActiveStepChange={handleSimulationStepChange}
-        onResult={handleSimulationResult}
         onClose={() => setSimulationVisible(false)}
       />
 

@@ -4,11 +4,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { Banner, Button, Empty, Select, SideSheet, Space, Spin, Tag, TextArea, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, Flag, Play, RotateCcw, Send, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, Flag, Minus, Play, Plus, RotateCcw, Send, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationResult } from '@zenith/shared';
 import { request } from '@/utils/request';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
+import FlowRenderer from './FlowRenderer';
 import { timelineDot } from '@/components/workflow/timeline-dot';
+import type { FlowNode, FlowProcess, NodeRuntimeInfo } from '../types';
 
 interface UserOption {
   id: number;
@@ -19,13 +21,10 @@ interface WorkflowSimulationDrawerProps {
   visible: boolean;
   definitionId?: number | null;
   flowData: WorkflowFlowData;
+  process: FlowProcess;
   formFields: WorkflowFormField[];
   users: UserOption[];
   loading?: boolean;
-  result: WorkflowSimulationResult | null;
-  activeStep: number;
-  onActiveStepChange: (step: number) => void;
-  onResult: (result: WorkflowSimulationResult | null) => void;
   onClose: () => void;
 }
 
@@ -74,13 +73,10 @@ export default function WorkflowSimulationDrawer({
   visible,
   definitionId,
   flowData,
+  process,
   formFields,
   users,
   loading = false,
-  result,
-  activeStep,
-  onActiveStepChange,
-  onResult,
   onClose,
 }: Readonly<WorkflowSimulationDrawerProps>) {
   const formApi = useRef<FormApi | null>(null);
@@ -88,6 +84,9 @@ export default function WorkflowSimulationDrawer({
   const [formData, setFormData] = useState<Record<string, unknown>>(() => defaultFormDataFromFields(formFields));
   const [jsonDraft, setJsonDraft] = useState('{}');
   const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<WorkflowSimulationResult | null>(null);
+  const [activeStep, setActiveStep] = useState(0);
+  const [graphZoom, setGraphZoom] = useState(90);
 
   const userOptions = useMemo(
     () => users.map((user) => ({ value: user.id, label: `${user.nickname} (#${user.id})` })),
@@ -129,7 +128,8 @@ export default function WorkflowSimulationDrawer({
         },
       });
       if (res.code === 0 && res.data) {
-        onResult(res.data);
+        setResult(res.data);
+        setActiveStep(res.data.timeline.length > 0 ? 1 : 0);
         Toast.success('仿真已启动');
       }
     } finally {
@@ -138,16 +138,93 @@ export default function WorkflowSimulationDrawer({
   };
 
   const resetResult = () => {
-    onResult(null);
-    onActiveStepChange(0);
+    setResult(null);
+    setActiveStep(0);
     setJsonDraft('{}');
     setFormData(defaultFormDataFromFields(formFields));
     formApi.current?.reset();
   };
 
   const moveStep = (nextStep: number) => {
-    onActiveStepChange(nextStep);
+    if (!result || totalSteps === 0) {
+      setActiveStep(0);
+      return;
+    }
+    setActiveStep(Math.max(1, Math.min(totalSteps, nextStep)));
   };
+
+  const simulationNodeRuntime = useMemo(() => {
+    if (!result || currentStep <= 0) return undefined;
+    const visibleTimeline = result.timeline.slice(0, currentStep);
+    const current = visibleTimeline[visibleTimeline.length - 1];
+    const byNode = new Map<string, WorkflowSimulationResult['timeline']>();
+    for (const item of visibleTimeline) {
+      const arr = byNode.get(item.nodeKey) ?? [];
+      arr.push(item);
+      byNode.set(item.nodeKey, arr);
+    }
+    const map = new Map<string, NodeRuntimeInfo>();
+    byNode.forEach((items, nodeKey) => {
+      const last = items[items.length - 1];
+      const active = current?.nodeKey === nodeKey && last.step === current.step;
+      let status: NodeRuntimeInfo['status'];
+      if (active && !['rejected', 'waiting', 'blocked', 'skipped'].includes(last.status)) status = 'pending';
+      else if (last.status === 'rejected') status = 'rejected';
+      else if (last.status === 'waiting' || last.status === 'blocked') status = 'waiting';
+      else if (last.status === 'skipped') status = 'skipped';
+      else status = 'approved';
+      const approvers = items
+        .flatMap((item) => item.assignees ?? [])
+        .map((user) => ({
+          name: user.name,
+          status,
+          actionAt: null,
+          comment: active ? '当前仿真步骤' : last.reason ?? null,
+        }));
+      map.set(nodeKey, {
+        status,
+        active,
+        approvers: approvers.length > 0
+          ? approvers
+          : [{ name: active ? '当前步骤' : last.reason ?? '仿真经过', status, actionAt: null, comment: last.reason ?? null }],
+      });
+    });
+    return map;
+  }, [currentStep, result]);
+
+  const simulationDimmedBranchIds = useMemo(() => {
+    if (!result || currentStep <= 0) return undefined;
+    const visibleNodeKeys = new Set(result.timeline.slice(0, currentStep).map((item) => item.nodeKey));
+    const skippedNodeKeys = new Set(
+      Object.entries(result.nodeStates)
+        .filter(([, state]) => state.status === 'skipped')
+        .map(([key]) => key),
+    );
+    const dimmed = new Set<string>();
+    const visit = (node: FlowNode | undefined) => {
+      if (!node) return;
+      node.branches?.forEach((branch) => {
+        const first = branch.children;
+        const branchStartKeys = node.branches
+          ?.map((item) => item.children ? item.children.key ?? item.children.id : null)
+          .filter((key): key is string => !!key) ?? [];
+        const hasReachedThisDecision = branchStartKeys.some((key) => visibleNodeKeys.has(key));
+        if (first && hasReachedThisDecision && skippedNodeKeys.has(first.key ?? first.id)) dimmed.add(branch.id);
+        visit(first);
+      });
+      visit(node.children);
+    };
+    visit(process.initiator);
+    return dimmed;
+  }, [currentStep, process, result]);
+
+  const simulationInstanceStatus = result && currentStep >= totalSteps
+    ? result.result === 'finished'
+      ? 'approved'
+      : result.result === 'rejected'
+        ? 'rejected'
+        : undefined
+    : undefined;
 
   const renderTimeline = () => {
     if (loading || submitting) {
@@ -207,7 +284,7 @@ export default function WorkflowSimulationDrawer({
       title="流程仿真"
       visible={visible}
       placement="right"
-      width={560}
+      width="92vw"
       onCancel={onClose}
       className="fd-simulation-drawer"
       footer={
@@ -246,62 +323,97 @@ export default function WorkflowSimulationDrawer({
       }
     >
       <div className="fd-simulation-drawer__body">
-        <section className="fd-simulation-section">
-          <div className="fd-simulation-section__title">仿真输入</div>
-          <Select
-            style={{ width: '100%', marginBottom: 12 }}
-            placeholder="默认使用当前登录用户发起"
-            showClear
-            filter
-            optionList={userOptions}
-            value={starterUserId}
-            onChange={(v) => setStarterUserId(typeof v === 'number' ? v : undefined)}
-          />
-          {formFields.length > 0 ? (
-            <div className="fd-simulation-form-box">
-              <WorkflowFormRenderer
-                fields={formFields}
-                initValues={formData}
-                getFormApi={(api) => { formApi.current = api; }}
-                onValueChange={setFormData}
-                labelPosition="top"
-              />
-            </div>
-          ) : (
-            <TextArea
-              value={jsonDraft}
-              onChange={setJsonDraft}
-              rows={8}
-              placeholder={'{\n  "amount": 1200\n}'}
+        <aside className="fd-simulation-panel">
+          <section className="fd-simulation-section">
+            <div className="fd-simulation-section__title">仿真输入</div>
+            <Select
+              style={{ width: '100%', marginBottom: 12 }}
+              placeholder="默认使用当前登录用户发起"
+              showClear
+              filter
+              optionList={userOptions}
+              value={starterUserId}
+              onChange={(v) => setStarterUserId(typeof v === 'number' ? v : undefined)}
             />
-          )}
-        </section>
+            {formFields.length > 0 ? (
+              <div className="fd-simulation-form-box">
+                <WorkflowFormRenderer
+                  fields={formFields}
+                  initValues={formData}
+                  getFormApi={(api) => { formApi.current = api; }}
+                  onValueChange={setFormData}
+                  labelPosition="top"
+                />
+              </div>
+            ) : (
+              <TextArea
+                value={jsonDraft}
+                onChange={setJsonDraft}
+                rows={8}
+                placeholder={'{\n  "amount": 1200\n}'}
+              />
+            )}
+          </section>
 
-        <section className="fd-simulation-section">
-          <div className="fd-simulation-section__title">
-            仿真结果
-            {resultMeta && <Tag color={resultMeta.color}>{resultMeta.label}</Tag>}
-          </div>
-          {result?.warnings.length ? (
-            <Banner type={result.valid ? 'warning' : 'danger'} description={result.warnings.join('；')} style={{ marginBottom: 12 }} />
-          ) : null}
-          {result && totalSteps > 0 && (
-            <div className="fd-simulation-player">
-              <div className="fd-simulation-player__head">
-                <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
-                {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
+          <section className="fd-simulation-section">
+            <div className="fd-simulation-section__title">
+              仿真步骤
+              {resultMeta && <Tag color={resultMeta.color}>{resultMeta.label}</Tag>}
+            </div>
+            {result?.warnings.length ? (
+              <Banner type={result.valid ? 'warning' : 'danger'} description={result.warnings.join('；')} style={{ marginBottom: 12 }} />
+            ) : null}
+            {result && totalSteps > 0 && (
+              <div className="fd-simulation-player">
+                <div className="fd-simulation-player__head">
+                  <Typography.Text strong>第 {currentStep} / {totalSteps} 步</Typography.Text>
+                  {currentItem && <Tag color="blue">{currentItem.nodeName}</Tag>}
+                </div>
+                <div className="fd-simulation-player__bar">
+                  <span style={{ width: `${progressPercent}%` }} />
+                </div>
+                {currentItem?.reason && (
+                  <Typography.Text size="small" type="tertiary">
+                    {currentItem.reason}
+                  </Typography.Text>
+                )}
               </div>
-              <div className="fd-simulation-player__bar">
-                <span style={{ width: `${progressPercent}%` }} />
-              </div>
-              {currentItem?.reason && (
-                <Typography.Text size="small" type="tertiary">
-                  {currentItem.reason}
-                </Typography.Text>
+            )}
+            <div className="fd-simulation-timeline">
+              {renderTimeline()}
+            </div>
+          </section>
+        </aside>
+
+        <section className="fd-simulation-graph">
+          <div className="fd-simulation-graph__toolbar">
+            <div className="fd-simulation-graph__title">
+              <Typography.Text strong>流程图仿真</Typography.Text>
+              {currentItem ? (
+                <Typography.Text type="tertiary" size="small">当前：{currentItem.nodeName}</Typography.Text>
+              ) : (
+                <Typography.Text type="tertiary" size="small">启动后在这里逐步呈现节点状态</Typography.Text>
               )}
             </div>
-          )}
-          {renderTimeline()}
+            <div className="fd-toolbar__zoom">
+              <Button icon={<Minus size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphZoom((z) => Math.max(z - 10, 50))} />
+              <span>{graphZoom}%</span>
+              <Button icon={<Plus size={14} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphZoom((z) => Math.min(z + 10, 160))} />
+              <Button icon={<RotateCcw size={12} />} type="tertiary" theme="borderless" size="small" onClick={() => setGraphZoom(90)} />
+            </div>
+          </div>
+          <div className="fd-simulation-graph__canvas">
+            <div style={{ transform: `scale(${graphZoom / 100})`, transformOrigin: 'top center' }}>
+              <FlowRenderer
+                process={process}
+                readOnly
+                formFields={formFields}
+                nodeRuntime={simulationNodeRuntime}
+                dimmedBranchIds={simulationDimmedBranchIds}
+                instanceStatus={simulationInstanceStatus}
+              />
+            </div>
+          </div>
         </section>
       </div>
     </SideSheet>

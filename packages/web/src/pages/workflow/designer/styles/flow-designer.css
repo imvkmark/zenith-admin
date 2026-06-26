@@ -489,9 +489,12 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 /* ─── 流程仿真抽屉 ─────────────────────────────────────────────────── */
 
 .fd-simulation-drawer__body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: minmax(360px, 420px) minmax(560px, 1fr);
+  gap: 16px;
+  height: calc(100vh - 132px);
+  min-height: 560px;
+  overflow: hidden;
 }
 
 .fd-simulation-drawer__footer {
@@ -508,6 +511,15 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   gap: 10px;
 }
 
+.fd-simulation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .fd-simulation-section__title {
   display: flex;
   align-items: center;
@@ -519,7 +531,7 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 .fd-simulation-form-box {
-  max-height: 320px;
+  max-height: min(38vh, 360px);
   overflow: auto;
   padding: 12px;
   border: 1px solid var(--semi-color-border);
@@ -535,16 +547,6 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   border: 1px solid var(--semi-color-border);
   border-radius: 8px;
   background: var(--semi-color-fill-0);
-}
-
-.fd-simulation-player--toolbar {
-  flex-direction: row;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
-  font-size: 12px;
-  color: var(--semi-color-text-1);
-  background: var(--semi-color-bg-1);
 }
 
 .fd-simulation-player__head {
@@ -584,6 +586,91 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 
 .fd-simulation-timeline-item--future {
   opacity: 0.46;
+}
+
+.fd-simulation-timeline {
+  min-height: 180px;
+}
+
+.fd-simulation-graph {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-bg-0);
+}
+
+.fd-simulation-graph__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-2);
+}
+
+.fd-simulation-graph__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fd-simulation-graph__title > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-simulation-graph__canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px 0 80px;
+  background:
+    radial-gradient(circle, var(--fd-canvas-dot) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-color: var(--fd-canvas-bg);
+  --fd-canvas-bg: #f5f5f5;
+  --fd-canvas-dot: #e5e5e5;
+  --fd-line-color: #cacaca;
+  --fd-node-body-color: var(--semi-color-text-1);
+  --fd-node-body-arrow: var(--semi-color-text-3);
+  --fd-end-bg: var(--semi-color-fill-2);
+  --fd-end-color: var(--semi-color-text-2);
+  --fd-tag-bg: var(--semi-color-primary-light-default);
+  --fd-tag-color: var(--semi-color-primary);
+}
+
+body[theme-mode='dark'] .fd-simulation-graph__canvas {
+  --fd-canvas-bg: var(--semi-color-bg-0);
+  --fd-canvas-dot: var(--semi-color-border);
+  --fd-line-color: var(--semi-color-border);
+  --fd-end-bg: var(--semi-color-fill-1);
+  --fd-end-color: var(--semi-color-text-1);
+  --fd-tag-bg: var(--semi-color-primary-light-default);
+  --fd-tag-color: var(--semi-color-primary);
+}
+
+@media (max-width: 1040px) {
+  .fd-simulation-drawer__body {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .fd-simulation-panel {
+    overflow: visible;
+  }
+
+  .fd-simulation-graph {
+    min-height: 560px;
+  }
 }
 
 .fd-simulation-timeline-item__head {
