@@ -4,17 +4,14 @@ import {
   AreaChart,
   BarChart,
   PieChart,
-  HeatmapChart,
   EmptyChart,
-  HeatmapLegend,
   useChartPalette,
   chartOptions,
   makeAreaSpec,
   makeBarSpec,
   makePieSpec,
-  buildCalendarHeatmap,
-  makeCalendarHeatmapSpec,
 } from '@/components/charts';
+import dayjs from 'dayjs';
 import { request } from '@/utils/request';
 import type { OperationLogStats } from '@zenith/shared';
 
@@ -23,6 +20,8 @@ const DAYS_OPTIONS = [
   { label: '最近 30 天', value: 30 },
   { label: '最近 90 天', value: 90 },
 ];
+
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#3b82f6',
@@ -122,7 +121,13 @@ export default function OperationLogStatsPanel() {
   const hourlyChartData = useMemo(() => [...(stats?.hourlyStats ?? [])], [stats]);
   const dailyChartData = useMemo(() => [...(stats?.dailyStats ?? [])], [stats]);
 
-  const heatmap = useMemo(() => buildCalendarHeatmap(stats?.dailyStats ?? [], days), [stats, days]);
+  const weekdayChartData = useMemo(() => {
+    const buckets = new Array(7).fill(0);
+    for (const d of stats?.dailyStats ?? []) {
+      buckets[(dayjs(d.date).day() + 6) % 7] += d.count;
+    }
+    return WEEKDAY_LABELS.map((name, i) => ({ name, count: buckets[i] }));
+  }, [stats]);
 
   const summary = stats?.summary;
   const successRate = summary == null || summary.total === 0
@@ -202,9 +207,16 @@ export default function OperationLogStatsPanel() {
     tooltip: { title: (x) => `日期：${x}`, value: (v) => `${v} 次` },
   }), [dailyChartData, palette]);
 
-  const heatmapSpec = useMemo(
-    () => makeCalendarHeatmapSpec(heatmap.data, heatmap.maxCount, palette, { valueLabel: '操作次数' }),
-    [heatmap, palette],
+  const weekdaySpec = useMemo(
+    () => makeBarSpec({
+      data: weekdayChartData,
+      xField: 'name',
+      series: [{ field: 'count', name: '操作次数', color: '#6366f1' }],
+      palette,
+      showLabel: true,
+      tooltip: { value: (v) => `${v} 次` },
+    }),
+    [weekdayChartData, palette],
   );
 
   return (
@@ -284,16 +296,13 @@ export default function OperationLogStatsPanel() {
           <AreaChart {...dailySpec} options={chartOptions} height={210} />
         </div>
 
-        {/* ── 操作热力图 ── */}
+        {/* ── 按星期分布 ── */}
         <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>操作热力图（近 {days} 天）</div>
+          <div style={sectionTitleStyle}>按星期操作分布（近 {days} 天）</div>
           {!stats ? (
             <EmptyChart height={220} />
           ) : (
-            <>
-              <HeatmapChart {...heatmapSpec} options={chartOptions} height={220} />
-              <HeatmapLegend palette={palette} />
-            </>
+            <BarChart {...weekdaySpec} options={chartOptions} height={220} />
           )}
         </div>
       </Spin>
