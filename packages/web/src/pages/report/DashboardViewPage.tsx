@@ -23,7 +23,7 @@ export default function DashboardViewPage() {
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState<ReportDashboard | null>(null);
 
-  const widgets = dashboard?.widgets ?? [];
+  const widgets = useMemo(() => dashboard?.widgets ?? [], [dashboard]);
   const layout = (dashboard?.layout ?? []) as Layout;
   const datasetIds = useMemo(() => widgets.map((w) => w.datasetId ?? 0).filter((x) => x > 0), [widgets]);
   const { get: getData, refresh } = useDatasetDataMap(datasetIds);

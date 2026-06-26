@@ -129,7 +129,7 @@ export function WidgetRenderer({ widget, data, loading, error }: Readonly<Widget
     const spec = makeLineSpec({ data: chartData, xField: opts.categoryField, series, palette });
     return <LineChart {...spec} options={chartOptions} height={chartHeight} />;
      
-  }, [widget, data, rows, opts, loading, error, palette, width, height, chartHeight]);
+  }, [widget, data, loading, error, palette, width, height, chartHeight]);
 
   return <div ref={ref} style={{ width: '100%', height: '100%' }}>{content}</div>;
 }
