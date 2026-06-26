@@ -2,15 +2,16 @@
  * 发起人节点
  */
 import { ChevronRight, User } from 'lucide-react';
-import type { FlowNode, FieldPermission } from '../types';
+import type { FlowNode, FieldPermission, NodeRuntimeInfo } from '../types';
 
 interface InitiatorNodeProps {
   node: FlowNode;
   onEdit: (node: FlowNode) => void;
   started?: boolean;
+  runtime?: NodeRuntimeInfo;
 }
 
-export default function InitiatorNode({ node, onEdit, started }: Readonly<InitiatorNodeProps>) {
+export default function InitiatorNode({ node, onEdit, started, runtime }: Readonly<InitiatorNodeProps>) {
   const desc = node.props.initiatorDesc as string || '所有人';
 
   // 表单权限摘要
@@ -31,7 +32,7 @@ export default function InitiatorNode({ node, onEdit, started }: Readonly<Initia
     <div className="fd-initiator-node">
       <button
         type="button"
-        className="fd-node-card fd-node-card--initiator"
+        className={`fd-node-card fd-node-card--initiator${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}${runtime?.active ? ' fd-node-card--rt-active' : ''}`}
         onClick={() => onEdit(node)}
       >
         <div className="fd-node-card__header" style={{ background: '#ff943e' }}>

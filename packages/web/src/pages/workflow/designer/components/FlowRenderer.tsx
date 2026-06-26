@@ -108,6 +108,7 @@ export default function FlowRenderer({
         node={process.initiator}
         onEdit={editNode}
         started={!!nodeRuntime}
+        runtime={nodeRuntime?.get(process.initiator.key ?? 'start') ?? nodeRuntime?.get('start')}
       />
 
       {!readOnly && <AddNodeButton onAdd={(type) => addAfter(process.initiator.id, type)} />}

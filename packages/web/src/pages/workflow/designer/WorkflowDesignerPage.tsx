@@ -628,6 +628,7 @@ export default function WorkflowDesignerPage({
         }));
       map.set(nodeKey, {
         status,
+        active: isCurrentNode,
         approvers: approvers.length > 0
           ? approvers
           : [{ name: isCurrentNode ? '当前步骤' : last.reason ?? '仿真经过', status, actionAt: null, comment: last.reason ?? null }],

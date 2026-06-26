@@ -52,10 +52,11 @@ body[theme-mode='dark'] .fd-canvas {
   position: relative;
   width: 220px;
   background: var(--semi-color-bg-2);
+  border: 2px solid transparent;
   border-radius: 8px;
   box-shadow: var(--semi-shadow-elevated, 0 2px 6px rgba(0, 0, 0, 0.08));
   cursor: pointer;
-  transition: box-shadow 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.2s;
 }
 
 .fd-node-card:hover {
@@ -144,7 +145,7 @@ body[theme-mode='dark'] .fd-node-card:hover {
 
 /* 发起人特殊边框 */
 .fd-node-card--initiator {
-  border: 2px solid #ff943e;
+  border-color: #ff943e;
 }
 
 /* ─── Initiator 节点（发起人） ──────────────────────────────────────── */
@@ -376,11 +377,41 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 /* 左侧状态色条 + 描边 */
-.fd-node-card--rt-approved { box-shadow: 0 0 0 1px var(--semi-color-success); }
-.fd-node-card--rt-rejected { box-shadow: 0 0 0 1px var(--semi-color-danger); }
-.fd-node-card--rt-pending  { box-shadow: 0 0 0 2px var(--semi-color-primary); }
-.fd-node-card--rt-waiting  { box-shadow: 0 0 0 1px var(--semi-color-border); }
+.fd-node-card--rt-approved { border-color: var(--semi-color-success); box-shadow: 0 0 0 1px var(--semi-color-success-light-default); }
+.fd-node-card--rt-rejected { border-color: var(--semi-color-danger); box-shadow: 0 0 0 1px var(--semi-color-danger-light-default); }
+.fd-node-card--rt-pending  { border-color: var(--semi-color-primary); box-shadow: 0 0 0 2px var(--semi-color-primary-light-default); }
+.fd-node-card--rt-waiting  { border-color: var(--semi-color-border); box-shadow: 0 0 0 1px var(--semi-color-border); }
 .fd-node-card--rt-skipped  { opacity: 0.75; }
+
+.fd-node-card--rt-active {
+  border-color: #fff;
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 2px var(--semi-color-primary),
+    0 8px 24px rgba(var(--semi-blue-5), 0.28);
+}
+
+.fd-node-card--rt-active::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  pointer-events: none;
+  border: 2px solid var(--semi-color-primary);
+  border-radius: 12px;
+  opacity: 0.28;
+  animation: fd-simulation-pulse 1.4s ease-out infinite;
+}
+
+@keyframes fd-simulation-pulse {
+  0% {
+    transform: scale(0.98);
+    opacity: 0.42;
+  }
+  100% {
+    transform: scale(1.04);
+    opacity: 0;
+  }
+}
 
 /* 头部状态徽标 */
 .fd-node-card__rt-badge {

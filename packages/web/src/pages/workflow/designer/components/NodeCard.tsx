@@ -180,7 +180,7 @@ export default function NodeCard({ node, onEdit, onDelete, onDuplicate, readOnly
   return (
     <button
       type="button"
-      className={`fd-node-card${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}`}
+      className={`fd-node-card${runtime ? ` fd-node-card--rt fd-node-card--rt-${runtime.status}` : ''}${runtime?.active ? ' fd-node-card--rt-active' : ''}`}
       data-fd-node-id={node.id}
       onClick={clickable ? () => onEdit(node) : undefined}
       tabIndex={clickable ? 0 : -1}
