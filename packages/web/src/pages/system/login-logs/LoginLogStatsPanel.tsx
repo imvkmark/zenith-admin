@@ -8,22 +8,12 @@ import {
   EmptyChart,
   useChartPalette,
   chartOptions,
-  compactCount,
   sectionStyle,
   sectionTitleStyle,
-  makeCommonTooltip,
-  makeCommonCartesianSpec,
+  makeAreaSpec,
   makeBarSpec,
-  axisText,
-  axisNumber,
-  datumText,
-  datumNumber,
+  makePieSpec,
   isEmptyValues,
-  type ChartPalette,
-  type ChartDatum,
-  type IAreaChartSpec,
-  type IBarChartSpec,
-  type IPieChartSpec,
 } from '@/components/charts';
 import dayjs from 'dayjs';
 import { request } from '@/utils/request';
@@ -38,12 +28,6 @@ const DAYS_OPTIONS = [
 const FAIL_COLOR = 'var(--semi-color-danger)';
 
 const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-
-interface TrendDatum {
-  readonly date: string;
-  readonly type: '成功' | '失败';
-  readonly count: number;
-}
 
 interface BarDatum {
   readonly name: string;
@@ -101,299 +85,6 @@ function ChartShell({ title, children, danger }: Readonly<{ title: React.ReactNo
   );
 }
 
-function makeTrendSpec(data: readonly TrendDatum[], days: number, palette: ChartPalette): Partial<IAreaChartSpec> {
-  const commonTooltip = makeCommonTooltip(palette);
-  return {
-    ...makeCommonCartesianSpec(palette),
-    data: [{ id: 'trend', values: [...data] }],
-    xField: 'date',
-    yField: 'count',
-    seriesField: 'type',
-    stack: true,
-    color: [palette.success, palette.danger],
-    area: {
-      style: {
-        fillOpacity: (datum: ChartDatum) => (datumText(datum, 'type') === '失败' ? 0.32 : 0.22),
-        curveType: 'monotone',
-      },
-    },
-    line: {
-      style: {
-        lineWidth: 2,
-        curveType: 'monotone',
-      },
-    },
-    point: {
-      visible: days <= 7,
-      style: { size: 6 },
-    },
-    axes: [
-      {
-        orient: 'bottom',
-        type: 'band',
-        label: {
-          style: { fontSize: 11, fill: palette.text2 },
-          space: 8,
-          formatMethod: (value) => axisText(value).slice(5),
-        },
-        sampling: false,
-        tick: { visible: false },
-        domainLine: { visible: false },
-        grid: { visible: false },
-      },
-      {
-        orient: 'left',
-        type: 'linear',
-        label: {
-          style: { fontSize: 12, fill: palette.text2 },
-          formatMethod: (value) => compactCount(axisNumber(value)),
-        },
-        tick: { visible: false },
-        domainLine: { visible: false },
-        grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4], lineWidth: 1 } },
-      },
-    ],
-    legends: {
-      visible: true,
-      orient: 'bottom',
-      position: 'middle',
-      item: {
-        label: { style: { fill: palette.text1, fontSize: 12 } },
-      },
-    },
-    tooltip: {
-      ...commonTooltip,
-      dimension: {
-        title: {
-          value: (datum?: ChartDatum | ChartDatum[]) => {
-            const first = Array.isArray(datum) ? datum[0] : datum;
-            return `日期：${datumText(first, 'date')}`;
-          },
-        },
-      },
-      mark: {
-        content: [
-          {
-            key: (datum?: ChartDatum) => datumText(datum, 'type'),
-            value: (datum?: ChartDatum) => `${datumNumber(datum, 'count')} 次`,
-          },
-        ],
-      },
-    },
-  };
-}
-
-function makeHorizontalBarSpec(data: readonly BarDatum[], color: string, labelWidth: number, palette: ChartPalette): Partial<IBarChartSpec> {
-  const commonTooltip = makeCommonTooltip(palette);
-  return {
-    ...makeCommonCartesianSpec(palette),
-    data: [{ id: 'bar', values: [...data] }],
-    direction: 'horizontal',
-    xField: 'count',
-    yField: 'name',
-    color: [color],
-    barMaxWidth: 16,
-    barMinHeight: 3,
-    bar: {
-      style: {
-        cornerRadius: [0, 5, 5, 0],
-        fillOpacity: 0.9,
-      },
-    },
-    label: {
-      visible: true,
-      position: 'right',
-      formatMethod: (_text, datum) => compactCount(datumNumber(datum, 'count')),
-      style: { fill: color, fontSize: 11 },
-    },
-    axes: [
-      {
-        orient: 'bottom',
-        type: 'linear',
-        tick: { visible: false },
-        domainLine: { visible: false },
-        grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } },
-        label: {
-          style: { fill: palette.text2, fontSize: 12 },
-          formatMethod: (value) => compactCount(axisNumber(value)),
-        },
-      },
-      {
-        orient: 'left',
-        type: 'band',
-        width: labelWidth,
-        tick: { visible: false },
-        domainLine: { visible: false },
-        label: {
-          style: { fill: palette.text1, fontSize: 12 },
-          autoLimit: true,
-        },
-      },
-    ],
-    tooltip: {
-      ...commonTooltip,
-      mark: {
-        title: { value: (datum?: ChartDatum) => datumText(datum, 'name') },
-        content: [
-          {
-            key: '次数',
-            value: (datum?: ChartDatum) => `${datumNumber(datum, 'count')} 次`,
-          },
-        ],
-      },
-    },
-  };
-}
-
-function makeHourlySpec(data: readonly BarDatum[], palette: ChartPalette): Partial<IBarChartSpec> {
-  const commonTooltip = makeCommonTooltip(palette);
-  return {
-    ...makeCommonCartesianSpec(palette),
-    data: [{ id: 'hourly', values: [...data] }],
-    xField: 'name',
-    yField: 'count',
-    color: [palette.active],
-    barMaxWidth: 18,
-    bar: {
-      style: {
-        cornerRadius: [4, 4, 0, 0],
-        fillOpacity: 0.92,
-      },
-      state: {
-        hover: { fillOpacity: 1 },
-      },
-    },
-    axes: [
-      {
-        orient: 'bottom',
-        type: 'band',
-        tick: { visible: false },
-        domainLine: { visible: false },
-        label: {
-          style: { fill: palette.text2, fontSize: 11 },
-          formatMethod: (value) => axisText(value).replace(':00', 'h'),
-        },
-        sampling: false,
-      },
-      {
-        orient: 'left',
-        type: 'linear',
-        width: 40,
-        tick: { visible: false },
-        domainLine: { visible: false },
-        grid: { visible: true, style: { stroke: palette.grid, lineDash: [3, 4] } },
-        label: {
-          style: { fill: palette.text2, fontSize: 12 },
-          formatMethod: (value) => compactCount(axisNumber(value)),
-        },
-      },
-    ],
-    tooltip: {
-      ...commonTooltip,
-      mark: {
-        title: {
-          value: (datum?: ChartDatum) => {
-            const hour = datumText(datum, 'name');
-            return `${hour} - ${hour.replace(':00', ':59')}`;
-          },
-        },
-        content: [{ key: '登录次数', value: (datum?: ChartDatum) => `${datumNumber(datum, 'count')} 次` }],
-      },
-    },
-  };
-}
-
-function makeDonutSpec(data: readonly PieDatum[], successRate: string | null, palette: ChartPalette): Partial<IPieChartSpec> {
-  const commonTooltip = makeCommonTooltip(palette);
-  return {
-    type: 'pie',
-    data: [{ id: 'status', values: [...data] }],
-    categoryField: 'name',
-    valueField: 'value',
-    color: [palette.success, palette.danger],
-    outerRadius: 0.86,
-    innerRadius: 0.58,
-    padAngle: 1.5,
-    cornerRadius: 5,
-    legends: {
-      visible: true,
-      orient: 'bottom',
-      item: { label: { style: { fill: palette.text1, fontSize: 12 } } },
-    },
-    indicator: {
-      visible: true,
-      title: {
-        visible: true,
-        autoLimit: true,
-        style: { text: successRate == null ? '--' : `${successRate}%`, fill: palette.text0, fontSize: 28, fontWeight: 700 },
-      },
-      content: [
-        {
-          visible: true,
-          style: { text: '成功率', fill: palette.text2, fontSize: 12 },
-        },
-      ],
-    },
-    label: {
-      visible: true,
-      position: 'inside',
-      formatMethod: (_text, datum) => {
-        const value = datumNumber(datum, 'value');
-        return value > 0 ? compactCount(value) : '';
-      },
-      style: { fill: '#fff', fontSize: 12, fontWeight: 600 },
-    },
-    tooltip: {
-      ...commonTooltip,
-      mark: {
-        title: { value: (datum?: ChartDatum) => datumText(datum, 'name') },
-        content: [{ key: '次数', value: (datum?: ChartDatum) => `${datumNumber(datum, 'value')} 次` }],
-      },
-    },
-  };
-}
-
-function makeCategoryDonutSpec(data: readonly PieDatum[], palette: ChartPalette): Partial<IPieChartSpec> {
-  const commonTooltip = makeCommonTooltip(palette);
-  return {
-    type: 'pie',
-    data: [{ id: 'category-pie', values: [...data] }],
-    categoryField: 'name',
-    valueField: 'value',
-    color: palette.dataColors,
-    innerRadius: 0.48,
-    outerRadius: 0.82,
-    padAngle: 1,
-    cornerRadius: 3,
-    legends: {
-      visible: true,
-      orient: 'bottom',
-      position: 'middle',
-      item: { label: { style: { fill: palette.text1, fontSize: 11 } } },
-    },
-    label: {
-      visible: true,
-      position: 'outside',
-      formatMethod: (_text, datum) => {
-        const value = datumNumber(datum, 'value');
-        const name = datumText(datum, 'name');
-        const total = data.reduce((sum, item) => sum + item.value, 0);
-        if (total <= 0 || value / total < 0.05) return '';
-        return `${name} ${Math.round((value / total) * 100)}%`;
-      },
-      line: { visible: true },
-      style: { fill: palette.text1, fontSize: 11 },
-    },
-    tooltip: {
-      ...commonTooltip,
-      mark: {
-        title: { value: (datum?: ChartDatum) => datumText(datum, 'name') },
-        content: [{ key: '访问次数', value: (datum?: ChartDatum) => `${datumNumber(datum, 'value')} 次` }],
-      },
-    },
-  };
-}
-
 export default function LoginLogStatsPanel() {
   const palette = useChartPalette();
   const [days, setDays] = useState<number>(30);
@@ -425,14 +116,6 @@ export default function LoginLogStatsPanel() {
       return dataMap.get(date) ?? { date, count: 0, successCount: 0, failCount: 0 };
     });
   }, [stats, days]);
-
-  const trendData = useMemo<TrendDatum[]>(
-    () => filledDailyStats.flatMap((d) => [
-      { date: d.date, type: '成功', count: d.successCount },
-      { date: d.date, type: '失败', count: d.failCount },
-    ]),
-    [filledDailyStats],
-  );
 
   const weekdayChartData = useMemo<BarDatum[]>(() => {
     const buckets = new Array(7).fill(0);
@@ -478,13 +161,110 @@ export default function LoginLogStatsPanel() {
     [summary],
   );
 
-  const trendSpec = useMemo(() => makeTrendSpec(trendData, days, palette), [days, palette, trendData]);
-  const userBarSpec = useMemo(() => makeHorizontalBarSpec(userChartData, palette.success, 88, palette), [palette, userChartData]);
-  const ipFailBarSpec = useMemo(() => makeHorizontalBarSpec(ipFailChartData, palette.risk, 120, palette), [ipFailChartData, palette]);
-  const hourlySpec = useMemo(() => makeHourlySpec(hourlyChartData, palette), [hourlyChartData, palette]);
-  const statusSpec = useMemo(() => makeDonutSpec(statusPieData, successRate, palette), [palette, statusPieData, successRate]);
-  const browserSpec = useMemo(() => makeCategoryDonutSpec(browserData, palette), [browserData, palette]);
-  const osSpec = useMemo(() => makeCategoryDonutSpec(osData, palette), [osData, palette]);
+  const trendSpec = useMemo(() => makeAreaSpec({
+    data: filledDailyStats,
+    xField: 'date',
+    series: [
+      { field: 'successCount', name: '成功', color: palette.success },
+      { field: 'failCount', name: '失败', color: palette.danger },
+    ],
+    palette,
+    stack: true,
+    point: days <= 7,
+    pointSize: 6,
+    fillOpacity: 0.26,
+    axis: { xLabel: (value) => value.slice(5) },
+    tooltip: {
+      title: (value) => `日期：${value}`,
+      value: (value) => `${value} 次`,
+    },
+  }), [days, filledDailyStats, palette]);
+  const userBarSpec = useMemo(() => makeBarSpec({
+    data: userChartData,
+    xField: 'name',
+    series: [{ field: 'count', name: '登录次数', color: palette.success }],
+    palette,
+    horizontal: true,
+    barMinHeight: 3,
+    cornerRadius: 5,
+    showLabel: true,
+    labelColor: palette.success,
+    categoryAxisWidth: 88,
+    tooltip: { value: (value) => `${value} 次` },
+  }), [palette, userChartData]);
+  const ipFailBarSpec = useMemo(() => makeBarSpec({
+    data: ipFailChartData,
+    xField: 'name',
+    series: [{ field: 'count', name: '失败次数', color: palette.risk }],
+    palette,
+    horizontal: true,
+    barMinHeight: 3,
+    cornerRadius: 5,
+    showLabel: true,
+    labelColor: palette.risk,
+    categoryAxisWidth: 120,
+    tooltip: { value: (value) => `${value} 次` },
+  }), [ipFailChartData, palette]);
+  const hourlySpec = useMemo(() => makeBarSpec({
+    data: hourlyChartData,
+    xField: 'name',
+    series: [{ field: 'count', name: '登录次数', color: palette.active }],
+    palette,
+    barMaxWidth: 18,
+    axis: { xLabel: (value) => value.replace(':00', 'h') },
+    tooltip: {
+      title: (value) => `${value} - ${value.replace(':00', ':59')}`,
+      value: (value) => `${value} 次`,
+    },
+  }), [hourlyChartData, palette]);
+  const statusSpec = useMemo(() => makePieSpec({
+    data: statusPieData,
+    categoryField: 'name',
+    valueField: 'value',
+    palette,
+    donut: true,
+    colors: [palette.success, palette.danger],
+    outerRadius: 0.86,
+    innerRadius: 0.58,
+    padAngle: 1.5,
+    cornerRadius: 5,
+    label: 'value',
+    labelPosition: 'inside',
+    labelColor: '#fff',
+    labelFontSize: 12,
+    indicator: { title: successRate == null ? '--' : `${successRate}%`, subtitle: '成功率' },
+    indicatorTitleFontSize: 28,
+    tooltipKey: '次数',
+    valueUnit: '次',
+  }), [palette, statusPieData, successRate]);
+  const browserSpec = useMemo(() => makePieSpec({
+    data: browserData,
+    categoryField: 'name',
+    valueField: 'value',
+    palette,
+    donut: true,
+    innerRadius: 0.48,
+    outerRadius: 0.82,
+    padAngle: 1,
+    cornerRadius: 3,
+    legendLabelFontSize: 11,
+    tooltipKey: '访问次数',
+    valueUnit: '次',
+  }), [browserData, palette]);
+  const osSpec = useMemo(() => makePieSpec({
+    data: osData,
+    categoryField: 'name',
+    valueField: 'value',
+    palette,
+    donut: true,
+    innerRadius: 0.48,
+    outerRadius: 0.82,
+    padAngle: 1,
+    cornerRadius: 3,
+    legendLabelFontSize: 11,
+    tooltipKey: '访问次数',
+    valueUnit: '次',
+  }), [osData, palette]);
   const weekdaySpec = useMemo(() => makeBarSpec({
     data: weekdayChartData,
     xField: 'name',

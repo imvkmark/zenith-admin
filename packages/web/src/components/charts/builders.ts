@@ -62,6 +62,10 @@ function linearAxis(orient: 'bottom' | 'left', palette: ChartPalette, format?: (
   };
 }
 
+function firstDatum(datum?: ChartDatum | ChartDatum[]): ChartDatum {
+  return Array.isArray(datum) ? datum[0] : datum;
+}
+
 function legendSpec(palette: ChartPalette) {
   return {
     visible: true,
@@ -87,10 +91,12 @@ export interface LineAreaOptions {
   readonly smooth?: boolean;
   /** 是否显示数据点，默认 false */
   readonly point?: boolean;
+  /** 数据点大小 */
+  readonly pointSize?: number;
   /** 是否显示图例，默认在多系列时显示 */
   readonly legend?: boolean;
   /** 面积填充透明度（仅面积图） */
-  readonly fillOpacity?: number;
+  readonly fillOpacity?: number | ((datum: ChartDatum) => number);
   readonly axis?: AxisFormatters;
   readonly tooltip?: TooltipConfig;
 }
@@ -121,7 +127,7 @@ function buildCartesianSeries(o: LineAreaOptions, area: boolean) {
     color: colors,
     ...(multi ? { seriesField: '__type', stack: o.stack ?? false } : {}),
     line: { style: { lineWidth: 2, curveType } },
-    point: { visible: o.point ?? false, style: { size: 5 } },
+    point: { visible: o.point ?? false, style: { size: o.pointSize ?? 5 } },
     axes: [
       bandAxis('bottom', palette, o.axis?.xLabel),
       linearAxis('left', palette, o.axis?.yLabel),
@@ -132,7 +138,12 @@ function buildCartesianSeries(o: LineAreaOptions, area: boolean) {
       ...(multi
         ? {
             dimension: {
-              title: { value: (datum?: ChartDatum) => (titleFmt ? titleFmt(datumText(datum, '__x')) : datumText(datum, '__x')) },
+              title: {
+                value: (datum?: ChartDatum | ChartDatum[]) => {
+                  const xValue = datumText(firstDatum(datum), '__x');
+                  return titleFmt ? titleFmt(xValue) : xValue;
+                },
+              },
             },
             mark: {
               content: [
@@ -189,10 +200,14 @@ export interface BarOptions {
   readonly colorByDatum?: (datum: ChartDatum) => string;
   /** 柱最大宽度 */
   readonly barMaxWidth?: number;
+  /** 柱最小高度，适合水平 Top 榜避免极小值不可见 */
+  readonly barMinHeight?: number;
   /** 圆角，默认按方向自动 */
   readonly cornerRadius?: number;
   /** 是否在柱末端显示数值标签 */
   readonly showLabel?: boolean;
+  /** 数值标签颜色，默认使用次级文本色 */
+  readonly labelColor?: string;
   /** 分类轴（band）标签宽度（水平条形图左侧留白） */
   readonly categoryAxisWidth?: number;
   /** 是否显示图例，默认多系列显示 */
@@ -240,6 +255,7 @@ export function makeBarSpec(o: BarOptions): Partial<IBarChartSpec> {
     color: colors,
     ...(multi ? { seriesField: '__type', stack: o.stack ?? false } : {}),
     barMaxWidth: o.barMaxWidth ?? (horizontal ? 16 : 22),
+    ...(o.barMinHeight == null ? {} : { barMinHeight: o.barMinHeight }),
     bar: { style: barStyle },
     ...(o.showLabel
       ? {
@@ -247,7 +263,7 @@ export function makeBarSpec(o: BarOptions): Partial<IBarChartSpec> {
             visible: true,
             position: horizontal ? ('right' as const) : ('top' as const),
             formatMethod: (_text: unknown, datum: ChartDatum) => compactCount(datumNumber(datum, valField)),
-            style: { fill: palette.text2, fontSize: 11 },
+            style: { fill: o.labelColor ?? palette.text2, fontSize: 11 },
           },
         }
       : {}),
@@ -258,7 +274,12 @@ export function makeBarSpec(o: BarOptions): Partial<IBarChartSpec> {
       ...(multi
         ? {
             dimension: {
-              title: { value: (datum?: ChartDatum) => (titleFmt ? titleFmt(datumText(datum, '__x')) : datumText(datum, '__x')) },
+              title: {
+                value: (datum?: ChartDatum | ChartDatum[]) => {
+                  const xValue = datumText(firstDatum(datum), '__x');
+                  return titleFmt ? titleFmt(xValue) : xValue;
+                },
+              },
             },
             mark: {
               content: [
@@ -295,10 +316,23 @@ export interface PieOptions {
   readonly donut?: boolean;
   /** 自定义配色（按分类顺序），缺省取调色板 */
   readonly colors?: readonly string[];
+  readonly outerRadius?: number;
+  readonly innerRadius?: number;
+  readonly padAngle?: number;
+  readonly cornerRadius?: number;
+  readonly legend?: boolean;
+  readonly legendLabelFontSize?: number;
   /** 标签模式：'percent' 显示「名称 xx%」，'value' 显示数值，'none' 不显示，默认 percent */
   readonly label?: 'percent' | 'value' | 'none';
+  readonly labelPosition?: 'inside' | 'outside';
+  readonly labelColor?: string;
+  readonly labelFontSize?: number;
+  readonly labelLine?: boolean;
   /** 中心指标（环形图） */
   readonly indicator?: { readonly title: string; readonly subtitle?: string };
+  readonly indicatorTitleFontSize?: number;
+  /** tooltip 指标名，默认「数值」 */
+  readonly tooltipKey?: string;
   /** tooltip 数值格式化 */
   readonly valueFormatter?: (value: number) => string;
   /** tooltip 中数值的单位后缀（与 valueFormatter 二选一） */
@@ -309,6 +343,7 @@ export function makePieSpec(o: PieOptions): Partial<IPieChartSpec> {
   const { palette, data, categoryField, valueField } = o;
   const donut = o.donut ?? true;
   const labelMode = o.label ?? 'percent';
+  const labelPosition = o.labelPosition ?? 'outside';
   const colors = o.colors ? [...o.colors] : palette.dataColors;
   const total = data.reduce<number>((sum, item) => {
     const v = (item as Record<string, unknown>)[valueField];
@@ -325,16 +360,18 @@ export function makePieSpec(o: PieOptions): Partial<IPieChartSpec> {
     categoryField,
     valueField,
     color: colors,
-    outerRadius: 0.82,
-    innerRadius: donut ? 0.55 : 0,
-    padAngle: donut ? 1.2 : 0,
-    cornerRadius: donut ? 4 : 0,
-    legends: { visible: true, orient: 'bottom', position: 'middle', item: { label: { style: { fill: palette.text1, fontSize: 12 } } } },
+    outerRadius: o.outerRadius ?? 0.82,
+    innerRadius: o.innerRadius ?? (donut ? 0.55 : 0),
+    padAngle: o.padAngle ?? (donut ? 1.2 : 0),
+    cornerRadius: o.cornerRadius ?? (donut ? 4 : 0),
+    ...(o.legend === false
+      ? {}
+      : { legends: { visible: true, orient: 'bottom', position: 'middle', item: { label: { style: { fill: palette.text1, fontSize: o.legendLabelFontSize ?? 12 } } } } }),
     label: {
       visible: labelMode !== 'none',
-      position: 'outside',
-      line: { visible: true },
-      style: { fill: palette.text1, fontSize: 11 },
+      position: labelPosition,
+      line: { visible: o.labelLine ?? labelPosition === 'outside' },
+      style: { fill: o.labelColor ?? palette.text1, fontSize: o.labelFontSize ?? 11, fontWeight: labelPosition === 'inside' ? 600 : 400 },
       formatMethod: (_text: unknown, datum: ChartDatum) => {
         const value = datumNumber(datum, valueField);
         const name = datumText(datum, categoryField);
@@ -347,7 +384,7 @@ export function makePieSpec(o: PieOptions): Partial<IPieChartSpec> {
       ...makeCommonTooltip(palette),
       mark: {
         title: { value: (datum?: ChartDatum) => datumText(datum, categoryField) },
-        content: [{ key: '数值', value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, valueField)) }],
+        content: [{ key: o.tooltipKey ?? '数值', value: (datum?: ChartDatum) => valueFmt(datumNumber(datum, valueField)) }],
       },
     },
   };
@@ -355,7 +392,7 @@ export function makePieSpec(o: PieOptions): Partial<IPieChartSpec> {
   if (donut && o.indicator) {
     spec.indicator = {
       visible: true,
-      title: { visible: true, autoLimit: true, style: { text: o.indicator.title, fill: palette.text0, fontSize: 26, fontWeight: 700 } },
+      title: { visible: true, autoLimit: true, style: { text: o.indicator.title, fill: palette.text0, fontSize: o.indicatorTitleFontSize ?? 26, fontWeight: 700 } },
       content: o.indicator.subtitle
         ? [{ visible: true, style: { text: o.indicator.subtitle, fill: palette.text2, fontSize: 12 } }]
         : [],
