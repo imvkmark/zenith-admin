@@ -1198,6 +1198,13 @@
       "when": 1782503806130,
       "tag": "0170_dry_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1782506099125,
+      "tag": "0171_vengeful_pyro",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,8 @@ export const OAuth2ClientListItemDTO = z
     allowedScopes: z.array(z.string()),
     grantTypes: z.array(z.string()),
     isPublic: z.boolean(),
+    ratePlanId: z.number().int().nullable(),
+    signEnabled: z.boolean(),
     status: z.enum(['enabled', 'disabled']),
     ownerId: z.number().int().nullable(),
     ...auditFields,

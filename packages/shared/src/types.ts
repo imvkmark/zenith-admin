@@ -4006,6 +4006,10 @@ export interface OAuth2Client {
   allowedScopes: string[];
   grantTypes: string[];
   isPublic: boolean;
+  /** 开放平台：绑定的限流套餐 ID */
+  ratePlanId?: number | null;
+  /** 开放平台：调用开放 API 时是否强制 HMAC 签名验签 */
+  signEnabled?: boolean;
   status: 'enabled' | 'disabled';
   ownerId?: number | null;
   createdAt: string;
@@ -4036,6 +4040,96 @@ export interface OAuth2UserGrant {
   scopes: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── 开放平台 / 开发者门户 ────────────────────────────────────────────────────
+
+/** API Scope 注册表项 */
+export interface ApiScope {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  scopeGroup: string;
+  status: 'enabled' | 'disabled';
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 限流套餐（Rate Plan / Tier） */
+export interface RatePlan {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  /** 每秒请求上限（QPS），0=不限 */
+  qpsLimit: number;
+  /** 每日调用配额，0=不限 */
+  dailyQuota: number;
+  /** 每月调用配额，0=不限 */
+  monthlyQuota: number;
+  isDefault: boolean;
+  status: 'enabled' | 'disabled';
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 开放 API 调用日志 */
+export interface OpenApiCallLog {
+  id: number;
+  clientId: string;
+  appName?: string | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  success: boolean;
+  durationMs: number;
+  ip?: string | null;
+  userAgent?: string | null;
+  scope?: string | null;
+  errorMessage?: string | null;
+  requestId?: string | null;
+  createdAt: string;
+}
+
+/** 调用统计总览 */
+export interface OpenApiStatsOverview {
+  totalCalls: number;
+  successCalls: number;
+  failedCalls: number;
+  successRate: number;
+  avgDurationMs: number;
+  activeApps: number;
+  todayCalls: number;
+}
+
+/** 调用趋势点（按小时/天聚合） */
+export interface OpenApiStatsTrendPoint {
+  time: string;
+  total: number;
+  success: number;
+  failed: number;
+}
+
+/** 按应用/端点聚合统计项 */
+export interface OpenApiStatsGroupItem {
+  key: string;
+  label: string;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationMs: number;
+}
+
+/** 签名验签结果 */
+export interface OpenSignatureResult {
+  signature: string;
+  stringToSign: string;
+  matched?: boolean;
 }
 
 /** /api/oauth2/token 响应体（标准 OAuth2 格式）*/

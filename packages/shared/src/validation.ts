@@ -2771,3 +2771,52 @@ export const createReportSubscriptionSchema = z.object({
 export const updateReportSubscriptionSchema = createReportSubscriptionSchema.partial();
 export type CreateReportSubscriptionInput = z.input<typeof createReportSubscriptionSchema>;
 export type UpdateReportSubscriptionInput = z.input<typeof updateReportSubscriptionSchema>;
+
+// ─── 开放平台：API Scope ──────────────────────────────────────────────────────
+export const createApiScopeSchema = z.object({
+  code: z
+    .string()
+    .min(1, 'scope 编码不能为空')
+    .max(64)
+    .regex(/^[a-z][a-z0-9_.:-]*$/, 'scope 编码须以小写字母开头，仅含小写字母/数字/:._-'),
+  name: z.string().min(1, '名称不能为空').max(100),
+  description: z.string().max(500).optional(),
+  scopeGroup: z.string().min(1).max(64).default('general'),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateApiScopeSchema = createApiScopeSchema.partial().omit({ code: true });
+export type CreateApiScopeInput = z.input<typeof createApiScopeSchema>;
+export type UpdateApiScopeInput = z.input<typeof updateApiScopeSchema>;
+
+// ─── 开放平台：限流套餐 ───────────────────────────────────────────────────────
+export const createRatePlanSchema = z.object({
+  code: z
+    .string()
+    .min(1, '套餐编码不能为空')
+    .max(64)
+    .regex(/^[a-z][a-z0-9_-]*$/, '套餐编码须以小写字母开头，仅含小写字母/数字/_-'),
+  name: z.string().min(1, '名称不能为空').max(100),
+  description: z.string().max(500).optional(),
+  qpsLimit: z.number().int().min(0).max(1_000_000).default(10),
+  dailyQuota: z.number().int().min(0).default(0),
+  monthlyQuota: z.number().int().min(0).default(0),
+  isDefault: z.boolean().default(false),
+  status: z.enum(['enabled', 'disabled']).default('enabled'),
+});
+export const updateRatePlanSchema = createRatePlanSchema.partial().omit({ code: true });
+export type CreateRatePlanInput = z.input<typeof createRatePlanSchema>;
+export type UpdateRatePlanInput = z.input<typeof updateRatePlanSchema>;
+
+// ─── 开放平台：签名验签工具 ───────────────────────────────────────────────────
+export const openSignatureVerifySchema = z.object({
+  appKey: z.string().min(1, 'AppKey 不能为空'),
+  method: z.string().min(1).default('GET'),
+  path: z.string().min(1, '请求路径不能为空'),
+  query: z.string().optional(),
+  body: z.string().optional(),
+  timestamp: z.string().min(1, '时间戳不能为空'),
+  nonce: z.string().min(1, '随机串不能为空'),
+  /** 待校验的签名（可选；提供时返回 matched） */
+  signature: z.string().optional(),
+});
+export type OpenSignatureVerifyInput = z.input<typeof openSignatureVerifySchema>;

@@ -55,3 +55,4 @@ export * from './nginx-sites';
 export * from './firewall';
 export * from './report';
 export * from './export-jobs';
+export * from './open-platform';

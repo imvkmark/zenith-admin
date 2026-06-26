@@ -345,3 +345,33 @@ export const MEMBER_COUPON_STATUS_LABELS: Record<MemberCouponStatus, string> = {
   expired: '已过期',
   frozen: '已冻结',
 };
+
+// ─── 开放平台 / 开发者门户 ────────────────────────────────────────────────────
+
+/** HMAC 签名所用请求头名称 */
+export const OPEN_SIGNATURE_HEADERS = {
+  appKey: 'X-App-Key',
+  timestamp: 'X-Timestamp',
+  nonce: 'X-Nonce',
+  signature: 'X-Signature',
+} as const;
+
+/** 签名算法标识 */
+export const OPEN_SIGNATURE_ALGORITHM = 'HMAC-SHA256';
+
+/** 允许的时间戳偏移窗口（秒），超出视为过期，防重放 */
+export const OPEN_SIGNATURE_TIMESTAMP_WINDOW = 300;
+
+/** API Scope 推荐分组（scopeGroup 为自由文本，此处仅供界面下拉建议） */
+export const API_SCOPE_GROUPS = ['general', 'user', 'order', 'payment', 'member', 'data', 'system'] as const;
+export type ApiScopeGroup = (typeof API_SCOPE_GROUPS)[number];
+
+export const API_SCOPE_GROUP_LABELS: Record<string, string> = {
+  general: '通用',
+  user: '用户',
+  order: '订单',
+  payment: '支付',
+  member: '会员',
+  data: '数据',
+  system: '系统',
+};

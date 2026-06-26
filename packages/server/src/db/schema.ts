@@ -3178,6 +3178,10 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   grantTypes: text('grant_types').array().notNull().default([]),
   /** 是否为公开客户端（无 secret，必须使用 PKCE）*/
   isPublic: boolean('is_public').notNull().default(false),
+  /** 开放平台：绑定的限流套餐（为空表示使用默认套餐） */
+  ratePlanId: integer('rate_plan_id').references((): AnyPgColumn => ratePlans.id, { onDelete: 'set null' }),
+  /** 开放平台：调用开放 API 网关时是否强制 HMAC 签名验签 */
+  signEnabled: boolean('sign_enabled').notNull().default(false),
   status: statusEnum('status').notNull().default('enabled'),
   /** 应用归属用户 */
   ownerId: integer('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
@@ -3254,6 +3258,7 @@ export type NewOAuth2UserGrant = typeof oauth2UserGrants.$inferInsert;
 
 export const oauth2ClientsRelations = relations(oauth2Clients, ({ one }) => ({
   owner: one(users, { fields: [oauth2Clients.ownerId], references: [users.id] }),
+  ratePlan: one(ratePlans, { fields: [oauth2Clients.ratePlanId], references: [ratePlans.id] }),
 }));
 
 export const oauth2AuthorizationCodesRelations = relations(oauth2AuthorizationCodes, ({ one }) => ({
@@ -3266,6 +3271,90 @@ export const oauth2TokensRelations = relations(oauth2Tokens, ({ one }) => ({
 
 export const oauth2UserGrantsRelations = relations(oauth2UserGrants, ({ one }) => ({
   user: one(users, { fields: [oauth2UserGrants.userId], references: [users.id] }),
+}));
+
+// ─── 开放平台 / 开发者门户 ────────────────────────────────────────────────────
+
+/**
+ * API Scope 注册表
+ * 资源级权限作用域（如 user:read / order:write），供开发者应用申请、网关鉴权使用
+ */
+export const apiScopes = pgTable('api_scopes', {
+  id: serial('id').primaryKey(),
+  /** scope 编码（唯一），如 user:read */
+  code: varchar('code', { length: 64 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  /** 分组（用户/订单/支付…），便于界面归类 */
+  scopeGroup: varchar('scope_group', { length: 64 }).notNull().default('general'),
+  status: statusEnum('status').notNull().default('enabled'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type ApiScopeRow = typeof apiScopes.$inferSelect;
+export type NewApiScope = typeof apiScopes.$inferInsert;
+
+/**
+ * 限流套餐（Rate Plan / Tier）
+ * 定义每个开发者应用的调用配额，按 AppKey 在网关处强制执行
+ */
+export const ratePlans = pgTable('rate_plans', {
+  id: serial('id').primaryKey(),
+  /** 套餐编码（唯一），如 free / pro / enterprise */
+  code: varchar('code', { length: 64 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  /** 每秒请求数上限（QPS），0 = 不限 */
+  qpsLimit: integer('qps_limit').notNull().default(10),
+  /** 每日调用配额，0 = 不限 */
+  dailyQuota: integer('daily_quota').notNull().default(0),
+  /** 每月调用配额，0 = 不限 */
+  monthlyQuota: integer('monthly_quota').notNull().default(0),
+  /** 是否为默认套餐（应用未绑定套餐时回退使用） */
+  isDefault: boolean('is_default').notNull().default(false),
+  status: statusEnum('status').notNull().default('enabled'),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+});
+
+export type RatePlanRow = typeof ratePlans.$inferSelect;
+export type NewRatePlan = typeof ratePlans.$inferInsert;
+
+/**
+ * 开放 API 调用日志（追加型，无审计列）
+ * 由网关计量中间件异步写入，供「调用统计」聚合分析
+ */
+export const openApiCallLogs = pgTable('open_api_call_logs', {
+  id: serial('id').primaryKey(),
+  /** 调用方 AppKey（= oauth2_clients.client_id） */
+  clientId: varchar('client_id', { length: 64 }).notNull(),
+  appName: varchar('app_name', { length: 100 }),
+  method: varchar('method', { length: 10 }).notNull(),
+  path: varchar('path', { length: 256 }).notNull(),
+  statusCode: integer('status_code').notNull(),
+  success: boolean('success').notNull().default(true),
+  durationMs: integer('duration_ms').notNull().default(0),
+  ip: varchar('ip', { length: 64 }),
+  userAgent: varchar('user_agent', { length: 256 }),
+  /** 命中的 scope（如有） */
+  scope: varchar('scope', { length: 128 }),
+  errorMessage: varchar('error_message', { length: 512 }),
+  requestId: varchar('request_id', { length: 64 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [
+  index('open_api_call_logs_client_idx').on(t.clientId),
+  index('open_api_call_logs_created_idx').on(t.createdAt),
+  index('open_api_call_logs_path_idx').on(t.path),
+]);
+
+export type OpenApiCallLogRow = typeof openApiCallLogs.$inferSelect;
+export type NewOpenApiCallLog = typeof openApiCallLogs.$inferInsert;
+
+export const ratePlansRelations = relations(ratePlans, ({ many }) => ({
+  clients: many(oauth2Clients),
 }));
 
 // ─── 维护模式（单例，id 固定为 1）───────────────────────────────────────────
