@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Button,
-  Dropdown,
-  SplitButtonGroup,
   Input,
   Select,
   Space,
@@ -18,12 +16,13 @@ import {
   SideSheet,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw } from 'lucide-react';
 import type { Role, Menu, Department, PaginatedResponse, User } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { UserTransferSelect } from '@/components/UserTransferSelect';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -49,8 +48,6 @@ export default function RolesPage() {
   const [data, setData] = useState<Role[]>([]);
   const { items: statusItems } = useDictItems('common_status');
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
   const searchParamsRef = useRef<SearchParams>(defaultSearchParams);
   searchParamsRef.current = searchParams;
@@ -131,24 +128,6 @@ export default function RolesPage() {
     setSearchParams(defaultSearchParams);
     void fetchRoles(1, pageSize, defaultSearchParams);
   }
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/roles/export', '角色列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/roles/export/csv', '角色列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
-  };
 
   // 拉取菜单树（用于分配权限）
   const openMenuModal = async (role: Role) => {
@@ -452,32 +431,21 @@ export default function RolesPage() {
     />
   );
 
+  const buildExportQuery = () => ({
+    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
+    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(searchParams.timeRange
+      ? {
+          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
+          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+        }
+      : {}),
+  });
+
   const renderSearchButton = () => <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>;
   const renderResetButton = () => <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>;
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
-  const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
-  );
+  const renderExportButtons = () => <ExportButton entity="system.roles" query={buildExportQuery()} />;
+  const renderMobileExportActions = () => <ExportButton entity="system.roles" query={buildExportQuery()} variant="flat" />;
   const renderCreateButton = () => hasPermission('system:role:create') ? (
     <Button
       type="primary"

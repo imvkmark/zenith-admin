@@ -83,6 +83,15 @@ export const oauth2AppsHandlers = [
     });
   }),
 
+  // 应用选项（供 Webhook/SDK 下拉）
+  http.get(`${BASE}/options`, () => {
+    return HttpResponse.json({
+      code: 0,
+      message: 'success',
+      data: mockClients.filter((c) => c.status === 'enabled').map((c) => ({ clientId: c.clientId, name: c.name })),
+    });
+  }),
+
   // 创建
   http.post(BASE, async ({ request: req }) => {
     const body = await req.json() as Omit<OAuth2Client, 'id' | 'createdAt' | 'updatedAt' | 'clientId' | 'clientSecretPrefix' | 'ownerId'>;

@@ -9,8 +9,6 @@ import {
   Select,
   Space,
   Spin,
-  SplitButtonGroup,
-  Dropdown,
   Switch,
   Toast,
   Avatar,
@@ -19,7 +17,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
-import { Search, Plus, RotateCcw, Download, ChevronsUpDown, ChevronsDownUp, ChevronDown } from 'lucide-react';
+import { Search, Plus, RotateCcw, ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import type { Department, User, PaginatedResponse } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
@@ -27,6 +25,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -111,8 +110,6 @@ export default function DepartmentsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [data, setData] = useState<Department[]>([]);
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
@@ -165,24 +162,6 @@ export default function DepartmentsPage() {
   function toggleExpandAll() {
     setExpandedRowKeys(isAllExpanded ? [] : allRowKeys);
   }
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/departments/export', '部门列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/departments/export/csv', '部门列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
-  };
 
   const fetchDepartments = useCallback(async (params?: SearchParams) => {
     const activeParams = params ?? searchParamsRef.current;
@@ -436,30 +415,12 @@ export default function DepartmentsPage() {
       {isAllExpanded ? '全部折叠' : '全部展开'}
     </Button>
   );
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
-  const renderMobileExportActions = () => (
-    <>
-      <Button type="primary" theme="borderless" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button type="primary" theme="borderless" icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
-  );
+  const buildExportQuery = () => ({
+    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
+    ...(searchParams.status ? { status: searchParams.status } : {}),
+  });
+  const renderExportButtons = () => <ExportButton entity="system.departments" query={buildExportQuery()} />;
+  const renderMobileExportActions = () => <ExportButton entity="system.departments" query={buildExportQuery()} variant="flat" />;
   const renderCreateButton = () => hasPermission('system:department:create') ? (
     <Button
       type="primary"

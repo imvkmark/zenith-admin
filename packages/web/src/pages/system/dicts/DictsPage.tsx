@@ -17,11 +17,12 @@ import {
   Switch,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Download, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, RotateCcw, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import type { Dict, DictItem, PaginatedResponse } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
@@ -44,8 +45,6 @@ export default function DictsPage() {
   // ─── 字典列表 ──────────────────────────────────────────────────────────────
   const [dicts, setDicts] = useState<Dict[]>([]);
   const [dictsLoading, setDictsLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const { page, pageSize, setPage, setPageSize } = usePagination();
@@ -123,24 +122,6 @@ export default function DictsPage() {
       setItems([]);
     }
   }, [fetchItems, selectedDict]);
-
-  const handleExport = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/dicts/export', '字典列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/dicts/export/csv', '字典列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
-  };
 
   const handleDictPageChange = (nextPage: number) => {
     setPage(nextPage);
@@ -480,44 +461,36 @@ export default function DictsPage() {
     <NavListPanel
       title="字典列表"
       headerExtra={
-        <Dropdown
-          trigger="click"
-          position="bottomRight"
-          clickToHide
-          render={
-            <Dropdown.Menu>
-              <Dropdown.Item onClick={() => void fetchDicts()}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <RefreshCw size={14} /> 刷新
-                </span>
-              </Dropdown.Item>
-              {hasPermission('system:dict:create') && (
-                <Dropdown.Item onClick={() => { setEditingDict(null); setDictModalVisible(true); }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <ExportButton entity="system.dicts" query={submittedKeyword ? { keyword: submittedKeyword } : {}} />
+          <Dropdown
+            trigger="click"
+            position="bottomRight"
+            clickToHide
+            render={
+              <Dropdown.Menu>
+                <Dropdown.Item onClick={() => void fetchDicts()}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Plus size={14} /> 新增字典
+                    <RefreshCw size={14} /> 刷新
                   </span>
                 </Dropdown.Item>
-              )}
-              <Dropdown.Item onClick={() => void handleExport()}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Download size={14} /> 导出字典
-                </span>
-              </Dropdown.Item>
-              <Dropdown.Item onClick={() => void handleExportCsv()}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Download size={14} /> 导出字典 CSV
-                </span>
-              </Dropdown.Item>
-            </Dropdown.Menu>
-          }
-        >
-          <Button
-            theme="borderless"
-            size="small"
-            icon={<MoreHorizontal size={14} />}
-            loading={exportLoading || exportCsvLoading}
-          />
-        </Dropdown>
+                {hasPermission('system:dict:create') && (
+                  <Dropdown.Item onClick={() => { setEditingDict(null); setDictModalVisible(true); }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Plus size={14} /> 新增字典
+                    </span>
+                  </Dropdown.Item>
+                )}
+              </Dropdown.Menu>
+            }
+          >
+            <Button
+              theme="borderless"
+              size="small"
+              icon={<MoreHorizontal size={14} />}
+            />
+          </Dropdown>
+        </span>
       }
       search={{
         value: keyword,

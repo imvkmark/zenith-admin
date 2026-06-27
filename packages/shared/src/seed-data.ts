@@ -8,7 +8,7 @@
  * 修改数据时只需改这一处，两端自动同步。
  */
 
-import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus, ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan } from './types';
+import type { Menu, Role, Department, Position, Dict, DictItem, SystemConfig, CronJob, WorkflowForm, WorkflowCategory, WorkflowDataSource, Tag, DataMaskConfig, MemberLevel, Coupon, EmailTemplate, SmsTemplate, InAppTemplate, Tenant, TenantPackage, AiPromptTemplate, MpAccount, MpTag, MpFan, MpMessage, MpAutoReply, MpMenu, MpMaterial, MpDraft, MpMessageTemplate, MpBroadcast, MpQrcode, MpKfAccount, MpKfSessionStatus, MpKfSessionCloseReason, MpKfSessionEventType, MpKfRoutingStrategy, MpMenuButton, MpMenuMatchRule, MpMenuStatus, ReportDatasource, ReportDataset, ReportDashboard, ApiScope, RatePlan, ReportPrintTemplate } from './types';
 
 const SEED_DATE = '2024-01-01 00:00:00';
 
@@ -483,6 +483,9 @@ export const SEED_MENUS: Menu[] = [
   { id: 1321, parentId: 1320, title: '管理套餐',   name: undefined,       path: undefined,                       component: undefined,                                   icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'open:rate-plan:manage', createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1330, parentId: 1300, title: '调用统计',   name: 'OpenApiStats',  path: '/open-platform/stats',          component: 'open-platform/stats/OpenApiStatsPage',      icon: 'LineChart',     type: 'menu',      sort: 4,  status: 'enabled', visible: true,  permission: 'open:stats:view',       createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 1340, parentId: 1300, title: '签名验签',   name: 'OpenSignature', path: '/open-platform/signature',      component: 'open-platform/signature/SignatureToolPage', icon: 'FileSignature', type: 'menu',      sort: 5,  status: 'enabled', visible: true,  permission: 'open:signature:use',    createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1350, parentId: 1300, title: 'Webhook 订阅', name: 'OpenWebhooks',  path: '/open-platform/webhooks',       component: 'open-platform/webhooks/WebhooksPage',       icon: 'Webhook',       type: 'menu',      sort: 6,  status: 'enabled', visible: true,  permission: 'open:webhook:view',     createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1351, parentId: 1350, title: '管理 Webhook', name: undefined,      path: undefined,                       component: undefined,                                   icon: undefined,       type: 'button',    sort: 1,  status: 'enabled', visible: true,  permission: 'open:webhook:manage',   createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 1360, parentId: 1300, title: 'SDK 示例',   name: 'OpenSdk',       path: '/open-platform/sdk',            component: 'open-platform/sdk/SdkExamplesPage',         icon: 'Code2',         type: 'menu',      sort: 7,  status: 'enabled', visible: true,  permission: 'open:sdk:view',         createdAt: SEED_DATE, updatedAt: SEED_DATE },
 ];
 
 // ─── 角色 ─────────────────────────────────────────────────────────────────────
@@ -1813,6 +1816,37 @@ export const SEED_REPORT_DASHBOARDS: ReportDashboard[] = [
     config: { theme: 'dark', layoutMode: 'canvas', screenConfig: { width: 1920, height: 1080, scaleMode: 'fit', background: '#0a1330' }, refreshInterval: 30 },
     status: 'enabled',
     remark: '内置大屏示例：自由画布 + 深色科技皮肤 + 翻牌器/滚动榜单',
+    createdAt: SEED_DATE,
+    updatedAt: SEED_DATE,
+  },
+];
+
+export const SEED_REPORT_PRINT_TEMPLATES: ReportPrintTemplate[] = [
+  {
+    id: 1,
+    name: '部门用户统计表',
+    datasetId: 2,
+    content: {
+      grid: {
+        rows: 4,
+        cols: 2,
+        colWidths: [220, 120],
+        cells: [
+          { row: 0, col: 0, v: '部门用户统计表', s: { bold: true, fontSize: 16, align: 'center' } },
+          { row: 1, col: 0, v: '部门', s: { bold: true, align: 'center', border: true, background: '#f0f0f0' } },
+          { row: 1, col: 1, v: '人数', s: { bold: true, align: 'center', border: true, background: '#f0f0f0' } },
+          { row: 2, col: 0, v: '${name}', s: { border: true } },
+          { row: 2, col: 1, v: '${value}', s: { border: true, align: 'right' } },
+          { row: 3, col: 0, v: '合计', s: { bold: true, border: true } },
+          { row: 3, col: 1, v: '${SUM(value)}', s: { bold: true, border: true, align: 'right' } },
+        ],
+        merges: [{ row: 0, col: 0, rowSpan: 1, colSpan: 2 }],
+      },
+    },
+    params: [],
+    pageConfig: { paper: 'A4', orientation: 'portrait', margin: { top: 20, right: 20, bottom: 20, left: 20 }, header: '部门用户统计', footer: '第 {page} 页 / 共 {pages} 页' },
+    status: 'enabled',
+    remark: '内置示例：表头 + 明细纵向扩展 + 合计行（${SUM}），可直接预览/打印/导出',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
   },

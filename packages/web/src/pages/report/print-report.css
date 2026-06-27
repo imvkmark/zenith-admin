@@ -1,0 +1,121 @@
+.print-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.print-report-view {
+  overflow: auto;
+  padding: 16px;
+  background: var(--semi-color-fill-0);
+}
+
+.print-report-page {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--report-paper-width);
+  min-height: var(--report-paper-height);
+  margin: 0 auto;
+  padding: var(--report-margin-top) var(--report-margin-right) var(--report-margin-bottom) var(--report-margin-left);
+  color: #111827;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.print-report-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: var(--report-background-image);
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: contain;
+  pointer-events: none;
+}
+
+.print-report-page__inner {
+  position: relative;
+  z-index: 1;
+}
+
+.print-report-band {
+  min-height: 18px;
+  font-size: 12px;
+  color: #374151;
+  white-space: pre-wrap;
+}
+
+.print-report-band--header {
+  margin-bottom: 8px;
+}
+
+.print-report-band--footer {
+  margin-top: 8px;
+}
+
+.print-report-table {
+  width: auto;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: transparent;
+}
+
+.print-report-table td {
+  box-sizing: border-box;
+  min-width: 48px;
+  height: 24px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #111827;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.print-report-table td.print-report-cell--border {
+  border-color: #111827;
+}
+
+.print-report-table td.print-report-cell--wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 0;
+  }
+
+  body.report-printing * {
+    visibility: hidden !important;
+  }
+
+  body.report-printing .print-report-area,
+  body.report-printing .print-report-area * {
+    visibility: visible !important;
+  }
+
+  body.report-printing .print-report-area {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.report-printing .print-report-actions {
+    display: none !important;
+  }
+
+  body.report-printing .print-report-page {
+    width: var(--report-paper-width) !important;
+    min-height: var(--report-paper-height) !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+  }
+}

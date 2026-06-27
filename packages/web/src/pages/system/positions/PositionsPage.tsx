@@ -8,8 +8,6 @@ import {
   Select,
   Space,
   Spin,
-  SplitButtonGroup,
-  Dropdown,
   Switch,
   Toast,
   SideSheet,
@@ -19,7 +17,7 @@ import {
   AvatarGroup,
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Search, Plus, RotateCcw, Download, Trash2, ChevronDown, Users } from 'lucide-react';
+import { Search, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
 import type { Position, PaginatedResponse, Department } from '@zenith/shared';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -29,6 +27,7 @@ import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -51,8 +50,6 @@ export default function PositionsPage() {
   const { hasPermission } = usePermission();
   const formApi = useRef<FormApi | null>(null);
   const [loading, setLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportCsvLoading, setExportCsvLoading] = useState(false);
   const [data, setData] = useState<Position[]>([]);
   const [total, setTotal] = useState(0);
   const { page, pageSize, setPage, buildPagination } = usePagination();
@@ -141,24 +138,6 @@ export default function PositionsPage() {
   const openCreate = () => {
     setEditingPosition(null);
     setModalVisible(true);
-  };
-
-  const handleExportExcel = async () => {
-    setExportLoading(true);
-    try {
-      await request.download('/api/positions/export', '岗位列表.xlsx');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExportCsvLoading(true);
-    try {
-      await request.download('/api/positions/export/csv', '岗位列表.csv');
-    } finally {
-      setExportCsvLoading(false);
-    }
   };
 
   const handleModalOk = async () => {
@@ -401,31 +380,20 @@ export default function PositionsPage() {
     <Button type="primary" icon={<Plus size={14} />} onClick={openCreate}>新增</Button>
   ) : null;
 
-  const renderExportButtons = () => (
-    <SplitButtonGroup>
-      <Button type="primary" icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出</Button>
-      <Dropdown
-        trigger="click"
-        position="bottomRight"
-        clickToHide
-        render={(
-          <Dropdown.Menu>
-            <Dropdown.Item onClick={handleExportExcel}>导出 Excel</Dropdown.Item>
-            <Dropdown.Item onClick={handleExportCsv}>导出 CSV</Dropdown.Item>
-          </Dropdown.Menu>
-        )}
-      >
-        <Button type="primary" icon={<ChevronDown size={14} />} loading={exportCsvLoading} />
-      </Dropdown>
-    </SplitButtonGroup>
-  );
+  const buildExportQuery = () => ({
+    ...(searchParams.keyword ? { keyword: searchParams.keyword } : {}),
+    ...(searchParams.status ? { status: searchParams.status } : {}),
+    ...(searchParams.timeRange
+      ? {
+          startTime: formatDateTimeForApi(searchParams.timeRange[0]),
+          endTime: formatDateTimeForApi(searchParams.timeRange[1]),
+        }
+      : {}),
+  });
 
-  const renderMobileExportActions = () => (
-    <>
-      <Button icon={<Download size={14} />} loading={exportLoading} onClick={handleExportExcel}>导出 Excel</Button>
-      <Button icon={<Download size={14} />} loading={exportCsvLoading} onClick={handleExportCsv}>导出 CSV</Button>
-    </>
-  );
+  const renderExportButtons = () => <ExportButton entity="system.positions" query={buildExportQuery()} />;
+
+  const renderMobileExportActions = () => <ExportButton entity="system.positions" query={buildExportQuery()} variant="flat" />;
 
   const renderBatchDeleteButton = () => selectedRowKeys.length > 0 && hasPermission('system:position:delete') ? (
     <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={handleBatchDelete}>

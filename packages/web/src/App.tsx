@@ -36,6 +36,7 @@ const FirewallPage = React.lazy(() => import('@/pages/system/firewall/FirewallPa
 const NginxSitesPage = React.lazy(() => import('@/pages/system/nginx-sites/NginxSitesPage'));
 const SslCertificatesPage = React.lazy(() => import('@/pages/system/ssl-certificates/SslCertificatesPage'));
 const DashboardDesignerPage = React.lazy(() => import('@/pages/report/designer/DashboardDesignerPage'));
+const PrintDesignerPage = React.lazy(() => import('@/pages/report/designer/PrintDesignerPage'));
 const DashboardViewPage = React.lazy(() => import('@/pages/report/DashboardViewPage'));
 
 const routeFallback = <div style={{ padding: 24 }}><span className="page-loading__dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--semi-color-primary)' }} /></div>;
@@ -189,6 +190,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
         <Route path="workflow/launch/:definitionId" element={<Suspense fallback={routeFallback}><WorkflowLaunchPage /></Suspense>} />
         <Route path="workflow/instance/:id" element={<Suspense fallback={routeFallback}><WorkflowInstancePage /></Suspense>} />
         <Route path="report/dashboards/:id/design" element={<Suspense fallback={routeFallback}><DashboardDesignerPage /></Suspense>} />
+        <Route path="report/print/:id/design" element={<Suspense fallback={routeFallback}><PrintDesignerPage /></Suspense>} />
         <Route path="report/dashboards/:id/view" element={<Suspense fallback={routeFallback}><DashboardViewPage /></Suspense>} />
         <Route path="system/ssl-certificates" element={<Suspense fallback={routeFallback}><SslCertificatesPage /></Suspense>} />
         <Route path="system/firewall" element={permissions.includes('*') || permissions.includes('system:firewall:view') ? <Suspense fallback={routeFallback}><FirewallPage /></Suspense> : <Suspense fallback={routeFallback}><ForbiddenPage /></Suspense>} />
