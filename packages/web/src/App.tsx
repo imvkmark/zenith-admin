@@ -26,6 +26,7 @@ const InboxPage = React.lazy(() => import('@/pages/inbox/InboxPage'));
 const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
 const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage'));
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
+const EnterpriseCallbackPage = React.lazy(() => import('@/pages/oauth/EnterpriseCallbackPage'));
 const OAuth2AuthorizePage = React.lazy(() => import('@/pages/oauth2/OAuth2AuthorizePage'));
 const PaymentLinkPublicPage = React.lazy(() => import('@/pages/payment/PaymentLinkPublicPage'));
 const PublicDashboardPage = React.lazy(() => import('@/pages/report/PublicDashboardPage'));
@@ -177,6 +178,7 @@ function AdminRouteLoader({ user, permissions, logout, updateUser }: Readonly<Ad
         <Route path="/public/report/:token" element={<Suspense fallback={routeFallback}><PublicDashboardPage /></Suspense>} />
         {/* OAuth2 同意授权页（独立页面，不在 AdminLayout 内）*/}
         <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
+        <Route path="/enterprise/callback" element={<Suspense fallback={routeFallback}><EnterpriseCallbackPage /></Suspense>} />
         {/* 已登录用户访问认证页 → 重定向，避免落入 AdminLayout catch-all 404 并作为标签页出现 */}
         <Route path="/login" element={<RedirectFromLogin />} />
         <Route path="/reset-password" element={<Navigate to="/" replace />} />
@@ -311,6 +313,7 @@ export default function App() {
               <Route path="/login" element={<Suspense fallback={routeFallback}><LoginPage onLogin={login} onVerifyMfa={verifyMfaLogin} onRegister={register} /></Suspense>} />
               <Route path="/reset-password" element={<Suspense fallback={routeFallback}><ResetPasswordPage /></Suspense>} />
               <Route path="/oauth/callback/:provider" element={<Suspense fallback={routeFallback}><OAuthCallbackPage /></Suspense>} />
+              <Route path="/enterprise/callback" element={<Suspense fallback={routeFallback}><EnterpriseCallbackPage /></Suspense>} />
               <Route path="/oauth2/authorize" element={<Suspense fallback={routeFallback}><OAuth2AuthorizePage /></Suspense>} />
               <Route path="/public/payment/link/:token" element={<Suspense fallback={routeFallback}><PaymentLinkPublicPage /></Suspense>} />
               <Route path="/public/report/:token" element={<Suspense fallback={routeFallback}><PublicDashboardPage /></Suspense>} />

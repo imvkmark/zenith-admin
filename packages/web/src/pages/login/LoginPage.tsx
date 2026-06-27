@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Form, Button, Toast, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
-import { User, Lock, Mail, AtSign, Building2, ShieldCheck } from 'lucide-react';
+import { Form, Button, Toast, Typography, Tabs, TabPane, Divider } from '@douyinfe/semi-ui';
+import { User, Lock, Mail, AtSign, Building2, ShieldCheck, BriefcaseBusiness } from 'lucide-react';
 import { Icon } from '@iconify/react';
-import type { RegisterInput, OAuthProviderType, LoginResult, LoginResponse } from '@zenith/shared';
+import type { RegisterInput, OAuthProviderType, LoginResult, LoginResponse, EnterpriseIdentityDiscovery, TenantIdentityProviderSummary } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { config } from '@/config';
 import AppLogo from '@/components/AppLogo';
@@ -48,6 +48,8 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   const [forgotPasswordEnabled, setForgotPasswordEnabled] = useState(false);
   const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState<Extract<LoginResult, { mfaRequired: true }> | null>(null);
+  const [tenantCode, setTenantCode] = useState('');
+  const [enterpriseProviders, setEnterpriseProviders] = useState<TenantIdentityProviderSummary[]>([]);
 
   const fetchCaptcha = useCallback(async () => {
     try {
@@ -83,6 +85,18 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const query = tenantCode ? `?tenantCode=${encodeURIComponent(tenantCode)}` : '';
+      request.get<EnterpriseIdentityDiscovery>(`/api/auth/enterprise/providers${query}`, { silent: true })
+        .then((res) => {
+          if (res.code === 0) setEnterpriseProviders(res.data.providers);
+        })
+        .catch(() => setEnterpriseProviders([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [tenantCode]);
 
   const handleLogin = async (values: Record<string, string>) => {
     if (retrySeconds > 0) return;
@@ -149,6 +163,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
           placeholder="留空则登录平台管理员"
           prefix={<Building2 />}
           size="large"
+          onChange={(value) => setTenantCode(value)}
         />
       )}
       <Form.Input
@@ -345,6 +360,18 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
     }
   };
 
+  const handleEnterpriseLogin = async (provider: TenantIdentityProviderSummary) => {
+    const res = await request.get<{ authUrl: string; state: string | null }>(
+      `/api/auth/enterprise/${provider.id}?redirect=${encodeURIComponent(redirectTo)}`,
+      { silent: true },
+    );
+    if (res.code === 0 && res.data?.authUrl) {
+      globalThis.location.href = res.data.authUrl;
+    } else {
+      Toast.warning(res.message || '该企业登录方式暂不可用，请联系管理员配置');
+    }
+  };
+
   if (mfaChallenge) {
     formSubtitle = '请完成多因素认证以进入工作台';
   } else if (isDemoMode) {
@@ -415,6 +442,24 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
             </Tabs>
           )}
           {/* OAuth 第三方登录 */}
+          {!mfaChallenge && enterpriseProviders.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <Divider margin="12px 0" />
+              <div style={{ display: 'grid', gap: 8 }}>
+                {enterpriseProviders.map((provider) => (
+                  <Button
+                    key={provider.id}
+                    type="tertiary"
+                    icon={<BriefcaseBusiness size={16} />}
+                    block
+                    onClick={() => handleEnterpriseLogin(provider)}
+                  >
+                    {provider.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
           {!mfaChallenge && <div style={{ textAlign: 'center', marginTop: 16 }}>
             <Text type="tertiary" size="small">其他方式登录</Text>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 10 }}>
