@@ -171,7 +171,7 @@ export async function runWorkflowEngineAction(action: WorkflowEngineActionKey): 
     const summary = Object.entries(detail).map(([k, v]) => `${k} ${v}`).join(' · ');
     return { action, ok: true, message: `${meta.label}完成：${summary || '无待处理项'}`, detail };
   } catch (err) {
-    logger.error({ err, action }, '工作流引擎运维动作执行失败');
+    logger.error('工作流引擎运维动作执行失败', { err, action });
     return { action, ok: false, message: `${meta.label}失败：${err instanceof Error ? err.message : String(err)}`, detail: {} };
   }
 }
