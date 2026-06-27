@@ -3,12 +3,12 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
   PaginationQuery, jsonContent, validationHook, commonErrorResponses,
-  ok, okPaginated, okMsg, IdParam, okBody, okExcel, excelStreamBody, okCsv, csvStreamBody,
+  ok, okPaginated, okMsg, IdParam, okBody,
 } from '../lib/openapi-schemas';
 import { sendSmsSchema, SMS_PROVIDERS, SEND_STATUSES, SEND_SOURCES } from '@zenith/shared';
 import { SmsSendLogDTO, SmsSendResultDTO } from '../lib/openapi-dtos';
 import {
-  listSmsSendLogs, getSmsSendLog, deleteSmsSendLog, sendSms, exportSmsSendLogs, exportSmsSendLogsAsCsv,
+  listSmsSendLogs, getSmsSendLog, deleteSmsSendLog, sendSms,
 } from '../services/sms-send-logs.service';
 
 const smsSendLogsRouter = new OpenAPIHono({ defaultHook: validationHook });
@@ -63,34 +63,6 @@ const sendRoute = defineOpenAPIRoute({
   },
 });
 
-const exportRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export', tags: ['SmsSendLogs'], summary: '导出短信发送记录 Excel',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:sms-send-log:export' })] as const,
-    request: { query: listQuery },
-    responses: { ...okExcel('Excel 文件') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportSmsSendLogs(c.req.valid('query'));
-    return excelStreamBody(c, stream, filename);
-  },
-});
-
-const exportCsvRoute = defineOpenAPIRoute({
-  route: createRoute({
-    method: 'get', path: '/export/csv', tags: ['SmsSendLogs'], summary: '导出短信发送记录 CSV',
-    security: [{ BearerAuth: [] }],
-    middleware: [authMiddleware, guard({ permission: 'system:sms-send-log:export' })] as const,
-    request: { query: listQuery },
-    responses: { ...okCsv('CSV 文件') },
-  }),
-  handler: async (c) => {
-    const { stream, filename } = await exportSmsSendLogsAsCsv(c.req.valid('query'));
-    return csvStreamBody(c, stream, filename);
-  },
-});
-
-smsSendLogsRouter.openapiRoutes([listRoute, sendRoute, exportRoute, exportCsvRoute, deleteRoute] as const);
+smsSendLogsRouter.openapiRoutes([listRoute, sendRoute, deleteRoute] as const);
 
 export default smsSendLogsRouter;

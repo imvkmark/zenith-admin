@@ -180,7 +180,7 @@ export default function AlertsPage() {
       threshold: Number(values.threshold),
       cron: values.cron ? String(values.cron) : null,
       channels,
-      recipients: values.recipients ? String(values.recipients) : undefined,
+      recipients: channels.includes('email') && values.recipients ? String(values.recipients) : undefined,
       enabled: values.enabled === 'enabled',
       remark: values.remark ? String(values.remark) : undefined,
     };

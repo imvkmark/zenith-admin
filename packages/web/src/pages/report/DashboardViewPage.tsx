@@ -1,16 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Spin, Toast, Empty } from '@douyinfe/semi-ui';
-import { ArrowLeft, RotateCcw, PencilRuler, Maximize, Image } from 'lucide-react';
+import { Avatar, Button, Empty, SideSheet, Space, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { ArrowLeft, RotateCcw, PencilRuler, Maximize, Image, MessageSquare, Send, Trash2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import './report-grid.css';
 import './report-screen.css';
 import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { ScreenCanvas } from './widgets/ScreenCanvas';
 import { useWidgetData } from './widgets/useWidgetData';
 import { FilterBar } from './widgets/FilterBar';
-import type { ReportDashboard, ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem } from '@zenith/shared';
+import type { ReportDashboard, ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem, ReportDashboardComment } from '@zenith/shared';
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -31,6 +32,11 @@ export default function DashboardViewPage() {
   const exportRef = useRef<HTMLDivElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const [isFs, setIsFs] = useState(false);
+  const [commentsVisible, setCommentsVisible] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [comments, setComments] = useState<ReportDashboardComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
 
   const widgets = useMemo(() => dashboard?.widgets ?? [], [dashboard]);
   const filters = dashboard?.filters ?? [];
@@ -105,6 +111,55 @@ export default function DashboardViewPage() {
     } catch { Toast.error('导出失败，请重试'); } finally { setExporting(false); }
   }
 
+  async function fetchComments() {
+    if (!dashboardId) return;
+    setCommentsLoading(true);
+    try {
+      const res = await request.get<ReportDashboardComment[]>(`/api/report/dashboards/${dashboardId}/comments`, { silent: true });
+      if (res.code === 0) setComments(res.data);
+      else Toast.error(res.message || '评论加载失败');
+    } finally {
+      setCommentsLoading(false);
+    }
+  }
+
+  function openComments() {
+    setCommentsVisible(true);
+    void fetchComments();
+  }
+
+  async function submitComment() {
+    const content = commentText.trim();
+    if (!content) { Toast.warning('请输入评论内容'); return; }
+    setCommentSubmitting(true);
+    try {
+      const res = await request.post<ReportDashboardComment>(
+        `/api/report/dashboards/${dashboardId}/comments`,
+        { widgetId: null, content },
+        { silent: true },
+      );
+      if (res.code === 0) {
+        setComments((prev) => [res.data, ...prev]);
+        setCommentText('');
+        Toast.success('发表成功');
+      } else {
+        Toast.error(res.message || '发表失败');
+      }
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }
+
+  async function deleteComment(commentId: number) {
+    const res = await request.delete(`/api/report/dashboards/${dashboardId}/comments/${commentId}`, undefined, { silent: true });
+    if (res.code === 0) {
+      setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+      Toast.success('删除成功');
+    } else {
+      Toast.error(res.message || '删除失败');
+    }
+  }
+
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>;
 
   const canvasState = (w: ReportWidget) => getData(w);
@@ -122,6 +177,9 @@ export default function DashboardViewPage() {
         <Button icon={<RotateCcw size={16} />} onClick={() => refresh()}>刷新</Button>
         <Button icon={<Image size={16} />} loading={exporting} onClick={handleExportPng}>图片</Button>
         <Button icon={<Maximize size={16} />} onClick={toggleFullscreen}>全屏</Button>
+        {hasPermission('report:dashboard:list') && (
+          <Button icon={<MessageSquare size={16} />} onClick={openComments}>评论</Button>
+        )}
         {hasPermission('report:dashboard:update') && (
           <Button icon={<PencilRuler size={16} />} onClick={() => navigate(`/report/dashboards/${dashboardId}/design`)}>编辑</Button>
         )}
@@ -158,6 +216,62 @@ export default function DashboardViewPage() {
           />
         )}
       </div>
+
+      <SideSheet
+        title="仪表盘评论"
+        visible={commentsVisible}
+        onCancel={() => setCommentsVisible(false)}
+        placement="right"
+        width={420}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+            {commentsLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Spin /></div>
+            ) : comments.length === 0 ? (
+              <Empty description="暂无评论" style={{ padding: '32px 0' }} />
+            ) : (
+              <Space vertical align="start" spacing={14} style={{ width: '100%' }}>
+                {comments.map((comment) => (
+                  <div key={comment.id} style={{ width: '100%', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <Avatar size="small" src={comment.userAvatar || undefined}>{comment.userName?.slice(0, 1) || '用'}</Avatar>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Typography.Text strong>{comment.userName || `用户 ${comment.userId}`}</Typography.Text>
+                        <Typography.Text type="tertiary" size="small">{formatDateTime(comment.createdAt)}</Typography.Text>
+                        <div style={{ flex: 1 }} />
+                        <Button
+                          theme="borderless"
+                          type="danger"
+                          size="small"
+                          icon={<Trash2 size={14} />}
+                          onClick={() => void deleteComment(comment.id)}
+                          aria-label="删除评论"
+                        />
+                      </div>
+                      <Typography.Paragraph style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{comment.content}</Typography.Paragraph>
+                    </div>
+                  </div>
+                ))}
+              </Space>
+            )}
+          </div>
+          <div style={{ borderTop: '1px solid var(--semi-color-border)', padding: 16 }}>
+            <TextArea
+              value={commentText}
+              onChange={setCommentText}
+              placeholder="写下评论..."
+              autosize={{ minRows: 3, maxRows: 5 }}
+              maxCount={1000}
+              showClear
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+              <Button type="primary" icon={<Send size={14} />} loading={commentSubmitting} onClick={() => void submitComment()}>发表</Button>
+            </div>
+          </div>
+        </div>
+      </SideSheet>
     </div>
   );
 }

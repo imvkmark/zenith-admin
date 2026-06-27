@@ -7,6 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
+import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { request } from '@/utils/request';
 import { renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -26,6 +27,7 @@ export default function SubscriptionsPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<ReportDashboardSubscription | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cronExprValue, setCronExprValue] = useState('');
 
   const fetchList = useCallback(async (p = page, ps = pageSize, kw?: string) => {
     const k = kw ?? keywordRef.current;
@@ -45,13 +47,13 @@ export default function SubscriptionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function openCreate() { setEditing(null); setModalVisible(true); }
-  function openEdit(r: ReportDashboardSubscription) { setEditing(r); setModalVisible(true); }
+  function openCreate() { setEditing(null); setCronExprValue('0 0 9 * * *'); setModalVisible(true); }
+  function openEdit(r: ReportDashboardSubscription) { setEditing(r); setCronExprValue(r.cron); setModalVisible(true); }
   function closeModal() { setModalVisible(false); setEditing(null); }
 
   const initValues = editing
     ? { dashboardId: editing.dashboardId, cron: editing.cron, channels: editing.channels, recipients: editing.recipients ?? '', enabled: editing.enabled ? 'enabled' : 'disabled', remark: editing.remark ?? '' }
-    : { cron: '0 9 * * *', channels: ['inApp'], enabled: 'enabled' };
+    : { cron: '0 0 9 * * *', channels: ['inApp'], enabled: 'enabled' };
 
   async function handleOk() {
     let v: Record<string, unknown>;
@@ -104,10 +106,12 @@ export default function SubscriptionsPage() {
         onRefresh={() => void fetchList()} refreshLoading={loading} pagination={buildPagination(data?.total ?? 0, fetchList)} />
 
       <AppModal title={editing ? '编辑订阅' : '新增订阅'} visible={modalVisible} onOk={handleOk} onCancel={closeModal} okButtonProps={{ loading: submitting }} width={560}>
-        <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={initValues} labelPosition="left" labelWidth={90}>
+        <Form key={editing?.id ?? 'new'} getFormApi={(api) => { formApi.current = api; }} initValues={initValues} labelPosition="left" labelWidth={110}
+          onValueChange={(v: Record<string, unknown>) => { if (typeof v.cron === 'string') setCronExprValue(v.cron); }}>
           <Form.Select field="dashboardId" label="仪表盘" style={{ width: '100%' }} rules={[{ required: true, message: '请选择仪表盘' }]} filter
             optionList={dashboards.map((d) => ({ value: d.id, label: d.name }))} />
-          <Form.Input field="cron" label="Cron 表达式" rules={[{ required: true }]} placeholder="如 0 9 * * *（每天 9 点）" />
+          <Form.Input field="cron" label="Cron 表达式" rules={[{ required: true, message: '请输入 Cron 表达式' }]} placeholder="如 0 0 9 * * *（每天 9 点）"
+            addonAfter={<CronBuilderPopover value={cronExprValue} onApply={(expr) => { formApi.current?.setValue('cron', expr); setCronExprValue(expr); }} />} />
           <Form.Select field="channels" label="推送通道" multiple style={{ width: '100%' }} rules={[{ required: true, message: '至少一个通道' }]}
             optionList={[{ value: 'inApp', label: '站内信（推给创建者）' }, { value: 'email', label: '邮件' }]} />
           <Form.Input field="recipients" label="收件邮箱" placeholder="多个用逗号分隔（仅邮件通道）" />
