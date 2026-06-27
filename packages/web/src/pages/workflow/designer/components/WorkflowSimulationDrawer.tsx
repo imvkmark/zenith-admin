@@ -747,7 +747,7 @@ export default function WorkflowSimulationDrawer({
       return <Empty title="没有仿真轨迹" description={result.warnings[0] ?? '流程未产生可执行节点'} />;
     }
     return (
-      <Timeline style={{ paddingLeft: 4 }}>
+      <Timeline className="fd-simulation-timeline__list" style={{ paddingLeft: 2 }}>
         {result.timeline.map((item) => {
           const meta = STATUS_META[item.status];
           const active = item.step === currentStep;

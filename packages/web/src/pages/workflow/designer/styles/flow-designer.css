@@ -596,10 +596,10 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 .fd-simulation-player {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 6px 8px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--semi-color-fill-0);
 }
 
@@ -628,9 +628,9 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 .fd-simulation-timeline-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 6px;
   transition: background 160ms ease, opacity 160ms ease;
 }
 
@@ -643,9 +643,17 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 }
 
 .fd-simulation-timeline {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
+}
+
+.fd-simulation-timeline__list .semi-timeline-item-content {
+  padding-bottom: 4px;
+}
+
+.fd-simulation-timeline__list .semi-timeline-item-tail {
+  left: 6px;
 }
 
 .fd-simulation-health-list {
@@ -712,13 +720,13 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 .fd-simulation-graph__meta {
   grid-column: 2;
   grid-row: 2;
-  display: grid;
-  grid-template-rows: auto minmax(240px, 1fr) auto;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  padding: 10px;
+  overflow: auto;
+  padding: 6px;
   border-left: 1px solid var(--semi-color-border);
   background: var(--semi-color-bg-0);
 }
@@ -726,11 +734,11 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 .fd-simulation-detail {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 1px solid var(--semi-color-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--semi-color-bg-1);
 }
 
@@ -746,15 +754,16 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 
 .fd-simulation-detail--branches {
   min-height: 0;
-  max-height: 220px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .fd-simulation-detail__grid {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 6px 10px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 3px 8px;
   font-size: 12px;
+  line-height: 20px;
 }
 
 .fd-simulation-detail__grid span {
@@ -780,8 +789,8 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 6px;
   border-radius: 6px;
   background: var(--semi-color-primary-light-default);
 }
@@ -789,17 +798,17 @@ body[theme-mode='dark'] .fd-node-picker-panel {
 .fd-simulation-edge-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 240px;
-  overflow: auto;
+  gap: 4px;
+  max-height: none;
+  overflow: visible;
 }
 
 .fd-simulation-edge-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
+  gap: 6px;
   align-items: flex-start;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-radius: 6px;
   background: var(--semi-color-fill-0);
   opacity: 0.72;
@@ -890,6 +899,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
 
   .fd-simulation-timeline {
     max-height: 360px;
+    overflow: auto;
   }
 
   .fd-simulation-graph {
@@ -907,14 +917,13 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
     grid-row: 3;
     border-top: 1px solid var(--semi-color-border);
     border-left: none;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: auto;
+    display: flex;
+    flex-direction: column;
     overflow: visible;
   }
 
   .fd-simulation-detail--timeline {
-    min-height: 320px;
+    min-height: 0;
   }
 
   .fd-simulation-detail--branches {
@@ -969,6 +978,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
 
   .fd-simulation-timeline {
     max-height: 320px;
+    overflow: auto;
   }
 
   .fd-simulation-graph {
@@ -995,7 +1005,7 @@ body[theme-mode='dark'] .fd-simulation-graph__canvas {
   .fd-simulation-graph__meta {
     display: flex;
     flex-direction: column;
-    padding: 8px;
+    padding: 6px;
   }
 
   .fd-simulation-detail--timeline {
