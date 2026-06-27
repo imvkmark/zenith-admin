@@ -685,35 +685,35 @@ export default function WorkflowMonitorPage() {
       { title: 'ID', dataIndex: 'id', width: 70 },
       { title: '节点', dataIndex: 'nodeName', width: 160, render: (_: unknown, row) => row.nodeName || row.nodeKey },
       { title: '类型', dataIndex: 'nodeType', width: 100, render: (v: string | null) => v ?? '—' },
-      { title: '状态', dataIndex: 'status', width: 100 },
+      { title: '状态', dataIndex: 'status', width: 130 },
       { title: '处理人', dataIndex: 'assigneeName', width: 120, render: (v: string | null) => v ?? '—' },
       { title: '外部分派', dataIndex: 'externalDispatchStatus', width: 120, render: (v: string | null) => v ?? '—' },
       { title: '触发器状态', dataIndex: 'triggerDispatchStatus', width: 130, render: (v: string | null) => v ?? '—' },
       { title: '尝试', dataIndex: 'triggerAttempt', width: 70, render: (v: number | undefined) => v ?? '—' },
       { title: '错误', dataIndex: 'triggerLastError', width: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
-      { title: '创建时间', dataIndex: 'createdAt', width: 170 },
+      { title: '创建时间', dataIndex: 'createdAt', width: 210 },
     ];
     const triggerColumns: ColumnProps<WorkflowTriggerExecution>[] = [
       { title: 'ID', dataIndex: 'id', width: 70 },
       { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : '—' },
       { title: '节点', dataIndex: 'nodeName', width: 140, render: (_: unknown, row) => row.nodeName || row.nodeKey },
       { title: '类型', dataIndex: 'triggerType', width: 110 },
-      { title: '状态', dataIndex: 'status', width: 100 },
+      { title: '状态', dataIndex: 'status', width: 130 },
       { title: '尝试', dataIndex: 'attempt', width: 70 },
       { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '—' },
       { title: '耗时', dataIndex: 'durationMs', width: 90, render: (v: number | null) => v != null ? `${v}ms` : '—' },
       { title: '错误', dataIndex: 'errorMessage', width: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
-      { title: '创建时间', dataIndex: 'createdAt', width: 170 },
+      { title: '创建时间', dataIndex: 'createdAt', width: 210 },
     ];
     const outboxColumns: ColumnProps<WorkflowRuntimeOutboxEvent>[] = [
       { title: 'ID', dataIndex: 'id', width: 70 },
       { title: '事件', dataIndex: 'eventType', width: 170 },
       { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : '—' },
-      { title: '状态', dataIndex: 'status', width: 90 },
+      { title: '状态', dataIndex: 'status', width: 130 },
       { title: '尝试', dataIndex: 'attempts', width: 70 },
-      { title: '下次重试', dataIndex: 'nextRetryAt', width: 170, render: (v: string | null) => v ?? '—' },
+      { title: '下次重试', dataIndex: 'nextRetryAt', width: 210, render: (v: string | null) => v ?? '—' },
       { title: '错误', dataIndex: 'errorMessage', width: 260, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
-      { title: '创建时间', dataIndex: 'createdAt', width: 170 },
+      { title: '创建时间', dataIndex: 'createdAt', width: 210 },
     ];
 
     const inst = diagnostics.instance;
@@ -946,13 +946,13 @@ export default function WorkflowMonitorPage() {
             {renderNodes()}
           </TabPane>
           <TabPane tab={`任务 ${diagnostics.tasks.length}`} itemKey="tasks">
-            <ConfigurableTable bordered columns={taskColumns} dataSource={diagnostics.tasks} rowKey="id" pagination={false} scroll={{ x: 1270 }} />
+            <ConfigurableTable bordered columns={taskColumns} dataSource={diagnostics.tasks} rowKey="id" pagination={false} scroll={{ x: 1330 }} />
           </TabPane>
           <TabPane tab={`触发器 ${diagnostics.triggerExecutions.length}`} itemKey="triggers">
             <ConfigurableTable bordered columns={triggerColumns} dataSource={diagnostics.triggerExecutions} rowKey="id" pagination={false} scroll={{ x: 1220 }} />
           </TabPane>
           <TabPane tab={`Outbox ${diagnostics.outboxEvents.length}`} itemKey="outbox">
-            <ConfigurableTable bordered columns={outboxColumns} dataSource={diagnostics.outboxEvents} rowKey="id" pagination={false} scroll={{ x: 1080 }} />
+            <ConfigurableTable bordered columns={outboxColumns} dataSource={diagnostics.outboxEvents} rowKey="id" pagination={false} scroll={{ x: 1200 }} />
           </TabPane>
           <TabPane tab="流程图" itemKey="graph">
             <div style={{ marginBottom: 10 }}>
