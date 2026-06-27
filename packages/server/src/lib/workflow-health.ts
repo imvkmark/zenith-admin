@@ -172,7 +172,7 @@ export function analyzeWorkflowHealth(raw: WorkflowFlowData | null | undefined):
   // ── timeout / SLA ──
   const timeoutIssues: WorkflowDefinitionHealthIssue[] = [];
   for (const n of nodes.filter((x) => x.data.type === 'approve' || x.data.type === 'handler')) {
-    if (n.data.timeout == null) {
+    if (!n.data.timeout?.enabled) {
       timeoutIssues.push(issue('info', `节点「${n.data.label || n.data.key}」未配置超时/SLA 提醒`, '配置超时时长，便于超时预警与自动催办', n));
     }
   }

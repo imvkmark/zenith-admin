@@ -15,8 +15,8 @@ const ISSUE_LABELS: Record<WorkflowHealthIssue['type'], string> = {
   subprocess_waiting: '子流程等待',
   delay_overdue: '延迟未唤醒',
   task_timeout_overdue: '任务超时',
-  workflow_event_outbox_failed: 'Outbox 失败',
-  workflow_event_outbox_pending: 'Outbox 待处理',
+  workflow_event_outbox_failed: '事件派发失败',
+  workflow_event_outbox_pending: '事件派发待处理',
   waiting_task_stuck: '任务等待过久',
 };
 
@@ -176,7 +176,7 @@ export default function WorkflowHealthPage() {
         <SummaryItem label="警告" value={data?.stats.warning ?? 0} />
         <SummaryItem label="外部审批失败" value={data?.stats.externalFailed ?? 0} danger={(data?.stats.externalFailed ?? 0) > 0} />
         <SummaryItem label="触发器卡住" value={data?.stats.triggerStuck ?? 0} danger={(data?.stats.triggerStuck ?? 0) > 0} />
-        <SummaryItem label="Outbox 失败" value={data?.stats.outboxFailed ?? 0} danger={(data?.stats.outboxFailed ?? 0) > 0} />
+        <SummaryItem label="事件派发失败" value={data?.stats.outboxFailed ?? 0} danger={(data?.stats.outboxFailed ?? 0) > 0} />
       </Space>
 
       <ConfigurableTable

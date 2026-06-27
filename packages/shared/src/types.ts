@@ -2679,6 +2679,8 @@ export interface WorkflowSimulationTimelineItem {
   reason?: string;
   detail?: string;
   nextNodeKeys?: string[];
+  /** 该步骤预估耗时（分钟），自动/瞬时节点为 0 */
+  estimatedMinutes?: number;
 }
 
 /** 流程仿真连线命中结果 */
@@ -2712,6 +2714,16 @@ export interface WorkflowSimulationHealthIssue {
   suggestion?: string;
 }
 
+/** 流程仿真阻塞点（人工审批 / 延时 / 外部回调 / 子流程 / 死锁） */
+export interface WorkflowSimulationBlockingPoint {
+  nodeKey: string;
+  nodeName: string;
+  kind: 'humanTask' | 'delay' | 'external' | 'subProcess' | 'blocked';
+  reason: string;
+  /** 该阻塞点预估等待时长（分钟） */
+  estimatedMinutes: number;
+}
+
 /** 流程仿真结果 */
 export interface WorkflowSimulationResult {
   valid: boolean;
@@ -2722,6 +2734,10 @@ export interface WorkflowSimulationResult {
   nodeStates: Record<string, WorkflowSimulationNodeState>;
   healthIssues: WorkflowSimulationHealthIssue[];
   pathSignature: string[];
+  /** 路径预估总耗时（分钟，各步骤累加） */
+  estimatedDurationMinutes: number;
+  /** 阻塞点汇总 */
+  blockingPoints: WorkflowSimulationBlockingPoint[];
 }
 
 /** 关联审批单可选项（relation 字段检索结果） */
@@ -3703,7 +3719,7 @@ export interface WorkflowEngineTelemetry {
   scoreBreakdown: WorkflowEngineScoreFactor[];
   /** 事件处理 Apdex 满意度 */
   apdex: WorkflowEngineApdex;
-  /** 事件 Outbox 吞吐 + 延迟（Traffic / Errors / Latency） */
+  /** 事件派发吞吐 + 延迟（Traffic / Errors / Latency） */
   events: {
     last1h: WorkflowEngineThroughputWindow;
     last24h: WorkflowEngineThroughputWindow;

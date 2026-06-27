@@ -71,7 +71,7 @@ const ISSUE_SOURCE_MAP: Record<WorkflowRuntimeIssue['source'], string> = {
   instance: '实例',
   task: '任务',
   trigger: '触发器',
-  outbox: 'Outbox',
+  outbox: '事件派发',
 };
 
 /** 节点类型 → 中文标签（含网关 / 抄送 / 触发器等结构节点） */
@@ -315,11 +315,11 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
   if (criticalIssues.length > 0) riskTags.push({ label: `严重 ${criticalIssues.length}`, color: 'red' });
   if (warningIssues.length > 0) riskTags.push({ label: `警告 ${warningIssues.length}`, color: 'orange' });
   if (failedTriggers.length > 0) riskTags.push({ label: `触发器失败 ${failedTriggers.length}`, color: 'red' });
-  if (failedOutbox.length > 0) riskTags.push({ label: `Outbox失败 ${failedOutbox.length}`, color: 'red' });
+  if (failedOutbox.length > 0) riskTags.push({ label: `事件派发失败 ${failedOutbox.length}`, color: 'red' });
   if (externalFailedTasks.length > 0) riskTags.push({ label: `外部分派失败 ${externalFailedTasks.length}`, color: 'red' });
   if (triggerFailedTasks.length > 0) riskTags.push({ label: `任务触发失败 ${triggerFailedTasks.length}`, color: 'red' });
   if (retryingTriggers.length > 0) riskTags.push({ label: `触发器重试中 ${retryingTriggers.length}`, color: 'orange' });
-  if (pendingOutbox.length > 0) riskTags.push({ label: `Outbox待处理 ${pendingOutbox.length}`, color: 'orange' });
+  if (pendingOutbox.length > 0) riskTags.push({ label: `事件派发待处理 ${pendingOutbox.length}`, color: 'orange' });
   if (emptyAssigneeTasks.length > 0) riskTags.push({ label: `处理人为空 ${emptyAssigneeTasks.length}`, color: 'orange' });
   if (longWaitingCritical) riskTags.push({ label: '等待超3天', color: 'red' });
   else if (longWaitingWarning) riskTags.push({ label: '等待超24小时', color: 'orange' });
@@ -358,7 +358,7 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
     nextAction = '查看“节点”和“定义快照”，确认当前节点是否应该生成任务；必要时使用强制跳转恢复流程。';
   }
 
-  if (failedOutbox.length > 0) nextAction = '优先打开“Outbox”标签查看失败事件、错误信息和下次重试时间，必要时检查订阅地址或重试投递。';
+  if (failedOutbox.length > 0) nextAction = '优先打开“事件派发”标签查看失败事件、错误信息和下次重试时间，必要时检查订阅地址或重试投递。';
   if (failedTriggers.length > 0) nextAction = '优先打开“触发器”标签查看失败请求、HTTP 状态、响应体和最近错误。';
   if (externalFailedTasks.length > 0) nextAction = '优先检查外部分派配置和外部系统回调；若无法恢复，可改派到人工处理。';
   if (criticalIssues.length > 0) nextAction = '优先处理诊断结论中的严重项，再回到节点和任务列表确认流程是否恢复。';
@@ -374,7 +374,7 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
       { label: '当前等待', value: waitText, hint: oldestActiveTask ? `task #${oldestActiveTask.id}` : '无活动任务' },
       { label: '处理人', value: assigneeText, hint: assigneeSource !== '—' ? `来源：${assigneeSource}` : undefined },
       { label: '最久停留', value: longestStayText, hint: longestTask ? `task #${longestTask.task.id}` : undefined },
-      { label: '外部事件', value: `${diagnostics.triggerExecutions.length} 触发器 · ${diagnostics.outboxEvents.length} Outbox`, hint: `${failedTriggers.length + failedOutbox.length} 个失败` },
+      { label: '外部事件', value: `${diagnostics.triggerExecutions.length} 触发器 · ${diagnostics.outboxEvents.length} 事件派发`, hint: `${failedTriggers.length + failedOutbox.length} 个失败` },
     ],
   };
 }
@@ -951,7 +951,7 @@ export default function WorkflowMonitorPage() {
           <TabPane tab={`触发器 ${diagnostics.triggerExecutions.length}`} itemKey="triggers">
             <ConfigurableTable bordered columns={triggerColumns} dataSource={diagnostics.triggerExecutions} rowKey="id" pagination={false} scroll={{ x: 1220 }} />
           </TabPane>
-          <TabPane tab={`Outbox ${diagnostics.outboxEvents.length}`} itemKey="outbox">
+          <TabPane tab={`事件派发 ${diagnostics.outboxEvents.length}`} itemKey="outbox">
             <ConfigurableTable bordered columns={outboxColumns} dataSource={diagnostics.outboxEvents} rowKey="id" pagination={false} scroll={{ x: 1200 }} />
           </TabPane>
           <TabPane tab="流程图" itemKey="graph">

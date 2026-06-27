@@ -49,7 +49,7 @@ const QUEUE_LABEL: Record<WorkflowEngineQueueKey, string> = {
   triggerDispatch: '触发器调度',
   externalApprovals: '外部审批',
   subProcessJoin: '子流程汇聚',
-  eventOutbox: '事件 Outbox',
+  eventOutbox: '事件派发',
 };
 
 const REF_TYPE_LABEL: Record<NonNullable<WorkflowEngineRuntimeIssue['refType']>, string> = {
@@ -57,7 +57,7 @@ const REF_TYPE_LABEL: Record<NonNullable<WorkflowEngineRuntimeIssue['refType']>,
   instance: '实例',
   task: '任务',
   triggerExecution: '触发器执行',
-  outbox: 'Outbox',
+  outbox: '事件派发',
   scheduler: '调度器',
 };
 
@@ -90,7 +90,7 @@ const HISTORY_RANGE_OPTIONS = [
 ];
 
 const ACTION_ITEMS: Array<{ key: WorkflowEngineActionKey; label: string }> = [
-  { key: 'replay-outbox', label: '重放事件 Outbox' },
+  { key: 'replay-outbox', label: '重放事件派发' },
   { key: 'recover-triggers', label: '恢复触发器重派' },
   { key: 'recover-delays', label: '恢复延时任务' },
   { key: 'process-timeouts', label: '处理超时任务' },
@@ -951,7 +951,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             scroll={{ x: 1540 }}
           />
         </TabPane>
-        <TabPane tab={`Outbox ${data.runtime.outboxEvents.length}`} itemKey="outbox">
+        <TabPane tab={`事件派发 ${data.runtime.outboxEvents.length}`} itemKey="outbox">
           <ConfigurableTable<WorkflowEngineOutboxEvent>
             bordered
             columnSettings={false}
@@ -959,7 +959,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             dataSource={data.runtime.outboxEvents}
             rowKey="id"
             pagination={false}
-            empty="暂无待处理 Outbox 事件"
+            empty="暂无待处理事件派发"
             scroll={{ x: 1230 }}
           />
         </TabPane>
