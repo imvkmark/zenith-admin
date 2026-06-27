@@ -10,14 +10,27 @@ export default function EnterpriseCallbackPage() {
   const [message, setMessage] = useState('正在处理企业登录...');
 
   useEffect(() => {
+    const samlTicket = searchParams.get('samlTicket');
     const code = searchParams.get('code');
     const state = searchParams.get('state');
-    if (!code || !state) {
+    const callback = samlTicket
+      ? request.post<{ loginResult: LoginResponse; redirectTo?: string | null }>(
+        '/api/auth/enterprise/saml/exchange',
+        { ticket: samlTicket },
+        { silent: true },
+      )
+      : code && state
+        ? request.post<{ loginResult: LoginResponse; redirectTo?: string | null }>(
+          '/api/auth/enterprise/callback',
+          { code, state },
+          { silent: true },
+        )
+        : null;
+    if (!callback) {
       setMessage('企业登录参数不完整');
       return;
     }
-    request
-      .post<{ loginResult: LoginResponse; redirectTo?: string | null }>('/api/auth/enterprise/callback', { code, state }, { silent: true })
+    callback
       .then((res) => {
         if (res.code === 0 && res.data?.loginResult?.token) {
           localStorage.setItem(TOKEN_KEY, res.data.loginResult.token.accessToken);

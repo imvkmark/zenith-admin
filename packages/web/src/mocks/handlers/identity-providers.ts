@@ -40,8 +40,8 @@ const providers: TenantIdentityProvider[] = [
     name: '平台 SAML',
     code: 'platform_saml',
     type: 'saml',
-    status: 'disabled',
-    issuer: null,
+    status: 'enabled',
+    issuer: 'https://idp.example.com/saml/metadata',
     authorizationEndpoint: null,
     tokenEndpoint: null,
     userinfoEndpoint: null,
@@ -50,7 +50,7 @@ const providers: TenantIdentityProvider[] = [
     clientSecret: '',
     scopes: 'openid profile email',
     samlSsoUrl: 'https://idp.example.com/saml/sso',
-    samlEntityId: 'https://idp.example.com/saml/metadata',
+    samlEntityId: 'https://zenith.example.com/saml/sp',
     samlCertificate: '******',
     attributeMapping: { subject: 'NameID', email: 'email', username: 'username', nickname: 'displayName' },
     jitEnabled: false,
@@ -150,8 +150,11 @@ export const identityProvidersHandlers = [
   }),
 
   http.get(`${API}/api/auth/enterprise/:id`, ({ params }) => {
+    const provider = providers.find((item) => item.id === Number(params.id));
     return ok({
-      authUrl: `/enterprise/callback?code=demo-code&state=demo-state-${params.id}`,
+      authUrl: provider?.type === 'saml'
+        ? `/enterprise/callback?samlTicket=demo-saml-ticket-${params.id}`
+        : `/enterprise/callback?code=demo-code&state=demo-state-${params.id}`,
       state: `demo-state-${params.id}`,
     });
   }),
@@ -174,6 +177,29 @@ export const identityProvidersHandlers = [
             updatedAt: mockDateTime(),
           },
           token: { accessToken: 'mock-enterprise-access-token', refreshToken: 'mock-enterprise-refresh-token' },
+        },
+      },
+    });
+  }),
+
+  http.post(`${API}/api/auth/enterprise/saml/exchange`, () => {
+    return HttpResponse.json({
+      code: 0,
+      message: '登录成功',
+      data: {
+        redirectTo: '/',
+        loginResult: {
+          user: {
+            id: 1,
+            username: 'admin',
+            nickname: '管理员',
+            email: 'admin@example.com',
+            status: 'enabled',
+            roles: [],
+            createdAt: mockDateTime(),
+            updatedAt: mockDateTime(),
+          },
+          token: { accessToken: 'mock-saml-access-token', refreshToken: 'mock-saml-refresh-token' },
         },
       },
     });

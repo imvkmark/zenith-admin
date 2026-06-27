@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { SAML, ValidateInResponseTo, type CacheItem, type CacheProvider, type Profile } from '@node-saml/node-saml';
 import { and, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type {
@@ -21,6 +22,11 @@ import { finalizeLogin, type DeviceInfo } from './auth.service';
 const SECRET_MASK = '******';
 const OIDC_STATE_TTL = 5 * 60;
 const OIDC_STATE_PREFIX = `${config.redis.keyPrefix}idp-oidc-state:`;
+const SAML_STATE_TTL = 5 * 60;
+const SAML_STATE_PREFIX = `${config.redis.keyPrefix}idp-saml-state:`;
+const SAML_REQUEST_PREFIX = `${config.redis.keyPrefix}idp-saml-request:`;
+const SAML_LOGIN_TICKET_TTL = 60;
+const SAML_LOGIN_TICKET_PREFIX = `${config.redis.keyPrefix}idp-saml-login-ticket:`;
 
 const DEFAULT_MAPPING: Required<IdentityProviderAttributeMapping> = {
   subject: 'sub',
@@ -29,11 +35,26 @@ const DEFAULT_MAPPING: Required<IdentityProviderAttributeMapping> = {
   nickname: 'name',
 };
 
-interface OidcStatePayload {
+const SAML_DEFAULT_MAPPING: Required<IdentityProviderAttributeMapping> = {
+  subject: 'NameID',
+  email: 'email',
+  username: 'username',
+  nickname: 'displayName',
+};
+
+interface EnterpriseAuthStatePayload {
   providerId: number;
   redirectTo?: string | null;
   ip: string;
   ua: string;
+  samlRequestId?: string;
+}
+
+type EnterpriseLoginResult = Awaited<ReturnType<typeof finalizeLogin>>;
+
+interface SamlLoginTicketPayload {
+  loginResult: EnterpriseLoginResult;
+  redirectTo?: string | null;
 }
 
 type ProviderRow = typeof tenantIdentityProviders.$inferSelect & {
@@ -44,14 +65,23 @@ function maskSecret(value: string | null | undefined): string {
   return value ? SECRET_MASK : '';
 }
 
-function normalizeMapping(mapping?: IdentityProviderAttributeMapping | null): Required<IdentityProviderAttributeMapping> {
-  return { ...DEFAULT_MAPPING, ...(mapping ?? {}) };
+function normalizeMapping(
+  mapping?: IdentityProviderAttributeMapping | null,
+  providerType: 'oidc' | 'saml' = 'oidc',
+): Required<IdentityProviderAttributeMapping> {
+  return { ...(providerType === 'saml' ? SAML_DEFAULT_MAPPING : DEFAULT_MAPPING), ...(mapping ?? {}) };
 }
 
 function readMappedString(profile: Record<string, unknown>, key: string): string | null {
   const value = profile[key];
   if (typeof value === 'string' && value.trim()) return value.trim();
   if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === 'string' && item.trim()) return item.trim();
+      if (typeof item === 'number') return String(item);
+    }
+  }
   return null;
 }
 
@@ -75,7 +105,7 @@ export function mapIdentityProvider(row: ProviderRow) {
     samlSsoUrl: row.samlSsoUrl,
     samlEntityId: row.samlEntityId,
     samlCertificate: maskSecret(row.samlCertificate),
-    attributeMapping: normalizeMapping(row.attributeMapping),
+    attributeMapping: normalizeMapping(row.attributeMapping, row.type),
     jitEnabled: row.jitEnabled,
     defaultRoleIds: row.defaultRoleIds,
     remark: row.remark,
@@ -131,7 +161,10 @@ function buildProviderValues(
   } else if (!existing && !('samlCertificate' in data)) {
     values.samlCertificate = null;
   }
-  if (values.attributeMapping) values.attributeMapping = normalizeMapping(values.attributeMapping);
+  if (values.attributeMapping) {
+    const providerType = (values.type ?? existing?.type ?? data.type ?? 'oidc') as 'oidc' | 'saml';
+    values.attributeMapping = normalizeMapping(values.attributeMapping, providerType);
+  }
   if (values.defaultRoleIds) values.defaultRoleIds = Array.from(new Set(values.defaultRoleIds));
   return values;
 }
@@ -272,17 +305,111 @@ function oidcRedirectUri(): string {
   return `${config.oauth.callbackBaseUrl}/enterprise/callback`;
 }
 
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function samlAcsUrl(): string {
+  return `${trimTrailingSlash(config.oauth.samlAcsBaseUrl)}/api/auth/enterprise/saml/acs`;
+}
+
+function enterpriseCallbackUrl(ticket: string): string {
+  const url = new URL(`${trimTrailingSlash(config.oauth.callbackBaseUrl)}/enterprise/callback`);
+  url.searchParams.set('samlTicket', ticket);
+  return url.toString();
+}
+
+function randomToken(bytes = 24): string {
+  return crypto.randomBytes(bytes).toString('hex');
+}
+
+class RedisSamlCacheProvider implements CacheProvider {
+  constructor(private readonly prefix: string, private readonly ttlSeconds: number) {}
+
+  async saveAsync(key: string, value: string): Promise<CacheItem> {
+    await redis.set(`${this.prefix}${key}`, value, 'EX', this.ttlSeconds);
+    return { value, createdAt: Date.now() };
+  }
+
+  async getAsync(key: string): Promise<string | null> {
+    if (!key) return null;
+    return redis.get(`${this.prefix}${key}`);
+  }
+
+  async removeAsync(key: string | null): Promise<string | null> {
+    if (!key) return null;
+    const redisKey = `${this.prefix}${key}`;
+    const value = await redis.get(redisKey);
+    await redis.del(redisKey);
+    return value;
+  }
+}
+
+function getSamlSpEntityId(provider: typeof tenantIdentityProviders.$inferSelect): string {
+  const spEntityId = provider.samlEntityId?.trim();
+  if (!spEntityId) throw new HTTPException(400, { message: 'SAML SP Entity ID 未配置' });
+  return spEntityId;
+}
+
+function createSamlClient(
+  provider: typeof tenantIdentityProviders.$inferSelect,
+  options: { onRequestId?: (id: string) => void } = {},
+): SAML {
+  if (!provider.samlSsoUrl) throw new HTTPException(400, { message: 'SAML SSO URL 未配置' });
+  if (!provider.samlCertificate) throw new HTTPException(400, { message: 'SAML 签名证书未配置' });
+  const spEntityId = getSamlSpEntityId(provider);
+  const idpIssuer = provider.issuer?.trim();
+  if (!idpIssuer) throw new HTTPException(400, { message: 'SAML IdP Issuer 未配置' });
+  return new SAML({
+    entryPoint: provider.samlSsoUrl,
+    idpCert: provider.samlCertificate,
+    issuer: spEntityId,
+    audience: spEntityId,
+    idpIssuer,
+    callbackUrl: samlAcsUrl(),
+    identifierFormat: null,
+    disableRequestedAuthnContext: true,
+    wantAssertionsSigned: true,
+    wantAuthnResponseSigned: false,
+    acceptedClockSkewMs: 120_000,
+    maxAssertionAgeMs: SAML_STATE_TTL * 1000,
+    requestIdExpirationPeriodMs: SAML_STATE_TTL * 1000,
+    validateInResponseTo: ValidateInResponseTo.always,
+    cacheProvider: new RedisSamlCacheProvider(`${SAML_REQUEST_PREFIX}${provider.id}:`, SAML_STATE_TTL),
+    generateUniqueId: () => {
+      const id = `_${randomToken(20)}`;
+      options.onRequestId?.(id);
+      return id;
+    },
+  });
+}
+
 export async function generateEnterpriseAuthUrl(providerId: number, client: { ip: string; ua: string; redirectTo?: string | null }) {
   const provider = await getUsableProvider(providerId);
   if (provider.type === 'saml') {
-    if (!provider.samlSsoUrl) throw new HTTPException(400, { message: 'SAML SSO URL 未配置' });
-    return { authUrl: provider.samlSsoUrl, state: null };
+    const state = randomToken();
+    let samlRequestId: string | undefined;
+    const payload: EnterpriseAuthStatePayload = {
+      providerId: provider.id,
+      redirectTo: client.redirectTo ?? null,
+      ip: client.ip,
+      ua: client.ua,
+    };
+    const authUrl = await createSamlClient(provider, {
+      onRequestId: (id) => {
+        samlRequestId = id;
+      },
+    }).getAuthorizeUrlAsync(state, undefined, {});
+    if (!samlRequestId) throw new HTTPException(500, { message: 'SAML AuthnRequest 生成失败' });
+    payload.samlRequestId = samlRequestId;
+    await redis.set(`${SAML_STATE_PREFIX}${state}`, JSON.stringify(payload), 'EX', SAML_STATE_TTL);
+    return { authUrl, state };
   }
   if (!provider.authorizationEndpoint || !provider.clientId) {
     throw new HTTPException(400, { message: 'OIDC 授权端点或 Client ID 未配置' });
   }
-  const state = crypto.randomBytes(24).toString('hex');
-  const payload: OidcStatePayload = {
+  const state = randomToken();
+  const payload: EnterpriseAuthStatePayload = {
     providerId: provider.id,
     redirectTo: client.redirectTo ?? null,
     ip: client.ip,
@@ -343,13 +470,39 @@ async function loadOidcProfile(provider: typeof tenantIdentityProviders.$inferSe
 }
 
 function normalizeExternalProfile(provider: typeof tenantIdentityProviders.$inferSelect, profile: Record<string, unknown>) {
-  const mapping = normalizeMapping(provider.attributeMapping);
+  const mapping = normalizeMapping(provider.attributeMapping, provider.type);
   const subject = readMappedString(profile, mapping.subject);
   if (!subject) throw new HTTPException(400, { message: '企业身份源未返回用户唯一标识' });
   const email = readMappedString(profile, mapping.email);
   const username = readMappedString(profile, mapping.username) ?? email?.split('@')[0] ?? `idp_${subject.slice(0, 24)}`;
   const nickname = readMappedString(profile, mapping.nickname) ?? username;
   return { subject, email, username, nickname };
+}
+
+function assignStringAlias(target: Record<string, unknown>, key: string, value: unknown) {
+  if (target[key] !== undefined) return;
+  if (typeof value === 'string' && value.trim()) target[key] = value.trim();
+}
+
+function mapSamlProfile(profile: Profile): Record<string, unknown> {
+  const source = profile as Record<string, unknown>;
+  const record: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value !== 'function') record[key] = value;
+  }
+  const attrs = source.attributes;
+  if (attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
+    for (const [key, value] of Object.entries(attrs as Record<string, unknown>)) {
+      if (record[key] === undefined) record[key] = value;
+    }
+  }
+  assignStringAlias(record, 'NameID', profile.nameID);
+  assignStringAlias(record, 'nameId', profile.nameID);
+  assignStringAlias(record, 'sub', profile.nameID);
+  assignStringAlias(record, 'email', profile.email ?? profile.mail ?? profile['urn:oid:0.9.2342.19200300.100.1.3']);
+  assignStringAlias(record, 'username', record.uid ?? record.userName ?? record.email);
+  assignStringAlias(record, 'displayName', record.displayName ?? record.cn ?? record.name);
+  return record;
 }
 
 async function findOrCreateUserForProvider(provider: typeof tenantIdentityProviders.$inferSelect, profile: Record<string, unknown>) {
@@ -422,7 +575,7 @@ export async function handleEnterpriseOidcCallback(code: string, state: string, 
   const raw = await redis.get(stateKey);
   if (!raw) throw new HTTPException(400, { message: '企业登录状态已过期，请重新发起登录' });
   await redis.del(stateKey);
-  const payload = JSON.parse(raw) as OidcStatePayload;
+  const payload = JSON.parse(raw) as EnterpriseAuthStatePayload;
   const provider = await getUsableProvider(payload.providerId);
   if (provider.type !== 'oidc') throw new HTTPException(400, { message: '身份源类型不匹配' });
   const token = await exchangeOidcCode(provider, code);
@@ -435,4 +588,56 @@ export async function handleEnterpriseOidcCallback(code: string, state: string, 
     { logMessage: `企业身份源 ${provider.name} 登录成功` },
   );
   return { loginResult, redirectTo: payload.redirectTo ?? null };
+}
+
+export async function handleEnterpriseSamlAcs(samlResponse: string, relayState: string) {
+  if (!samlResponse) throw new HTTPException(400, { message: 'SAMLResponse 不能为空' });
+  if (!relayState) throw new HTTPException(400, { message: 'RelayState 不能为空' });
+  const stateKey = `${SAML_STATE_PREFIX}${relayState}`;
+  const raw = await redis.get(stateKey);
+  if (!raw) throw new HTTPException(400, { message: '企业登录状态已过期，请重新发起登录' });
+  await redis.del(stateKey);
+
+  const payload = JSON.parse(raw) as EnterpriseAuthStatePayload;
+  const provider = await getUsableProvider(payload.providerId);
+  if (provider.type !== 'saml') throw new HTTPException(400, { message: '身份源类型不匹配' });
+
+  let profile: Profile | null;
+  try {
+    const validated = await createSamlClient(provider).validatePostResponseAsync({ SAMLResponse: samlResponse });
+    profile = validated.profile;
+  } catch (err) {
+    const message = err instanceof Error && err.message ? err.message : 'SAML 断言校验失败';
+    throw new HTTPException(400, { message: `SAML 断言校验失败：${message}` });
+  }
+  if (!profile) throw new HTTPException(400, { message: 'SAML 断言未返回用户信息' });
+  const profileRecord = mapSamlProfile(profile);
+  const inResponseTo = typeof profileRecord.inResponseTo === 'string' ? profileRecord.inResponseTo : null;
+  if (payload.samlRequestId && inResponseTo !== payload.samlRequestId) {
+    throw new HTTPException(400, { message: 'SAML 响应与本次登录请求不匹配' });
+  }
+
+  const user = await findOrCreateUserForProvider(provider, profileRecord);
+  if (user.status === 'disabled') throw new HTTPException(403, { message: '账号已被禁用' });
+  const loginResult = await finalizeLogin(
+    user,
+    { ip: payload.ip, ua: payload.ua },
+    { logMessage: `企业身份源 ${provider.name} SAML 登录成功` },
+  );
+  const ticket = randomToken(32);
+  const ticketPayload: SamlLoginTicketPayload = {
+    loginResult,
+    redirectTo: payload.redirectTo ?? null,
+  };
+  await redis.set(`${SAML_LOGIN_TICKET_PREFIX}${ticket}`, JSON.stringify(ticketPayload), 'EX', SAML_LOGIN_TICKET_TTL);
+  return { ticket, redirectUrl: enterpriseCallbackUrl(ticket) };
+}
+
+export async function exchangeEnterpriseSamlTicket(ticket: string) {
+  if (!ticket) throw new HTTPException(400, { message: 'SAML 登录票据不能为空' });
+  const ticketKey = `${SAML_LOGIN_TICKET_PREFIX}${ticket}`;
+  const raw = await redis.get(ticketKey);
+  if (!raw) throw new HTTPException(400, { message: 'SAML 登录票据已过期，请重新登录' });
+  await redis.del(ticketKey);
+  return JSON.parse(raw) as SamlLoginTicketPayload;
 }

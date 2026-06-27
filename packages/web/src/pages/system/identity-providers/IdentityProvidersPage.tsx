@@ -54,6 +54,17 @@ const defaultMapping = {
   nickname: 'name',
 };
 
+const samlDefaultMapping = {
+  subject: 'NameID',
+  email: 'email',
+  username: 'username',
+  nickname: 'displayName',
+};
+
+function mappingForType(type: 'oidc' | 'saml') {
+  return type === 'saml' ? samlDefaultMapping : defaultMapping;
+}
+
 export default function IdentityProvidersPage() {
   const formApi = useRef<FormApi | null>(null);
   const [data, setData] = useState<TenantIdentityProvider[]>([]);
@@ -124,6 +135,18 @@ export default function IdentityProvidersPage() {
     setModalVisible(true);
   }
 
+  function handleProviderTypeChange(value: unknown) {
+    const nextType = value === 'saml' ? 'saml' : 'oidc';
+    setProviderType(nextType);
+    const nextMapping = mappingForType(nextType);
+    formApi.current?.setValues({
+      'attributeMapping.subject': nextMapping.subject,
+      'attributeMapping.email': nextMapping.email,
+      'attributeMapping.username': nextMapping.username,
+      'attributeMapping.nickname': nextMapping.nickname,
+    });
+  }
+
   async function openEdit(row: TenantIdentityProvider) {
     const res = await request.get<TenantIdentityProvider>(`/api/identity-providers/${row.id}`);
     if (res.code === 0) {
@@ -140,15 +163,16 @@ export default function IdentityProvidersPage() {
     } catch {
       throw new Error('validation');
     }
+    const activeMapping = mappingForType(providerType);
     const payload = {
       ...values,
       tenantId: values.tenantId ?? null,
       type: providerType,
       attributeMapping: {
-        subject: values['attributeMapping.subject'] || defaultMapping.subject,
-        email: values['attributeMapping.email'] || defaultMapping.email,
-        username: values['attributeMapping.username'] || defaultMapping.username,
-        nickname: values['attributeMapping.nickname'] || defaultMapping.nickname,
+        subject: values['attributeMapping.subject'] || activeMapping.subject,
+        email: values['attributeMapping.email'] || activeMapping.email,
+        username: values['attributeMapping.username'] || activeMapping.username,
+        nickname: values['attributeMapping.nickname'] || activeMapping.nickname,
       },
       defaultRoleIds: Array.isArray(values.defaultRoleIds) ? values.defaultRoleIds : [],
     };
@@ -198,7 +222,7 @@ export default function IdentityProvidersPage() {
       width: 90,
       render: (value: string) => <Tag color={value === 'oidc' ? 'blue' : 'violet'}>{value.toUpperCase()}</Tag>,
     },
-    { title: 'Issuer / Entity ID', dataIndex: 'issuer', width: 260, render: (_value, row) => renderEllipsis(row.type === 'oidc' ? row.issuer : row.samlEntityId) },
+    { title: 'Issuer / SP Entity ID', dataIndex: 'issuer', width: 260, render: (_value, row) => renderEllipsis(row.type === 'oidc' ? row.issuer : row.samlEntityId) },
     createdAtColumn,
     {
       title: '状态',
@@ -255,14 +279,15 @@ export default function IdentityProvidersPage() {
     />
   );
 
+  const initMapping = mappingForType(editing?.type ?? 'oidc');
   const initValues = editing ? {
     ...editing,
     tenantId: editing.tenantId ?? undefined,
     defaultRoleIds: editing.defaultRoleIds ?? [],
-    'attributeMapping.subject': editing.attributeMapping?.subject || defaultMapping.subject,
-    'attributeMapping.email': editing.attributeMapping?.email || defaultMapping.email,
-    'attributeMapping.username': editing.attributeMapping?.username || defaultMapping.username,
-    'attributeMapping.nickname': editing.attributeMapping?.nickname || defaultMapping.nickname,
+    'attributeMapping.subject': editing.attributeMapping?.subject || initMapping.subject,
+    'attributeMapping.email': editing.attributeMapping?.email || initMapping.email,
+    'attributeMapping.username': editing.attributeMapping?.username || initMapping.username,
+    'attributeMapping.nickname': editing.attributeMapping?.nickname || initMapping.nickname,
   } : {
     type: 'oidc',
     status: 'disabled',
@@ -348,7 +373,7 @@ export default function IdentityProvidersPage() {
                 label="类型"
                 optionList={providerTypeOptions}
                 style={{ width: '100%' }}
-                onChange={(value) => setProviderType(value as 'oidc' | 'saml')}
+                onChange={handleProviderTypeChange}
               />
             </Col>
           </Row>
@@ -372,8 +397,9 @@ export default function IdentityProvidersPage() {
             </>
           ) : (
             <>
+              <Form.Input field="issuer" label="IdP Issuer" placeholder="https://idp.example.com/saml/metadata" />
               <Form.Input field="samlSsoUrl" label="SSO URL" placeholder="https://idp.example.com/sso" rules={[{ required: providerType === 'saml', message: '请输入 SSO URL' }]} />
-              <Form.Input field="samlEntityId" label="Entity ID" placeholder="https://idp.example.com/metadata" />
+              <Form.Input field="samlEntityId" label="SP Entity ID" placeholder="https://zenith.example.com/saml/sp" />
               <Form.TextArea field="samlCertificate" label="证书" placeholder="-----BEGIN CERTIFICATE-----" rows={4} />
             </>
           )}

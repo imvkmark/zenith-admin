@@ -246,15 +246,19 @@ app.use('*', except(
 app.use('*', cors({ origin: config.corsOrigin, allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
 // CSRF 防护：校验 Origin 头，防止跨站请求伪造
 // ALLOWED_ORIGINS 为空时（开发模式）不限制；非浏览器请求（无 Origin）直接放行
+const CSRF_EXCLUDE_PATHS = ['/api/auth/enterprise/saml/acs'];
 app.use(
   '*',
-  csrf({
-    origin: (origin) => {
-      if (!origin) return true; // 服务端 / CLI（curl、Postman）直接放行
-      if (config.allowedOrigins.length === 0) return true; // 开发模式，不限制
-      return config.allowedOrigins.includes(origin);
-    },
-  }),
+  except(
+    (c) => CSRF_EXCLUDE_PATHS.includes(c.req.path),
+    csrf({
+      origin: (origin) => {
+        if (!origin) return true; // 服务端 / CLI（curl、Postman）直接放行
+        if (config.allowedOrigins.length === 0) return true; // 开发模式，不限制
+        return config.allowedOrigins.includes(origin);
+      },
+    }),
+  ),
 );
 app.use('*', honoLogger((msg) => logger.info(stripAnsi(msg))));
 // HTTP 流量详细日志（对标 Logbook），默认关闭，通过 HTTP_LOG_INCOMING_ENABLED=true 启用

@@ -9,8 +9,10 @@ import {
 import { EnterpriseIdentityDiscoveryDTO, LoginResultDTO } from '../lib/openapi-dtos';
 import {
   discoverEnterpriseIdentityProviders,
+  exchangeEnterpriseSamlTicket,
   generateEnterpriseAuthUrl,
   handleEnterpriseOidcCallback,
+  handleEnterpriseSamlAcs,
 } from '../services/identity-providers.service';
 import { getClientInfo } from '../services/auth.service';
 
@@ -85,6 +87,50 @@ const callbackRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([discoverRoute, authUrlRoute, callbackRoute] as const);
+const samlAcsRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/saml/acs',
+    tags: ['EnterpriseAuth'],
+    summary: '企业 SAML ACS 回调',
+    security: [],
+    responses: {
+      302: { description: '重定向至前端企业登录回调页' },
+      ...commonErrorResponses,
+    },
+  }),
+  handler: async (c) => {
+    const body = await c.req.parseBody();
+    const samlResponse = typeof body.SAMLResponse === 'string' ? body.SAMLResponse : '';
+    const relayState = typeof body.RelayState === 'string' ? body.RelayState : '';
+    const result = await handleEnterpriseSamlAcs(samlResponse, relayState);
+    return c.redirect(result.redirectUrl, 302);
+  },
+});
+
+const samlExchangeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/saml/exchange',
+    tags: ['EnterpriseAuth'],
+    summary: '兑换企业 SAML 登录票据',
+    security: [],
+    request: {
+      body: {
+        content: jsonContent(z.object({
+          ticket: z.string(),
+        }).openapi('EnterpriseSamlExchangeBody')),
+        required: true,
+      },
+    },
+    responses: { ...ok(z.object({ loginResult: LoginResultDTO, redirectTo: z.string().nullable().optional() }), 'ok'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { ticket } = c.req.valid('json');
+    return c.json(okBody(await exchangeEnterpriseSamlTicket(ticket)), 200);
+  },
+});
+
+router.openapiRoutes([discoverRoute, authUrlRoute, callbackRoute, samlAcsRoute, samlExchangeRoute] as const);
 
 export default router;

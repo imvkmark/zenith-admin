@@ -81,6 +81,7 @@ const envSchema = z.object({
   OAUTH_WECHAT_WORK_AGENT_ID: z.string().default(''),
   OAUTH_WECHAT_WORK_SECRET: z.string().default(''),
   OAUTH_CALLBACK_BASE_URL: z.string().default('http://localhost:5373'),
+  SAML_ACS_BASE_URL: z.string().default(''),
   // WebRTC 音视频通话 ICE 服务器配置
   WEBRTC_STUN_URLS: z.string().default('stun:stun.l.google.com:19302'),
   WEBRTC_TURN_URLS: z.string().default(''),
@@ -202,6 +203,7 @@ export const config = {
       secret: env.OAUTH_WECHAT_WORK_SECRET,
     },
     callbackBaseUrl: env.OAUTH_CALLBACK_BASE_URL,
+    samlAcsBaseUrl: env.SAML_ACS_BASE_URL || `http://localhost:${env.PORT}`,
   },
   webrtc: {
     stunUrls: env.WEBRTC_STUN_URLS.split(',').map((s) => s.trim()).filter(Boolean),
