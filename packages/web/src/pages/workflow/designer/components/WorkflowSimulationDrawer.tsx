@@ -24,7 +24,6 @@ interface WorkflowSimulationDrawerProps {
   process: FlowProcess;
   formFields: WorkflowFormField[];
   users: UserOption[];
-  loading?: boolean;
   onClose: () => void;
 }
 
@@ -918,7 +917,9 @@ export default function WorkflowSimulationDrawer({
                     </Space>
                   </div>
                 )}
-                {renderCurrentStepDetail(true)}
+                <div className="fd-simulation-current-bar__detail">
+                  {renderCurrentStepDetail(true)}
+                </div>
                 <div className="fd-simulation-step-branches">
                   <div className="fd-simulation-step-branches__title">
                     <GitCompare size={14} />

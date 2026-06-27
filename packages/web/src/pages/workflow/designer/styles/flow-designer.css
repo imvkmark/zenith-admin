@@ -892,6 +892,13 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   min-width: 0;
 }
 
+.fd-simulation-current-bar__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .fd-simulation-current-bar__grid {
   display: grid;
   grid-template-columns: repeat(4, auto minmax(54px, 1fr));
@@ -911,6 +918,10 @@ body[theme-mode='dark'] .fd-node-picker-panel {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--semi-color-text-0);
+}
+
+.fd-simulation-current-bar__body .fd-simulation-step-branches {
+  grid-column: 1 / -1;
 }
 
 .fd-simulation-controls {
