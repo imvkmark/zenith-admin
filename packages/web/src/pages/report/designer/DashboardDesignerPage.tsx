@@ -18,7 +18,7 @@ import { ConfigPanel } from './ConfigPanel';
 import { FilterConfigModal } from './FilterConfigModal';
 import type {
   ReportDashboard, ReportDataset, ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem,
-  ReportWidgetOptions, ReportFilter, ReportDashboardConfig, ReportScreenConfig,
+  ReportWidgetOptions, ReportFilter, ReportDashboardConfig, ReportScreenConfig, ReportCarouselConfig,
 } from '@zenith/shared';
 
 const GridLayout = WidthProvider(RGL);
@@ -142,14 +142,14 @@ export default function DashboardDesignerPage() {
 
   const addWidget = useCallback((meta: WidgetTypeMeta) => {
     const i = genId();
-    const w: ReportWidget = { i, type: meta.type, title: meta.label, datasetId: null, options: defaultOptions(meta.type) };
+    const w: ReportWidget = { i, type: meta.type, title: meta.label, datasetId: null, options: defaultOptions(meta.type), ...(carouselOn ? { page: designPage } : {}) };
     const item: Layout[number] = { i, x: 0, y: nextY, w: meta.defaultSize.w, h: meta.defaultSize.h, minW: 2, minH: 2 };
     const colW = (screenConfig.width || 1920) / COLS;
     const cascade = (docRef.current.canvasLayout.length % 6) * 30;
     const cItem: ReportCanvasItem = { i, x: 40 + cascade, y: 40 + cascade, w: Math.round(meta.defaultSize.w * colW - 12), h: Math.round(meta.defaultSize.h * (ROW_HEIGHT + 12) - 12), z: 1 };
     mutate((d) => ({ ...d, widgets: [...d.widgets, w], layout: [...d.layout, item], canvasLayout: [...d.canvasLayout, cItem] }));
     setSelectedId(i);
-  }, [nextY, mutate, screenConfig.width]);
+  }, [nextY, mutate, screenConfig.width, carouselOn, designPage]);
 
   const removeWidget = useCallback((i: string) => {
     mutate((d) => ({ ...d, widgets: d.widgets.filter((w) => w.i !== i), layout: d.layout.filter((it) => it.i !== i), canvasLayout: d.canvasLayout.filter((it) => it.i !== i) }));
@@ -209,6 +209,10 @@ export default function DashboardDesignerPage() {
     mutate((d) => ({ ...d, config: { ...d.config, screenConfig: { ...DEFAULT_SCREEN, ...(d.config.screenConfig ?? {}), ...patch } } }));
   }
 
+  function applyCarousel(patch: Partial<ReportCarouselConfig>) {
+    mutate((d) => ({ ...d, config: { ...d.config, carousel: { ...d.config.carousel, ...patch } } }));
+  }
+
   const selectedWidget = doc.widgets.find((w) => w.i === selectedId) ?? null;
   const selectedDataset = datasets.find((d) => d.id === selectedWidget?.datasetId) ?? null;
   const fieldOptions = useMemo(() => {
@@ -238,6 +242,19 @@ export default function DashboardDesignerPage() {
     );
   };
 
+  const pageTabs = carouselOn ? (
+    <div className="report-page-tabs">
+      {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => {
+        const cnt = doc.widgets.filter((w) => (w.page ?? 1) === p).length;
+        return (
+          <button key={p} type="button" className={`report-page-tab${p === designPage ? ' is-active' : ''}`} onClick={() => setDesignPage(p)}>
+            第{p}页{cnt ? ` · ${cnt}` : ''}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <div className="report-designer">
       <div className="report-designer__topbar">
@@ -249,6 +266,7 @@ export default function DashboardDesignerPage() {
         <Tooltip content="撤销"><Button icon={<Undo2 size={16} />} theme="borderless" onClick={undo} /></Tooltip>
         <Tooltip content="重做"><Button icon={<Redo2 size={16} />} theme="borderless" onClick={redo} /></Tooltip>
         <Button icon={<SlidersHorizontal size={16} />} onClick={() => setFilterModal(true)}>筛选器 {doc.filters.length ? `(${doc.filters.length})` : ''}</Button>
+        <Button icon={<Images size={16} />} onClick={() => setCarouselModal(true)}>轮播 {carouselOn ? `(${pageCount})` : ''}</Button>
         {layoutMode === 'canvas'
           ? <Button icon={<Settings2 size={16} />} onClick={() => setScreenModal(true)}>大屏设置</Button>
           : <Select value={doc.config.theme ?? 'light'} style={{ width: 100 }} onChange={(v) => mutate((d) => ({ ...d, config: { ...d.config, theme: v as 'light' | 'dark' } }))}
@@ -278,14 +296,15 @@ export default function DashboardDesignerPage() {
         {layoutMode === 'canvas' ? (
           <div className="report-designer__canvas" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <FilterBar filters={doc.filters} values={filterValues} onChange={(fid, val) => setFilterValues((p) => ({ ...p, [fid]: val }))} />
+            {pageTabs}
             <div className={`report-canvas-viewport${isDark ? ' report-screen--dark' : ''}`} ref={canvasViewportRef}>
-              {doc.widgets.length === 0 ? (
-                <Empty description="点击左侧组件添加到大屏画布" style={{ paddingTop: 60 }} />
+              {pageWidgets.length === 0 ? (
+                <Empty description={carouselOn ? '本页暂无组件，点击左侧组件添加到当前页' : '点击左侧组件添加到大屏画布'} style={{ paddingTop: 60 }} />
               ) : (
                 <div className="report-canvas-design-frame" style={{ width: Math.round(screenConfig.width * canvasScale), height: Math.round(screenConfig.height * canvasScale) }}>
                   <div className="report-canvas-design-stage report-screen-stage"
                     style={{ width: screenConfig.width, height: screenConfig.height, transform: `scale(${canvasScale})`, background: screenConfig.backgroundImage ? `center/cover no-repeat url(${screenConfig.backgroundImage})` : (isDark ? undefined : screenConfig.background) }}>
-                    {doc.widgets.map((w) => {
+                    {pageWidgets.map((w) => {
                       const it = doc.canvasLayout.find((c) => c.i === w.i);
                       if (!it) return null;
                       const isSel = w.i === selectedId;
@@ -312,16 +331,21 @@ export default function DashboardDesignerPage() {
         ) : (
           <div className="report-designer__canvas" style={isDark ? { background: '#0b1020' } : undefined}>
             <FilterBar filters={doc.filters} values={filterValues} onChange={(fid, val) => setFilterValues((p) => ({ ...p, [fid]: val }))} />
-            {doc.widgets.length === 0 ? (
-              <Empty description="点击左侧组件添加到画布" style={{ paddingTop: 60 }} />
+            {pageTabs}
+            {pageWidgets.length === 0 ? (
+              <Empty description={carouselOn ? '本页暂无组件，点击左侧组件添加到当前页' : '点击左侧组件添加到画布'} style={{ paddingTop: 60 }} />
             ) : (
               <GridLayout
                 className="report-grid" layout={doc.layout} cols={COLS} rowHeight={ROW_HEIGHT} margin={[12, 12]}
                 draggableHandle=".report-widget-card__drag" isDraggable={canSave} isResizable={canSave} compactType="vertical"
                 onDragStart={snapshot} onResizeStart={snapshot}
-                onLayoutChange={(l) => mutate((d) => ({ ...d, layout: l }), false)}
+                onLayoutChange={(l) => mutate((d) => {
+                  const visible = new Set(l.map((x) => x.i));
+                  const others = d.layout.filter((x) => !visible.has(x.i));
+                  return { ...d, layout: [...others, ...l] };
+                }, false)}
               >
-                {doc.widgets.map((w) => {
+                {pageWidgets.map((w) => {
                   const isSel = w.i === selectedId;
                   return (
                     <div key={w.i} className={isSel ? 'report-widget--selected' : ''} onMouseDownCapture={() => setSelectedId(w.i)}>
@@ -346,6 +370,7 @@ export default function DashboardDesignerPage() {
               fieldOptions={fieldOptions}
               filters={doc.filters}
               datasetParams={selectedDataset?.params ?? []}
+              pageCount={carouselOn ? pageCount : undefined}
               onPatch={(patch) => patchWidget(selectedWidget.i, patch)}
               onOptions={(patch) => patchOptions(selectedWidget.i, patch)}
             />
@@ -354,6 +379,16 @@ export default function DashboardDesignerPage() {
       </div>
 
       <FilterConfigModal visible={filterModal} filters={doc.filters} datasets={datasets} onChange={onFiltersChange} onClose={() => setFilterModal(false)} />
+
+      <Modal title="多屏轮播设置" visible={carouselModal} onCancel={() => setCarouselModal(false)} onOk={() => setCarouselModal(false)} okText="完成" cancelText="关闭" width={440}>
+        <Form key={carouselModal ? 'c-open' : 'c-closed'} labelPosition="left" labelWidth={96}
+          initValues={{ enabled: !!carousel?.enabled, pageCount: carousel?.pageCount ?? 2, intervalSec: carousel?.intervalSec ?? 10, showDots: carousel?.showDots !== false }}>
+          <Form.Switch field="enabled" label="启用轮播" onChange={(v) => applyCarousel({ enabled: !!v })} />
+          <Form.InputNumber field="pageCount" label="总页数" min={1} max={20} step={1} onChange={(v) => applyCarousel({ pageCount: Math.max(1, Number(v) || 1) })} style={{ width: '100%' }} extraText="将组件分配到不同页，轮播时逐页展示" />
+          <Form.InputNumber field="intervalSec" label="切换间隔" min={0} max={3600} step={1} onChange={(v) => applyCarousel({ intervalSec: Math.max(0, Number(v) || 0) })} suffix="秒" style={{ width: '100%' }} extraText="0 = 不自动切换（仅手动翻页）" />
+          <Form.Switch field="showDots" label="显示页码点" onChange={(v) => applyCarousel({ showDots: !!v })} />
+        </Form>
+      </Modal>
 
       <Modal title="大屏设置" visible={screenModal} onCancel={() => setScreenModal(false)} onOk={() => setScreenModal(false)} okText="完成" cancelText="关闭" width={460}>
         <Form key={screenModal ? 'open' : 'closed'} labelPosition="left" labelWidth={96} initValues={{ ...screenConfig, theme: doc.config.theme ?? 'dark', refreshInterval: doc.config.refreshInterval ?? 0 }}>

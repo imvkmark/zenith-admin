@@ -163,6 +163,31 @@
   color: #eaf4ff;
 }
 
+/* ── 多屏轮播：设计器页签栏 ── */
+.report-page-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 0 10px;
+}
+.report-page-tab {
+  border: 1px solid var(--semi-color-border);
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-1);
+  border-radius: 14px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 18px;
+}
+.report-page-tab:hover { border-color: var(--semi-color-primary); color: var(--semi-color-primary); }
+.report-page-tab.is-active {
+  background: var(--semi-color-primary);
+  border-color: var(--semi-color-primary);
+  color: #fff;
+}
+
 /* ── 设计器布局 ── */
 .report-designer {
   display: flex;
