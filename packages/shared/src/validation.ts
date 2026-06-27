@@ -2850,6 +2850,13 @@ export const reportPrintRenderSchema = z.object({
 });
 export type ReportPrintRenderInput = z.input<typeof reportPrintRenderSchema>;
 
+// ─── AI 自然语言取数（NL2SQL）────────────────────────────────────────────────
+export const reportNl2SqlSchema = z.object({
+  question: z.string().min(1, '请描述你想查询的数据').max(1000),
+  datasetId: z.number().int().positive().optional(),
+});
+export type ReportNl2SqlInput = z.input<typeof reportNl2SqlSchema>;
+
 // ─── 开放平台：API Scope ──────────────────────────────────────────────────────
 export const createApiScopeSchema = z.object({
   code: z

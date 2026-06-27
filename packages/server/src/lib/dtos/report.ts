@@ -262,3 +262,8 @@ export const ReportPrintRenderResultDTO = z
     pageConfig: ReportPrintPageConfigDTO,
   })
   .openapi('ReportPrintRenderResult');
+
+/** AI NL2SQL 结果 */
+export const ReportNl2SqlResultDTO = z
+  .object({ sql: z.string() })
+  .openapi('ReportNl2SqlResult');

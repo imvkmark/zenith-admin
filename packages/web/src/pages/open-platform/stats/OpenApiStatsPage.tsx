@@ -20,10 +20,10 @@ const { Text, Title } = Typography;
 
 function StatCard({ label, value, hint, color }: { label: string; value: string | number; hint?: string; color?: string }) {
   return (
-    <Card style={{ flex: 1, minWidth: 150 }} bodyStyle={{ padding: 16 }}>
+    <Card style={{ flex: '1 1 150px', minWidth: 150 }} bodyStyle={{ padding: 16 }}>
       <Text type="tertiary" size="small">{label}</Text>
-      <div style={{ fontSize: 26, fontWeight: 600, marginTop: 4, color }}>{value}</div>
-      {hint && <Text type="tertiary" size="small">{hint}</Text>}
+      <div style={{ fontSize: 26, fontWeight: 600, margin: '4px 0 2px', color }}>{value}</div>
+      <Text type="tertiary" size="small">{hint ?? '\u00A0'}</Text>
     </Card>
   );
 }
@@ -189,13 +189,13 @@ export default function OpenApiStatsPage() {
         )}
       />
 
-      <Space style={{ width: '100%', marginBottom: 16 }} wrap>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <StatCard label="调用总数" value={(overview?.totalCalls ?? 0).toLocaleString()} hint={`今日 ${overview?.todayCalls ?? 0}`} />
         <StatCard label="成功率" value={`${overview?.successRate ?? 0}%`} color="#16a34a" hint={`成功 ${overview?.successCalls ?? 0}`} />
         <StatCard label="失败数" value={(overview?.failedCalls ?? 0).toLocaleString()} color="#dc2626" />
         <StatCard label="平均耗时" value={`${overview?.avgDurationMs ?? 0} ms`} />
         <StatCard label="活跃应用" value={overview?.activeApps ?? 0} />
-      </Space>
+      </div>
 
       <Card style={{ marginBottom: 16 }} title={<Title heading={6} style={{ margin: 0 }}>调用趋势</Title>} loading={statLoading}>
         {trend.length ? <AreaChart {...trendSpec} options={chartOptions} height={280} /> : <EmptyChart height={280} />}
