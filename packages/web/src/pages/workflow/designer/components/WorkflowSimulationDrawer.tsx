@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Banner, Button, Empty, Select, SideSheet, Space, Spin, Tag, TextArea, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, Flag, GitCompare, ListChecks, Minus, Pause, Play, Plus, RotateCcw, Save, Send, Wand2, XCircle } from 'lucide-react';
+import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, Flag, GitCompare, ListChecks, Minus, Pause, Play, Plus, RotateCcw, Save, Send, Wand2, X, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateForApi, formatDateTimeForApi } from '@/utils/date';
@@ -41,9 +41,9 @@ interface SavedSimulationCase {
 interface SelectedSimulationBranch {
   id: string;
   name: string;
-  branchNodeKey: string;
+  branchNodeKeys: string[];
   branchNodeName: string;
-  childNodeKey?: string;
+  childNodeKeys: string[];
 }
 
 const SAVED_CASE_STORAGE_KEY = 'zenith.workflow.simulation.cases';
@@ -76,9 +76,13 @@ const HEALTH_META: Record<WorkflowSimulationHealthIssue['level'], { label: strin
 function parseJsonRecord(raw: string): Record<string, unknown> | null {
   const trimmed = raw.trim();
   if (!trimmed) return {};
-  const parsed = JSON.parse(trimmed) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  return parsed as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 function pickValidationMessage(error: unknown): string {
@@ -288,19 +292,36 @@ function pathText(result: WorkflowSimulationResult | null, flowData: WorkflowFlo
   return keys.length ? keys.map((key) => nodeLabel(flowData, key)).join(' -> ') : '暂无路径';
 }
 
+function uniqueKeys(...keys: Array<string | null | undefined>): string[] {
+  return [...new Set(keys.filter((key): key is string => !!key))];
+}
+
 function runtimeNodeKey(node: FlowNode): string {
   if (node.type === 'initiator') return 'start';
   return node.key ?? node.id;
 }
 
-function flowDataEntryKey(node: FlowNode): string {
-  if (node.type === 'initiator') return 'start';
-  if (node.branches?.length) return `fork-${node.id}`;
-  return node.key ?? node.id;
+function flowDataEntryKeys(node: FlowNode | undefined): string[] {
+  if (!node) return [];
+  if (node.type === 'initiator') return ['start'];
+  return uniqueKeys(node.key, node.id, node.branches?.length ? `fork-${node.id}` : undefined);
 }
 
-function branchGatewayKey(node: FlowNode): string {
-  return `fork-${node.id}`;
+function branchGatewayKeys(node: FlowNode): string[] {
+  return uniqueKeys(node.key, node.id, `fork-${node.id}`);
+}
+
+function cssAttrValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function edgeMatchesSelectedBranch(
+  edge: WorkflowSimulationResult['edgeResults'][number],
+  selectedBranch: SelectedSimulationBranch,
+): boolean {
+  if (!edge.sourceKey || !selectedBranch.branchNodeKeys.includes(edge.sourceKey)) return false;
+  if (edge.targetKey && selectedBranch.childNodeKeys.includes(edge.targetKey)) return true;
+  return edge.label === selectedBranch.name;
 }
 
 export default function WorkflowSimulationDrawer({
@@ -315,6 +336,7 @@ export default function WorkflowSimulationDrawer({
 }: Readonly<WorkflowSimulationDrawerProps>) {
   const formApi = useRef<FormApi | null>(null);
   const replayTimer = useRef<number | null>(null);
+  const graphCanvasRef = useRef<HTMLDivElement | null>(null);
   const [starterUserId, setStarterUserId] = useState<number | undefined>(undefined);
   const [formData, setFormData] = useState<Record<string, unknown>>(() => defaultFormDataFromFields(formFields));
   const [formRenderKey, setFormRenderKey] = useState(0);
@@ -356,18 +378,20 @@ export default function WorkflowSimulationDrawer({
     });
     return map;
   }, [result]);
-  const edgeMatchesSelectedBranch = (edge: WorkflowSimulationResult['edgeResults'][number]) => {
-    if (!selectedBranch) return false;
-    if (edge.sourceKey !== selectedBranch.branchNodeKey) return false;
-    if (selectedBranch.childNodeKey && edge.targetKey === selectedBranch.childNodeKey) return true;
-    return edge.label === selectedBranch.name;
-  };
+  useEffect(() => {
+    if (!visible || !currentItem) return;
+    const canvas = graphCanvasRef.current;
+    if (!canvas) return;
+    const target = canvas.querySelector<HTMLElement>(`[data-fd-node-key="${cssAttrValue(currentItem.nodeKey)}"]`);
+    target?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+  }, [currentItem?.nodeKey, currentStep, visible]);
+
   const currentEdges = useMemo(() => {
     if (!result) return [];
     if (selectedBranch) {
-      const selected = result.edgeResults.filter(edgeMatchesSelectedBranch);
+      const selected = result.edgeResults.filter((edge) => edgeMatchesSelectedBranch(edge, selectedBranch));
       if (selected.length > 0) return selected;
-      return result.edgeResults.filter((edge) => edge.sourceKey === selectedBranch.branchNodeKey);
+      return result.edgeResults.filter((edge) => selectedBranch.branchNodeKeys.includes(edge.sourceKey ?? ''));
     }
     if (!currentItem) return [];
     const outgoing = result.edgeResults.filter((edge) => edge.sourceKey === currentItem.nodeKey);
@@ -449,6 +473,7 @@ export default function WorkflowSimulationDrawer({
         setFormData(values);
         setDecisions(nextDecisions);
         setActiveStep(res.data.timeline.length > 0 ? 1 : 0);
+        setSelectedBranch(null);
         Toast.success(toastText);
       }
     } finally {
@@ -464,6 +489,7 @@ export default function WorkflowSimulationDrawer({
     setJsonDraft('{}');
     setDecisions([]);
     setBreakpoints(new Set());
+    setSelectedBranch(null);
     setSelectedCaseId(undefined);
     applyFormValues(defaultFormDataFromFields(formFields));
     formApi.current?.reset();
@@ -505,13 +531,12 @@ export default function WorkflowSimulationDrawer({
   };
 
   const selectBranch = (branch: FlowBranch, branchNode: FlowNode) => {
-    const branchNodeKey = branchGatewayKey(branchNode);
     setSelectedBranch({
       id: branch.id,
       name: branch.name,
-      branchNodeKey,
+      branchNodeKeys: branchGatewayKeys(branchNode),
       branchNodeName: branchNode.name || '分支',
-      childNodeKey: branch.children ? flowDataEntryKey(branch.children) : `join-${branchNode.id}`,
+      childNodeKeys: branch.children ? flowDataEntryKeys(branch.children) : uniqueKeys(`join-${branchNode.id}`),
     });
   };
 
@@ -610,6 +635,7 @@ export default function WorkflowSimulationDrawer({
     setResult(null);
     setPreviousResult(null);
     setActiveStep(0);
+    setSelectedBranch(null);
     Toast.success('已载入仿真用例');
   };
 
@@ -754,6 +780,7 @@ export default function WorkflowSimulationDrawer({
       ) : (
         <Button size="small" type="primary" icon={<Play size={14} />} loading={submitting} onClick={() => void runSimulation()}>启动仿真</Button>
       )}
+      <Button size="small" icon={<X size={14} />} onClick={onClose}>关闭</Button>
     </div>
   );
 
@@ -954,7 +981,7 @@ export default function WorkflowSimulationDrawer({
               </div>
             </section>
           </div>
-          <div className="fd-simulation-graph__canvas">
+          <div className="fd-simulation-graph__canvas" ref={graphCanvasRef}>
             <div style={{ transform: `scale(${graphZoom / 100})`, transformOrigin: 'top center' }}>
               <FlowRenderer
                 process={process}
