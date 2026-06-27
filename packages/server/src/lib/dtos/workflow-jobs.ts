@@ -68,3 +68,17 @@ export const WorkflowJobListQuery = z.object({
 export const WorkflowJobRetryBody = z.object({
   payload: z.record(z.string(), z.unknown()).optional(),
 });
+
+/** 按作业类型聚合的状态计数（作业账本 Tab 徽标用） */
+export const WorkflowJobSummaryItemDTO = z
+  .object({
+    jobType: z.enum(WORKFLOW_JOB_TYPES),
+    total: z.number().int(),
+    pending: z.number().int(),
+    running: z.number().int(),
+    succeeded: z.number().int(),
+    failed: z.number().int(),
+    dead: z.number().int(),
+    canceled: z.number().int(),
+  })
+  .openapi('WorkflowJobSummaryItem');

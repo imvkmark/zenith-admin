@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db';
 import { workflowJobs, workflowJobExecutions } from '../db/schema';
@@ -104,4 +104,41 @@ export async function skipWorkflowJob(id: number) {
   const row = await skipJob(id);
   if (!row) throw new HTTPException(400, { message: '仅待处理 / 失败 / 死信的作业可跳过' });
   return mapJob(row);
+}
+
+const ALL_JOB_TYPES: WorkflowJobRow['jobType'][] = [
+  'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
+  'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
+];
+
+interface WorkflowJobSummaryItem {
+  jobType: WorkflowJobRow['jobType'];
+  total: number;
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  dead: number;
+  canceled: number;
+}
+
+/** 按作业类型 + 状态聚合计数，零填充所有 8 种类型，供作业账本 Tab 徽标使用。 */
+export async function getWorkflowJobsSummary(): Promise<WorkflowJobSummaryItem[]> {
+  const rows = await db
+    .select({ jobType: workflowJobs.jobType, status: workflowJobs.status, c: count() })
+    .from(workflowJobs)
+    .groupBy(workflowJobs.jobType, workflowJobs.status);
+
+  const map = new Map<WorkflowJobRow['jobType'], WorkflowJobSummaryItem>();
+  for (const t of ALL_JOB_TYPES) {
+    map.set(t, { jobType: t, total: 0, pending: 0, running: 0, succeeded: 0, failed: 0, dead: 0, canceled: 0 });
+  }
+  for (const r of rows) {
+    const item = map.get(r.jobType);
+    if (!item) continue;
+    const n = Number(r.c);
+    item.total += n;
+    item[r.status] += n;
+  }
+  return ALL_JOB_TYPES.map((t) => map.get(t)!);
 }

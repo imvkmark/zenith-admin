@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Badge,
   Button,
   Descriptions,
   Empty,
@@ -10,6 +11,8 @@ import {
   SideSheet,
   Space,
   Table,
+  Tabs,
+  TabPane,
   Tag,
   Toast,
   Tooltip,
@@ -17,7 +20,7 @@ import {
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Search } from 'lucide-react';
-import type { PaginatedResponse, WorkflowJob, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobType } from '@zenith/shared';
+import type { PaginatedResponse, WorkflowJob, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobSummaryItem, WorkflowJobType } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -39,6 +42,8 @@ const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> 
   webhook_delivery: { text: 'Webhook 投递', color: 'orange' },
 };
 
+const JOB_TYPES = Object.keys(JOB_TYPE_META) as WorkflowJobType[];
+
 const JOB_STATUS_META: Record<WorkflowJobStatus, { text: string; color: TagColor }> = {
   pending: { text: '待处理', color: 'grey' },
   running: { text: '运行中', color: 'blue' },
@@ -54,36 +59,33 @@ const EXEC_STATUS_META: Record<WorkflowJobExecution['status'], { text: string; c
   failed: { text: '失败', color: 'red' },
 };
 
-const JOB_TYPE_OPTIONS = (Object.keys(JOB_TYPE_META) as WorkflowJobType[]).map((value) => ({ value, label: JOB_TYPE_META[value].text }));
 const JOB_STATUS_OPTIONS = (Object.keys(JOB_STATUS_META) as WorkflowJobStatus[]).map((value) => ({ value, label: JOB_STATUS_META[value].text }));
 
 type WorkflowJobDetail = WorkflowJob & { executions: WorkflowJobExecution[] };
 
-interface SearchParams {
-  jobType?: WorkflowJobType;
-  status?: WorkflowJobStatus;
-  keyword: string;
-}
-
-const defaultSearchParams: SearchParams = { jobType: undefined, status: undefined, keyword: '' };
-
-function renderJobTypeTag(jobType: WorkflowJobType) {
-  const meta = JOB_TYPE_META[jobType];
-  return <Tag color={meta?.color ?? 'grey'} size="small">{meta?.text ?? jobType}</Tag>;
-}
+const EMPTY_SUMMARY = (jobType: WorkflowJobType): WorkflowJobSummaryItem => ({ jobType, total: 0, pending: 0, running: 0, succeeded: 0, failed: 0, dead: 0, canceled: 0 });
 
 function renderStatusTag(status: WorkflowJobStatus) {
   const meta = JOB_STATUS_META[status];
   return <Tag color={meta?.color ?? 'grey'} size="small">{meta?.text ?? status}</Tag>;
 }
 
-export default function WorkflowJobsView() {
+// ───────────────────────── 单作业类型明细面板 ─────────────────────────
+
+interface JobTypePanelProps {
+  jobType: WorkflowJobType;
+  summary: WorkflowJobSummaryItem;
+  onMutated: () => void;
+}
+
+function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const { hasPermission } = usePermission();
   const canOperate = hasPermission('workflow:engine:operate');
 
   const [data, setData] = useState<PaginatedResponse<WorkflowJob> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const [status, setStatus] = useState<WorkflowJobStatus | undefined>(undefined);
+  const [keyword, setKeyword] = useState('');
   const { page, pageSize, setPage, resetPage, buildPagination } = usePagination();
 
   const [detail, setDetail] = useState<WorkflowJobDetail | null>(null);
@@ -91,34 +93,34 @@ export default function WorkflowJobsView() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [actingId, setActingId] = useState<number | null>(null);
 
-  const fetchList = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+  const fetchList = useCallback(async (p = page, ps = pageSize, st = status, kw = keyword) => {
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ page: String(p), pageSize: String(ps) });
-      if (params.jobType) qs.set('jobType', params.jobType);
-      if (params.status) qs.set('status', params.status);
-      if (params.keyword.trim()) qs.set('keyword', params.keyword.trim());
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(ps), jobType });
+      if (st) qs.set('status', st);
+      if (kw.trim()) qs.set('keyword', kw.trim());
       const res = await request.get<PaginatedResponse<WorkflowJob>>(`/api/workflows/engine/jobs?${qs.toString()}`);
       if (res.code === 0) setData(res.data);
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchParams]);
+  }, [page, pageSize, status, keyword, jobType]);
 
   useEffect(() => {
-    void fetchList(1, pageSize, defaultSearchParams);
+    void fetchList(1, pageSize, undefined, '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [jobType]);
 
   const handleSearch = useCallback(() => {
     resetPage();
-    void fetchList(1, pageSize, searchParams);
-  }, [fetchList, pageSize, resetPage, searchParams]);
+    void fetchList(1, pageSize, status, keyword);
+  }, [fetchList, pageSize, resetPage, status, keyword]);
 
   const handleReset = useCallback(() => {
-    setSearchParams(defaultSearchParams);
+    setStatus(undefined);
+    setKeyword('');
     resetPage();
-    void fetchList(1, pageSize, defaultSearchParams);
+    void fetchList(1, pageSize, undefined, '');
   }, [fetchList, pageSize, resetPage]);
 
   const openDetail = useCallback(async (id: number) => {
@@ -140,6 +142,7 @@ export default function WorkflowJobsView() {
       if (res.code === 0) {
         Toast.success('已重新入队');
         await fetchList();
+        onMutated();
         if (detail?.id === id) await openDetail(id);
       } else {
         Toast.warning(res.message || '重试失败');
@@ -149,7 +152,7 @@ export default function WorkflowJobsView() {
     } finally {
       setActingId(null);
     }
-  }, [detail?.id, fetchList, openDetail]);
+  }, [detail?.id, fetchList, onMutated, openDetail]);
 
   const handleSkip = useCallback(async (id: number) => {
     setActingId(id);
@@ -158,6 +161,7 @@ export default function WorkflowJobsView() {
       if (res.code === 0) {
         Toast.success('已跳过');
         await fetchList();
+        onMutated();
         if (detail?.id === id) await openDetail(id);
       } else {
         Toast.warning(res.message || '跳过失败');
@@ -167,22 +171,21 @@ export default function WorkflowJobsView() {
     } finally {
       setActingId(null);
     }
-  }, [detail?.id, fetchList, openDetail]);
+  }, [detail?.id, fetchList, onMutated, openDetail]);
 
   const columns: ColumnProps<WorkflowJob>[] = [
     { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '作业类型', dataIndex: 'jobType', width: 130, render: (v: WorkflowJobType) => renderJobTypeTag(v) },
     { title: '状态', dataIndex: 'status', width: 90, render: (v: WorkflowJobStatus) => renderStatusTag(v) },
     {
       title: '实例 / 节点',
       dataIndex: 'instanceId',
-      width: 150,
+      width: 160,
       render: (_: unknown, record: WorkflowJob) => (
         <Space spacing={4}>
           <Typography.Text size="small" type={record.instanceId ? 'primary' : 'tertiary'}>
             {record.instanceId ? `#${record.instanceId}` : '—'}
           </Typography.Text>
-          {record.nodeKey && <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 90 }}>{record.nodeKey}</Typography.Text>}
+          {record.nodeKey && <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 100 }}>{record.nodeKey}</Typography.Text>}
         </Space>
       ),
     },
@@ -200,9 +203,8 @@ export default function WorkflowJobsView() {
     {
       title: '最近错误',
       dataIndex: 'lastError',
-      width: 200,
       render: (v: string | null) => v
-        ? <Tooltip content={<div style={{ maxWidth: 360, wordBreak: 'break-all' }}>{v}</div>}><Typography.Text size="small" type="danger" ellipsis={{ rows: 1 }} style={{ maxWidth: 188 }}>{v}</Typography.Text></Tooltip>
+        ? <Tooltip content={<div style={{ maxWidth: 360, wordBreak: 'break-all' }}>{v}</div>}><Typography.Text size="small" type="danger" ellipsis={{ rows: 1 }} style={{ maxWidth: 240 }}>{v}</Typography.Text></Tooltip>
         : <Typography.Text size="small" type="tertiary">—</Typography.Text>,
     },
     { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v: string) => <Typography.Text size="small" type="tertiary">{formatDateTime(v)}</Typography.Text> },
@@ -264,33 +266,36 @@ export default function WorkflowJobsView() {
 
   return (
     <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <Tag size="large" color={JOB_TYPE_META[jobType].color}>{JOB_TYPE_META[jobType].text}</Tag>
+        <Tag size="large" color="grey">总数 {summary.total}</Tag>
+        <Tag size="large" color="grey">待处理 {summary.pending}</Tag>
+        <Tag size="large" color="blue">运行中 {summary.running}</Tag>
+        <Tag size="large" color="orange">失败 {summary.failed}</Tag>
+        <Tag size="large" color="red">死信 {summary.dead}</Tag>
+        <Tag size="large" color="green">成功 {summary.succeeded}</Tag>
+        <Tag size="large" color="grey">已取消 {summary.canceled}</Tag>
+      </div>
+
       <SearchToolbar
         primary={(
           <>
             <Input
               prefix={<Search size={14} />}
               placeholder="幂等键 / TraceId / 节点"
-              value={searchParams.keyword}
+              value={keyword}
               showClear
               style={{ width: 220 }}
-              onChange={(v) => setSearchParams((s) => ({ ...s, keyword: v }))}
+              onChange={setKeyword}
               onEnterPress={handleSearch}
             />
             <Select
-              placeholder="作业类型"
-              value={searchParams.jobType}
-              optionList={JOB_TYPE_OPTIONS}
-              showClear
-              style={{ width: 150 }}
-              onChange={(v) => setSearchParams((s) => ({ ...s, jobType: v as WorkflowJobType | undefined }))}
-            />
-            <Select
               placeholder="状态"
-              value={searchParams.status}
+              value={status}
               optionList={JOB_STATUS_OPTIONS}
               showClear
               style={{ width: 130 }}
-              onChange={(v) => setSearchParams((s) => ({ ...s, status: v as WorkflowJobStatus | undefined }))}
+              onChange={(v) => setStatus(v as WorkflowJobStatus | undefined)}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
@@ -301,21 +306,18 @@ export default function WorkflowJobsView() {
             <Input
               prefix={<Search size={14} />}
               placeholder="幂等键 / TraceId / 节点"
-              value={searchParams.keyword}
+              value={keyword}
               showClear
-              onChange={(v) => setSearchParams((s) => ({ ...s, keyword: v }))}
+              onChange={setKeyword}
               onEnterPress={handleSearch}
             />
             <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
           </>
         )}
         mobileFilters={(
-          <>
-            <Select placeholder="作业类型" value={searchParams.jobType} optionList={JOB_TYPE_OPTIONS} showClear style={{ width: '100%' }} onChange={(v) => setSearchParams((s) => ({ ...s, jobType: v as WorkflowJobType | undefined }))} />
-            <Select placeholder="状态" value={searchParams.status} optionList={JOB_STATUS_OPTIONS} showClear style={{ width: '100%' }} onChange={(v) => setSearchParams((s) => ({ ...s, status: v as WorkflowJobStatus | undefined }))} />
-          </>
+          <Select placeholder="状态" value={status} optionList={JOB_STATUS_OPTIONS} showClear style={{ width: '100%' }} onChange={(v) => setStatus(v as WorkflowJobStatus | undefined)} />
         )}
-        filterTitle="作业账本筛选"
+        filterTitle={`${JOB_TYPE_META[jobType].text}筛选`}
         onFilterApply={handleSearch}
         onFilterReset={handleReset}
       />
@@ -328,7 +330,7 @@ export default function WorkflowJobsView() {
         loading={loading}
         onRefresh={() => void fetchList()}
         refreshLoading={loading}
-        scroll={{ x: 1280 }}
+        scroll={{ x: 1080 }}
         pagination={buildPagination(data?.total ?? 0, (p, ps) => { setPage(p); void fetchList(p, ps); })}
       />
 
@@ -345,7 +347,7 @@ export default function WorkflowJobsView() {
               align="left"
               size="small"
               data={[
-                { key: '作业类型', value: renderJobTypeTag(detail.jobType) },
+                { key: '作业类型', value: <Tag color={JOB_TYPE_META[detail.jobType].color} size="small">{JOB_TYPE_META[detail.jobType].text}</Tag> },
                 { key: '状态', value: renderStatusTag(detail.status) },
                 { key: '实例', value: detail.instanceId ? `#${detail.instanceId}` : '—' },
                 { key: '任务 / 节点', value: `${detail.taskId ? `#${detail.taskId}` : '—'}${detail.nodeKey ? ` / ${detail.nodeKey}` : ''}` },
@@ -406,5 +408,51 @@ export default function WorkflowJobsView() {
         )}
       </SideSheet>
     </>
+  );
+}
+
+// ───────────────────────── 作业账本（按类型分 Tab） ─────────────────────────
+
+export default function WorkflowJobsView() {
+  const [activeType, setActiveType] = useState<WorkflowJobType>(JOB_TYPES[0]);
+  const [summaryMap, setSummaryMap] = useState<Record<string, WorkflowJobSummaryItem>>({});
+
+  const loadSummary = useCallback(async () => {
+    const res = await request.get<WorkflowJobSummaryItem[]>('/api/workflows/engine/jobs/summary');
+    if (res.code === 0) {
+      const next: Record<string, WorkflowJobSummaryItem> = {};
+      for (const item of res.data) next[item.jobType] = item;
+      setSummaryMap(next);
+    }
+  }, []);
+
+  useEffect(() => { void loadSummary(); }, [loadSummary]);
+
+  return (
+    <Tabs
+      type="card"
+      collapsible
+      activeKey={activeType}
+      onChange={(k) => setActiveType(k as WorkflowJobType)}
+    >
+      {JOB_TYPES.map((t) => {
+        const item = summaryMap[t] ?? EMPTY_SUMMARY(t);
+        const problem = item.failed + item.dead;
+        return (
+          <TabPane
+            key={t}
+            itemKey={t}
+            tab={(
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {JOB_TYPE_META[t].text}
+                <Badge count={item.total} showZero overflowCount={999} type={problem > 0 ? 'danger' : 'tertiary'} />
+              </span>
+            )}
+          >
+            {activeType === t && <JobTypePanel jobType={t} summary={item} onMutated={loadSummary} />}
+          </TabPane>
+        );
+      })}
+    </Tabs>
   );
 }

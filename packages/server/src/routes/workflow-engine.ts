@@ -2,10 +2,10 @@ import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-opena
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
 import { commonErrorResponses, ok, okPaginated, okBody, validationHook, PaginationQuery, IdParam, jsonContent } from '../lib/openapi-schemas';
-import { WorkflowEngineActionResultDTO, WorkflowEngineHealthHistoryDTO, WorkflowEngineIntrospectionDTO, WorkflowJobDTO, WorkflowJobDetailDTO, WorkflowJobListQuery, WorkflowJobRetryBody } from '../lib/openapi-dtos';
+import { WorkflowEngineActionResultDTO, WorkflowEngineHealthHistoryDTO, WorkflowEngineIntrospectionDTO, WorkflowJobDTO, WorkflowJobDetailDTO, WorkflowJobListQuery, WorkflowJobRetryBody, WorkflowJobSummaryItemDTO } from '../lib/openapi-dtos';
 import { getWorkflowEngineIntrospection } from '../services/workflow-engine-introspection.service';
 import { getWorkflowEngineHealthHistory, runWorkflowEngineAction } from '../services/workflow-engine-ops.service';
-import { listWorkflowJobs, getWorkflowJobDetail, retryWorkflowJob, skipWorkflowJob } from '../services/workflow-jobs.service';
+import { listWorkflowJobs, getWorkflowJobDetail, retryWorkflowJob, skipWorkflowJob, getWorkflowJobsSummary } from '../services/workflow-jobs.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -91,6 +91,21 @@ const jobsListRoute = defineOpenAPIRoute({
   },
 });
 
+const jobsSummaryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/jobs/summary',
+    tags: ['WorkflowEngine'],
+    summary: '按作业类型聚合的状态计数',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
+    responses: { ...commonErrorResponses, ...ok(z.array(WorkflowJobSummaryItemDTO), '各作业类型的状态计数') },
+  }),
+  handler: async (c) => {
+    return c.json(okBody(await getWorkflowJobsSummary()), 200);
+  },
+});
+
 const jobDetailRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'get',
@@ -143,6 +158,6 @@ const jobSkipRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([introspectionRoute, healthHistoryRoute, actionRoute, jobsListRoute, jobDetailRoute, jobRetryRoute, jobSkipRoute] as const);
+router.openapiRoutes([introspectionRoute, healthHistoryRoute, actionRoute, jobsListRoute, jobsSummaryRoute, jobDetailRoute, jobRetryRoute, jobSkipRoute] as const);
 
 export default router;

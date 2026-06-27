@@ -3254,6 +3254,18 @@ export interface WorkflowJobExecution {
   createdAt: string;
 }
 
+/** 按作业类型聚合的状态计数（作业账本 Tab 徽标） */
+export interface WorkflowJobSummaryItem {
+  jobType: WorkflowJobType;
+  total: number;
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  dead: number;
+  canceled: number;
+}
+
 export type WorkflowRuntimeIssueSeverity = 'info' | 'warning' | 'critical';
 
 export interface WorkflowRuntimeIssue {

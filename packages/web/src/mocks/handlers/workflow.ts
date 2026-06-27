@@ -1380,6 +1380,18 @@ export const workflowHandlers = [
     return ok({ list: list.slice(start, start + pageSize), total, page, pageSize });
   }),
 
+  http.get('/api/workflows/engine/jobs/summary', () => {
+    const types = ['delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery'] as const;
+    const statuses = ['pending', 'running', 'succeeded', 'failed', 'dead', 'canceled'] as const;
+    const summary = types.map((jobType) => {
+      const rows = mockWorkflowJobs.filter((j) => j.jobType === jobType);
+      const item: Record<string, number | string> = { jobType, total: rows.length };
+      for (const s of statuses) item[s] = rows.filter((j) => j.status === s).length;
+      return item;
+    });
+    return ok(summary);
+  }),
+
   http.get('/api/workflows/engine/jobs/:id', ({ params }) => {
     const id = Number(params.id);
     const job = mockWorkflowJobs.find((j) => j.id === id);
