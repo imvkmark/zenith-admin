@@ -13,10 +13,15 @@ import {
   validationHook,
 } from '../lib/openapi-schemas';
 import {
+  IdentityProviderConnectionTestResultDTO,
+  IdentityProviderSyncResultDTO,
+  LdapDirectoryUserDTO,
   TenantIdentityProviderDTO,
 } from '../lib/openapi-dtos';
 import {
   createTenantIdentityProviderSchema,
+  searchIdentityProviderUsersSchema,
+  syncIdentityProviderUsersSchema,
   updateTenantIdentityProviderSchema,
 } from '@zenith/shared/validation';
 import {
@@ -25,6 +30,9 @@ import {
   getIdentityProvider,
   getIdentityProviderBeforeAudit,
   listIdentityProviders,
+  searchIdentityProviderUsers,
+  syncIdentityProviderUsers,
+  testIdentityProviderConnection,
   updateIdentityProvider,
 } from '../services/identity-providers.service';
 
@@ -44,7 +52,7 @@ const listRoute = defineOpenAPIRoute({
       query: PaginationQuery.extend({
         keyword: z.string().optional(),
         tenantId: z.coerce.number().int().positive().optional(),
-        type: z.enum(['oidc', 'saml']).optional(),
+        type: z.enum(['oidc', 'saml', 'ldap', 'ad']).optional(),
         status: z.enum(['enabled', 'disabled']).optional(),
       }),
     },
@@ -67,6 +75,63 @@ const detailRoute = defineOpenAPIRoute({
   handler: async (c) => {
     const { id } = c.req.valid('param');
     return c.json(okBody(await getIdentityProvider(id)), 200);
+  },
+});
+
+const testConnectionRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/{id}/test',
+    tags: ['IdentityProviders'],
+    summary: '测试 LDAP/AD 身份源连接',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission })] as const,
+    request: { params: IdParam },
+    responses: { ...ok(IdentityProviderConnectionTestResultDTO, 'ok'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await testIdentityProviderConnection(id)), 200);
+  },
+});
+
+const searchDirectoryUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/{id}/ldap/users',
+    tags: ['IdentityProviders'],
+    summary: '搜索 LDAP/AD 目录用户',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission })] as const,
+    request: {
+      params: IdParam,
+      query: searchIdentityProviderUsersSchema,
+    },
+    responses: { ...ok(z.array(LdapDirectoryUserDTO), 'ok'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await searchIdentityProviderUsers(id, c.req.valid('query'))), 200);
+  },
+});
+
+const syncDirectoryUsersRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/{id}/sync',
+    tags: ['IdentityProviders'],
+    summary: '同步 LDAP/AD 目录用户',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission, audit: { module: '企业身份源', description: '同步目录用户' } })] as const,
+    request: {
+      params: IdParam,
+      body: { content: jsonContent(syncIdentityProviderUsersSchema), required: true },
+    },
+    responses: { ...ok(IdentityProviderSyncResultDTO, '同步完成'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await syncIdentityProviderUsers(id, c.req.valid('json')), '同步完成'), 200);
   },
 });
 
@@ -123,6 +188,15 @@ const deleteRouteDef = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([listRoute, detailRoute, createRouteDef, updateRouteDef, deleteRouteDef] as const);
+router.openapiRoutes([
+  listRoute,
+  detailRoute,
+  testConnectionRoute,
+  searchDirectoryUsersRoute,
+  syncDirectoryUsersRoute,
+  createRouteDef,
+  updateRouteDef,
+  deleteRouteDef,
+] as const);
 
 export default router;

@@ -11,10 +11,12 @@ import {
   discoverEnterpriseIdentityProviders,
   exchangeEnterpriseSamlTicket,
   generateEnterpriseAuthUrl,
+  handleEnterpriseLdapLogin,
   handleEnterpriseOidcCallback,
   handleEnterpriseSamlAcs,
 } from '../services/identity-providers.service';
 import { getClientInfo } from '../services/auth.service';
+import { enterpriseLdapLoginSchema } from '@zenith/shared/validation';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -87,6 +89,28 @@ const callbackRoute = defineOpenAPIRoute({
   },
 });
 
+const ldapLoginRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/ldap/login',
+    tags: ['EnterpriseAuth'],
+    summary: '企业 LDAP/AD 登录',
+    security: [],
+    request: {
+      body: {
+        content: jsonContent(enterpriseLdapLoginSchema),
+        required: true,
+      },
+    },
+    responses: { ...ok(z.object({ loginResult: LoginResultDTO, redirectTo: z.string().nullable().optional() }), 'ok'), ...commonErrorResponses },
+  }),
+  handler: async (c) => {
+    const body = c.req.valid('json');
+    const { ip, ua } = getClientInfo(c.req.raw.headers);
+    return c.json(okBody(await handleEnterpriseLdapLogin({ ...body, ip, ua })), 200);
+  },
+});
+
 const samlAcsRoute = defineOpenAPIRoute({
   route: createRoute({
     method: 'post',
@@ -131,6 +155,6 @@ const samlExchangeRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([discoverRoute, authUrlRoute, callbackRoute, samlAcsRoute, samlExchangeRoute] as const);
+router.openapiRoutes([discoverRoute, authUrlRoute, callbackRoute, ldapLoginRoute, samlAcsRoute, samlExchangeRoute] as const);
 
 export default router;
