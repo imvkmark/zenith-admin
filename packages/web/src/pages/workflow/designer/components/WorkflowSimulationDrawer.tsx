@@ -318,12 +318,13 @@ function cssAttrValue(value: string): string {
 function keepNodeVisibleInCanvas(canvas: HTMLElement, target: HTMLElement): void {
   const canvasRect = canvas.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
+  const topMargin = 120;
   const margin = 48;
   let topDelta = 0;
   let leftDelta = 0;
 
-  if (targetRect.top < canvasRect.top + margin) {
-    topDelta = targetRect.top - canvasRect.top - margin;
+  if (targetRect.top < canvasRect.top + topMargin) {
+    topDelta = targetRect.top - canvasRect.top - topMargin;
   } else if (targetRect.bottom > canvasRect.bottom - margin) {
     topDelta = targetRect.bottom - canvasRect.bottom + margin;
   }
@@ -961,44 +962,49 @@ export default function WorkflowSimulationDrawer({
                 </div>
               )}
               <div className="fd-simulation-timeline">{renderTimeline()}</div>
-            </section>
-            <section className="fd-simulation-detail fd-simulation-detail--branches">
-              <div className="fd-simulation-detail__title">
-                <GitCompare size={14} />
-                <Typography.Text strong>路径与分支</Typography.Text>
-                {selectedBranch && <Tag size="small" color="blue">{selectedBranch.name}</Tag>}
-              </div>
-              {selectedBranch && (
-                <div className="fd-simulation-branch-focus">
-                  <Typography.Text size="small">已选中：{selectedBranch.branchNodeName} / {selectedBranch.name}</Typography.Text>
-                  <Button size="small" type="tertiary" theme="borderless" onClick={() => setSelectedBranch(null)}>清除</Button>
+              <div className="fd-simulation-step-branches">
+                <div className="fd-simulation-step-branches__title">
+                  <GitCompare size={14} />
+                  <Typography.Text strong>路径与分支</Typography.Text>
+                  {selectedBranch && <Tag size="small" color="blue">{selectedBranch.name}</Tag>}
                 </div>
-              )}
-              {pathCompare && (
-                <div className="fd-simulation-path-compare">
-                  <Typography.Text size="small" type="tertiary">上次：{pathCompare.before}</Typography.Text>
-                  <Typography.Text size="small">本次：{pathCompare.after}</Typography.Text>
-                  <Typography.Text size="small" type="tertiary">
-                    {pathCompare.changedAt ? `第 ${pathCompare.changedAt} 步开始出现差异` : '路径没有变化'}
-                    {pathCompare.added.length ? `；新增 ${pathCompare.added.join('、')}` : ''}
-                    {pathCompare.removed.length ? `；未经过 ${pathCompare.removed.join('、')}` : ''}
-                  </Typography.Text>
-                </div>
-              )}
-              <div className="fd-simulation-edge-list">
-                {currentEdges.slice(0, 6).map((edge) => (
-                  <div className={`fd-simulation-edge-item${edge.taken ? ' fd-simulation-edge-item--taken' : ''}`} key={edge.edgeId}>
-                    <Tag size="small" color={edge.taken ? 'green' : 'grey'}>{edge.taken ? '命中' : '未命中'}</Tag>
-                    <div>
-                      <Typography.Text size="small">{nodeLabel(flowData, edge.sourceKey)}{' -> '}{nodeLabel(flowData, edge.targetKey)}</Typography.Text>
-                      <Typography.Text size="small" type="tertiary">
-                        {edge.reason ?? edge.conditionSummary ?? edge.label ?? '普通连线'}
-                        {edge.actualValue ? `；实际值：${edge.actualValue}` : ''}
-                      </Typography.Text>
-                    </div>
+                {selectedBranch && (
+                  <div className="fd-simulation-branch-focus">
+                    <Typography.Text size="small">已选中：{selectedBranch.branchNodeName} / {selectedBranch.name}</Typography.Text>
+                    <Button size="small" type="tertiary" theme="borderless" onClick={() => setSelectedBranch(null)}>清除</Button>
                   </div>
-                ))}
-                {currentEdges.length === 0 && <Typography.Text size="small" type="tertiary">当前步骤暂无可展示的分支判断。</Typography.Text>}
+                )}
+                {pathCompare && (
+                  <div className="fd-simulation-path-compare">
+                    <Typography.Text size="small" type="tertiary">上次：{pathCompare.before}</Typography.Text>
+                    <Typography.Text size="small">本次：{pathCompare.after}</Typography.Text>
+                    <Typography.Text size="small" type="tertiary">
+                      {pathCompare.changedAt ? `第 ${pathCompare.changedAt} 步开始出现差异` : '路径没有变化'}
+                      {pathCompare.added.length ? `；新增 ${pathCompare.added.join('、')}` : ''}
+                      {pathCompare.removed.length ? `；未经过 ${pathCompare.removed.join('、')}` : ''}
+                    </Typography.Text>
+                  </div>
+                )}
+                <div className="fd-simulation-edge-list">
+                  {currentEdges.slice(0, 4).map((edge) => (
+                    <div className={`fd-simulation-edge-item${edge.taken ? ' fd-simulation-edge-item--taken' : ''}`} key={edge.edgeId}>
+                      <Tag size="small" color={edge.taken ? 'green' : 'grey'}>{edge.taken ? '命中' : '未命中'}</Tag>
+                      <div>
+                        <Typography.Text size="small">{nodeLabel(flowData, edge.sourceKey)}{' -> '}{nodeLabel(flowData, edge.targetKey)}</Typography.Text>
+                        <Typography.Text size="small" type="tertiary">
+                          {edge.reason ?? edge.conditionSummary ?? edge.label ?? '普通连线'}
+                          {edge.actualValue ? `；实际值：${edge.actualValue}` : ''}
+                        </Typography.Text>
+                      </div>
+                    </div>
+                  ))}
+                  {currentEdges.length > 4 && (
+                    <Typography.Text size="small" type="tertiary">
+                      还有 {currentEdges.length - 4} 条分支，可点击流程图分支查看。
+                    </Typography.Text>
+                  )}
+                  {currentEdges.length === 0 && <Typography.Text size="small" type="tertiary">当前步骤暂无可展示的分支判断。</Typography.Text>}
+                </div>
               </div>
             </section>
           </div>
