@@ -12,6 +12,7 @@ interface InitiatorNodeProps {
   onSimulationNodeClick?: (node: FlowNode) => void;
   onSimulationNodeContextMenu?: (node: FlowNode) => void;
   simulationBreakpoint?: boolean;
+  simulationDebug?: boolean;
 }
 
 export default function InitiatorNode({
@@ -22,6 +23,7 @@ export default function InitiatorNode({
   onSimulationNodeClick,
   onSimulationNodeContextMenu,
   simulationBreakpoint = false,
+  simulationDebug = false,
 }: Readonly<InitiatorNodeProps>) {
   const desc = node.props.initiatorDesc as string || '所有人';
 
@@ -54,6 +56,16 @@ export default function InitiatorNode({
         } : undefined}
         title={onSimulationNodeClick || onSimulationNodeContextMenu ? '点击跳转到仿真步骤；右键切换断点' : undefined}
       >
+        {simulationDebug && onSimulationNodeContextMenu && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={simulationBreakpoint ? '取消断点' : '设为断点'}
+            className={`fd-node-card__bp-toggle${simulationBreakpoint ? ' is-active' : ''}`}
+            title={simulationBreakpoint ? '取消断点' : '设为断点'}
+            onClick={(e) => { e.stopPropagation(); onSimulationNodeContextMenu(node); }}
+          />
+        )}
         <div className="fd-node-card__header" style={{ background: '#ff943e' }}>
           <span className="fd-node-card__header-icon"><User size={14} /></span>
           <span className="fd-node-card__header-title">{node.name}</span>

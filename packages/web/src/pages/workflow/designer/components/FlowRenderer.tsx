@@ -38,6 +38,8 @@ interface FlowRendererProps {
   onSimulationBranchClick?: (branch: FlowBranch, branchNode: FlowNode) => void;
   selectedSimulationBranchId?: string | null;
   simulationBreakpoints?: Set<string>;
+  /** 仿真图：调试模式开启时，节点显示断点切换 affordance */
+  simulationDebug?: boolean;
 }
 
 const noop = () => { /* noop */ };
@@ -64,6 +66,7 @@ export default function FlowRenderer({
   onSimulationBranchClick,
   selectedSimulationBranchId,
   simulationBreakpoints,
+  simulationDebug,
 }: Readonly<FlowRendererProps>) {
 
   const editNode = onEditNode ?? noop;
@@ -109,6 +112,7 @@ export default function FlowRenderer({
             onSimulationNodeClick={onSimulationNodeClick}
             onSimulationNodeContextMenu={onSimulationNodeContextMenu}
             simulationBreakpoint={simulationBreakpoints?.has(node.key ?? node.id)}
+            simulationDebug={simulationDebug}
           />
         )}
 
@@ -130,6 +134,7 @@ export default function FlowRenderer({
         onSimulationNodeClick={onSimulationNodeClick}
         onSimulationNodeContextMenu={onSimulationNodeContextMenu}
         simulationBreakpoint={simulationBreakpoints?.has(process.initiator.key ?? 'start') || simulationBreakpoints?.has('start')}
+        simulationDebug={simulationDebug}
       />
 
       {!readOnly && <AddNodeButton onAdd={(type) => addAfter(process.initiator.id, type)} />}

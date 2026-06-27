@@ -23,6 +23,8 @@ interface NodeCardProps {
   /** 仿真图交互：右键节点切换断点 */
   onSimulationNodeContextMenu?: (node: FlowNode) => void;
   simulationBreakpoint?: boolean;
+  /** 仿真调试模式：显示断点切换 affordance */
+  simulationDebug?: boolean;
   /** 运行态信息（实例详情流程图叠加：实际处理人 + 状态 + 时间）；设计态为空 */
   runtime?: NodeRuntimeInfo;
 }
@@ -183,6 +185,7 @@ export default function NodeCard({
   onSimulationNodeClick,
   onSimulationNodeContextMenu,
   simulationBreakpoint = false,
+  simulationDebug = false,
   runtime,
 }: Readonly<NodeCardProps>) {
   const info = getNodeInfo(node.type);
@@ -216,6 +219,17 @@ export default function NodeCard({
       tabIndex={clickable ? 0 : -1}
       title={simulationInteractive ? '点击跳转到仿真步骤；右键切换断点' : undefined}
     >
+      {simulationDebug && onSimulationNodeContextMenu && (
+        <span
+          role="button"
+          tabIndex={-1}
+          aria-label={simulationBreakpoint ? '取消断点' : '设为断点'}
+          className={`fd-node-card__bp-toggle${simulationBreakpoint ? ' is-active' : ''}`}
+          title={simulationBreakpoint ? '取消断点' : '设为断点'}
+          onClick={(e) => { e.stopPropagation(); onSimulationNodeContextMenu(node); }}
+        />
+      )}
+
       {/* 标题栏 */}
       <div className="fd-node-card__header" style={{ background: color }}>
         {Icon && (
