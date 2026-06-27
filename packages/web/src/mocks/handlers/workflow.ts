@@ -11,6 +11,7 @@ import {
   getNextDefinitionVersionId,
 } from '@/mocks/data/workflow';
 import { mockWorkflowForms } from '@/mocks/data/workflow-forms';
+import { mockWorkflowJobs, mockWorkflowJobExecutions } from '@/mocks/data/workflow-jobs';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import dayjs from 'dayjs';
 import { DATE_TIME_FORMAT } from '@/utils/date';
@@ -1355,6 +1356,66 @@ export const workflowHandlers = [
     const detail: Record<string, number> = { scanned: 2, dispatched: 1, failed: 0 };
     const summary = Object.entries(detail).map(([k, v]) => `${k} ${v}`).join(' · ');
     return ok({ action, ok: true, message: `${labels[action]}完成：${summary}`, detail });
+  }),
+
+  // ── 统一作业账本（workflow_jobs）死信 / 补偿中心 ──
+  http.get('/api/workflows/engine/jobs', ({ request }) => {
+    const url = new URL(request.url);
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+    const pageSize = Math.max(1, Number(url.searchParams.get('pageSize')) || 10);
+    const jobType = url.searchParams.get('jobType') || '';
+    const status = url.searchParams.get('status') || '';
+    const keyword = (url.searchParams.get('keyword') || '').trim().toLowerCase();
+    let list = [...mockWorkflowJobs].sort((a, b) => b.id - a.id);
+    if (jobType) list = list.filter((j) => j.jobType === jobType);
+    if (status) list = list.filter((j) => j.status === status);
+    if (keyword) {
+      list = list.filter((j) =>
+        (j.idempotencyKey ?? '').toLowerCase().includes(keyword)
+        || (j.traceId ?? '').toLowerCase().includes(keyword)
+        || (j.nodeKey ?? '').toLowerCase().includes(keyword));
+    }
+    const total = list.length;
+    const start = (page - 1) * pageSize;
+    return ok({ list: list.slice(start, start + pageSize), total, page, pageSize });
+  }),
+
+  http.get('/api/workflows/engine/jobs/:id', ({ params }) => {
+    const id = Number(params.id);
+    const job = mockWorkflowJobs.find((j) => j.id === id);
+    if (!job) return err('作业不存在', 404);
+    const executions = mockWorkflowJobExecutions
+      .filter((e) => e.jobId === id)
+      .sort((a, b) => b.id - a.id);
+    return ok({ ...job, executions });
+  }),
+
+  http.post('/api/workflows/engine/jobs/:id/retry', async ({ params, request }) => {
+    const id = Number(params.id);
+    const job = mockWorkflowJobs.find((j) => j.id === id);
+    if (!job) return err('作业不存在', 404);
+    if (!['failed', 'dead', 'canceled'].includes(job.status)) return err('仅失败 / 死信 / 已取消的作业可重试', 400);
+    const body = await request.json().catch(() => ({})) as { payload?: Record<string, unknown> };
+    if (body?.payload) job.payload = body.payload;
+    job.status = 'pending';
+    job.attempts = 0;
+    job.lockedAt = null;
+    job.lockedBy = null;
+    job.lastError = null;
+    job.runAt = mockDateTime();
+    job.updatedAt = mockDateTime();
+    return ok(job, '已重新入队');
+  }),
+
+  http.post('/api/workflows/engine/jobs/:id/skip', ({ params }) => {
+    const id = Number(params.id);
+    const job = mockWorkflowJobs.find((j) => j.id === id);
+    if (!job) return err('作业不存在', 404);
+    if (!['pending', 'failed', 'dead'].includes(job.status)) return err('仅待处理 / 失败 / 死信的作业可跳过', 400);
+    job.status = 'canceled';
+    job.lockedAt = null;
+    job.updatedAt = mockDateTime();
+    return ok(job, '已跳过');
   }),
 
   http.get('/api/workflows/instances/:id/diagnostics', ({ params }) => {

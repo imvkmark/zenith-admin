@@ -40,6 +40,7 @@ import { NODE_RT_STATUS_COLOR, NODE_RT_STATUS_LABEL } from '@/components/workflo
 import { resolveWorkflowFlowData } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
 import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
+import WorkflowJobsView from './WorkflowJobsView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
 
@@ -1256,6 +1257,9 @@ export default function WorkflowMonitorPage() {
         </TabPane>
         <TabPane tab="引擎诊断" itemKey="engine">
           <WorkflowEngineDiagnosticsView onOpenInstanceDiagnostics={openDiagnosticsById} />
+        </TabPane>
+        <TabPane tab="作业账本" itemKey="jobs">
+          <WorkflowJobsView />
         </TabPane>
       </Tabs>
 

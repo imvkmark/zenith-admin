@@ -1,10 +1,11 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
 import { authMiddleware } from '../middleware/auth';
 import { guard } from '../middleware/guard';
-import { commonErrorResponses, ok, okBody, validationHook } from '../lib/openapi-schemas';
-import { WorkflowEngineActionResultDTO, WorkflowEngineHealthHistoryDTO, WorkflowEngineIntrospectionDTO } from '../lib/openapi-dtos';
+import { commonErrorResponses, ok, okPaginated, okBody, validationHook, PaginationQuery, IdParam, jsonContent } from '../lib/openapi-schemas';
+import { WorkflowEngineActionResultDTO, WorkflowEngineHealthHistoryDTO, WorkflowEngineIntrospectionDTO, WorkflowJobDTO, WorkflowJobDetailDTO, WorkflowJobListQuery, WorkflowJobRetryBody } from '../lib/openapi-dtos';
 import { getWorkflowEngineIntrospection } from '../services/workflow-engine-introspection.service';
 import { getWorkflowEngineHealthHistory, runWorkflowEngineAction } from '../services/workflow-engine-ops.service';
+import { listWorkflowJobs, getWorkflowJobDetail, retryWorkflowJob, skipWorkflowJob } from '../services/workflow-jobs.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -73,6 +74,75 @@ const actionRoute = defineOpenAPIRoute({
   },
 });
 
-router.openapiRoutes([introspectionRoute, healthHistoryRoute, actionRoute] as const);
+const jobsListRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/jobs',
+    tags: ['WorkflowEngine'],
+    summary: '工作流作业账本列表',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
+    request: { query: PaginationQuery.merge(WorkflowJobListQuery) },
+    responses: { ...commonErrorResponses, ...okPaginated(WorkflowJobDTO, '作业账本分页列表') },
+  }),
+  handler: async (c) => {
+    const q = c.req.valid('query');
+    return c.json(okBody(await listWorkflowJobs(q)), 200);
+  },
+});
+
+const jobDetailRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get',
+    path: '/jobs/{id}',
+    tags: ['WorkflowEngine'],
+    summary: '工作流作业详情（含执行记录）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(WorkflowJobDetailDTO, '作业详情') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await getWorkflowJobDetail(id)), 200);
+  },
+});
+
+const jobRetryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/jobs/{id}/retry',
+    tags: ['WorkflowEngine'],
+    summary: '重试 / 改参重放作业',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { module: '流程引擎', description: '重试工作流作业' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(WorkflowJobRetryBody), required: false } },
+    responses: { ...commonErrorResponses, ...ok(WorkflowJobDTO, '已重新入队') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return c.json(okBody(await retryWorkflowJob(id, body?.payload), '已重新入队'), 200);
+  },
+});
+
+const jobSkipRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post',
+    path: '/jobs/{id}/skip',
+    tags: ['WorkflowEngine'],
+    summary: '跳过 / 取消作业',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { module: '流程引擎', description: '跳过工作流作业' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(WorkflowJobDTO, '已跳过') },
+  }),
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    return c.json(okBody(await skipWorkflowJob(id), '已跳过'), 200);
+  },
+});
+
+router.openapiRoutes([introspectionRoute, healthHistoryRoute, actionRoute, jobsListRoute, jobDetailRoute, jobRetryRoute, jobSkipRoute] as const);
 
 export default router;

@@ -11,6 +11,8 @@
 export {
   enqueueJob,
   cancelJobs,
+  retryJob,
+  skipJob,
   runJob,
   drainWorkflowJobs,
   registerWorkflowJobWorker,

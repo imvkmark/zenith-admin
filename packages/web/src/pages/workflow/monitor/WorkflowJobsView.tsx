@@ -1,0 +1,410 @@
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Button,
+  Descriptions,
+  Empty,
+  Input,
+  JsonViewer,
+  Popconfirm,
+  Select,
+  SideSheet,
+  Space,
+  Table,
+  Tag,
+  Toast,
+  Tooltip,
+  Typography,
+} from '@douyinfe/semi-ui';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { RotateCcw, Search } from 'lucide-react';
+import type { PaginatedResponse, WorkflowJob, WorkflowJobExecution, WorkflowJobStatus, WorkflowJobType } from '@zenith/shared';
+import { request } from '@/utils/request';
+import { formatDateTime } from '@/utils/date';
+import { SearchToolbar } from '@/components/SearchToolbar';
+import ConfigurableTable from '@/components/ConfigurableTable';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { usePagination } from '@/hooks/usePagination';
+import { usePermission } from '@/hooks/usePermission';
+
+type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'orange' | 'red' | 'violet';
+
+const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> = {
+  delay_wake: { text: '延时唤醒', color: 'cyan' },
+  task_timeout: { text: '任务超时', color: 'amber' },
+  trigger_dispatch: { text: '触发器调度', color: 'blue' },
+  external_dispatch: { text: '外部审批', color: 'violet' },
+  subprocess_spawn: { text: '子流程派生', color: 'green' },
+  subprocess_join: { text: '子流程汇聚', color: 'green' },
+  event_dispatch: { text: '事件派发', color: 'orange' },
+  webhook_delivery: { text: 'Webhook 投递', color: 'orange' },
+};
+
+const JOB_STATUS_META: Record<WorkflowJobStatus, { text: string; color: TagColor }> = {
+  pending: { text: '待处理', color: 'grey' },
+  running: { text: '运行中', color: 'blue' },
+  succeeded: { text: '成功', color: 'green' },
+  failed: { text: '失败', color: 'orange' },
+  dead: { text: '死信', color: 'red' },
+  canceled: { text: '已取消', color: 'grey' },
+};
+
+const EXEC_STATUS_META: Record<WorkflowJobExecution['status'], { text: string; color: TagColor }> = {
+  running: { text: '执行中', color: 'blue' },
+  succeeded: { text: '成功', color: 'green' },
+  failed: { text: '失败', color: 'red' },
+};
+
+const JOB_TYPE_OPTIONS = (Object.keys(JOB_TYPE_META) as WorkflowJobType[]).map((value) => ({ value, label: JOB_TYPE_META[value].text }));
+const JOB_STATUS_OPTIONS = (Object.keys(JOB_STATUS_META) as WorkflowJobStatus[]).map((value) => ({ value, label: JOB_STATUS_META[value].text }));
+
+type WorkflowJobDetail = WorkflowJob & { executions: WorkflowJobExecution[] };
+
+interface SearchParams {
+  jobType?: WorkflowJobType;
+  status?: WorkflowJobStatus;
+  keyword: string;
+}
+
+const defaultSearchParams: SearchParams = { jobType: undefined, status: undefined, keyword: '' };
+
+function renderJobTypeTag(jobType: WorkflowJobType) {
+  const meta = JOB_TYPE_META[jobType];
+  return <Tag color={meta?.color ?? 'grey'} size="small">{meta?.text ?? jobType}</Tag>;
+}
+
+function renderStatusTag(status: WorkflowJobStatus) {
+  const meta = JOB_STATUS_META[status];
+  return <Tag color={meta?.color ?? 'grey'} size="small">{meta?.text ?? status}</Tag>;
+}
+
+export default function WorkflowJobsView() {
+  const { hasPermission } = usePermission();
+  const canOperate = hasPermission('workflow:engine:operate');
+
+  const [data, setData] = useState<PaginatedResponse<WorkflowJob> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [searchParams, setSearchParams] = useState<SearchParams>(defaultSearchParams);
+  const { page, pageSize, setPage, resetPage, buildPagination } = usePagination();
+
+  const [detail, setDetail] = useState<WorkflowJobDetail | null>(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [actingId, setActingId] = useState<number | null>(null);
+
+  const fetchList = useCallback(async (p = page, ps = pageSize, params = searchParams) => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(ps) });
+      if (params.jobType) qs.set('jobType', params.jobType);
+      if (params.status) qs.set('status', params.status);
+      if (params.keyword.trim()) qs.set('keyword', params.keyword.trim());
+      const res = await request.get<PaginatedResponse<WorkflowJob>>(`/api/workflows/engine/jobs?${qs.toString()}`);
+      if (res.code === 0) setData(res.data);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, searchParams]);
+
+  useEffect(() => {
+    void fetchList(1, pageSize, defaultSearchParams);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSearch = useCallback(() => {
+    resetPage();
+    void fetchList(1, pageSize, searchParams);
+  }, [fetchList, pageSize, resetPage, searchParams]);
+
+  const handleReset = useCallback(() => {
+    setSearchParams(defaultSearchParams);
+    resetPage();
+    void fetchList(1, pageSize, defaultSearchParams);
+  }, [fetchList, pageSize, resetPage]);
+
+  const openDetail = useCallback(async (id: number) => {
+    setDetailVisible(true);
+    setDetail(null);
+    setDetailLoading(true);
+    try {
+      const res = await request.get<WorkflowJobDetail>(`/api/workflows/engine/jobs/${id}`);
+      if (res.code === 0) setDetail(res.data);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  const handleRetry = useCallback(async (id: number) => {
+    setActingId(id);
+    try {
+      const res = await request.post<WorkflowJob>(`/api/workflows/engine/jobs/${id}/retry`);
+      if (res.code === 0) {
+        Toast.success('已重新入队');
+        await fetchList();
+        if (detail?.id === id) await openDetail(id);
+      } else {
+        Toast.warning(res.message || '重试失败');
+      }
+    } catch {
+      Toast.error('重试失败');
+    } finally {
+      setActingId(null);
+    }
+  }, [detail?.id, fetchList, openDetail]);
+
+  const handleSkip = useCallback(async (id: number) => {
+    setActingId(id);
+    try {
+      const res = await request.post<WorkflowJob>(`/api/workflows/engine/jobs/${id}/skip`);
+      if (res.code === 0) {
+        Toast.success('已跳过');
+        await fetchList();
+        if (detail?.id === id) await openDetail(id);
+      } else {
+        Toast.warning(res.message || '跳过失败');
+      }
+    } catch {
+      Toast.error('跳过失败');
+    } finally {
+      setActingId(null);
+    }
+  }, [detail?.id, fetchList, openDetail]);
+
+  const columns: ColumnProps<WorkflowJob>[] = [
+    { title: 'ID', dataIndex: 'id', width: 80 },
+    { title: '作业类型', dataIndex: 'jobType', width: 130, render: (v: WorkflowJobType) => renderJobTypeTag(v) },
+    { title: '状态', dataIndex: 'status', width: 90, render: (v: WorkflowJobStatus) => renderStatusTag(v) },
+    {
+      title: '实例 / 节点',
+      dataIndex: 'instanceId',
+      width: 150,
+      render: (_: unknown, record: WorkflowJob) => (
+        <Space spacing={4}>
+          <Typography.Text size="small" type={record.instanceId ? 'primary' : 'tertiary'}>
+            {record.instanceId ? `#${record.instanceId}` : '—'}
+          </Typography.Text>
+          {record.nodeKey && <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 90 }}>{record.nodeKey}</Typography.Text>}
+        </Space>
+      ),
+    },
+    {
+      title: '尝试',
+      dataIndex: 'attempts',
+      width: 80,
+      render: (_: unknown, record: WorkflowJob) => (
+        <Typography.Text size="small" type={record.attempts >= record.maxAttempts && record.status !== 'succeeded' ? 'danger' : 'secondary'}>
+          {record.attempts}/{record.maxAttempts}
+        </Typography.Text>
+      ),
+    },
+    { title: '计划执行', dataIndex: 'runAt', width: 160, render: (v: string) => <Typography.Text size="small" type="tertiary">{formatDateTime(v)}</Typography.Text> },
+    {
+      title: '最近错误',
+      dataIndex: 'lastError',
+      width: 200,
+      render: (v: string | null) => v
+        ? <Tooltip content={<div style={{ maxWidth: 360, wordBreak: 'break-all' }}>{v}</div>}><Typography.Text size="small" type="danger" ellipsis={{ rows: 1 }} style={{ maxWidth: 188 }}>{v}</Typography.Text></Tooltip>
+        : <Typography.Text size="small" type="tertiary">—</Typography.Text>,
+    },
+    { title: '创建时间', dataIndex: 'createdAt', width: 160, render: (v: string) => <Typography.Text size="small" type="tertiary">{formatDateTime(v)}</Typography.Text> },
+    createOperationColumn<WorkflowJob>({
+      width: 170,
+      desktopInlineKeys: ['detail', 'retry', 'skip'],
+      actions: (record) => {
+        const retryable = record.status === 'failed' || record.status === 'dead' || record.status === 'canceled';
+        const skippable = record.status === 'pending' || record.status === 'failed' || record.status === 'dead';
+        return [
+          { key: 'detail', label: '详情', onClick: () => void openDetail(record.id) },
+          {
+            key: 'retry',
+            label: (
+              <Popconfirm title="确定重新入队该作业？" content="将重置尝试次数并立即排队执行" onConfirm={() => void handleRetry(record.id)}>
+                <span>重试</span>
+              </Popconfirm>
+            ),
+            hidden: !canOperate || !retryable,
+            loading: actingId === record.id,
+          },
+          {
+            key: 'skip',
+            label: (
+              <Popconfirm title="确定跳过该作业？" content="作业将被标记为已取消，不再执行" onConfirm={() => void handleSkip(record.id)}>
+                <span>跳过</span>
+              </Popconfirm>
+            ),
+            danger: true,
+            hidden: !canOperate || !skippable,
+            loading: actingId === record.id,
+          },
+        ];
+      },
+    }),
+  ];
+
+  const execColumns: ColumnProps<WorkflowJobExecution>[] = [
+    { title: '#', dataIndex: 'attempt', width: 56 },
+    { title: '状态', dataIndex: 'status', width: 80, render: (v: WorkflowJobExecution['status']) => { const m = EXEC_STATUS_META[v]; return <Tag color={m?.color ?? 'grey'} size="small">{m?.text ?? v}</Tag>; } },
+    {
+      title: '请求',
+      dataIndex: 'requestUrl',
+      render: (_: unknown, r: WorkflowJobExecution) => r.requestUrl
+        ? <Typography.Text size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{r.requestMethod ? `${r.requestMethod} ` : ''}{r.requestUrl}</Typography.Text>
+        : <Typography.Text size="small" type="tertiary">—</Typography.Text>,
+    },
+    { title: '响应码', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '—' },
+    { title: '耗时', dataIndex: 'durationMs', width: 90, render: (v: number | null) => v != null ? `${v}ms` : '—' },
+    {
+      title: '错误',
+      dataIndex: 'errorMessage',
+      render: (v: string | null) => v
+        ? <Tooltip content={<div style={{ maxWidth: 360, wordBreak: 'break-all' }}>{v}</div>}><Typography.Text size="small" type="danger" ellipsis={{ rows: 1 }} style={{ maxWidth: 200 }}>{v}</Typography.Text></Tooltip>
+        : <Typography.Text size="small" type="tertiary">—</Typography.Text>,
+    },
+    { title: '完成时间', dataIndex: 'finishedAt', width: 160, render: (v: string | null) => <Typography.Text size="small" type="tertiary">{v ? formatDateTime(v) : '—'}</Typography.Text> },
+  ];
+
+  return (
+    <>
+      <SearchToolbar
+        primary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="幂等键 / TraceId / 节点"
+              value={searchParams.keyword}
+              showClear
+              style={{ width: 220 }}
+              onChange={(v) => setSearchParams((s) => ({ ...s, keyword: v }))}
+              onEnterPress={handleSearch}
+            />
+            <Select
+              placeholder="作业类型"
+              value={searchParams.jobType}
+              optionList={JOB_TYPE_OPTIONS}
+              showClear
+              style={{ width: 150 }}
+              onChange={(v) => setSearchParams((s) => ({ ...s, jobType: v as WorkflowJobType | undefined }))}
+            />
+            <Select
+              placeholder="状态"
+              value={searchParams.status}
+              optionList={JOB_STATUS_OPTIONS}
+              showClear
+              style={{ width: 130 }}
+              onChange={(v) => setSearchParams((s) => ({ ...s, status: v as WorkflowJobStatus | undefined }))}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+            <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
+          </>
+        )}
+        mobilePrimary={(
+          <>
+            <Input
+              prefix={<Search size={14} />}
+              placeholder="幂等键 / TraceId / 节点"
+              value={searchParams.keyword}
+              showClear
+              onChange={(v) => setSearchParams((s) => ({ ...s, keyword: v }))}
+              onEnterPress={handleSearch}
+            />
+            <Button type="primary" icon={<Search size={14} />} onClick={handleSearch}>查询</Button>
+          </>
+        )}
+        mobileFilters={(
+          <>
+            <Select placeholder="作业类型" value={searchParams.jobType} optionList={JOB_TYPE_OPTIONS} showClear style={{ width: '100%' }} onChange={(v) => setSearchParams((s) => ({ ...s, jobType: v as WorkflowJobType | undefined }))} />
+            <Select placeholder="状态" value={searchParams.status} optionList={JOB_STATUS_OPTIONS} showClear style={{ width: '100%' }} onChange={(v) => setSearchParams((s) => ({ ...s, status: v as WorkflowJobStatus | undefined }))} />
+          </>
+        )}
+        filterTitle="作业账本筛选"
+        onFilterApply={handleSearch}
+        onFilterReset={handleReset}
+      />
+
+      <ConfigurableTable
+        bordered
+        columns={columns}
+        dataSource={data?.list ?? []}
+        rowKey="id"
+        loading={loading}
+        onRefresh={() => void fetchList()}
+        refreshLoading={loading}
+        scroll={{ x: 1280 }}
+        pagination={buildPagination(data?.total ?? 0, (p, ps) => { setPage(p); void fetchList(p, ps); })}
+      />
+
+      <SideSheet
+        title={detail ? `作业 #${detail.id} 详情` : '作业详情'}
+        visible={detailVisible}
+        onCancel={() => setDetailVisible(false)}
+        width="min(720px, 96vw)"
+      >
+        {detailLoading && <Empty description="加载中…" />}
+        {!detailLoading && detail && (
+          <Space vertical align="start" style={{ width: '100%' }} spacing={16}>
+            <Descriptions
+              align="left"
+              size="small"
+              data={[
+                { key: '作业类型', value: renderJobTypeTag(detail.jobType) },
+                { key: '状态', value: renderStatusTag(detail.status) },
+                { key: '实例', value: detail.instanceId ? `#${detail.instanceId}` : '—' },
+                { key: '任务 / 节点', value: `${detail.taskId ? `#${detail.taskId}` : '—'}${detail.nodeKey ? ` / ${detail.nodeKey}` : ''}` },
+                { key: '尝试次数', value: `${detail.attempts}/${detail.maxAttempts}` },
+                { key: '优先级', value: detail.priority },
+                { key: '计划执行', value: formatDateTime(detail.runAt) },
+                { key: '幂等键', value: detail.idempotencyKey ?? '—' },
+                { key: 'TraceId', value: detail.traceId ?? '—' },
+                { key: '锁定', value: detail.lockedBy ? `${detail.lockedBy}（${detail.lockedAt ? formatDateTime(detail.lockedAt) : '—'}）` : '—' },
+                { key: '创建时间', value: formatDateTime(detail.createdAt) },
+                { key: '更新时间', value: formatDateTime(detail.updatedAt) },
+              ]}
+            />
+
+            {detail.lastError && (
+              <div style={{ width: '100%' }}>
+                <Typography.Text strong type="danger">最近错误</Typography.Text>
+                <div style={{ marginTop: 4, padding: 8, background: 'var(--semi-color-danger-light-default)', borderRadius: 6, wordBreak: 'break-all', fontSize: 12 }}>{detail.lastError}</div>
+              </div>
+            )}
+
+            <div style={{ width: '100%' }}>
+              <Typography.Text strong>Payload</Typography.Text>
+              <div style={{ marginTop: 4 }}>
+                <JsonViewer
+                  value={JSON.stringify(detail.payload ?? {}, null, 2)}
+                  height={Math.min(240, Math.max(80, JSON.stringify(detail.payload ?? {}, null, 2).split('\n').length * 18))}
+                  width="100%"
+                  options={{ readOnly: true, autoWrap: true }}
+                />
+              </div>
+            </div>
+
+            <div style={{ width: '100%' }}>
+              <Typography.Text strong>执行记录（{detail.executions.length}）</Typography.Text>
+              <div style={{ marginTop: 8 }}>
+                {detail.executions.length > 0
+                  ? <Table bordered size="small" columns={execColumns} dataSource={detail.executions} rowKey="id" pagination={false} />
+                  : <Empty description="暂无执行记录" />}
+              </div>
+            </div>
+
+            {canOperate && (
+              <Space>
+                {(detail.status === 'failed' || detail.status === 'dead' || detail.status === 'canceled') && (
+                  <Popconfirm title="确定重新入队该作业？" onConfirm={() => void handleRetry(detail.id)}>
+                    <Button type="primary" loading={actingId === detail.id}>重试</Button>
+                  </Popconfirm>
+                )}
+                {(detail.status === 'pending' || detail.status === 'failed' || detail.status === 'dead') && (
+                  <Popconfirm title="确定跳过该作业？" onConfirm={() => void handleSkip(detail.id)}>
+                    <Button type="danger" loading={actingId === detail.id}>跳过</Button>
+                  </Popconfirm>
+                )}
+              </Space>
+            )}
+          </Space>
+        )}
+      </SideSheet>
+    </>
+  );
+}

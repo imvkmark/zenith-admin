@@ -90,6 +90,34 @@ export async function cancelJobs(
   return res.length;
 }
 
+/**
+ * 重试一个失败 / 死信 / 已取消的作业（死信中心用）：
+ * 重置为 pending、attempts 归零（重新拿满 maxAttempts 预算）、清锁与错误、重新计时并安排 pickup。
+ * 可选 payload 覆盖即"改参重放"。仅 failed/dead/canceled 可重试，否则返回 null。
+ */
+export async function retryJob(id: number, opts?: { payload?: Record<string, unknown>; runAt?: Date }): Promise<WorkflowJobRow | null> {
+  const runAt = opts?.runAt ?? new Date();
+  const patch: Partial<typeof workflowJobs.$inferInsert> = {
+    status: 'pending', attempts: 0, lockedAt: null, lockedBy: null, lastError: null, runAt, updatedAt: new Date(),
+  };
+  if (opts?.payload) patch.payload = opts.payload;
+  const [row] = await db.update(workflowJobs).set(patch)
+    .where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['failed', 'dead', 'canceled'] as const)))
+    .returning();
+  if (!row) return null;
+  scheduleJobPickup(row.id, runAt);
+  return row;
+}
+
+/** 跳过一个作业：标记 canceled（仅 pending/failed/dead 可跳过），返回更新后的行或 null。 */
+export async function skipJob(id: number): Promise<WorkflowJobRow | null> {
+  const [row] = await db.update(workflowJobs)
+    .set({ status: 'canceled', lockedAt: null, updatedAt: new Date() })
+    .where(and(eq(workflowJobs.id, id), inArray(workflowJobs.status, ['pending', 'failed', 'dead'] as const)))
+    .returning();
+  return row ?? null;
+}
+
 /** 通过 pg-boss 在 runAt 时唤醒统一 Worker 处理该作业（fire-and-forget，drain 为兜底） */
 function scheduleJobPickup(jobId: number, runAt: Date): void {
   void sendSystemJobAfter<{ jobId: number }>(WORKFLOW_JOB_QUEUE, { jobId }, runAt, {
