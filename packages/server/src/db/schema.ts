@@ -1620,6 +1620,8 @@ export const workflowNodeTypeEnum = pgEnum('workflow_node_type', [
   'subProcess',
   'catchNode',
 ]);
+// 显式执行 Token 状态
+export const workflowTokenStatusEnum = pgEnum('workflow_token_status', ['active', 'consumed', 'dead']);
 
 // 流程分类
 export const workflowCategories = pgTable('workflow_categories', {
@@ -1959,6 +1961,38 @@ export const workflowTasks = pgTable('workflow_tasks', {
 
 export type WorkflowTaskRow = typeof workflowTasks.$inferSelect;
 export type NewWorkflowTask = typeof workflowTasks.$inferInsert;
+
+// ─── 显式执行 Token（活动路径 / 网关汇聚的权威来源）──────────────────────────
+// 每条活动执行路径 = 一行 token。替代"扫已完成任务行 + 重算 BFS"的隐式推导：
+// fork 沿 branchPath 压入一帧分支栈、产生多条兄弟 token；join 在同组分支全部 parked
+// 后消费它们并产出 1 条续接 token（弹出栈顶帧），构成可观测、可重放的执行树。
+export const workflowTokens = pgTable('workflow_tokens', {
+  id: serial('id').primaryKey(),
+  instanceId: integer('instance_id').notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  /** token 当前停留的节点 key（frontier 人工/等待节点，或 parked 的网关 join 节点） */
+  nodeKey: varchar('node_key', { length: 64 }).notNull(),
+  status: workflowTokenStatusEnum('status').notNull().default('active'),
+  /**
+   * 分支栈：每帧 { id: fork 分支组 id, index: 组内序号, total: 组内分支数 }。
+   * 空数组 = 主路径；fork 压栈、join 弹栈。join 汇聚判定 = 同 (父栈 + 帧 id) 下
+   * total 个 index 全部 parked。自包含，无需回溯父 token。
+   */
+  branchPath: jsonb('branch_path').$type<Array<{ id: string; index: number; total: number }>>().notNull().default([]),
+  /** fork 处被消费的前驱 token（血缘/可观测，best-effort，可空） */
+  parentTokenId: integer('parent_token_id'),
+  /** 子流程/多实例项作用域（预留） */
+  scopeKey: varchar('scope_key', { length: 128 }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+  consumedAt: timestamp('consumed_at'),
+}, (t) => [
+  index('workflow_tokens_instance_status_idx').on(t.instanceId, t.status),
+  index('workflow_tokens_parent_idx').on(t.parentTokenId),
+]);
+
+export type WorkflowTokenRow = typeof workflowTokens.$inferSelect;
+export type NewWorkflowToken = typeof workflowTokens.$inferInsert;
 
 // 任务催办记录：发起人或管理员对 pending 任务的催办流水
 export const workflowTaskUrges = pgTable('workflow_task_urges', {
@@ -3210,12 +3244,18 @@ export const workflowInstancesRelations = relations(workflowInstances, ({ one, m
   initiator: one(users, { fields: [workflowInstances.initiatorId], references: [users.id] }),
   tenant: one(tenants, { fields: [workflowInstances.tenantId], references: [tenants.id] }),
   tasks: many(workflowTasks),
+  tokens: many(workflowTokens),
 }));
 
 export const workflowTasksRelations = relations(workflowTasks, ({ one, many }) => ({
   instance: one(workflowInstances, { fields: [workflowTasks.instanceId], references: [workflowInstances.id] }),
   assignee: one(users, { fields: [workflowTasks.assigneeId], references: [users.id] }),
   urges: many(workflowTaskUrges),
+}));
+
+export const workflowTokensRelations = relations(workflowTokens, ({ one }) => ({
+  instance: one(workflowInstances, { fields: [workflowTokens.instanceId], references: [workflowInstances.id] }),
+  tenant: one(tenants, { fields: [workflowTokens.tenantId], references: [tenants.id] }),
 }));
 
 export const workflowTaskUrgesRelations = relations(workflowTaskUrges, ({ one }) => ({

@@ -29,7 +29,7 @@ export interface FlowNode {
 }
 
 /** 构建邻接表 */
-function buildAdjacency(flowData: WorkflowFlowData) {
+export function buildAdjacency(flowData: WorkflowFlowData) {
   const nodeMap = new Map<string, FlowNode>();
   for (const n of flowData.nodes) {
     nodeMap.set(n.id, { id: n.id, data: n.data });
@@ -239,11 +239,11 @@ export function evaluateConditionGroups(
   return groups.some((group) => evaluateConditionGroup(group, formData, starter));
 }
 
-function edgeHasCondition(edge: WorkflowEdge): boolean {
+export function edgeHasCondition(edge: WorkflowEdge): boolean {
   return !!edge.condition || !!edge.conditions?.length;
 }
 
-function edgeMatchesCondition(
+export function edgeMatchesCondition(
   edge: WorkflowEdge,
   formData: Record<string, unknown>,
   starter?: WorkflowStarterContext,
@@ -253,7 +253,7 @@ function edgeMatchesCondition(
   return false;
 }
 
-function isDefaultEdge(edge: WorkflowEdge, targetNode?: FlowNode): boolean {
+export function isDefaultEdge(edge: WorkflowEdge, targetNode?: FlowNode): boolean {
   return !!edge.isDefault || !!targetNode?.data.isDefault || !edgeHasCondition(edge);
 }
 

@@ -218,10 +218,11 @@ import { count, countDistinct, eq, ne, and, desc, ilike, or, inArray, sql, gt } 
 import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
-import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, inAppMessages, users, userRoles } from '../db/schema';
+import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, workflowTokens, inAppMessages, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
-import { advanceFlow, getInitialTasks, validateFlowData, findReturnPrevTarget, type AdvanceResult, type TaskAction } from '../lib/workflow-engine';
+import { getInitialTasks, validateFlowData, findReturnPrevTarget, type TaskAction } from '../lib/workflow-engine';
+import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../lib/workflow-token-engine';
 import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
@@ -629,7 +630,6 @@ async function createChildInstanceAndMaterialize(
   const childResolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const childFormSnapshot = buildInstanceFormSnapshot(def, childResolvedFormSnapshot);
   const childStarter = await buildStarterContext(childInitiatorId);
-  const initialResult = getInitialTasks(flowData, childFormData, childStarter);
 
   const { instance: childInst, createdTasks } = await db.transaction(async (tx) => {
     const [created] = await tx.insert(workflowInstances).values({
@@ -647,7 +647,7 @@ async function createChildInstanceAndMaterialize(
       parentTaskItemKey: opts?.itemKey ?? null,
       parentTaskItemIndex: opts?.itemIndex ?? null,
     }).returning();
-    const materialized = await materializeAdvanceResult(initialResult, {
+    const materialized = await advanceAndMaterialize({ kind: 'seed' }, {
       instanceId: created.id,
       initiatorId: childInitiatorId,
       executor: tx,
@@ -655,6 +655,7 @@ async function createChildInstanceAndMaterialize(
       formData: childFormData,
       settings: flowData.settings,
       starter: childStarter,
+      tenantId: parentInst.tenantId,
     });
     const [updated] = await tx.update(workflowInstances).set({
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
@@ -1234,10 +1235,8 @@ export async function handleNodeExecutionError(input: {
     }).returning();
     const formData = (lockedInst.formData ?? {}) as Record<string, unknown>;
     const starter = await buildStarterContext(lockedInst.initiatorId, tx);
-    const completedKeys = await getCompletedNodeKeys(tx, lockedInst.id);
-    completedKeys.add(catchCfg.key);
-    const materialized = await materializeAdvanceResult(
-      advanceFlow(flowData, catchCfg.key, formData, completedKeys, starter),
+    const materialized = await advanceAndMaterialize(
+      { kind: 'enterNode', nodeKey: catchCfg.key, consumeNodeKey: input.nodeKey },
       {
         instanceId: lockedInst.id,
         initiatorId: lockedInst.initiatorId,
@@ -1246,6 +1245,7 @@ export async function handleNodeExecutionError(input: {
         formData,
         settings: flowData.settings,
         starter,
+        tenantId: lockedInst.tenantId,
       },
     );
 
@@ -1638,62 +1638,132 @@ async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promi
   return keys;
 }
 
-async function materializeAdvanceResult(
-  initial: AdvanceResult,
-  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[]; starter?: WorkflowStarterContext },
+// ─── 显式执行 Token 运行时 ────────────────────────────────────────────────────
+type WorkflowTokenSnapshot = { id: number; nodeKey: string; branchPath: BranchPath };
+
+/** 读取实例当前全部 active token（含 parked join token） */
+async function loadLiveTokens(exec: DbExecutor, instanceId: number): Promise<WorkflowTokenSnapshot[]> {
+  const rows = await exec.select({ id: workflowTokens.id, nodeKey: workflowTokens.nodeKey, branchPath: workflowTokens.branchPath })
+    .from(workflowTokens)
+    .where(and(eq(workflowTokens.instanceId, instanceId), eq(workflowTokens.status, 'active')));
+  return rows.map((r) => ({ id: r.id, nodeKey: r.nodeKey, branchPath: (r.branchPath ?? []) as BranchPath }));
+}
+
+/** 终止实例所有 active token（驳回 / 取消 / 撤销 / 强制跳转前清场） */
+async function killInstanceTokens(exec: DbExecutor, instanceId: number): Promise<void> {
+  await exec.update(workflowTokens)
+    .set({ status: 'dead', consumedAt: new Date() })
+    .where(and(eq(workflowTokens.instanceId, instanceId), eq(workflowTokens.status, 'active')));
+}
+
+/** 推进的触发方式（service 语义层，内部翻译为引擎触发并管理 token 落库） */
+type MaterializeTrigger =
+  /** 实例发起 / 重新发起：从 start 播种 */
+  | { kind: 'seed' }
+  /** 某节点已完成：消费该节点的 active token，从其出边推进（含网关/汇聚） */
+  | { kind: 'advanceNode'; nodeKey: string }
+  /** 直接进入某节点（强制跳转 / 退回 / 异常捕获）：可选先消费某节点 token */
+  | { kind: 'enterNode'; nodeKey: string; consumeNodeKey?: string };
+
+/**
+ * Token 驱动的推进 + 落库（取代旧 materializeAdvanceResult）。
+ * 以 workflow_tokens 为活动路径/网关汇聚的权威来源：消费完成 token → 产出新 token + 建任务行。
+ * 多人审批完成判定（checkNodeCompletion）与任务展开（expandTasksToRows）保持不变。
+ */
+async function advanceAndMaterialize(
+  trigger: MaterializeTrigger,
+  ctx: { instanceId: number; initiatorId: number; executor: DbExecutor; flowData: WorkflowFlowData; formData: Record<string, unknown>; settings?: WorkflowFlowData['settings']; selectedNextApprovers?: number[]; starter?: WorkflowStarterContext; tenantId?: number | null },
 ): Promise<{ createdTasks: typeof workflowTasks.$inferSelect[]; finished: boolean; rejected: boolean; currentNodeKeys: string[] }> {
+  const exec = ctx.executor;
   const createdTasks: typeof workflowTasks.$inferSelect[] = [];
-  const pendingResults: AdvanceResult[] = [initial];
-  const autoApprovedQueue: string[] = [];
-  const processedAutoKeys = new Set<string>();
   let finished = false;
   let rejected = false;
   let currentNodeKeys: string[] = [];
 
-  while ((pendingResults.length > 0 || autoApprovedQueue.length > 0) && !rejected) {
-    if (pendingResults.length === 0) {
-      const autoNodeKey = autoApprovedQueue.shift();
-      if (!autoNodeKey || processedAutoKeys.has(autoNodeKey)) continue;
-      processedAutoKeys.add(autoNodeKey);
-      const completedKeys = await getCompletedNodeKeys(ctx.executor, ctx.instanceId);
-      pendingResults.push(advanceFlow(ctx.flowData, autoNodeKey, ctx.formData, completedKeys, ctx.starter));
-      continue;
+  // 解析初始引擎触发（并按需先行消费 token）
+  const engineTriggers: AdvanceTrigger[] = [];
+  if (trigger.kind === 'seed') {
+    engineTriggers.push({ type: 'seed' });
+  } else if (trigger.kind === 'advanceNode') {
+    const live = await loadLiveTokens(exec, ctx.instanceId);
+    const tk = live.find((t) => t.nodeKey === trigger.nodeKey);
+    if (tk) engineTriggers.push({ type: 'advance', tokenId: tk.id, nodeKey: tk.nodeKey, branchPath: tk.branchPath });
+    else engineTriggers.push({ type: 'continue', nodeKey: trigger.nodeKey, branchPath: [] });
+  } else {
+    if (trigger.consumeNodeKey) {
+      const live = await loadLiveTokens(exec, ctx.instanceId);
+      const tk = live.find((t) => t.nodeKey === trigger.consumeNodeKey);
+      if (tk) await exec.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(eq(workflowTokens.id, tk.id));
+    }
+    engineTriggers.push({ type: 'enter', nodeKey: trigger.nodeKey, branchPath: [] });
+  }
+
+  while (engineTriggers.length > 0 && !rejected) {
+    const et = engineTriggers.shift();
+    if (!et) break;
+    const liveTokens = await loadLiveTokens(exec, ctx.instanceId);
+    const completedNodeKeys = await getCompletedNodeKeys(exec, ctx.instanceId);
+    const res = advanceTokens({
+      flowData: ctx.flowData,
+      formData: ctx.formData,
+      starter: ctx.starter,
+      liveTokens,
+      trigger: et,
+      completedNodeKeys,
+    });
+
+    // 1) 消费 token（推进越过 / join 汇聚消费）
+    if (res.ops.consume.length > 0) {
+      await exec.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() })
+        .where(and(eq(workflowTokens.instanceId, ctx.instanceId), inArray(workflowTokens.id, res.ops.consume)));
     }
 
-    const result = pendingResults.shift();
-    if (!result) continue;
-    if (result.finished) finished = true;
-    if (result.currentNodeKeys.length > 0) currentNodeKeys = result.currentNodeKeys;
-
-    if (result.tasksToCreate.length > 0) {
-      const expanded = await expandTasksToRows(result.tasksToCreate, ctx);
+    // 2) 展开并落库任务行（人员解析 / 委托 / 加签 / cc / 外部审批 / delay / trigger / subProcess）
+    let autoApprovedNodeKeys: string[] = [];
+    let autoRejected = false;
+    if (res.tasksToCreate.length > 0) {
+      const expanded = await expandTasksToRows(res.tasksToCreate, ctx);
       if (expanded.rows.length > 0) {
-        const inserted = await ctx.executor.insert(workflowTasks).values(expanded.rows).returning();
+        const inserted = await exec.insert(workflowTasks).values(expanded.rows).returning();
         createdTasks.push(...inserted);
-        const activeKeys = [...new Set(inserted
-          .filter((task) => task.status === 'pending' || task.status === 'waiting')
-          .map((task) => task.nodeKey))];
-        if (activeKeys.length > 0) currentNodeKeys = activeKeys;
       }
-      autoApprovedQueue.push(...expanded.autoApprovedNodeKeys);
-      if (expanded.autoRejectedNodeKey) rejected = true;
+      autoApprovedNodeKeys = expanded.autoApprovedNodeKeys;
+      autoRejected = !!expanded.autoRejectedNodeKey;
     }
 
-    if (result.rejected) rejected = true;
+    // 3) 落库新建 token；expand 已自动通过的 frontier 不落 token，改为续接推进
+    const autoSet = new Set(autoApprovedNodeKeys);
+    for (const spec of res.ops.create) {
+      if (autoSet.has(spec.nodeKey)) {
+        engineTriggers.push({ type: 'continue', nodeKey: spec.nodeKey, branchPath: spec.branchPath, parentTokenId: spec.parentTokenId });
+      } else {
+        await exec.insert(workflowTokens).values({
+          instanceId: ctx.instanceId,
+          nodeKey: spec.nodeKey,
+          status: 'active',
+          branchPath: spec.branchPath,
+          parentTokenId: spec.parentTokenId,
+          tenantId: ctx.tenantId ?? null,
+        });
+      }
+    }
+
+    if (res.finished) finished = true;
+    if (res.rejected || autoRejected) rejected = true;
+    if (res.activeNodeKeys.length > 0) currentNodeKeys = res.activeNodeKeys;
   }
 
   if (rejected) {
-    // 自动拒绝（如并行分支命中 autoReject）会先插入其它分支的 pending/waiting 任务；
-    // 实例随后被置为 rejected，这些任务成为孤儿待办：统一跳过并从结果中剔除，
-    // 避免残留待办、以及对未真正生效的任务发出 task.created / task.assigned 事件。
+    // 自动拒绝终止：清理残留待办 + 终止全部 token，保证 rejected 实例无残留
     const orphanIds = createdTasks
       .filter((t) => t.status === 'pending' || t.status === 'waiting')
       .map((t) => t.id);
     if (orphanIds.length > 0) {
-      await ctx.executor.update(workflowTasks)
+      await exec.update(workflowTasks)
         .set({ status: 'skipped', actionAt: new Date() })
         .where(inArray(workflowTasks.id, orphanIds));
     }
+    await killInstanceTokens(exec, ctx.instanceId);
     const remaining = createdTasks.filter((t) => t.status !== 'pending' && t.status !== 'waiting');
     return { createdTasks: remaining, finished: false, rejected: true, currentNodeKeys: [] };
   }
@@ -2810,7 +2880,7 @@ export async function createInstance(data: { definitionId: number; title: string
         bizType: normalizedBizType,
         bizId: normalizedBizId,
       }).returning();
-      const materialized = await materializeAdvanceResult(initialResult, {
+      const materialized = await advanceAndMaterialize({ kind: 'seed' }, {
         instanceId: createdInstance.id,
         initiatorId: user.userId,
         executor: tx,
@@ -2818,6 +2888,7 @@ export async function createInstance(data: { definitionId: number; title: string
         formData,
         settings: flowData.settings,
         starter,
+        tenantId: createdInstance.tenantId,
       });
       const [updatedInstance] = await tx.update(workflowInstances).set({
         status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
@@ -2928,6 +2999,7 @@ export async function withdrawInstance(id: number) {
     const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])))
       .returning();
+    await killInstanceTokens(tx, id);
     const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(and(...conditions)).returning();
     return { row, cancelledTasks: cancelled };
   });
@@ -2957,6 +3029,7 @@ export async function cancelInstance(id: number) {
     const cancelled = await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date() })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])))
       .returning();
+    await killInstanceTokens(tx, id);
     const [row] = await tx.update(workflowInstances).set({ status: 'cancelled', currentNodeKey: null }).where(and(...conditions)).returning();
     return { row, cancelledTasks: cancelled };
   });
@@ -3088,31 +3161,16 @@ export async function approveTaskCore(
       return { row, finished: false, rejected: false, advanced: false, approvedTask, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
-    const completedKeys = await getCompletedNodeKeys(tx, inst.id);
     const formData = (lockedInst.formData ?? inst.formData ?? {}) as Record<string, unknown>;
     const starter = await buildStarterContext(inst.initiatorId, tx);
     // 退回模式 backToOrigin：被退回任务通过后，直接跳回发起退回的来源节点（而非继续后续路径）
-    let advanceResult: AdvanceResult;
     const originCfg = task.returnOriginNodeKey
       ? flowData.nodes.find((n) => n.data.key === task.returnOriginNodeKey)?.data
       : undefined;
-    if (originCfg && (originCfg.type === 'approve' || originCfg.type === 'handler')) {
-      advanceResult = {
-        finished: false,
-        rejected: false,
-        tasksToCreate: [{
-          nodeKey: originCfg.key,
-          nodeName: originCfg.label,
-          nodeType: originCfg.type,
-          assigneeId: originCfg.assigneeId ?? null,
-          nodeConfig: originCfg,
-        }],
-        currentNodeKeys: [originCfg.key],
-      };
-    } else {
-      advanceResult = advanceFlow(flowData, task.nodeKey, formData, completedKeys, starter);
-    }
-    const materialized = await materializeAdvanceResult(advanceResult, {
+    const advTrigger: MaterializeTrigger = (originCfg && (originCfg.type === 'approve' || originCfg.type === 'handler'))
+      ? { kind: 'enterNode', nodeKey: originCfg.key, consumeNodeKey: task.nodeKey }
+      : { kind: 'advanceNode', nodeKey: task.nodeKey };
+    const materialized = await advanceAndMaterialize(advTrigger, {
       instanceId: inst.id,
       initiatorId: inst.initiatorId,
       executor: tx,
@@ -3121,6 +3179,7 @@ export async function approveTaskCore(
       settings: flowData.settings,
       selectedNextApprovers: options?.selectedNextApprovers,
       starter,
+      tenantId: inst.tenantId,
     });
 
     if (materialized.rejected) {
@@ -3333,6 +3392,7 @@ export async function rejectTaskCore(
 
     // 终止：实例置为 rejected
     if (strategy === 'terminate' || !targetNodeKey || !flowData) {
+      await killInstanceTokens(tx, inst.id);
       const [row] = await tx.update(workflowInstances)
         .set({ status: 'rejected', currentNodeKey: null })
         .where(eq(workflowInstances.id, inst.id))
@@ -3343,29 +3403,19 @@ export async function rejectTaskCore(
     // 回退：实例保持 running，在目标节点重新生成任务
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
     const starter = await buildStarterContext(inst.initiatorId, tx);
-    let advanceResult: AdvanceResult | null = null;
+    let returnTrigger: MaterializeTrigger | null = null;
 
     if (strategy === 'returnStart') {
-      advanceResult = getInitialTasks(flowData, formData, starter);
+      returnTrigger = { kind: 'seed' };
     } else {
       const targetCfg = flowData.nodes.find((n) => n.data.key === targetNodeKey)?.data;
       if (targetCfg && (targetCfg.type === 'approve' || targetCfg.type === 'handler')) {
-        advanceResult = {
-          finished: false,
-          rejected: false,
-          tasksToCreate: [{
-            nodeKey: targetCfg.key,
-            nodeName: targetCfg.label,
-            nodeType: targetCfg.type,
-            assigneeId: targetCfg.assigneeId ?? null,
-            nodeConfig: targetCfg,
-          }],
-          currentNodeKeys: [targetCfg.key],
-        };
+        returnTrigger = { kind: 'enterNode', nodeKey: targetCfg.key };
       }
     }
 
-    if (!advanceResult || (advanceResult.tasksToCreate.length === 0 && !advanceResult.finished && !advanceResult.rejected)) {
+    if (!returnTrigger) {
+      await killInstanceTokens(tx, inst.id);
       const [row] = await tx.update(workflowInstances)
         .set({ status: 'rejected', currentNodeKey: null })
         .where(eq(workflowInstances.id, inst.id))
@@ -3373,7 +3423,9 @@ export async function rejectTaskCore(
       return { row, terminated: true, rejectedTask, skippedTasks: skipped, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
 
-    const materialized = await materializeAdvanceResult(advanceResult, {
+    // 回退前清场：终止所有 active token，避免旧并行分支残留 token 影响重建路径的汇聚判定
+    await killInstanceTokens(tx, inst.id);
+    const materialized = await advanceAndMaterialize(returnTrigger, {
       instanceId: inst.id,
       initiatorId: inst.initiatorId,
       executor: tx,
@@ -3381,6 +3433,7 @@ export async function rejectTaskCore(
       formData,
       settings: flowData.settings,
       starter,
+      tenantId: inst.tenantId,
     });
 
     // 退回模式 backToOrigin：给目标节点新任务打上来源节点标记，通过后直接跳回本节点
@@ -3756,11 +3809,9 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       return { removed: updated, advanced: false, finished: false, rejected: false, row: inst, newTasks: [] as typeof workflowTasks.$inferSelect[] };
     }
     // 减签触发节点完成：推进流程（checkNodeCompletion 已跳过本节点剩余 pending/waiting 任务）
-    const completedKeys = await getCompletedNodeKeys(tx, inst.id);
     const formData = (inst.formData ?? {}) as Record<string, unknown>;
     const starter = await buildStarterContext(inst.initiatorId, tx);
-    const advanceResult = advanceFlow(flowData, task.nodeKey, formData, completedKeys, starter);
-    const materialized = await materializeAdvanceResult(advanceResult, {
+    const materialized = await advanceAndMaterialize({ kind: 'advanceNode', nodeKey: task.nodeKey }, {
       instanceId: inst.id,
       initiatorId: inst.initiatorId,
       executor: tx,
@@ -3768,6 +3819,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       formData,
       settings: flowData.settings,
       starter,
+      tenantId: inst.tenantId,
     });
     if (materialized.rejected) {
       // 下游自动拒绝终止流程：清理实例其余未结束任务，保证 rejected 实例无残留待办
@@ -4090,7 +4142,7 @@ export async function submitDraftInstance(id: number) {
       status: 'running',
       currentNodeKey: null,
     }).where(eq(workflowInstances.id, id));
-    const materialized = await materializeAdvanceResult(initialResult, {
+    const materialized = await advanceAndMaterialize({ kind: 'seed' }, {
       instanceId: id,
       initiatorId: user.userId,
       executor: tx,
@@ -4098,6 +4150,7 @@ export async function submitDraftInstance(id: number) {
       formData,
       settings: flowData.settings,
       starter,
+      tenantId: inst.tenantId,
     });
     const [updatedInstance] = await tx.update(workflowInstances).set({
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
@@ -4211,14 +4264,6 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   }
   const formData = (inst.formData ?? {}) as Record<string, unknown>;
   const starter = await buildStarterContext(inst.initiatorId);
-  const taskAction: TaskAction = {
-    nodeKey: targetNode.data.key,
-    nodeName: targetNode.data.label,
-    nodeType: targetNode.data.type,
-    assigneeId: targetNode.data.assigneeId ?? null,
-    nodeConfig: targetNode.data,
-  };
-  const fakeResult: AdvanceResult = { finished: false, rejected: false, tasksToCreate: [taskAction], currentNodeKeys: [targetNode.data.key] };
   const note = `[管理员强制跳转至「${targetNode.data.label}」]${comment ? ' ' + comment : ''}`;
   const { instance, createdTasks } = await db.transaction(async (tx) => {
     const [locked] = await tx.select({ status: workflowInstances.status })
@@ -4228,7 +4273,8 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
     }
     await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: note })
       .where(and(eq(workflowTasks.instanceId, id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-    const materialized = await materializeAdvanceResult(fakeResult, {
+    await killInstanceTokens(tx, id);
+    const materialized = await advanceAndMaterialize({ kind: 'enterNode', nodeKey: targetNode.data.key }, {
       instanceId: id,
       initiatorId: inst.initiatorId,
       executor: tx,
@@ -4236,6 +4282,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
       formData,
       settings: flowData.settings,
       starter,
+      tenantId: inst.tenantId,
     });
     const [updatedInstance] = await tx.update(workflowInstances).set({
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
@@ -4330,6 +4377,16 @@ export async function recallTask(taskId: number, comment?: string) {
       actionAt: null,
     }).where(eq(workflowTasks.id, task.id)).returning();
     await tx.update(workflowInstances).set({ status: 'running', currentNodeKey: task.nodeKey }).where(eq(workflowInstances.id, task.instanceId));
+    // Token 一致性：撤回重审清场后，在被重开节点重建单一 active token（后续路径 token 已随删除/清场失效）
+    await killInstanceTokens(tx, task.instanceId);
+    await tx.insert(workflowTokens).values({
+      instanceId: task.instanceId,
+      nodeKey: task.nodeKey,
+      status: 'active',
+      branchPath: [],
+      parentTokenId: null,
+      tenantId: inst.tenantId,
+    });
     return row;
   });
 
