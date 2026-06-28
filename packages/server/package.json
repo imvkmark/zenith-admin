@@ -53,7 +53,7 @@
 		"ip-range-check": "^0.2.0",
 		"jsep": "^1.4.0",
 		"ldapts": "^8.1.8",
-		"mssql": "^11.0.1",
+		"mssql": "^12.6.0",
 		"mysql2": "^3.22.5",
 		"node-ip2region": "^1.0.2",
 		"node-pty": "^1.1.0",
