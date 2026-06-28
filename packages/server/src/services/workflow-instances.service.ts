@@ -1712,8 +1712,8 @@ async function advanceAndMaterialize(
   } else if (trigger.kind === 'advanceNode') {
     const live = await loadLiveTokens(exec, ctx.instanceId);
     const tk = live.find((t) => t.nodeKey === trigger.nodeKey);
-    if (tk) engineTriggers.push({ type: 'advance', tokenId: tk.id, nodeKey: tk.nodeKey, branchPath: tk.branchPath });
-    else engineTriggers.push({ type: 'continue', nodeKey: trigger.nodeKey, branchPath: [] });
+    if (!tk) throw new HTTPException(500, { message: `节点「${trigger.nodeKey}」缺少执行 Token，实例 token 状态异常` });
+    engineTriggers.push({ type: 'advance', tokenId: tk.id, nodeKey: tk.nodeKey, branchPath: tk.branchPath });
   } else {
     if (trigger.consumeNodeKey) {
       const live = await loadLiveTokens(exec, ctx.instanceId);
