@@ -511,6 +511,28 @@ export const WorkflowSimulationBlockingPointDTO = z
   })
   .openapi('WorkflowSimulationBlockingPoint');
 
+/** 已保存的仿真用例（测试场景归档） */
+export const WorkflowSimulationCaseDTO = z
+  .object({
+    id: z.number().int(),
+    definitionId: z.number().int(),
+    name: z.string(),
+    starterUserId: z.number().int().nullable(),
+    formData: z.record(z.string(), z.unknown()),
+    decisions: z.array(z.object({
+      nodeKey: z.string(),
+      action: z.enum(['approve', 'reject', 'skip', 'wait']),
+      assigneeId: z.number().int().optional(),
+      reason: z.string().optional(),
+      formPatch: z.record(z.string(), z.unknown()).optional(),
+    })),
+    tenantId: z.number().int().nullable(),
+    ...auditFields,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('WorkflowSimulationCase');
+
 export const WorkflowSimulationResultDTO = z
   .object({
     valid: z.boolean(),

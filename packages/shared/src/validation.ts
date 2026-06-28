@@ -1175,6 +1175,16 @@ export const simulateWorkflowSchema = z.object({
 });
 export type SimulateWorkflowInput = z.infer<typeof simulateWorkflowSchema>;
 
+/** 保存仿真用例（按 definitionId + name 归档，重名覆盖） */
+export const saveWorkflowSimulationCaseSchema = z.object({
+  definitionId: z.number().int().positive(),
+  name: z.string().min(1, '用例名称不能为空').max(64),
+  starterUserId: z.number().int().positive().nullish(),
+  formData: z.record(z.string(), z.unknown()).default({}),
+  decisions: z.array(workflowSimulationDecisionSchema).max(200).default([]),
+});
+export type SaveWorkflowSimulationCaseInput = z.input<typeof saveWorkflowSimulationCaseSchema>;
+
 export const workflowHealthCheckSchema = z.object({
   definitionId: z.number().int().positive().optional(),
   flowData: z.looseObject({}).nullable().optional(),

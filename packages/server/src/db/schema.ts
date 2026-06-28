@@ -1887,6 +1887,26 @@ export const workflowConnectorInvocations = pgTable('workflow_connector_invocati
 export type WorkflowConnectorInvocationRow = typeof workflowConnectorInvocations.$inferSelect;
 
 
+// 流程仿真用例（保存的测试场景：表单数据 + 决策 + 发起人，按定义归档，供回归仿真复用）
+export const workflowSimulationCases = pgTable('workflow_simulation_cases', {
+  id: serial('id').primaryKey(),
+  definitionId: integer('definition_id').notNull().references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 64 }).notNull(),
+  /** 测试发起人（可空，空表示用当前登录用户） */
+  starterUserId: integer('starter_user_id').references(() => users.id, { onDelete: 'set null' }),
+  /** 测试表单数据 */
+  formData: jsonb('form_data').notNull().default(sql`'{}'::jsonb`),
+  /** 仿真决策序列（逐节点 approve/reject/skip/wait + reason + formPatch） */
+  decisions: jsonb('decisions').notNull().default(sql`'[]'::jsonb`),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  ...auditColumns(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (t) => [unique('workflow_simulation_cases_name_uniq').on(t.definitionId, t.name)]);
+
+export type WorkflowSimulationCaseRow = typeof workflowSimulationCases.$inferSelect;
+
+
 // 流程实例
 export const workflowInstances = pgTable('workflow_instances', {
   id: serial('id').primaryKey(),

@@ -2,12 +2,13 @@
  * 流程设计器仿真抽屉：收集测试表单数据，并在流程图中呈现 dry-run 运行态。
  */
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
-import { Banner, Button, Select, SideSheet, Space, Switch, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Input, Select, SideSheet, Space, Switch, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, GitCompare, Keyboard, ListChecks, Minus, PanelRightClose, Pause, Play, Plus, RotateCcw, RotateCw, Save, Send, SlidersHorizontal, Wand2, XCircle } from 'lucide-react';
-import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared';
+import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, GitCompare, Keyboard, ListChecks, Minus, PanelRightClose, Pause, Play, Plus, RotateCcw, RotateCw, Save, Send, SlidersHorizontal, Trash2, Wand2, XCircle } from 'lucide-react';
+import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared';
 import { request } from '@/utils/request';
-import { formatDateForApi, formatDateTimeForApi } from '@/utils/date';
+import { formatDateForApi } from '@/utils/date';
+import AppModal from '@/components/AppModal';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import FlowRenderer from './FlowRenderer';
 import type { FlowBranch, FlowNode, FlowProcess, NodeRuntimeInfo } from '../types';
@@ -27,15 +28,6 @@ interface WorkflowSimulationDrawerProps {
   onClose: () => void;
 }
 
-interface SavedSimulationCase {
-  id: string;
-  name: string;
-  createdAt: string;
-  starterUserId?: number;
-  formData: Record<string, unknown>;
-  decisions: WorkflowSimulationDecision[];
-}
-
 interface SelectedSimulationBranch {
   id: string;
   name: string;
@@ -43,8 +35,6 @@ interface SelectedSimulationBranch {
   branchNodeName: string;
   childNodeKeys: string[];
 }
-
-const SAVED_CASE_STORAGE_KEY = 'zenith.workflow.simulation.cases';
 
 const RESULT_META: Record<WorkflowSimulationResult['result'], { label: string; color: 'green' | 'red' | 'orange' | 'grey' | 'blue' }> = {
   finished: { label: '已完成', color: 'green' },
@@ -254,22 +244,6 @@ function generateMockFormData(fields: WorkflowFormField[], users: UserOption[]):
   return out;
 }
 
-function readSavedCases(): SavedSimulationCase[] {
-  try {
-    const raw = localStorage.getItem(SAVED_CASE_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is SavedSimulationCase => !!item && typeof item === 'object' && typeof (item as SavedSimulationCase).id === 'string');
-  } catch {
-    return [];
-  }
-}
-
-function writeSavedCases(cases: SavedSimulationCase[]): void {
-  localStorage.setItem(SAVED_CASE_STORAGE_KEY, JSON.stringify(cases.slice(0, 20)));
-}
-
 function buildLocalHealthIssues(flowData: WorkflowFlowData): WorkflowSimulationHealthIssue[] {
   const issues: WorkflowSimulationHealthIssue[] = [];
   const nodeById = new Map(flowData.nodes.map((node) => [node.id, node.data]));
@@ -401,8 +375,11 @@ export default function WorkflowSimulationDrawer({
   const [decisions, setDecisions] = useState<WorkflowSimulationDecision[]>([]);
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
   const [selectedBranch, setSelectedBranch] = useState<SelectedSimulationBranch | null>(null);
-  const [savedCases, setSavedCases] = useState<SavedSimulationCase[]>(() => readSavedCases());
-  const [selectedCaseId, setSelectedCaseId] = useState<string | undefined>(undefined);
+  const [savedCases, setSavedCases] = useState<WorkflowSimulationCase[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState<number | undefined>(undefined);
+  const [saveCaseModalVisible, setSaveCaseModalVisible] = useState(false);
+  const [caseName, setCaseName] = useState('');
+  const [caseSaving, setCaseSaving] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -690,33 +667,51 @@ export default function WorkflowSimulationDrawer({
     moveStep(index >= 0 ? index + 1 : totalSteps);
   };
 
-  const saveCase = async () => {
+  const loadCases = async () => {
+    if (!definitionId) { setSavedCases([]); return; }
+    const res = await request.get<WorkflowSimulationCase[]>(`/api/workflows/simulation-cases?definitionId=${definitionId}`, { silent: true });
+    if (res.code === 0) setSavedCases(res.data ?? []);
+  };
+
+  const openSaveCase = async () => {
+    if (!definitionId) { Toast.warning('请先保存流程后再保存用例'); return; }
     const values = await effectiveFormData();
     if (!values) return;
-    const name = window.prompt('请输入用例名称', `仿真用例 ${savedCases.length + 1}`);
-    if (!name?.trim()) return;
-    const item: SavedSimulationCase = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      name: name.trim(),
-      createdAt: formatDateTimeForApi(new Date()),
-      starterUserId,
-      formData: values,
-      decisions,
-    };
-    const next = [item, ...savedCases.filter((saved) => saved.name !== item.name)].slice(0, 20);
-    setSavedCases(next);
-    writeSavedCases(next);
-    setSelectedCaseId(item.id);
-    Toast.success('仿真用例已保存');
+    setCaseName(`仿真用例 ${savedCases.length + 1}`);
+    setSaveCaseModalVisible(true);
+  };
+
+  const confirmSaveCase = async () => {
+    if (!definitionId) return;
+    const name = caseName.trim();
+    if (!name) { Toast.warning('请输入用例名称'); return; }
+    const values = await effectiveFormData();
+    if (!values) return;
+    setCaseSaving(true);
+    try {
+      const res = await request.post<WorkflowSimulationCase>('/api/workflows/simulation-cases', {
+        definitionId, name, starterUserId: starterUserId ?? null, formData: values, decisions,
+      });
+      if (res.code === 0) {
+        Toast.success('仿真用例已保存');
+        setSaveCaseModalVisible(false);
+        setSelectedCaseId(res.data.id);
+        await loadCases();
+      } else {
+        Toast.warning(res.message || '保存失败');
+      }
+    } finally {
+      setCaseSaving(false);
+    }
   };
 
   const loadCase = (caseId: string | number | unknown) => {
-    const id = typeof caseId === 'string' ? caseId : undefined;
+    const id = typeof caseId === 'number' ? caseId : undefined;
     setSelectedCaseId(id);
     if (!id) return;
     const item = savedCases.find((saved) => saved.id === id);
     if (!item) return;
-    setStarterUserId(item.starterUserId);
+    setStarterUserId(item.starterUserId ?? undefined);
     setDecisions(item.decisions);
     applyFormValues(item.formData);
     setResult(null);
@@ -725,6 +720,22 @@ export default function WorkflowSimulationDrawer({
     setSelectedBranch(null);
     Toast.success('已载入仿真用例');
   };
+
+  const deleteCase = async () => {
+    if (!selectedCaseId) return;
+    const res = await request.delete(`/api/workflows/simulation-cases/${selectedCaseId}`);
+    if (res.code === 0) {
+      Toast.success('已删除用例');
+      setSelectedCaseId(undefined);
+      await loadCases();
+    }
+  };
+
+  // 打开抽屉时从后端拉取该定义已保存的仿真用例
+  useEffect(() => {
+    if (visible) void loadCases();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, definitionId]);
 
   const simulationNodeRuntime = useMemo(() => {
     if (!result || currentStep <= 0) return undefined;
@@ -975,6 +986,7 @@ export default function WorkflowSimulationDrawer({
   };
 
   return (
+    <>
     <SideSheet
       title="流程仿真"
       visible={visible}
@@ -990,7 +1002,9 @@ export default function WorkflowSimulationDrawer({
               <span>仿真输入</span>
               <Space spacing={4} wrap>
                 <Button size="small" type="tertiary" icon={<Wand2 size={13} />} onClick={generateTestData}>生成测试数据</Button>
-                <Button size="small" type="tertiary" icon={<Save size={13} />} onClick={() => void saveCase()}>保存用例</Button>
+                <Tooltip content={definitionId ? '' : '请先保存流程后再保存用例'} trigger={definitionId ? 'custom' : 'hover'}>
+                  <Button size="small" type="tertiary" icon={<Save size={13} />} disabled={!definitionId} onClick={() => void openSaveCase()}>保存用例</Button>
+                </Tooltip>
               </Space>
             </div>
             <Select
@@ -1002,15 +1016,23 @@ export default function WorkflowSimulationDrawer({
               value={starterUserId}
               onChange={(v) => setStarterUserId(typeof v === 'number' ? v : undefined)}
             />
-            <Select
-              style={{ width: '100%', marginBottom: 12 }}
-              placeholder="载入已保存的仿真用例"
-              showClear
-              filter
-              optionList={savedCaseOptions}
-              value={selectedCaseId}
-              onChange={loadCase}
-            />
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              <Select
+                style={{ flex: 1 }}
+                placeholder={definitionId ? '载入已保存的仿真用例' : '保存流程后可载入用例'}
+                showClear
+                filter
+                disabled={!definitionId}
+                optionList={savedCaseOptions}
+                value={selectedCaseId}
+                onChange={loadCase}
+              />
+              {selectedCaseId != null && (
+                <Tooltip content="删除该用例">
+                  <Button size="small" type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => void deleteCase()} />
+                </Tooltip>
+              )}
+            </div>
             {formFields.length > 0 ? (
               <div className="fd-simulation-form-box">
                 <WorkflowFormRenderer
@@ -1154,5 +1176,29 @@ export default function WorkflowSimulationDrawer({
         </section>
       </div>
     </SideSheet>
+
+    <AppModal
+      title="保存仿真用例"
+      visible={saveCaseModalVisible}
+      onCancel={() => setSaveCaseModalVisible(false)}
+      onOk={() => void confirmSaveCase()}
+      confirmLoading={caseSaving}
+      okText="保存"
+      closeOnEsc
+      width={420}
+    >
+      <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 8 }}>
+        将当前测试发起人、表单数据与决策序列保存为用例，归档到该流程下，团队共享；同名将覆盖。
+      </Typography.Text>
+      <Input
+        value={caseName}
+        onChange={setCaseName}
+        maxLength={64}
+        showClear
+        placeholder="请输入用例名称"
+        onEnterPress={() => void confirmSaveCase()}
+      />
+    </AppModal>
+    </>
   );
 }

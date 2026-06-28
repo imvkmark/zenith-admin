@@ -2764,6 +2764,21 @@ export interface WorkflowSimulationDecision {
   formPatch?: Record<string, unknown>;
 }
 
+/** 已保存的仿真用例（测试场景：表单数据 + 决策 + 发起人，按定义归档，供回归仿真复用） */
+export interface WorkflowSimulationCase {
+  id: number;
+  definitionId: number;
+  name: string;
+  starterUserId: number | null;
+  formData: Record<string, unknown>;
+  decisions: WorkflowSimulationDecision[];
+  tenantId: number | null;
+  createdBy?: number | null;
+  updatedBy?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** 流程仿真选项 */
 export interface WorkflowSimulationOptions {
   maxSteps?: number;

@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineRuntimeTask, WorkflowFlowData, WorkflowFormField, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationResult, WorkflowTask, WorkflowTaskUrge } from '@zenith/shared';
 import {
   mockWorkflowDefinitions,
   mockWorkflowInstances,
@@ -1029,6 +1029,10 @@ const mockWorkflowUrges: WorkflowTaskUrge[] = [];
 let urgeIdSeq = 1;
 const URGE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
+// 仿真用例内存态（演示用，按定义归档）
+const mockSimulationCases: WorkflowSimulationCase[] = [];
+let simCaseSeq = 1;
+
 // ─── 流程定义 Handler ──────────────────────────────────────────────────────
 
 export const workflowHandlers = [
@@ -1053,6 +1057,41 @@ export const workflowHandlers = [
   http.get('/api/workflows/definitions/published', () => {
     const list = mockWorkflowDefinitions.filter(d => d.status === 'published' && d.formType !== 'external').map(resolveWorkflowDefinition);
     return ok(list);
+  }),
+
+  // 仿真用例（按定义归档，内存态演示）
+  http.get('/api/workflows/simulation-cases', ({ request }) => {
+    const definitionId = Number(new URL(request.url).searchParams.get('definitionId')) || 0;
+    return ok(mockSimulationCases.filter((item) => item.definitionId === definitionId).sort((a, b) => b.id - a.id));
+  }),
+
+  http.post('/api/workflows/simulation-cases', async ({ request }) => {
+    const body = await request.json() as { definitionId: number; name: string; starterUserId?: number | null; formData?: Record<string, unknown>; decisions?: WorkflowSimulationDecision[] };
+    if (!body.name?.trim()) return err('用例名称不能为空');
+    const now = mockDateTime();
+    const name = body.name.trim();
+    const existing = mockSimulationCases.find((item) => item.definitionId === body.definitionId && item.name === name);
+    if (existing) {
+      existing.starterUserId = body.starterUserId ?? null;
+      existing.formData = body.formData ?? {};
+      existing.decisions = body.decisions ?? [];
+      existing.updatedAt = now;
+      return ok(existing, '已保存');
+    }
+    const item: WorkflowSimulationCase = {
+      id: simCaseSeq++, definitionId: body.definitionId, name,
+      starterUserId: body.starterUserId ?? null, formData: body.formData ?? {}, decisions: body.decisions ?? [],
+      tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now, updatedAt: now,
+    };
+    mockSimulationCases.unshift(item);
+    return ok(item, '已保存');
+  }),
+
+  http.delete('/api/workflows/simulation-cases/:id', ({ params }) => {
+    const idx = mockSimulationCases.findIndex((item) => item.id === Number(params.id));
+    if (idx === -1) return err('仿真用例不存在', 404);
+    mockSimulationCases.splice(idx, 1);
+    return ok(null, '删除成功');
   }),
 
   // 流程仿真（Demo 模式轻量实现）

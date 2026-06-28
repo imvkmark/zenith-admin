@@ -166,6 +166,28 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
     expect(one.tokens).toBeTruthy();
   });
 
+  it('simulation cases: save upserts by name, lists, and deletes', async () => {
+    const sc = await import('./workflow-simulation-cases.service');
+    const name = `it-case-${Date.now()}`;
+    const c1 = await runWithCurrentUser(asUser(), () => sc.saveSimulationCase({
+      definitionId: timeoutDefId, name, starterUserId: initiatorId, formData: { amount: 100 }, decisions: [],
+    }));
+    expect(c1.name).toBe(name);
+    expect((c1.formData as { amount?: number }).amount).toBe(100);
+    // 同名覆盖：不新增，更新内容
+    const c2 = await runWithCurrentUser(asUser(), () => sc.saveSimulationCase({
+      definitionId: timeoutDefId, name, starterUserId: initiatorId, formData: { amount: 200 }, decisions: [{ nodeKey: 'n1', action: 'approve' }],
+    }));
+    expect(c2.id).toBe(c1.id);
+    expect((c2.formData as { amount?: number }).amount).toBe(200);
+    expect(c2.decisions.length).toBe(1);
+    const list = await runWithCurrentUser(asUser(), () => sc.listSimulationCases(timeoutDefId));
+    expect(list.filter((x) => x.name === name).length).toBe(1);
+    await runWithCurrentUser(asUser(), () => sc.deleteSimulationCase(c1.id));
+    const after = await runWithCurrentUser(asUser(), () => sc.listSimulationCases(timeoutDefId));
+    expect(after.some((x) => x.id === c1.id)).toBe(false);
+  });
+
   it('publish hard-gate blocks definitions with critical health issues', async () => {
     const [badDef] = await db.insert(schema.workflowDefinitions).values({
       name: 'IT 体检拦截', code: `it_gate_${Date.now()}`,
