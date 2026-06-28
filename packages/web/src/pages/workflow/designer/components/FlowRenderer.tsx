@@ -1,7 +1,7 @@
 /**
  * FlowRenderer — 递归渲染整个流程树
  */
-import type { FlowNode, FlowNodeType, FlowBranch, NodeRuntimeInfo } from '../types';
+import type { FlowNode, FlowNodeType, FlowBranch, NodeRuntimeInfo, NodeHealthInfo } from '../types';
 import { isBranchNode } from '../types';
 import InitiatorNode from './InitiatorNode';
 import EndNode from './EndNode';
@@ -26,6 +26,8 @@ interface FlowRendererProps {
   readOnlyInteractive?: boolean;
   /** 运行态：nodeKey → 节点运行态（实例详情流程图叠加状态） */
   nodeRuntime?: Map<string, NodeRuntimeInfo>;
+  /** 设计态：nodeKey → 节点体检问题（画布实时红点/告警角标） */
+  nodeHealth?: Map<string, NodeHealthInfo>;
   /** 运行态：未被实际命中的分支 id 集合（用于置灰未走的分支） */
   dimmedBranchIds?: Set<string>;
   /** 运行态：实例状态（用于 start/end 节点状态标识） */
@@ -59,6 +61,7 @@ export default function FlowRenderer({
   readOnly = false,
   readOnlyInteractive = false,
   nodeRuntime,
+  nodeHealth,
   dimmedBranchIds,
   instanceStatus,
   onSimulationNodeClick,
@@ -94,6 +97,7 @@ export default function FlowRenderer({
             onMoveBranch={moveBranch}
             onEditNode={editNode}
             formFields={formFields}
+            health={nodeHealth?.get(node.key ?? node.id)}
             dimmedBranchIds={dimmedBranchIds}
             onSimulationBranchClick={onSimulationBranchClick}
             selectedSimulationBranchId={selectedSimulationBranchId}
@@ -109,6 +113,7 @@ export default function FlowRenderer({
             readOnly={readOnly}
             readOnlyInteractive={readOnlyInteractive}
             runtime={nodeRuntime?.get(node.key ?? node.id)}
+            health={nodeHealth?.get(node.key ?? node.id)}
             onSimulationNodeClick={onSimulationNodeClick}
             onSimulationNodeContextMenu={onSimulationNodeContextMenu}
             simulationBreakpoint={simulationBreakpoints?.has(node.key ?? node.id)}

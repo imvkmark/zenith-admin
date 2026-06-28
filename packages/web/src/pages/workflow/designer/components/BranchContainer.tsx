@@ -5,9 +5,10 @@
  */
 import { Pencil, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Popconfirm } from '@douyinfe/semi-ui';
-import type { FlowNode, FlowBranch, FlowNodeType, BranchNodeType } from '../types';
+import type { FlowNode, FlowBranch, FlowNodeType, BranchNodeType, NodeHealthInfo } from '../types';
 import { NODE_COLOR_MAP, BRANCH_ADD_LABEL } from '../constants';
 import AddNodeButton from './AddNodeButton';
+import NodeHealthBadge from './NodeHealthBadge';
 
 interface BranchContainerProps {
   node: FlowNode;
@@ -26,6 +27,8 @@ interface BranchContainerProps {
   /** 运行态：未被实际命中的分支 id（置灰展示） */
   dimmedBranchIds?: Set<string>;
   readOnly?: boolean;
+  /** 设计态体检：本网关节点问题聚合（分支覆盖等） */
+  health?: NodeHealthInfo;
   /** 仿真图交互：点击分支标题查看条件命中原因 */
   onSimulationBranchClick?: (branch: FlowBranch, branchNode: FlowNode) => void;
   selectedSimulationBranchId?: string | null;
@@ -84,6 +87,7 @@ export default function BranchContainer({
   formFields,
   dimmedBranchIds,
   readOnly = false,
+  health,
   onSimulationBranchClick,
   selectedSimulationBranchId,
 }: Readonly<BranchContainerProps>) {
@@ -131,6 +135,11 @@ export default function BranchContainer({
       {banner && (
         <div className={banner.className}>
           {banner.text}
+        </div>
+      )}
+      {health && (health.error > 0 || health.warn > 0 || health.info > 0) && (
+        <div className="fd-branch-health" style={{ display: 'flex', justifyContent: 'center', margin: '2px 0' }}>
+          <NodeHealthBadge health={health} />
         </div>
       )}
       <div className="fd-branch-wrap">

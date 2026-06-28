@@ -9,10 +9,10 @@
  * - 延迟器/触发器/子流程：基础配置
  */
 import { useEffect, useState } from 'react';
-import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, InputNumber, Switch, RadioGroup, Radio, Button } from '@douyinfe/semi-ui';
+import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, InputNumber, Switch, RadioGroup, Radio, Button, Banner } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import { request } from '@/utils/request';
-import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig } from '../types';
+import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig, NodeHealthInfo } from '../types';
 import type { NodeListenerConfig } from '@zenith/shared';
 import { ADDABLE_NODE_TYPES, DEFAULT_APPROVER_OPERATIONS, DELAY_UNIT_OPTIONS, TRIGGER_TYPE_OPTIONS } from '../constants';
 import ApproverSettingsTab from './tabs/ApproverSettingsTab';
@@ -138,6 +138,8 @@ function formatFieldKeys(fieldKeys: unknown): string {
 interface NodeConfigDrawerProps {
   visible: boolean;
   node: FlowNode | null;
+  /** 设计态体检：本节点问题（3B 抽屉顶部实时校验 Banner） */
+  health?: NodeHealthInfo;
   users: UserOption[];
   roles: RoleOption[];
   userGroups?: UserGroupOption[];
@@ -160,6 +162,7 @@ interface NodeConfigDrawerProps {
 export default function NodeConfigDrawer({
   visible,
   node,
+  health,
   users,
   roles,
   userGroups = [],
@@ -266,6 +269,28 @@ export default function NodeConfigDrawer({
         </div>
       }
     >
+      {/* 3B 节点实时体检：展示本节点配置问题 + 修复建议 */}
+      {health && (health.error > 0 || health.warn > 0 || health.info > 0) && (
+        <Banner
+          type={health.error > 0 ? 'danger' : health.warn > 0 ? 'warning' : 'info'}
+          fullMode={false}
+          closeIcon={null}
+          style={{ marginBottom: 16 }}
+          description={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {health.issues.map((iss, idx) => (
+                <div key={idx}>
+                  <Typography.Text size="small" strong>{iss.message}</Typography.Text>
+                  {iss.suggestion && (
+                    <Typography.Text size="small" type="tertiary">　建议：{iss.suggestion}</Typography.Text>
+                  )}
+                </div>
+              ))}
+            </div>
+          }
+        />
+      )}
+
       {/* 节点名称（所有节点通用） */}
       <div style={{ marginBottom: 16 }}>
         <Typography.Text strong size="small" style={{ display: 'block', marginBottom: 6 }}>节点名称</Typography.Text>

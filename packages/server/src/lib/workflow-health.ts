@@ -24,6 +24,25 @@ import { formatDateTime } from './datetime';
 /** 审批人/条件表达式可引用的根变量（form=表单字段，starter=发起人上下文） */
 const EXPR_ROOTS = ['form', 'starter'];
 
+/** DB/类型感知的体检增强（由 service 层预算后注入纯分析器，分析器本身仍不外呼/不查库） */
+export interface WorkflowHealthEnrichment {
+  /** 字段 key → 表单字段类型，用于条件操作符/类型兼容性校验 */
+  fieldTypes?: Map<string, string> | null;
+  /** nodeKey → 不可用审批人提示（如「指定审批人 张三 已停用」），注入审批人维度 */
+  approverAvailability?: Map<string, string[]> | null;
+}
+
+/** 数值/大小比较类操作符——要求字段为数值或日期型 */
+const NUMERIC_OPERATORS = new Set(['gt', 'gte', 'lt', 'lte', 'between']);
+/** 日期相对比较操作符——要求字段为日期型 */
+const DATE_OPERATORS = new Set(['withinDays', 'beforeDays']);
+/** 数值/日期可比较字段类型 */
+const NUMERIC_DATE_FIELD_TYPES = new Set(['number', 'amount', 'slider', 'date', 'dateRange', 'time']);
+/** 日期型字段类型 */
+const DATE_FIELD_TYPES = new Set(['date', 'dateRange', 'time']);
+/** 取值含糊（可能存数值/日期）的字段类型，类型校验时放行以免误报 */
+const AMBIGUOUS_FIELD_TYPES = new Set(['select', 'radio', 'autoComplete']);
+
 type FlowNode = { id: string; type?: string; data: WorkflowNodeConfig };
 
 const GATEWAY_TYPES = new Set(['exclusiveGateway', 'inclusiveGateway', 'routeGateway']);
@@ -78,6 +97,7 @@ function clamp(n: number): number {
 export function analyzeWorkflowHealth(
   raw: WorkflowFlowData | null | undefined,
   knownFields?: Set<string> | null,
+  enrichment?: WorkflowHealthEnrichment | null,
 ): WorkflowDefinitionHealthReport {
   const flowData = (raw ?? { nodes: [], edges: [] }) as WorkflowFlowData;
   const nodes = (Array.isArray(flowData.nodes) ? flowData.nodes : []) as FlowNode[];
@@ -119,6 +139,18 @@ export function analyzeWorkflowHealth(
     } else {
       const sev = n.data.type === 'ccNode' ? 'warning' : 'critical';
       approverIssues.push(issue(sev, `节点「${n.data.label || n.data.key}」未配置可解析的审批人来源`, '为该节点指定审批人（成员 / 角色 / 部门 / 岗位 / 发起人相关等）', n));
+    }
+  }
+  // 3D-1 指定审批人可用性（service 层预解析的停用/缺失用户）→ 注入审批人维度告警
+  const availability = enrichment?.approverAvailability;
+  if (availability && availability.size > 0) {
+    for (const n of assigneeNodes) {
+      const msgs = availability.get(n.data.key);
+      if (msgs && msgs.length > 0) {
+        for (const m of msgs) {
+          approverIssues.push(issue('warning', `节点「${n.data.label || n.data.key}」${m}`, '更换为在用的审批人，或改用动态来源并配置空审批人兜底策略', n));
+        }
+      }
     }
   }
   const approverScore = assigneeNodes.length === 0 ? 100 : clamp((resolvable / assigneeNodes.length) * 100);
@@ -234,6 +266,26 @@ export function analyzeWorkflowHealth(
         exprChecks += 1;
         if (!knownFields!.has(c.field)) {
           exprIssues.push(issue('warning', `分支「→ ${nodeName(e.target)}」条件引用了表单中不存在的字段「${c.field}」`, '确认该字段存在于绑定表单中，或更正条件字段 key', src));
+        }
+      }
+    }
+  }
+
+  // 3D-2 条件操作符与字段类型兼容性（仅在已知字段类型时校验，含糊类型放行避免误报）
+  const fieldTypes = enrichment?.fieldTypes;
+  if (fieldTypes && fieldTypes.size > 0) {
+    for (const e of edges) {
+      const src = nodeById.get(e.source) ?? null;
+      for (const c of collectConditions(e)) {
+        if ((c.source ?? 'form') !== 'form' || c.aggregate || !c.field) continue;
+        const ft = fieldTypes.get(c.field);
+        if (!ft || AMBIGUOUS_FIELD_TYPES.has(ft)) continue;
+        if (NUMERIC_OPERATORS.has(c.operator) && !NUMERIC_DATE_FIELD_TYPES.has(ft)) {
+          exprChecks += 1;
+          exprIssues.push(issue('warning', `分支「→ ${nodeName(e.target)}」对字段「${c.field}」（${ft}）使用了数值/大小比较操作符`, '数值比较请用于数字/金额/日期型字段，或更换操作符（如等于/包含）', src));
+        } else if (DATE_OPERATORS.has(c.operator) && !DATE_FIELD_TYPES.has(ft)) {
+          exprChecks += 1;
+          exprIssues.push(issue('warning', `分支「→ ${nodeName(e.target)}」对字段「${c.field}」（${ft}）使用了日期相对比较操作符`, '相对日期比较请用于日期型字段', src));
         }
       }
     }

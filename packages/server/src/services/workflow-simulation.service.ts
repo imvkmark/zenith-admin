@@ -738,22 +738,76 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
  */
 export async function checkDefinitionHealth(input: WorkflowHealthCheckInput): Promise<WorkflowDefinitionHealthReport> {
   const flowData = await resolveFlowData(input as SimulateWorkflowInput);
-  const knownFields = await resolveKnownFormFields(input);
-  return analyzeWorkflowHealth(flowData, knownFields);
+  const { keys, types } = await resolveFormFieldMeta(input);
+  const approverAvailability = await buildApproverAvailability(flowData);
+  return analyzeWorkflowHealth(flowData, keys, { fieldTypes: types, approverAvailability });
 }
 
-/** 解析流程绑定表单的字段 key 集合（用于字段引用校验）；无 definitionId/未绑定表单时返回 null */
-async function resolveKnownFormFields(input: WorkflowHealthCheckInput): Promise<Set<string> | null> {
-  if (!input.definitionId) return null;
+/**
+ * 解析体检用表单字段元数据（key 集合 + 字段类型）。
+ * 优先用设计器草稿直接传入的 formFields（含未保存改动，最准确）；否则按 definitionId 取绑定表单快照。
+ */
+async function resolveFormFieldMeta(input: WorkflowHealthCheckInput): Promise<{ keys: Set<string> | null; types: Map<string, string> | null }> {
+  const build = (fields: Array<{ key?: string | null; type?: string | null }>) => {
+    const keys = new Set<string>();
+    const types = new Map<string, string>();
+    for (const f of fields) {
+      if (!f.key) continue;
+      keys.add(f.key);
+      if (f.type) types.set(f.key, f.type);
+    }
+    return { keys: keys.size > 0 ? keys : null, types: types.size > 0 ? types : null };
+  };
+  if (input.formFields && input.formFields.length > 0) return build(input.formFields);
+  if (!input.definitionId) return { keys: null, types: null };
   const user = currentUser();
   const tc = tenantCondition(workflowDefinitions, user);
   const conds = [eq(workflowDefinitions.id, input.definitionId)];
   if (tc) conds.push(tc);
   const [def] = await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(and(...conds)).limit(1);
-  if (!def?.formId) return null;
+  if (!def?.formId) return { keys: null, types: null };
   const snap = await resolveFormSnapshot(def.formId);
-  if (!snap || snap.fields.length === 0) return null;
-  return new Set(snap.fields.map((f) => f.key).filter((k): k is string => !!k));
+  if (!snap || snap.fields.length === 0) return { keys: null, types: null };
+  return build(snap.fields);
+}
+
+/**
+ * 静态审批人可用性：收集审批/办理/抄送节点显式指定的用户 ID，批量查停用/缺失，
+ * 返回 nodeKey → 告警文案[]。动态来源（角色/部门/主管/表达式等）运行时解析，此处不查。
+ */
+async function buildApproverAvailability(flowData: WorkflowFlowData | null): Promise<Map<string, string[]> | null> {
+  if (!flowData?.nodes?.length) return null;
+  const assigneeTypes = new Set(['approve', 'handler', 'ccNode']);
+  const nodeUserIds: Array<{ key: string; ids: number[] }> = [];
+  const allIds = new Set<number>();
+  for (const n of flowData.nodes) {
+    if (!assigneeTypes.has(n.data.type)) continue;
+    if (n.data.assigneeType && n.data.assigneeType !== 'user') continue; // 仅静态指定来源校验
+    const ids = [
+      ...(typeof n.data.assigneeId === 'number' ? [n.data.assigneeId] : []),
+      ...(Array.isArray(n.data.assigneeIds) ? n.data.assigneeIds : []),
+      ...(Array.isArray(n.data.userIds) ? n.data.userIds : []),
+    ].filter((x): x is number => typeof x === 'number');
+    if (ids.length === 0) continue;
+    const uniq = [...new Set(ids)];
+    nodeUserIds.push({ key: n.data.key, ids: uniq });
+    uniq.forEach((id) => allIds.add(id));
+  }
+  if (allIds.size === 0) return null;
+  const rows = await db.select({ id: users.id, status: users.status, nickname: users.nickname, username: users.username })
+    .from(users).where(inArray(users.id, [...allIds]));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out = new Map<string, string[]>();
+  for (const { key, ids } of nodeUserIds) {
+    const msgs: string[] = [];
+    for (const id of ids) {
+      const u = byId.get(id);
+      if (!u) msgs.push(`指定审批人（用户#${id}）不存在`);
+      else if (u.status !== 'enabled') msgs.push(`指定审批人「${u.nickname ?? u.username}」已停用`);
+    }
+    if (msgs.length > 0) out.set(key, msgs);
+  }
+  return out.size > 0 ? out : null;
 }
 
 // ── 仿真耗时预估 / 阻塞点 ──

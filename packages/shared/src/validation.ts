@@ -1178,10 +1178,20 @@ export type SimulateWorkflowInput = z.infer<typeof simulateWorkflowSchema>;
 export const workflowHealthCheckSchema = z.object({
   definitionId: z.number().int().positive().optional(),
   flowData: z.looseObject({}).nullable().optional(),
+  /** 设计器草稿：当前绑定表单的字段（key + 类型），用于条件/表达式字段引用与类型兼容性实时校验 */
+  formFields: z.array(z.object({ key: z.string(), type: z.string().optional() })).optional(),
 }).refine((v) => v.definitionId || v.flowData, {
   message: 'definitionId 和 flowData 至少需要提供一个',
 });
 export type WorkflowHealthCheckInput = z.infer<typeof workflowHealthCheckSchema>;
+
+/** 设计器草稿审批链路预览（未发布的 flowData + 可选测试发起人/表单数据） */
+export const previewWorkflowDraftSchema = z.object({
+  flowData: z.looseObject({}),
+  formData: z.record(z.string(), z.unknown()).nullable().optional(),
+  starterUserId: z.number().int().positive().optional(),
+});
+export type PreviewWorkflowDraftInput = z.infer<typeof previewWorkflowDraftSchema>;
 
 // ── 主动抄送 / 转发 ──
 export const forwardInstanceSchema = z.object({

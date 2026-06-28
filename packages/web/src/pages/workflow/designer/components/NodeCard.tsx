@@ -5,10 +5,11 @@
  */
 import { ChevronRight, Copy, X } from 'lucide-react';
 import { Popconfirm, Tooltip } from '@douyinfe/semi-ui';
-import type { FlowNode, AssigneeType, ApproveMethod, ApprovalType, OperationPermission, FieldPermission, NodeRuntimeInfo } from '../types';
+import type { FlowNode, AssigneeType, ApproveMethod, ApprovalType, OperationPermission, FieldPermission, NodeRuntimeInfo, NodeHealthInfo } from '../types';
 import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METHOD_OPTIONS, APPROVAL_TYPE_OPTIONS } from '../constants';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
+import NodeHealthBadge from './NodeHealthBadge';
 
 interface NodeCardProps {
   node: FlowNode;
@@ -27,6 +28,8 @@ interface NodeCardProps {
   simulationDebug?: boolean;
   /** 运行态信息（实例详情流程图叠加：实际处理人 + 状态 + 时间）；设计态为空 */
   runtime?: NodeRuntimeInfo;
+  /** 设计态体检：本节点问题聚合（画布实时红点/告警角标）；运行态不显示 */
+  health?: NodeHealthInfo;
 }
 
 /** 节点级运行态标签 */
@@ -196,6 +199,7 @@ export default function NodeCard({
   simulationBreakpoint = false,
   simulationDebug = false,
   runtime,
+  health,
 }: Readonly<NodeCardProps>) {
   const info = getNodeInfo(node.type);
   const color = NODE_COLOR_MAP[node.type] ?? '#999';
@@ -250,6 +254,11 @@ export default function NodeCard({
           </span>
         )}
         <span className="fd-node-card__header-title">{node.name || info?.label || '节点'}</span>
+        {!runtime && health && (
+          <span className="fd-node-card__header-health" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center' }}>
+            <NodeHealthBadge health={health} />
+          </span>
+        )}
         {runtime && (
           <span className={`fd-node-card__rt-badge fd-node-card__rt-badge--${runtime.status}`}>
             {RT_NODE_STATUS[runtime.status]?.label}

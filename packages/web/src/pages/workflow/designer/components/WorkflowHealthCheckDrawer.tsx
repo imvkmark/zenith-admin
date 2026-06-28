@@ -8,6 +8,8 @@ interface Props {
   visible: boolean;
   flowData: WorkflowFlowData;
   definitionId: number | null;
+  /** 设计器当前绑定表单字段（key + 类型），用于字段引用/类型兼容性校验 */
+  formFields?: ReadonlyArray<{ key: string; type?: string }>;
   onClose: () => void;
 }
 
@@ -42,14 +44,17 @@ function renderIssue(issue: WorkflowDefinitionHealthIssue, idx: number) {
   );
 }
 
-export default function WorkflowHealthCheckDrawer({ visible, flowData, definitionId, onClose }: Props) {
+export default function WorkflowHealthCheckDrawer({ visible, flowData, definitionId, formFields, onClose }: Props) {
   const [report, setReport] = useState<WorkflowDefinitionHealthReport | null>(null);
   const [loading, setLoading] = useState(false);
 
   const runCheck = useCallback(async () => {
     setLoading(true);
     try {
-      const body = flowData?.nodes?.length ? { flowData } : { definitionId };
+      const fieldPayload = formFields?.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
+      const body = flowData?.nodes?.length
+        ? { flowData, ...(fieldPayload?.length ? { formFields: fieldPayload } : {}) }
+        : { definitionId };
       const res = await request.post<WorkflowDefinitionHealthReport>('/api/workflows/definitions/health-check', body);
       if (res.code === 0) setReport(res.data);
     } finally {

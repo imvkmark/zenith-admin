@@ -720,8 +720,8 @@ export default function MyApplicationsPage() {
     {
       title: '业务编号',
       dataIndex: 'serialNo',
-      width: 130,
-      render: (v: string | null) => v ?? '—',
+      width: 200,
+      render: renderEllipsis,
     },
     {
       title: '优先级',

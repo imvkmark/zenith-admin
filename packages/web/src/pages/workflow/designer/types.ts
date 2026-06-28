@@ -349,6 +349,21 @@ export interface NodeRuntimeInfo {
   nextNodeNames?: string[];
 }
 
+/** 设计态体检：单个节点的问题（来自 /health-check，按 nodeKey 聚合） */
+export interface NodeHealthIssue {
+  severity: 'critical' | 'warning' | 'info';
+  message: string;
+  suggestion: string | null;
+}
+
+/** 设计态体检：节点级问题聚合（用于画布实时红点/告警角标） */
+export interface NodeHealthInfo {
+  error: number;
+  warn: number;
+  info: number;
+  issues: NodeHealthIssue[];
+}
+
 // ─── 用于渲染的辅助类型 ─────────────────────────────────────────────
 
 export type BranchNodeType = 'conditionBranch' | 'parallelBranch' | 'inclusiveBranch' | 'routeBranch';
