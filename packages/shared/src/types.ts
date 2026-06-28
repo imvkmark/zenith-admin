@@ -1881,6 +1881,14 @@ export type WorkflowAssigneeType =
   | 'expression';                // 流程表达式
 
 /** 审批方式 */
+/**
+ * 审批方式（**设计态**意图，存于 flowData 节点配置）。
+ * 其中 `random`/`auto` 不是落库的多人审批方式，而是更高层的派发意图：
+ * - `auto`：节点自动通过（引擎在创建任务前即生成 approved 任务并续接，等价 approvalType='autoApprove'）
+ * - `random`：在候选审批人中随机指派一人（落库时退化为单人 → 运行态方式为 or）
+ * 运行态/落库的方式仅 {@link WorkflowResolvedApproveMethod} 四种，二者由
+ * `resolveRuntimeApproveMethod()` 在任务展开时显式转换，避免「设计态 6 值 / 运行态 4 值」隐性错配。
+ */
 export type WorkflowApproveMethod =
   | 'and'         // 会签：所有人通过
   | 'or'          // 或签：任一人通过
@@ -1888,6 +1896,12 @@ export type WorkflowApproveMethod =
   | 'ratio'       // 比例会签：达到指定百分比通过即可
   | 'random'      // 随机挑选一人审批（系统在候选人中随机指派一人）
   | 'auto';       // 自动通过
+
+/**
+ * 运行态/落库的多人审批方式（workflow_tasks.approve_method 列与 DB pg enum 一致，4 值）。
+ * 设计态的 `random`/`auto` 经 `resolveRuntimeApproveMethod()` 解析后只会落到这 4 个值之一。
+ */
+export type WorkflowResolvedApproveMethod = Exclude<WorkflowApproveMethod, 'random' | 'auto'>;
 
 export type WorkflowApprovalType = 'manual' | 'autoApprove' | 'autoReject';
 export type WorkflowEmptyAssigneeStrategy = 'autoApprove' | 'assignToAdmin' | 'reject' | 'assignTo';
@@ -3311,7 +3325,7 @@ export interface WorkflowDefinitionHealthIssue {
 }
 
 export interface WorkflowDefinitionHealthCheckItem {
-  key: 'structure' | 'approver' | 'branch' | 'timeout';
+  key: 'structure' | 'approver' | 'branch' | 'timeout' | 'expression';
   title: string;
   status: 'pass' | 'warn' | 'fail';
   /** 该维度得分 0-100 */

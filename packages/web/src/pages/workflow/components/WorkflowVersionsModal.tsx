@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Modal, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Modal, Table, Tag, Toast, Button, Spin } from '@douyinfe/semi-ui';
+import { GitCompare, ArrowLeft } from 'lucide-react';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { WorkflowDefinition, WorkflowDefinitionVersion } from '@zenith/shared';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowVersionDiff } from '@zenith/shared';
 import { request } from '@/utils/request';
+import WorkflowVersionDiffView from './WorkflowVersionDiffView';
 
 interface Props {
   visible: boolean;
@@ -25,9 +27,14 @@ export default function WorkflowVersionsModal({
 }: Readonly<Props>) {
   const [versions, setVersions] = useState<WorkflowDefinitionVersion[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [diff, setDiff] = useState<WorkflowVersionDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
+    setDiff(null);
+    setSelectedIds([]);
     setLoading(true);
     request
       .get<WorkflowDefinitionVersion[]>(`/api/workflows/definitions/${definitionId}/versions`)
@@ -36,6 +43,16 @@ export default function WorkflowVersionsModal({
       })
       .finally(() => setLoading(false));
   }, [visible, definitionId]);
+
+  const loadDiff = async (left: number, right: number) => {
+    setDiffLoading(true);
+    try {
+      const res = await request.get<WorkflowVersionDiff>(`/api/workflows/definitions/${definitionId}/diff?left=${left}&right=${right}`);
+      if (res.code === 0) setDiff(res.data);
+    } finally {
+      setDiffLoading(false);
+    }
+  };
 
   const handleRestore = (ver: WorkflowDefinitionVersion) => {
     Modal.confirm({
@@ -55,15 +72,30 @@ export default function WorkflowVersionsModal({
     });
   };
 
+  const compareSelected = () => {
+    if (selectedIds.length !== 2) {
+      Toast.warning('请选择两个版本进行对比');
+      return;
+    }
+    // 旧版本在左、新版本在右（版本行 id 越大越新）
+    const [a, b] = selectedIds;
+    void loadDiff(Math.min(a, b), Math.max(a, b));
+  };
+
   const columns: ColumnProps<WorkflowDefinitionVersion>[] = [
     { title: '版本号', dataIndex: 'version', width: 90, render: (v: number) => <Tag color="blue">v{v}</Tag> },
     { title: '名称', dataIndex: 'name' },
     { title: '发布人', dataIndex: 'publishedByName', width: 120, render: (v?: string) => v ?? '-' },
     { title: '发布时间', dataIndex: 'publishedAt', width: 170 },
     createOperationColumn<WorkflowDefinitionVersion>({
-      width: 100,
-      desktopInlineKeys: ['restore'],
+      width: 140,
+      desktopInlineKeys: ['diff', 'restore'],
       actions: (record) => [
+        {
+          key: 'diff',
+          label: '对比草稿',
+          onClick: () => void loadDiff(record.id, 0),
+        },
         {
           key: 'restore',
           label: '恢复',
@@ -76,14 +108,43 @@ export default function WorkflowVersionsModal({
   ];
 
   return (
-    <AppModal title="历史版本" visible={visible} onCancel={onCancel} footer={null} width={720}>
-      <Table
-        dataSource={versions}
-        loading={loading}
-        rowKey="id"
-        pagination={false}
-        columns={columns}
-      />
+    <AppModal title="历史版本" visible={visible} onCancel={onCancel} footer={null} width={diff ? 860 : 760}>
+      {diff ? (
+        <div>
+          <Button size="small" theme="borderless" icon={<ArrowLeft size={14} />} onClick={() => setDiff(null)} style={{ marginBottom: 8 }}>返回版本列表</Button>
+          <WorkflowVersionDiffView diff={diff} />
+        </div>
+      ) : (
+        <Spin spinning={diffLoading}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <Button
+              size="small"
+              icon={<GitCompare size={14} />}
+              disabled={selectedIds.length !== 2}
+              onClick={compareSelected}
+            >对比所选两个版本</Button>
+          </div>
+          <Table
+            dataSource={versions}
+            loading={loading}
+            rowKey="id"
+            pagination={false}
+            columns={columns}
+            rowSelection={{
+              selectedRowKeys: selectedIds,
+              onChange: (keys) => {
+                const ids = (keys ?? []).map(Number);
+                if (ids.length > 2) {
+                  Toast.warning('最多选择两个版本对比');
+                  setSelectedIds(ids.slice(-2));
+                } else {
+                  setSelectedIds(ids);
+                }
+              },
+            }}
+          />
+        </Spin>
+      )}
     </AppModal>
   );
 }

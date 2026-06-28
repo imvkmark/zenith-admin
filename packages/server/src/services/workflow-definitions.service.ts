@@ -74,12 +74,14 @@ import { escapeLike } from '../lib/where-helpers';
 import { db } from '../db';
 import { pageOffset } from '../lib/pagination';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { validateFlowData } from '../lib/workflow-engine';
+import { normalizeFlowData } from '../lib/workflow-engine';
+import { analyzeWorkflowHealth } from '../lib/workflow-health';
 import { buildVersionDiff } from '../lib/workflow-version-diff';
 import type { WorkflowFlowData } from '@zenith/shared';
+import { WORKFLOW_SCHEMA_VERSION } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
-import { ensureFormExists } from './workflow-forms.service';
+import { ensureFormExists, resolveFormSnapshot } from './workflow-forms.service';
 
 export type WorkflowDefinitionStatus = 'draft' | 'published' | 'disabled';
 type WorkflowInitiatorScopeType = 'all' | 'users' | 'departments' | 'roles';
@@ -273,8 +275,15 @@ export async function publishDefinition(id: number) {
   if (!existing) throw new HTTPException(404, { message: '流程定义不存在' });
   const flowData = existing.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes) throw new HTTPException(400, { message: '请先在设计器中设计流程' });
-  const validation = validateFlowData(flowData);
-  if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
+  // 发布前健康硬门禁：结构非法或存在 critical 体检问题（审批人无法解析 / 表达式非法 / 网关无出口等）一律拦截
+  const knownFields = existing.formId ? new Set((await resolveFormSnapshot(existing.formId))?.fields.map((f) => f.key).filter((k): k is string => !!k) ?? []) : null;
+  const report = analyzeWorkflowHealth(flowData, knownFields && knownFields.size > 0 ? knownFields : null);
+  const criticals = report.checks.flatMap((c) => c.issues).filter((i) => i.severity === 'critical');
+  if (criticals.length > 0) {
+    const head = criticals.slice(0, 3).map((i) => i.message).join('；');
+    const suffix = criticals.length > 3 ? ` 等 ${criticals.length} 项问题` : '';
+    throw new HTTPException(400, { message: `发布前体检未通过：${head}${suffix}` });
+  }
   validateBusinessFormConfigForPublish((existing.formType ?? 'designer') as WorkflowFormType, existing.customForm);
   const user = currentUser();
   const updated = await db.transaction(async (tx) => {
@@ -287,7 +296,8 @@ export async function publishDefinition(id: number) {
       version: newVersion,
       name: locked.name,
       description: locked.description,
-      flowData: locked.flowData,
+      // 发布即冻结当前 schema 的快照（运行时兼容迁移的写入边界）
+      flowData: locked.flowData ? normalizeFlowData(locked.flowData as WorkflowFlowData) : null,
       formId: locked.formId,
       formType: locked.formType,
       customForm: locked.customForm,
@@ -409,7 +419,7 @@ export async function exportDefinition(id: number) {
       ? { name: row.form.name ?? '表单', description: row.form.description ?? null, schema: row.form.schema ?? null }
       : null,
     exportedAt: formatDateTime(new Date()),
-    schemaVersion: 1,
+    schemaVersion: WORKFLOW_SCHEMA_VERSION,
   };
 }
 
@@ -422,10 +432,15 @@ export async function importDefinition(data: {
   formType?: WorkflowFormType;
   customForm?: WorkflowCustomFormConfig | null;
   form?: { name: string; description?: string | null; schema?: unknown } | null;
+  schemaVersion?: number;
 }) {
   const user = currentUser();
   const tenantId = getCreateTenantId(user);
   const formType = data.formType ?? 'designer';
+  // 运行时兼容迁移：把导入件的 flowData 从其 schemaVersion 升级到当前引擎 schema
+  const importedFlow = data.flowData
+    ? normalizeFlowData(data.flowData as WorkflowFlowData, data.schemaVersion ?? WORKFLOW_SCHEMA_VERSION)
+    : null;
   let categoryId: number | null = null;
   if (data.categoryName) {
     const tc = tenantCondition(workflowCategories, user);
@@ -451,7 +466,7 @@ export async function importDefinition(data: {
       name: data.name,
       description: data.description ?? null,
       categoryId,
-      flowData: (data.flowData ?? null) as WorkflowFlowData | null,
+      flowData: importedFlow,
       formId: newFormId,
       formType,
       customForm: hasBusinessFormConfig(formType) ? (data.customForm ?? null) : null,

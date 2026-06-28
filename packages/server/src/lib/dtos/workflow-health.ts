@@ -9,7 +9,7 @@ const HealthIssueDTO = z.object({
 }).openapi('WorkflowDefinitionHealthIssue');
 
 const HealthCheckItemDTO = z.object({
-  key: z.enum(['structure', 'approver', 'branch', 'timeout']),
+  key: z.enum(['structure', 'approver', 'branch', 'timeout', 'expression']),
   title: z.string(),
   status: z.enum(['pass', 'warn', 'fail']),
   score: z.number().int(),

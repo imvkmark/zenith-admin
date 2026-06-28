@@ -105,7 +105,7 @@ export async function deleteWorkflowTemplate(id: number): Promise<void> {
 }
 
 /** 从模板克隆出一个新的流程定义（草稿）；若模板含表单则同时创建表单并绑定 */
-export async function cloneTemplateToDefinition(templateId: number, input: { name?: string; categoryId?: number | null } = {}) {
+export async function cloneTemplateToDefinition(templateId: number, input: { name?: string; description?: string | null; categoryId?: number | null } = {}) {
   const tpl = await ensureTemplate(templateId);
   let formId: number | null = null;
   const formSchema = tpl.formSchema as WorkflowFormSchema | null;
@@ -115,7 +115,7 @@ export async function cloneTemplateToDefinition(templateId: number, input: { nam
   }
   return createDefinition({
     name: input.name?.trim() || tpl.name,
-    description: tpl.description ?? null,
+    description: input.description !== undefined ? (input.description?.trim() || null) : (tpl.description ?? null),
     categoryId: input.categoryId ?? null,
     flowData: tpl.flowData ?? null,
     formId,

@@ -1093,6 +1093,10 @@ export const workflowHandlers = [
           summary: approveNodes.length > 0 ? `${approveNodes.length - 1 >= 0 ? approveNodes.length : 0} 个审批节点，部分未配置超时` : '审批节点均已配置超时策略',
           issues: approveNodes.length > 0 ? [{ severity: 'info', message: `节点「${approveNodes[0]?.data?.label ?? '审批人'}」未配置超时/SLA 提醒`, suggestion: '配置超时时长，便于超时预警与自动催办', nodeKey: null, nodeName: approveNodes[0]?.data?.label ?? '审批人' }] : [],
         },
+        {
+          key: 'expression', title: '表达式与字段引用', status: 'pass', score: 100, weight: 0.15,
+          summary: '表达式语法与字段引用均合法', issues: [],
+        },
       ],
       branchCoverage: gatewayNodes.map((g, i) => ({
         nodeKey: g.data?.key ?? `gw-${i}`,
@@ -1299,6 +1303,45 @@ export const workflowHandlers = [
       .sort((a, b) => b.version - a.version)
       .map(resolveWorkflowDefinitionVersion);
     return ok(list);
+  }),
+
+  // 版本对比（left/right 为版本行 id，0 表示当前草稿）
+  http.get('/api/workflows/definitions/:id/diff', ({ params, request }) => {
+    const definitionId = Number(params.id);
+    const def = mockWorkflowDefinitions.find(d => d.id === definitionId);
+    if (!def) return err('流程定义不存在', 404);
+    const url = new URL(request.url);
+    const leftId = Number(url.searchParams.get('left') ?? 0);
+    const rightId = Number(url.searchParams.get('right') ?? 0);
+    const sideOf = (vid: number) => {
+      if (vid === 0) return { version: def.version ?? 0, name: def.name, label: '当前草稿', flowData: def.flowData ?? null, publishedAt: null };
+      const v = mockWorkflowDefinitionVersions.find(x => x.id === vid && x.definitionId === definitionId);
+      return v
+        ? { version: v.version, name: v.name, label: `v${v.version}`, flowData: v.flowData ?? null, publishedAt: v.publishedAt ?? null }
+        : { version: 0, name: '', label: '-', flowData: null, publishedAt: null };
+    };
+    const left = sideOf(leftId);
+    const right = sideOf(rightId);
+    type FD = { nodes?: Array<{ id: string; data?: { key?: string; label?: string; type?: string } }>; edges?: Array<{ source: string; target: string }> };
+    const nodeMap = (fd: unknown) => new Map(((fd as FD)?.nodes ?? []).map(n => [n.data?.key ?? n.id, n] as const));
+    const edgeSet = (fd: unknown) => new Set(((fd as FD)?.edges ?? []).map(e => `${e.source}->${e.target}`));
+    const lN = nodeMap(left.flowData); const rN = nodeMap(right.flowData);
+    const nodeChanges: Array<{ kind: string; nodeKey: string; nodeName: string; nodeType: string; fields: unknown[] }> = [];
+    rN.forEach((n, k) => { if (!lN.has(k)) nodeChanges.push({ kind: 'added', nodeKey: k, nodeName: n.data?.label ?? k, nodeType: n.data?.type ?? '', fields: [] }); });
+    lN.forEach((n, k) => { if (!rN.has(k)) nodeChanges.push({ kind: 'removed', nodeKey: k, nodeName: n.data?.label ?? k, nodeType: n.data?.type ?? '', fields: [] }); });
+    const lE = edgeSet(left.flowData); const rE = edgeSet(right.flowData);
+    const edgeChanges: Array<{ kind: string; from: string; to: string; before: string | null; after: string | null }> = [];
+    rE.forEach(e => { if (!lE.has(e)) { const [from, to] = e.split('->'); edgeChanges.push({ kind: 'added', from, to, before: null, after: null }); } });
+    lE.forEach(e => { if (!rE.has(e)) { const [from, to] = e.split('->'); edgeChanges.push({ kind: 'removed', from, to, before: null, after: null }); } });
+    const summary = {
+      nodesAdded: nodeChanges.filter(c => c.kind === 'added').length,
+      nodesRemoved: nodeChanges.filter(c => c.kind === 'removed').length,
+      nodesModified: 0,
+      edgesAdded: edgeChanges.filter(c => c.kind === 'added').length,
+      edgesRemoved: edgeChanges.filter(c => c.kind === 'removed').length,
+      edgesModified: 0,
+    };
+    return ok({ left, right, summary, nodeChanges, edgeChanges });
   }),
 
   // 恢复历史版本

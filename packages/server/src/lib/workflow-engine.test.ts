@@ -6,8 +6,11 @@ import {
   getNodeOrder,
   getAncestorNodeKeys,
   findReturnPrevTarget,
+  resolveRuntimeApproveMethod,
+  normalizeFlowData,
 } from './workflow-engine';
 import type { WorkflowFlowData } from '@zenith/shared';
+import { WORKFLOW_SCHEMA_VERSION } from '@zenith/shared';
 
 // 说明：DAG 推进（advanceFlow/getInitialTasks）已被显式执行 Token 引擎取代，
 // fork/join/网关/自动节点/回边等推进语义的回归测试见 workflow-token-engine.test.ts。
@@ -403,3 +406,41 @@ describe('findReturnPrevTarget', () => {
     expect(findReturnPrevTarget(flow, 'c', [])).toBeNull();
   });
 });
+
+describe('resolveRuntimeApproveMethod (设计态 → 运行态)', () => {
+  it('passes through real persisted methods unchanged', () => {
+    expect(resolveRuntimeApproveMethod('and', 3)).toBe('and');
+    expect(resolveRuntimeApproveMethod('or', 2)).toBe('or');
+    expect(resolveRuntimeApproveMethod('sequential', 2)).toBe('sequential');
+    expect(resolveRuntimeApproveMethod('ratio', 2)).toBe('ratio');
+  });
+
+  it('downgrades random by approver count (random 随机挑一人后落库为 or)', () => {
+    expect(resolveRuntimeApproveMethod('random', 3)).toBe('and'); // 原始多人 → 回退方式 and（落库随机退化为单人时再置 null）
+    expect(resolveRuntimeApproveMethod('random', 1)).toBe('or');
+  });
+
+  it('treats auto / empty as count-based fallback', () => {
+    expect(resolveRuntimeApproveMethod('auto', 2)).toBe('and');
+    expect(resolveRuntimeApproveMethod('auto', 1)).toBe('or');
+    expect(resolveRuntimeApproveMethod(null, 2)).toBe('and');
+    expect(resolveRuntimeApproveMethod(undefined, 1)).toBe('or');
+  });
+});
+
+describe('normalizeFlowData (schema 版本兼容迁移)', () => {
+  const flow: WorkflowFlowData = {
+    nodes: [{ id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '开始' } }],
+    edges: [],
+  };
+
+  it('is identity for the current schema version', () => {
+    expect(normalizeFlowData(flow, WORKFLOW_SCHEMA_VERSION)).toBe(flow);
+    expect(normalizeFlowData(flow)).toBe(flow);
+  });
+
+  it('returns current-schema flowData for older versions (v1 恒等)', () => {
+    expect(normalizeFlowData(flow, 0)).toEqual(flow);
+  });
+});
+

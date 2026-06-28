@@ -13,11 +13,16 @@ import type {
   WorkflowDefinitionHealthIssue,
   WorkflowDefinitionHealthReport,
   WorkflowEdge,
+  WorkflowEdgeCondition,
   WorkflowFlowData,
   WorkflowNodeConfig,
 } from '@zenith/shared';
 import { validateFlowData } from './workflow-engine';
+import { validateExpression } from './workflow-expression';
 import { formatDateTime } from './datetime';
+
+/** 审批人/条件表达式可引用的根变量（form=表单字段，starter=发起人上下文） */
+const EXPR_ROOTS = ['form', 'starter'];
 
 type FlowNode = { id: string; type?: string; data: WorkflowNodeConfig };
 
@@ -70,7 +75,10 @@ function clamp(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-export function analyzeWorkflowHealth(raw: WorkflowFlowData | null | undefined): WorkflowDefinitionHealthReport {
+export function analyzeWorkflowHealth(
+  raw: WorkflowFlowData | null | undefined,
+  knownFields?: Set<string> | null,
+): WorkflowDefinitionHealthReport {
   const flowData = (raw ?? { nodes: [], edges: [] }) as WorkflowFlowData;
   const nodes = (Array.isArray(flowData.nodes) ? flowData.nodes : []) as FlowNode[];
   const edges = (Array.isArray(flowData.edges) ? flowData.edges : []) as WorkflowEdge[];
@@ -184,7 +192,64 @@ export function analyzeWorkflowHealth(raw: WorkflowFlowData | null | undefined):
     issues: timeoutIssues,
   };
 
-  const checks = [structureCheck, approverCheck, branchCheck, timeoutCheck];
+  // ── expression / 字段引用 ──
+  // 审批人表达式做语法 + 变量根校验（始终执行，无需表单）；条件/表达式的具体字段引用
+  // 仅在已解析出表单字段集合（knownFields）时校验，避免对外部表单/未绑定表单误报。
+  const exprIssues: WorkflowDefinitionHealthIssue[] = [];
+  let exprChecks = 0;
+  const hasFields = !!knownFields && knownFields.size > 0;
+  const collectConditions = (e: WorkflowEdge): WorkflowEdgeCondition[] => {
+    const list: WorkflowEdgeCondition[] = [];
+    if (e.condition) list.push(e.condition);
+    for (const g of e.conditions ?? []) for (const r of g.rules ?? []) list.push(r);
+    return list;
+  };
+
+  for (const n of nodes.filter((x) => x.data.assigneeType === 'expression')) {
+    const expr = (n.data.assigneeExpression ?? '').trim();
+    if (!expr) continue; // 空表达式由 approver 维度兜底
+    exprChecks += 1;
+    const res = validateExpression(expr, EXPR_ROOTS);
+    if (!res.valid) {
+      exprIssues.push(issue('critical', `节点「${n.data.label || n.data.key}」审批人表达式非法：${res.error}`, '修正表达式语法（仅支持纯运算，禁止函数调用），变量只能引用 form.* / starter.*', n));
+    } else if (hasFields) {
+      const refs = res.references
+        .filter((p) => p.startsWith('form.'))
+        .map((p) => p.slice(5).split('.')[0])
+        .filter((f) => f && !knownFields!.has(f));
+      const uniq = [...new Set(refs)];
+      if (uniq.length > 0) {
+        exprIssues.push(issue('warning', `节点「${n.data.label || n.data.key}」审批人表达式引用了表单中不存在的字段：${uniq.join('、')}`, '确认这些字段存在于绑定表单中，或更正字段 key', n));
+      }
+    }
+  }
+
+  if (hasFields) {
+    for (const e of edges) {
+      const src = nodeById.get(e.source) ?? null;
+      for (const c of collectConditions(e)) {
+        if ((c.source ?? 'form') !== 'form') continue; // starter 维度字段不是表单字段
+        if (c.aggregate) continue; // 聚合条件的 field 是明细子表字段，aggregateField 为其子列，跳过顶层校验
+        if (!c.field) continue;
+        exprChecks += 1;
+        if (!knownFields!.has(c.field)) {
+          exprIssues.push(issue('warning', `分支「→ ${nodeName(e.target)}」条件引用了表单中不存在的字段「${c.field}」`, '确认该字段存在于绑定表单中，或更正条件字段 key', src));
+        }
+      }
+    }
+  }
+
+  const exprScore = clamp(100 - exprIssues.filter((i) => i.severity === 'critical').length * 30 - exprIssues.filter((i) => i.severity === 'warning').length * 12);
+  const expressionCheck: WorkflowDefinitionHealthCheckItem = {
+    key: 'expression', title: '表达式与字段引用', weight: 0.15, score: exprScore,
+    status: statusFromIssues(exprIssues),
+    summary: exprChecks === 0
+      ? '无表达式审批人/条件字段需校验'
+      : (exprIssues.length === 0 ? '表达式语法与字段引用均合法' : `发现 ${exprIssues.length} 处表达式/字段引用问题`),
+    issues: exprIssues,
+  };
+
+  const checks = [structureCheck, approverCheck, branchCheck, timeoutCheck, expressionCheck];
   const totalWeight = checks.reduce((s, c) => s + c.weight, 0);
   const score = clamp(checks.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight);
   const grade: WorkflowDefinitionHealthReport['grade'] = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : 'D';

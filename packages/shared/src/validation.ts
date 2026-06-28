@@ -1259,6 +1259,7 @@ export const importWorkflowDefinitionSchema = z.object({
     description: z.string().max(512).nullable().optional(),
     schema: z.unknown(),
   }).nullable().optional(),
+  schemaVersion: z.number().int().positive().optional(),
 });
 
 // ── 流程评论 ──
@@ -1330,6 +1331,7 @@ export const saveAsTemplateSchema = z.object({
 /** 从模板创建流程定义 */
 export const cloneFromTemplateSchema = z.object({
   name: z.string().min(1, '流程名称不能为空').max(64).optional(),
+  description: z.string().max(512).nullable().optional(),
   categoryId: z.number().int().positive().nullable().optional(),
 });
 

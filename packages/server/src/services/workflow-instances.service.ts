@@ -221,9 +221,9 @@ import { pageOffset } from '../lib/pagination';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowTasks, workflowTaskUrges, workflowDefinitions, workflowCategories, workflowTokens, inAppMessages, users, userRoles } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { getDataScopeCondition } from '../lib/data-scope';
-import { validateFlowData, findReturnPrevTarget, type TaskAction } from '../lib/workflow-engine';
+import { validateFlowData, findReturnPrevTarget, resolveRuntimeApproveMethod, type TaskAction } from '../lib/workflow-engine';
 import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../lib/workflow-token-engine';
-import type { WorkflowApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared';
+import type { WorkflowResolvedApproveMethod, WorkflowFlowData, WorkflowTask as WorkflowTaskDto, WorkflowEventActor, WorkflowActionButtonKey, WorkflowActionButtonConfig, WorkflowFormField, WorkflowFormSettings, WorkflowStarterContext, WorkflowBatchActionResult, WorkflowCustomFormConfig, WorkflowFormType, WorkflowInstance, WorkflowInstanceFormSnapshot, WorkflowApproverDedupMode, WorkflowDeduplicateStrategy, WorkflowRuntimeDiagnostics, WorkflowRuntimeIssue, WorkflowRuntimeOutboxEvent, WorkflowTriggerType, WorkflowInstanceTrace, WorkflowEngineExplanation, WorkflowEngineExplanationBlocker, WorkflowEngineTraceEntry, WorkflowJobType, WorkflowExecutionToken, WorkflowExecutionTokenView } from '@zenith/shared';
 import { resolveApproverDedupMode } from '@zenith/shared';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
@@ -450,19 +450,22 @@ function resolveTriggerMaxAttempts(cfg?: WorkflowTriggerNodeConfig): number {
  * 子流程（spawn/join）仍走既有 maybeSpawnSubProcessChild / 恢复巡检，不在此处理。
  * 默认用 db 执行器（在提交后的事件发射循环中调用）。
  */
-async function armTaskAsyncJobs(task: typeof workflowTasks.$inferSelect, instance: typeof workflowInstances.$inferSelect, executor: DbExecutor = db): Promise<void> {
-  const snapshot = instance.definitionSnapshot as { flowData?: WorkflowFlowData } | null;
-  const cfg = snapshot?.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
+async function armTaskAsyncJobs(
+  task: typeof workflowTasks.$inferSelect,
+  inst: { id: number; flowData: WorkflowFlowData | null; formData: Record<string, unknown> | null; tenantId: number | null },
+  executor: DbExecutor = db,
+): Promise<void> {
+  const cfg = inst.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
   if (!cfg) return;
-  const tenantId = instance.tenantId ?? null;
-  const base = { instanceId: instance.id, nodeKey: task.nodeKey, taskId: task.id, tenantId, payload: { taskId: task.id } } as const;
+  const tenantId = inst.tenantId ?? null;
+  const base = { instanceId: inst.id, nodeKey: task.nodeKey, taskId: task.id, tenantId, payload: { taskId: task.id } } as const;
 
   if (task.nodeType === 'subProcess') {
     await enqueueJob({ ...base, jobType: 'subprocess_spawn', maxAttempts: 5, idempotencyKey: `subprocess_spawn:${task.id}` }, executor);
     return;
   }
   if (task.nodeType === 'delay' && task.status === 'waiting') {
-    await enqueueJob({ ...base, jobType: 'delay_wake', runAt: computeDelayWakeAt(cfg, (instance.formData ?? {}) as Record<string, unknown>), maxAttempts: 3, idempotencyKey: `delay_wake:${task.id}` }, executor);
+    await enqueueJob({ ...base, jobType: 'delay_wake', runAt: computeDelayWakeAt(cfg, (inst.formData ?? {}) as Record<string, unknown>), maxAttempts: 3, idempotencyKey: `delay_wake:${task.id}` }, executor);
     return;
   }
   if (task.nodeType === 'trigger') {
@@ -682,7 +685,6 @@ async function createChildInstanceAndMaterialize(
     }
     if (t.status === 'approved') emitTaskEvent('task.approved', mapTask(t), meta);
     if (t.status === 'rejected') emitTaskEvent('task.rejected', mapTask(t), meta);
-    await armTaskAsyncJobs(t, childInst);
   }
   return childInst;
 }
@@ -1321,7 +1323,6 @@ export async function handleNodeExecutionError(input: {
     if (task.assigneeId && task.status === 'pending') emitTaskEvent('task.assigned', mapTask(task), meta);
     if (task.status === 'approved') emitTaskEvent('task.approved', mapTask(task), meta);
     if (task.status === 'rejected') emitTaskEvent('task.rejected', mapTask(task), meta);
-    await armTaskAsyncJobs(task, updated.row);
   }
   if (updated.finished) emitInstanceEvent('instance.approved', mapInstance(updated.row), input.actor);
   if (updated.rejected) emitInstanceEvent('instance.rejected', mapInstance(updated.row), input.actor);
@@ -1623,13 +1624,12 @@ async function expandTasksToRows(
       continue;
     }
 
-    const fallbackMethod: 'and' | 'or' = userIds.length > 1 ? 'and' : 'or';
     let effectiveUserIds = userIds;
     if (rawMethod === 'random' && userIds.length > 1) {
       effectiveUserIds = [userIds[Math.floor(Math.random() * userIds.length)]];
     }
-    const method: Exclude<WorkflowApproveMethod, 'auto' | 'random'> =
-      rawMethod && rawMethod !== 'auto' && rawMethod !== 'random' ? rawMethod : fallbackMethod;
+    // 设计态(含 random/auto) → 运行态 4 值的唯一权威转换点
+    const method: WorkflowResolvedApproveMethod = resolveRuntimeApproveMethod(rawMethod, userIds.length);
     const ratioPct = method === 'ratio'
       ? Math.min(100, Math.max(1, t.nodeConfig.approveRatio ?? 51))
       : null;
@@ -1757,6 +1757,10 @@ async function advanceAndMaterialize(
       if (expanded.rows.length > 0) {
         const inserted = await exec.insert(workflowTasks).values(expanded.rows).returning();
         createdTasks.push(...inserted);
+        // 事务内装配异步作业（延时/超时/触发器/外部派发/子流程发起），与任务行同生共死，避免提交后进程崩溃丢作业
+        for (const t of inserted) {
+          await armTaskAsyncJobs(t, { id: ctx.instanceId, flowData: ctx.flowData, formData: ctx.formData, tenantId: ctx.tenantId ?? null }, exec);
+        }
       }
       autoApprovedNodeKeys = expanded.autoApprovedNodeKeys;
       autoRejected = !!expanded.autoRejectedNodeKey;
@@ -1813,7 +1817,7 @@ async function checkNodeCompletion(
   instanceId: number,
   nodeKey: string,
   flowData?: WorkflowFlowData,
-): Promise<{ completed: boolean; method: WorkflowApproveMethod | null }> {
+): Promise<{ completed: boolean; method: WorkflowResolvedApproveMethod | null }> {
   const siblings = await tx.select().from(workflowTasks)
     .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)));
   if (siblings.length === 0) return { completed: true, method: null };
@@ -3057,10 +3061,9 @@ export async function createInstance(data: { definitionId: number; title: string
     }
     throw err;
   }
-  const { instance, createdTasks } = txResult;
+  const { instance } = txResult;
   const instanceDto = mapInstance(instance);
-  // 事件已在事务内入队（outbox）；此处仅装配异步作业
-  armInstanceStartJobs(instance, createdTasks);
+  // 事件与异步作业均已在事务内入队（outbox + 在库作业）
   // 发起时自选抄送：插入 ccNode 任务（best-effort，失败不影响发起结果；接收人通过「抄送我的」查看）
   const ccIds = Array.from(new Set((data.ccUserIds ?? []).filter((v) => Number.isInteger(v) && v > 0)));
   if (ccIds.length > 0) {
@@ -3112,16 +3115,6 @@ async function emitInstanceStartEvents(
   }
   if (instance.status === 'approved') await emitInstanceEvent('instance.approved', instanceDto, actor, executor);
   if (instance.status === 'rejected') await emitInstanceEvent('instance.rejected', instanceDto, actor, executor);
-}
-
-/** 提交后为创建的任务装配异步作业（延时/超时/触发器派发/子流程发起，需已提交的任务行） */
-function armInstanceStartJobs(
-  instance: typeof workflowInstances.$inferSelect,
-  createdTasks: typeof workflowTasks.$inferSelect[],
-): void {
-  for (const t of createdTasks) {
-    void armTaskAsyncJobs(t, instance).catch((err) => logger.error('[workflow-jobs] arm task jobs failed', { taskId: t.id, err }));
-  }
 }
 
 async function findInstanceByBusinessKey(
@@ -3379,7 +3372,6 @@ export async function approveTaskCore(
     if (t.status === 'rejected') {
       emitTaskEvent('task.rejected', mapTask(t), meta);
     }
-    await armTaskAsyncJobs(t, updated.row);
   }
   if (updated.finished) {
     emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
@@ -3655,7 +3647,6 @@ export async function rejectTaskCore(
       if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
       if (t.status === 'approved') emitTaskEvent('task.approved', mapTask(t), meta);
       if (t.status === 'rejected') emitTaskEvent('task.rejected', mapTask(t), meta);
-    await armTaskAsyncJobs(t, updated.row);
     }
     if (updated.finished) {
       emitInstanceEvent('instance.approved', mapInstance(updated.row), actor);
@@ -4011,7 +4002,6 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       emitNodeEvent('node.entered', { instanceId: inst.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
       emitTaskEvent('task.created', mapTask(t), meta);
       if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
-      await armTaskAsyncJobs(t, instRow);
     }
     if (result.finished) emitInstanceEvent('instance.approved', mapInstance(instRow), actor);
     if (result.rejected) emitInstanceEvent('instance.rejected', mapInstance(instRow), actor);
@@ -4292,7 +4282,7 @@ export async function submitDraftInstance(id: number) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
   const serialConfig = flowData.settings?.serialNo;
-  const { instance, createdTasks } = await db.transaction(async (tx) => {
+  const instance = await db.transaction(async (tx) => {
     const serialNo = await generateSerialNo(tx, def.id, serialConfig);
     await tx.update(workflowInstances).set({
       definitionSnapshot: def,
@@ -4315,12 +4305,10 @@ export async function submitDraftInstance(id: number) {
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
       currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
     }).where(eq(workflowInstances.id, id)).returning();
-    return { instance: updatedInstance, createdTasks: materialized.createdTasks };
+    await emitInstanceStartEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, { userId: user.userId, name: user.username }, tx);
+    return updatedInstance;
   });
-  const instanceDto = mapInstance(instance);
-  await emitInstanceStartEvents(instanceDto, instance, createdTasks, { userId: user.userId, name: user.username });
-  armInstanceStartJobs(instance, createdTasks);
-  return instanceDto;
+  return mapInstance(instance);
 }
 
 /** 重新提交：将已驳回/已撤回的实例克隆为一份新草稿，供发起人编辑后再次提交 */
@@ -4425,7 +4413,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
   const formData = (inst.formData ?? {}) as Record<string, unknown>;
   const starter = await buildStarterContext(inst.initiatorId);
   const note = `[管理员强制跳转至「${targetNode.data.label}」]${comment ? ' ' + comment : ''}`;
-  const { instance, createdTasks } = await db.transaction(async (tx) => {
+  const instance = await db.transaction(async (tx) => {
     const [locked] = await tx.select({ status: workflowInstances.status })
       .from(workflowInstances).where(eq(workflowInstances.id, id)).for('update').limit(1);
     if (!locked || locked.status !== 'running') {
@@ -4448,13 +4436,10 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
       currentNodeKey: materialized.rejected || materialized.finished ? null : (materialized.currentNodeKeys[0] ?? targetNode.data.key),
     }).where(eq(workflowInstances.id, id)).returning();
-    return { instance: updatedInstance, createdTasks: materialized.createdTasks };
+    await emitInstanceStartEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, { userId: user.userId, name: user.username }, tx);
+    return updatedInstance;
   });
-  const actor = { userId: user.userId, name: user.username };
-  const instanceDto = mapInstance(instance);
-  await emitInstanceStartEvents(instanceDto, instance, createdTasks, actor);
-  armInstanceStartJobs(instance, createdTasks);
-  return instanceDto;
+  return mapInstance(instance);
 }
 
 /** 管理员改派：将未处理任务的处理人替换为指定用户 */
@@ -4618,7 +4603,6 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
     emitNodeEvent('node.entered', { instanceId: result.row.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
     emitTaskEvent('task.created', mapTask(t), meta);
     if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
-    void armTaskAsyncJobs(t, result.row).catch((err) => logger.error('[workflow-jobs] arm task jobs failed', { taskId: t.id, err }));
   }
   if (result.status === 'approved') emitInstanceEvent('instance.approved', mapInstance(result.row), actor);
   if (result.status === 'rejected') emitInstanceEvent('instance.rejected', mapInstance(result.row), actor);

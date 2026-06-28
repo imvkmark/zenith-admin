@@ -18,6 +18,7 @@ import {
 } from '../db/schema';
 import type { DbExecutor } from '../db/types';
 import logger from '../lib/logger';
+import { evaluateExpression, ExpressionError } from '../lib/workflow-expression';
 
 export interface ResolveAssigneeContext {
   /** 流程发起人 ID（用于 initiator / initiatorLeader / initiatorDept / manager） */
@@ -160,34 +161,31 @@ export async function resolveAdminUserId(executor?: DbExecutor): Promise<number 
   return firstEnabled?.id ?? null;
 }
 
-/**
- * 安全表达式求值器，限制作用域在 form / starter / context，返回 user ID 数组。
- * 例如： `form.managerId`, `[form.a, form.b]`, `starter.id`
- */
-// 仅允许「标识符 / 属性访问 / 数组与下标访问」：字母数字下划线、点、方括号、逗号、空格。
-// 借此禁止函数调用(())、赋值(=)、语句分隔(;)、字符串、模板串与各类运算符，杜绝设计器表达式被用于服务端任意代码执行(RCE)。
-const SAFE_ASSIGNEE_EXPR = /^[\w$.[\], ]+$/;
-const FORBIDDEN_EXPR_TOKEN = /\b(constructor|__proto__|prototype|globalThis|process|require|import)\b/;
+/** 审批人表达式可引用的根变量 */
+export const ASSIGNEE_EXPR_ROOTS = ['form', 'starter'] as const;
 
+/**
+ * 安全表达式求值器，作用域限定在 form / starter，返回 user ID 数组。
+ * 例如： `form.managerId`, `[form.a, form.b]`, `starter.id`, `form.amount > 1000 ? form.vp : form.lead`
+ * 求值经 workflow-expression 的 AST 解释器（无 new Function / 无全局可达），从根本上杜绝 RCE。
+ */
 function evalAssigneeExpression(
   expr: string,
   ctx: { form: Record<string, unknown>; starter: { id: number }; },
 ): number[] {
-  const trimmed = expr?.trim() ?? '';
-  // 白名单校验：不符合「纯属性/下标访问」形态的表达式一律拒绝（防止 new Function 任意代码执行）
-  if (!trimmed || !SAFE_ASSIGNEE_EXPR.test(trimmed) || FORBIDDEN_EXPR_TOKEN.test(trimmed)) {
-    logger.warn('[assignee-resolver] 拒绝执行不安全的审批人表达式', { expr });
-    return [];
-  }
   try {
-    const fn = new Function('form', 'starter', `"use strict"; return (${trimmed});`);
-    const v = fn(ctx.form, ctx.starter);
+    const v = evaluateExpression(expr, { form: ctx.form, starter: ctx.starter });
     if (typeof v === 'number' && Number.isFinite(v)) return [v];
     if (Array.isArray(v)) {
       return v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
     }
     return [];
-  } catch {
+  } catch (err) {
+    if (err instanceof ExpressionError) {
+      logger.warn('[assignee-resolver] 拒绝执行非法的审批人表达式', { expr, error: err.message });
+    } else {
+      logger.warn('[assignee-resolver] 审批人表达式求值失败', { expr });
+    }
     return [];
   }
 }

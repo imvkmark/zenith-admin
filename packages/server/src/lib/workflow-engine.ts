@@ -18,8 +18,46 @@ import type {
   WorkflowEdgeCondition,
   WorkflowConditionGroup,
   WorkflowStarterContext,
+  WorkflowApproveMethod,
+  WorkflowResolvedApproveMethod,
 } from '@zenith/shared';
+import { WORKFLOW_SCHEMA_VERSION } from '@zenith/shared';
 import dayjs from 'dayjs';
+
+/**
+ * 将不同 schema 版本的 flowData 迁移到当前引擎 schema（运行时兼容迁移）。
+ * 在写入边界（发布 / 导入）调用，确保落库/运行的 flowData 始终是当前 schema。
+ * 当前 {@link WORKFLOW_SCHEMA_VERSION} = 1，为恒等；未来 schema 升级时在此按版本逐级 upcast，
+ * 例如重命名节点字段、合并枚举、补默认值，保证旧定义/导入件在新引擎下稳定运行。
+ * @param fromVersion 源 flowData 的 schema 版本（默认按当前版本，即视为已是最新）
+ */
+export function normalizeFlowData(
+  flowData: WorkflowFlowData,
+  fromVersion: number = WORKFLOW_SCHEMA_VERSION,
+): WorkflowFlowData {
+  if (fromVersion >= WORKFLOW_SCHEMA_VERSION) return flowData; // 已是当前 schema（含 v1 恒等）
+  // 逐级 upcast，未来升级在此追加，例如：
+  // if (fromVersion < 2) flowData = upgradeV1ToV2(flowData);
+  return flowData;
+}
+
+/**
+ * 将**设计态**审批方式（含 random/auto）解析为**运行态/落库**的 4 值方式。
+ * 这是设计态(6 值)→运行态(4 值)的唯一权威转换点，消除两层枚举的隐性错配：
+ * - `auto`     → 不应走到这里（引擎在创建任务前已自动通过）；保险起见按候选人数回退
+ * - `random`   → 落库时已随机退化为单人，方式按候选人数回退（单人→or）
+ * - 其余(and/or/sequential/ratio) → 原样保留
+ * @param approverCount 候选审批人数量（random 随机挑人**之前**的原始数量），决定回退方式
+ */
+export function resolveRuntimeApproveMethod(
+  designMethod: WorkflowApproveMethod | null | undefined,
+  approverCount: number,
+): WorkflowResolvedApproveMethod {
+  if (!designMethod || designMethod === 'auto' || designMethod === 'random') {
+    return approverCount > 1 ? 'and' : 'or';
+  }
+  return designMethod;
+}
 
 // ─── 图遍历工具 ───────────────────────────────────────────────────────────────
 

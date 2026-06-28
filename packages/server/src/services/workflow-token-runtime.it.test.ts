@@ -21,10 +21,12 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
   let schema: typeof import('../db/schema');
   let svc: typeof import('./workflow-instances.service');
   let sim: typeof import('./workflow-simulation.service');
+  let defsSvc: typeof import('./workflow-definitions.service');
 
   let initiatorId = 0;
   let approverId = 0;
   let defId = 0;
+  let timeoutDefId = 0;
   const createdInstanceIds: number[] = [];
 
   const makeParallelFlow = (): WorkflowFlowData => ({
@@ -43,6 +45,18 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
       { id: 'e4', source: 'nfin', target: 'nj' },
       { id: 'e5', source: 'nleg', target: 'nj' },
       { id: 'e6', source: 'nj', target: 'ne' },
+    ],
+  });
+
+  const makeTimeoutFlow = (): WorkflowFlowData => ({
+    nodes: [
+      { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+      { id: 'na', position: { x: 1, y: 0 }, data: { key: 'a1', type: 'approve', label: '审批', assigneeId: approverId, timeout: { enabled: true, duration: 24, unit: 'hours', action: 'remind' } } },
+      { id: 'ne', position: { x: 2, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+    ],
+    edges: [
+      { id: 'e1', source: 'n1', target: 'na' },
+      { id: 'e2', source: 'na', target: 'ne' },
     ],
   });
 
@@ -70,6 +84,7 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
     schema = await import('../db/schema');
     svc = await import('./workflow-instances.service');
     sim = await import('./workflow-simulation.service');
+    defsSvc = await import('./workflow-definitions.service');
 
     const users = await db.select({ id: schema.users.id }).from(schema.users).orderBy(schema.users.id).limit(2);
     if (users.length < 2) throw new Error('需要至少 2 个用户');
@@ -81,6 +96,12 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
       formType: 'designer', status: 'published', tenantId: null, initiatorScopeType: 'all',
     }).returning();
     defId = def.id;
+
+    const [timeoutDef] = await db.insert(schema.workflowDefinitions).values({
+      name: 'IT 超时装配', code: `it_arm_${Date.now()}`, flowData: makeTimeoutFlow(),
+      formType: 'designer', status: 'published', tenantId: null, initiatorScopeType: 'all',
+    }).returning();
+    timeoutDefId = timeoutDef.id;
   });
 
   afterAll(async () => {
@@ -88,6 +109,49 @@ describe.runIf(RUN)('workflow token runtime (DB integration)', () => {
       await db.delete(schema.workflowInstances).where(inArray(schema.workflowInstances.id, createdInstanceIds));
     }
     if (defId) await db.delete(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.id, defId));
+    if (timeoutDefId) await db.delete(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.id, timeoutDefId));
+  });
+
+  it('arms the task_timeout job atomically inside the seed transaction', async () => {
+    const inst = await svc.createInstance(
+      { definitionId: timeoutDefId, title: 'arm' },
+      { userId: initiatorId, username: 'it-user', tenantId: null, roles: ['super_admin'] },
+    );
+    createdInstanceIds.push(inst.id);
+    const [task] = await db.select().from(schema.workflowTasks)
+      .where(and(eq(schema.workflowTasks.instanceId, inst.id), eq(schema.workflowTasks.nodeKey, 'a1')));
+    expect(task).toBeTruthy();
+    // 作业与任务行同一事务落库：createInstance 返回后作业即应可见（不依赖提交后补挂）
+    const jobs = await db.select().from(schema.workflowJobs)
+      .where(and(eq(schema.workflowJobs.instanceId, inst.id), eq(schema.workflowJobs.jobType, 'task_timeout')));
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].taskId).toBe(task.id);
+    expect(jobs[0].idempotencyKey).toBe(`task_timeout:${task.id}`);
+  });
+
+  it('publish hard-gate blocks definitions with critical health issues', async () => {
+    const [badDef] = await db.insert(schema.workflowDefinitions).values({
+      name: 'IT 体检拦截', code: `it_gate_${Date.now()}`,
+      flowData: {
+        nodes: [
+          { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+          { id: 'na', position: { x: 1, y: 0 }, data: { key: 'a1', type: 'approve', label: '审批' } }, // 无审批人来源 → critical
+          { id: 'ne', position: { x: 2, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
+        ],
+        edges: [{ id: 'e1', source: 'n1', target: 'na' }, { id: 'e2', source: 'na', target: 'ne' }],
+      },
+      formType: 'designer', status: 'draft', tenantId: null, initiatorScopeType: 'all',
+    }).returning();
+    try {
+      await expect(
+        runWithCurrentUser(asUser(), () => defsSvc.publishDefinition(badDef.id)),
+      ).rejects.toThrow(/体检未通过|审批人/);
+      const [after] = await db.select({ status: schema.workflowDefinitions.status })
+        .from(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.id, badDef.id)).limit(1);
+      expect(after.status).toBe('draft'); // 拦截后仍为草稿，未发布
+    } finally {
+      await db.delete(schema.workflowDefinitions).where(eq(schema.workflowDefinitions.id, badDef.id));
+    }
   });
 
   it('seeds two branch tokens with a shared fork group', async () => {

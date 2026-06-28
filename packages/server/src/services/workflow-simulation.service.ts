@@ -11,6 +11,7 @@ import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../lib/work
 import { analyzeWorkflowHealth } from '../lib/workflow-health';
 import { tenantCondition } from '../lib/tenant';
 import { buildStarterContext, resolveAdminUserId, resolveAssigneeIds } from './workflow-assignee-resolver.service';
+import { resolveFormSnapshot } from './workflow-forms.service';
 import type {
   SimulateWorkflowInput,
   WorkflowConditionGroup,
@@ -733,10 +734,26 @@ async function completeTask(task: SimulatedTask, ctx: SimulationContext): Promis
 
 /**
  * 发布前健康体检：纯静态分析流程定义，输出健康评分 + 分维度检查 + 分支覆盖。
+ * 当传入 definitionId 且绑定了表单时，额外解析表单字段集合用于表达式/条件字段引用校验。
  */
 export async function checkDefinitionHealth(input: WorkflowHealthCheckInput): Promise<WorkflowDefinitionHealthReport> {
   const flowData = await resolveFlowData(input as SimulateWorkflowInput);
-  return analyzeWorkflowHealth(flowData);
+  const knownFields = await resolveKnownFormFields(input);
+  return analyzeWorkflowHealth(flowData, knownFields);
+}
+
+/** 解析流程绑定表单的字段 key 集合（用于字段引用校验）；无 definitionId/未绑定表单时返回 null */
+async function resolveKnownFormFields(input: WorkflowHealthCheckInput): Promise<Set<string> | null> {
+  if (!input.definitionId) return null;
+  const user = currentUser();
+  const tc = tenantCondition(workflowDefinitions, user);
+  const conds = [eq(workflowDefinitions.id, input.definitionId)];
+  if (tc) conds.push(tc);
+  const [def] = await db.select({ formId: workflowDefinitions.formId }).from(workflowDefinitions).where(and(...conds)).limit(1);
+  if (!def?.formId) return null;
+  const snap = await resolveFormSnapshot(def.formId);
+  if (!snap || snap.fields.length === 0) return null;
+  return new Set(snap.fields.map((f) => f.key).filter((k): k is string => !!k));
 }
 
 // ── 仿真耗时预估 / 阻塞点 ──

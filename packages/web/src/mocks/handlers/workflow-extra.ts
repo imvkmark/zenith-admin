@@ -485,14 +485,16 @@ export const workflowExtraHandlers = [
     const tpl = mockTemplates.find((t) => t.id === Number(params.id));
     if (!tpl) return err('模板不存在', 404);
     let name = tpl.name;
+    let description: string | null = tpl.description ?? null;
     let categoryId: number | null = null;
     try {
-      const b = await request.json() as { name?: string; categoryId?: number | null };
+      const b = await request.json() as { name?: string; description?: string | null; categoryId?: number | null };
       if (b?.name) name = b.name;
+      if (b?.description !== undefined) description = b.description?.trim() || null;
       categoryId = b?.categoryId ?? null;
     } catch { /* no body */ }
     const now = mockDateTime();
-    const def = { ...(mockWorkflowDefinitions[0] ?? {}), id: getNextDefinitionId(), name, categoryId, status: 'draft' as const, version: 1, flowData: tpl.flowData, createdAt: now, updatedAt: now };
+    const def = { ...(mockWorkflowDefinitions[0] ?? {}), id: getNextDefinitionId(), name, description, categoryId, status: 'draft' as const, version: 1, flowData: tpl.flowData, createdAt: now, updatedAt: now };
     mockWorkflowDefinitions.push(def as typeof mockWorkflowDefinitions[number]);
     return ok(def, '已创建');
   }),
