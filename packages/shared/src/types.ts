@@ -3135,6 +3135,11 @@ export interface WorkflowAnalytics {
   definitionStats: WorkflowAnalyticsDefinitionStat[];
   nodeBottlenecks: WorkflowAnalyticsNodeBottleneck[];
   approverWorkloads: WorkflowAnalyticsApproverWorkload[];
+  automation: {
+    jobsTotal: number; jobsFailed: number; jobsDead: number; jobFailRate: number | null;
+    webhookTotal: number; webhookSuccessRate: number | null;
+    subprocessTotal: number; subprocessFailRate: number | null;
+  };
   trend: WorkflowAnalyticsTrendPoint[];
 }
 

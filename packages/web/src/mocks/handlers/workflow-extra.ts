@@ -171,6 +171,7 @@ function buildAnalytics(): WorkflowAnalytics {
     definitionStats,
     nodeBottlenecks,
     approverWorkloads,
+    automation: { jobsTotal: 24, jobsFailed: 1, jobsDead: 0, jobFailRate: 1 / 24, webhookTotal: 8, webhookSuccessRate: 0.875, subprocessTotal: 3, subprocessFailRate: 0 },
     trend,
   };
 }

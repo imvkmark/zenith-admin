@@ -44,6 +44,9 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
     completedTrend,
     overdueRow,
     dueSoonRow,
+    jobRows,
+    webhookRows,
+    subRows,
   ] = await Promise.all([
     // 1. 各状态计数
     db.select({ status: workflowInstances.status, count: sql<number>`count(*)::int` })
@@ -132,7 +135,23 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
       .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
       .innerJoin(workflowJobs, eq(workflowJobs.taskId, workflowTasks.id))
       .where(and(...instConds, eq(workflowTasks.status, 'pending'), eq(workflowJobs.jobType, 'task_timeout'), eq(workflowJobs.status, 'pending'), sql`${workflowJobs.runAt} > now() and ${workflowJobs.runAt} < now() + interval '24 hours'`)),
+    // 11. 作业健康（按状态计数）
+    db.select({ status: workflowJobs.status, count: sql<number>`count(*)::int` }).from(workflowJobs).groupBy(workflowJobs.status),
+    // 12. Webhook 投递（按状态计数）
+    db.select({ status: workflowJobs.status, count: sql<number>`count(*)::int` }).from(workflowJobs).where(eq(workflowJobs.jobType, 'webhook_delivery')).groupBy(workflowJobs.status),
+    // 13. 子流程实例（按状态计数）
+    db.select({ status: workflowInstances.status, count: sql<number>`count(*)::int` }).from(workflowInstances).where(sql`${workflowInstances.parentInstanceId} is not null`).groupBy(workflowInstances.status),
   ]);
+  const sumc = (rows: Array<{ status: string; count: number }>, ...st: string[]) => rows.filter((r) => st.includes(r.status)).reduce((s, r) => s + r.count, 0);
+  const jobsTotal = sumc(jobRows, 'pending', 'running', 'succeeded', 'failed', 'dead', 'canceled');
+  const jobsFailed = sumc(jobRows, 'failed'), jobsDead = sumc(jobRows, 'dead');
+  const whTotal = sumc(webhookRows, 'succeeded', 'failed', 'dead'), whOk = sumc(webhookRows, 'succeeded');
+  const subTotal = subRows.reduce((s, r) => s + r.count, 0), subRej = sumc(subRows, 'rejected');
+  const automation = {
+    jobsTotal, jobsFailed, jobsDead, jobFailRate: jobsTotal > 0 ? (jobsFailed + jobsDead) / jobsTotal : null,
+    webhookTotal: whTotal, webhookSuccessRate: whTotal > 0 ? whOk / whTotal : null,
+    subprocessTotal: subTotal, subprocessFailRate: subTotal > 0 ? subRej / subTotal : null,
+  };
 
   const statusCounts = statusRows.map((r) => ({ status: r.status, count: r.count }));
   const total = statusCounts.reduce((sum, s) => sum + s.count, 0);
@@ -193,6 +212,7 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
         handledCount: r.handledCount,
         oldestPendingSec: round(r.oldestPendingSec),
       })),
+    automation,
     trend,
   };
 }
