@@ -150,7 +150,7 @@ function buildAnalytics(): WorkflowAnalytics {
   // 近 14 天趋势
   const trend = Array.from({ length: 14 }, (_, idx) => {
     const date = new Date(Date.now() - (13 - idx) * 86400000).toISOString().slice(0, 10);
-    return { date, created: Math.floor(Math.random() * 4), completed: Math.floor(Math.random() * 3) };
+    return { date, created: Math.floor(Math.random() * 4), completed: Math.floor(Math.random() * 3), pending: 5 + Math.floor(Math.random() * 6) };
   });
 
   const approvedN = statusCounts.find((s) => s.status === 'approved')?.count ?? 0;
@@ -617,7 +617,15 @@ export const workflowExtraHandlers = [
   }),
 
   // ── 管理员强制操作 ──
-  http.get('/api/workflows/instances/compensations', () => ok({ list: [], total: 0, page: 1, pageSize: 20 })),
+  http.get('/api/workflows/instances/compensations', ({ request }) => {
+    const status = new URL(request.url).searchParams.get('status');
+    const all = [
+      { id: 1, instanceId: 1001, nodeKey: 'catch1', nodeName: '异常捕获', errorMessage: '审批人解析为空', action: 'toAdmin', status: 'pending', resolution: null, resolvedBy: null, resolvedAt: null, createdAt: mockDateTime() },
+      { id: 2, instanceId: 1002, nodeKey: 'catch1', nodeName: '异常捕获', errorMessage: '外部审批回调超时', action: 'toAdmin', status: 'resolved', resolution: '已重派', resolvedBy: 1, resolvedAt: mockDateTime(), createdAt: mockDateTime() },
+    ];
+    const list = status ? all.filter((c) => c.status === status) : all;
+    return ok({ list, total: list.length, page: 1, pageSize: 20 });
+  }),
   http.post('/api/workflows/instances/compensations/:id/resolve', () => ok(null, '已处理')),
   http.get('/api/workflows/instances/:id/migrate/preflight', ({ params }) => {
     const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));

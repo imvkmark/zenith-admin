@@ -3113,6 +3113,8 @@ export interface WorkflowAnalyticsTrendPoint {
   date: string;
   created: number;
   completed: number;
+  /** 当日积压（运行中实例估算，按 created-completed 累计回推） */
+  pending?: number;
 }
 
 export interface WorkflowAnalytics {

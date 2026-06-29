@@ -170,9 +170,13 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
   const createdMap = new Map(createdTrend.map((r) => [r.d, r.c]));
   const completedMap = new Map(completedTrend.map((r) => [r.d, r.c]));
   const trend: WorkflowAnalyticsTrendPoint[] = [];
+  const runningNow = statusCounts.find((s) => s.status === 'running')?.count ?? 0;
+  let net = 0; for (let i = 13; i >= 0; i--) { const d = dayjs().subtract(i, 'day').format('YYYY-MM-DD'); net += (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0); }
+  let backlog = runningNow - net; // 14 天前的积压基线
   for (let i = 13; i >= 0; i--) {
     const d = dayjs().subtract(i, 'day').format('YYYY-MM-DD');
-    trend.push({ date: d, created: createdMap.get(d) ?? 0, completed: completedMap.get(d) ?? 0 });
+    backlog += (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0);
+    trend.push({ date: d, created: createdMap.get(d) ?? 0, completed: completedMap.get(d) ?? 0, pending: Math.max(0, backlog) });
   }
 
   return {

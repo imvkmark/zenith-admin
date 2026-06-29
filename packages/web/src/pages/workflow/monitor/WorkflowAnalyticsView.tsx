@@ -98,6 +98,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
     series: [
       { field: 'created', name: '发起', color: '#3370ff' },
       { field: 'completed', name: '完结', color: '#0dc87c' },
+      { field: 'pending', name: '积压', color: '#fa8c16' },
     ],
     palette,
     axis: { xLabel: (d) => d.slice(5) },
@@ -210,7 +211,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
 
       {/* 趋势 + 状态分布 */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <ChartCard title="近 14 天发起 / 完结趋势">
+        <ChartCard title="近 14 天发起 / 完结 / 积压趋势">
           <LineChart {...trendSpec} options={chartOptions} height={260} />
         </ChartCard>
         <ChartCard title="状态分布">

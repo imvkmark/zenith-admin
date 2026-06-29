@@ -42,6 +42,7 @@ import { resolveWorkflowFlowData } from '@/utils/workflow-snapshot';
 import WorkflowAnalyticsView from './WorkflowAnalyticsView';
 import WorkflowEngineDiagnosticsView from './WorkflowEngineDiagnosticsView';
 import WorkflowJobsView from './WorkflowJobsView';
+import WorkflowCompensationsView from './WorkflowCompensationsView';
 import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { renderEllipsis } from '../../../utils/table-columns';
@@ -1338,6 +1339,9 @@ export default function WorkflowMonitorPage() {
         </TabPane>
         <TabPane tab="作业账本" itemKey="jobs">
           <WorkflowJobsView />
+        </TabPane>
+        <TabPane tab="补偿工单" itemKey="compensations">
+          <WorkflowCompensationsView />
         </TabPane>
       </Tabs>
 
