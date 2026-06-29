@@ -1,8 +1,9 @@
 /**
  * 钉钉/飞书风格流程设计器 — 工具函数
  */
-import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType } from './types';
+import type { FlowNode, FlowBranch, FlowProcess, FlowNodeType, BranchNodeType, ActionButtonsConfig } from './types';
 import { DEFAULT_BRANCH_COUNT } from './constants';
+import { normalizeActionButtons } from './action-buttons';
 
 let idCounter = 0;
 
@@ -774,10 +775,7 @@ function flattenNode(
         fallbackStrategy: (p.externalApprovalFallback as string) ?? 'manual',
       };
     }
-    // 操作按钮配置：直接透传 actionButtons 对象
-    if (p.actionButtons && typeof p.actionButtons === 'object') {
-      dataExtra.actionButtons = p.actionButtons;
-    }
+    dataExtra.actionButtons = normalizeActionButtons(p.actionButtons as ActionButtonsConfig | undefined);
   }
   nodes.push({
     id: flatId,

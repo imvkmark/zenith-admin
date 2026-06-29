@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Switch, Popover, Input, Button, Select, Empty } from '@douyinfe/semi-ui';
 import { Pencil } from 'lucide-react';
 import type { ActionButtonKey, ActionButtonConfig, ActionButtonsConfig, ActionUploadMode, FlowNodeType } from '../../types';
+import { ACTION_BUTTON_META, getActionButtonConfig, normalizeActionButtons } from '../../action-buttons';
 
 const UPLOAD_MODE_OPTIONS: Array<{ value: ActionUploadMode; label: string }> = [
   { value: 'hidden', label: '不显示' },
@@ -27,30 +28,6 @@ interface ActionButtonsTabProps {
   onChange: (next: ActionButtonsConfig) => void;
   /** "跳转配置" 下拉的候选节点（可退回的前序节点） */
   jumpTargetNodes?: JumpTargetNode[];
-}
-
-interface ButtonMeta {
-  key: ActionButtonKey;
-  label: string;
-  defaultDisplayName: string;
-  defaultOpinionName: string;
-  /** 是否支持跳转配置（仅 reject / return） */
-  supportsJump: boolean;
-  /** 是否默认启用 */
-  defaultEnabled: boolean;
-}
-
-const BUTTON_META: ButtonMeta[] = [
-  { key: 'approve',  label: '通过', defaultDisplayName: '通过', defaultOpinionName: '通过', supportsJump: false, defaultEnabled: true },
-  { key: 'reject',   label: '拒绝', defaultDisplayName: '拒绝', defaultOpinionName: '拒绝', supportsJump: true,  defaultEnabled: true },
-  { key: 'transfer', label: '转办', defaultDisplayName: '转办', defaultOpinionName: '转办', supportsJump: false, defaultEnabled: true },
-  { key: 'delegate', label: '委派', defaultDisplayName: '委派', defaultOpinionName: '委派', supportsJump: false, defaultEnabled: true },
-  { key: 'addSign',  label: '加签', defaultDisplayName: '加签', defaultOpinionName: '加签', supportsJump: false, defaultEnabled: true },
-  { key: 'return',   label: '退回', defaultDisplayName: '退回', defaultOpinionName: '退回', supportsJump: true,  defaultEnabled: true },
-];
-
-function getConfig(value: ActionButtonsConfig | undefined, meta: ButtonMeta): ActionButtonConfig {
-  return value?.[meta.key] ?? { enabled: meta.defaultEnabled };
 }
 
 /** 内联可编辑文字单元格：默认显示文字 + 编辑图标，点击弹出 Popover 输入框 */
@@ -130,12 +107,13 @@ export default function ActionButtonsTab({
 }: Readonly<ActionButtonsTabProps>) {
 
   const updateButton = (key: ActionButtonKey, patch: Partial<ActionButtonConfig>) => {
-    const meta = BUTTON_META.find(m => m.key === key);
-    const current = value?.[key] ?? { enabled: meta?.defaultEnabled ?? true };
-    onChange({
+    const meta = ACTION_BUTTON_META.find(m => m.key === key);
+    if (!meta) return;
+    const current = getActionButtonConfig(value, meta);
+    onChange(normalizeActionButtons({
       ...(value ?? {}),
       [key]: { ...current, ...patch },
-    });
+    }));
   };
 
   const jumpOptions = jumpTargetNodes.map(n => ({
@@ -158,8 +136,8 @@ export default function ActionButtonsTab({
           </tr>
         </thead>
         <tbody>
-          {BUTTON_META.map(meta => {
-            const cfg = getConfig(value, meta);
+          {ACTION_BUTTON_META.map(meta => {
+            const cfg = getActionButtonConfig(value, meta);
             const disabled = !cfg.enabled;
             // approve / reject 不允许整体关闭（流程必须可决策）
             const lockEnabled = meta.key === 'approve' || meta.key === 'reject';

@@ -19,6 +19,7 @@ import ApproverSettingsTab from './tabs/ApproverSettingsTab';
 import FormPermissionTab from './tabs/FormPermissionTab';
 import ApprovalRequirementsTab from './tabs/ApprovalRequirementsTab';
 import ActionButtonsTab from './tabs/ActionButtonsTab';
+import { normalizeActionButtons } from '../action-buttons';
 import NodeListenersTab from './tabs/NodeListenersTab';
 
 interface UserOption { id: number; nickname: string; }
@@ -244,7 +245,10 @@ export default function NodeConfigDrawer({
       }
     }
     setNodeKeyError('');
-    onSave(node.id, { name, key: trimmedKey, props });
+    const nextProps = node.type === 'approver'
+      ? { ...props, actionButtons: normalizeActionButtons(props.actionButtons as ActionButtonsConfig | undefined) }
+      : props;
+    onSave(node.id, { name, key: trimmedKey, props: nextProps });
   };
 
   const [connectorOptions, setConnectorOptions] = useState<Array<{ value: number; label: string }>>([]);
