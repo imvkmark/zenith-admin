@@ -41,6 +41,7 @@ export type AssigneeType =
   | 'nodeApprover'               // 节点审批人（关联前序节点）
   | 'userGroup'                  // 用户组
   | 'formDepartment'             // 表单内部门
+  | 'decision'                   // 审批人矩阵：决策表
   | 'expression';                // 流程表达式
 
 /** 审批类型（节点级总开关） */

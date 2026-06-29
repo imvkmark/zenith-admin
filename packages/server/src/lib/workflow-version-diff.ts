@@ -25,7 +25,7 @@ const APPROVE_METHOD_LABEL: Record<string, string> = {
 const ASSIGNEE_TYPE_LABEL: Record<string, string> = {
   user: '指定成员', role: '角色', department: '部门负责人', userGroup: '用户组', post: '岗位',
   deptMember: '部门成员', initiator: '发起人', initiatorLeader: '发起人上级', initiatorDept: '发起人部门主管',
-  startUserDeptResponsible: '部门分管领导', manager: '直属主管', expression: '表达式', formUser: '表单字段', self: '自选',
+  startUserDeptResponsible: '部门分管领导', manager: '直属主管', expression: '表达式', formUser: '表单字段', self: '自选', decision: '决策表',
 };
 
 const ASSIGNEE_TYPES = ['user', 'role', 'department', 'userGroup', 'post', 'deptMember', 'expression'] as const;

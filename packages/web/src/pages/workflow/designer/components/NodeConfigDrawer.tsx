@@ -362,6 +362,7 @@ export default function NodeConfigDrawer({
                   selectScopeType={(props.selectScopeType as 'user' | 'role' | 'department' | 'userGroup') ?? 'user'}
                   selectScopeIds={(props.selectScopeIds as number[]) ?? []}
                   assigneeExpression={(props.assigneeExpression as string) ?? ''}
+                  decisionRuleKey={(props.decisionRuleKey as string) ?? ''}
                   rejectStrategy={(props.rejectStrategy as RejectStrategy) ?? 'terminate'}
                   rejectToNodeKey={props.rejectToNodeKey as string | undefined}
                   availableRejectNodes={rejectableAncestorNodes}

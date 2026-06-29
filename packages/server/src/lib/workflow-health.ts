@@ -106,6 +106,7 @@ function isApproverResolvable(cfg: WorkflowNodeConfig): boolean {
     case 'post': return Boolean(cfg.postIds?.length);
     case 'deptMember': return Boolean(cfg.deptMemberDeptIds?.length);
     case 'expression': return Boolean(cfg.assigneeExpression && cfg.assigneeExpression.trim());
+    case 'decision': return Boolean(cfg.decisionRuleKey);
     case undefined: return false;
     // 其余动态来源（发起人 / 主管 / 表单字段 / 自选 等）运行时解析，视为已配置
     default: return true;

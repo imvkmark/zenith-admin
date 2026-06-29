@@ -19,6 +19,7 @@ import {
 import type { DbExecutor } from '../db/types';
 import logger from '../lib/logger';
 import { evaluateExpression, ExpressionError } from '../lib/workflow-expression';
+import { getDecisionOutputs } from './rules.service';
 
 export interface ResolveAssigneeContext {
   /** 流程发起人 ID（用于 initiator / initiatorLeader / initiatorDept / manager） */
@@ -474,6 +475,18 @@ export async function resolveAssigneeIds(
         starter: { id: ctx.initiatorId },
       });
       ids.forEach((id) => result.add(id));
+      break;
+    }
+    case 'decision': {
+      // 审批人矩阵：查决策表得「来源类型 + id 列表」，复用现有 role/dept/post/user 解析
+      if (!node.decisionRuleKey) break;
+      const out = await getDecisionOutputs(node.decisionRuleKey, { form: ctx.formData ?? {}, starter: { id: ctx.initiatorId } });
+      const srcType = String(out.type ?? out.assigneeType ?? 'user') as WorkflowAssigneeType;
+      const raw = out.ids ?? out.id ?? '';
+      const ids = (Array.isArray(raw) ? raw : String(raw).split(',')).map((x) => Number(x)).filter((n) => Number.isFinite(n));
+      if (ids.length === 0) break;
+      const sub: WorkflowNodeConfig = { ...node, assigneeType: srcType, userIds: srcType === 'user' ? ids : undefined, roleIds: srcType === 'role' ? ids : undefined, deptIds: srcType === 'department' ? ids : undefined, postIds: srcType === 'post' ? ids : undefined, decisionRuleKey: undefined };
+      (await resolveAssigneeIds(sub, ctx)).forEach((id) => result.add(id));
       break;
     }
   }

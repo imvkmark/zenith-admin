@@ -1878,6 +1878,7 @@ export type WorkflowAssigneeType =
   | 'initiatorSelect'            // 发起人自选（在发起时已经填到 userIds 中）
   | 'initiatorSelectScope'       // 发起人自选指定范围
   | 'approverSelect'             // 上一节点审批人自选
+  | 'decision'                   // 审批人矩阵：决策表输出来源类型+id
   | 'expression';                // 流程表达式
 
 /** 审批方式 */

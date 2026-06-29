@@ -3,7 +3,7 @@
  * 支持多种指定策略：指定成员、角色、主管、发起人自己、表单联系人、发起人自选、
  * 连续多级上级、连续多级部门负责人、节点审批人、用户组、表单内部门
  */
-import { Form, Select, InputNumber, Typography, RadioGroup, Radio, Tooltip, Checkbox, TextArea } from '@douyinfe/semi-ui';
+import { Form, Select, InputNumber, Input, Typography, RadioGroup, Radio, Tooltip, Checkbox, TextArea } from '@douyinfe/semi-ui';
 import type {
   AssigneeType,
   ApproveMethod,
@@ -55,6 +55,7 @@ interface ApproverSettingsTabProps {
   selectScopeType?: SelectScopeType;
   selectScopeIds?: number[];
   assigneeExpression?: string;
+  decisionRuleKey?: string;
   // ── 高级（仅审批人）：拒绝 / 超时 / 为空 / 同一人 / 去重 ──
   rejectStrategy?: RejectStrategy;
   rejectToNodeKey?: string;
@@ -102,6 +103,7 @@ export default function ApproverSettingsTab({
   selectScopeType = 'user',
   selectScopeIds = [],
   assigneeExpression = '',
+  decisionRuleKey = '',
   rejectStrategy = 'terminate',
   rejectToNodeKey,
   availableRejectNodes = [],
@@ -549,6 +551,19 @@ export default function ApproverSettingsTab({
               />
               <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
                 运行时由后端解析；表达式应返回数字（单一用户 ID）或数字数组（多用户 ID）
+              </Typography.Text>
+            </Form.Slot>
+          )}
+
+          {assigneeType === 'decision' && (
+            <Form.Slot label="决策表 Key">
+              <Input
+                value={decisionRuleKey}
+                onChange={(v) => onChange({ decisionRuleKey: v })}
+                placeholder="如 approver_matrix：输出 { type: role/department/post/user, ids }"
+              />
+              <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+                运行时按 form/starter 求值，输出"来源类型+ID"后复用角色/部门/岗位/成员解析；无命中走空审批人兜底
               </Typography.Text>
             </Form.Slot>
           )}
