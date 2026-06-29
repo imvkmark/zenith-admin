@@ -37,7 +37,7 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <Text strong>输入列</Text>
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>输入列</Text>
         {inputs.map((c, i) => (
           <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
             <Input size="small" value={c.key} onChange={(v) => setInput(i, { key: v })} placeholder="key" style={{ width: 150 }} />
@@ -50,7 +50,7 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
         <Button size="small" theme="borderless" icon={<Plus size={14} />} onClick={addInput} style={{ marginTop: 6 }}>加输入列</Button>
       </div>
       <div>
-        <Text strong>输出列</Text>
+        <Text strong style={{ display: 'block', marginBottom: 4 }}>输出列</Text>
         {outputs.map((c, i) => (
           <div key={i} style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
             <Input size="small" value={c.key} onChange={(v) => setOutput(i, { key: v })} placeholder="key" style={{ flex: 1, minWidth: 150 }} />
@@ -68,24 +68,26 @@ export default function DecisionTableEditor({ inputs, outputs, rules, onChange }
           <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>请先添加输入列 / 输出列，再添加规则行</Text>
         ) : (
           <>
-            <div style={{ overflowX: 'auto', marginTop: 6 }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead><tr>
-                  {inputs.map((c) => <th key={c.key} style={col}>{c.label}</th>)}
-                  {outputs.map((c) => <th key={c.key} style={{ ...col, background: 'var(--semi-color-fill-0)' }}>{c.label}</th>)}
-                  <th style={col} />
-                </tr></thead>
-                <tbody>
-                  {rules.map((r, ri) => (
-                    <tr key={r.id}>
-                      {inputs.map((_, ci) => <td key={ci} style={col}><Input size="small" value={r.when[ci] ?? ''} onChange={(v) => setWhen(ri, ci, v)} style={{ width: 110 }} /></td>)}
-                      {outputs.map((o) => <td key={o.key} style={col}><Input size="small" value={String(r.then[o.key] ?? '')} onChange={(v) => setThen(ri, o.key, v)} style={{ width: 110 }} /></td>)}
-                      <td style={col}><Space spacing={2}><Button size="small" theme="borderless" onClick={() => dupRow(ri)}>复制</Button><Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delRow(ri)} /></Space></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {rules.length > 0 && (
+              <div style={{ overflowX: 'auto', marginTop: 6 }}>
+                <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead><tr>
+                    {inputs.map((c) => <th key={c.key} style={col}>{c.label}</th>)}
+                    {outputs.map((c) => <th key={c.key} style={{ ...col, background: 'var(--semi-color-fill-0)' }}>{c.label}</th>)}
+                    <th style={{ ...col, width: 96 }}>操作</th>
+                  </tr></thead>
+                  <tbody>
+                    {rules.map((r, ri) => (
+                      <tr key={r.id}>
+                        {inputs.map((_, ci) => <td key={ci} style={col}><Input size="small" value={r.when[ci] ?? ''} onChange={(v) => setWhen(ri, ci, v)} style={{ width: 110 }} /></td>)}
+                        {outputs.map((o) => <td key={o.key} style={col}><Input size="small" value={String(r.then[o.key] ?? '')} onChange={(v) => setThen(ri, o.key, v)} style={{ width: 110 }} /></td>)}
+                        <td style={col}><Space spacing={2}><Button size="small" theme="borderless" onClick={() => dupRow(ri)}>复制</Button><Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={() => delRow(ri)} /></Space></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <Button size="small" theme="borderless" icon={<Plus size={14} />} onClick={addRow} style={{ marginTop: 6 }}>加规则行</Button>
           </>
         )}
