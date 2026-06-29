@@ -1,146 +1,93 @@
-# 事件总线
+# 事件总线与事件订阅
 
-工作流引擎在关键状态变化时会发出事件。事件总线是基于 Node.js `EventEmitter` 的进程内封装，事件通过 `queueMicrotask` 异步分发，单个订阅者异常不会影响其它订阅者。
+工作流事件总线负责把实例、节点和任务变化分发给站内通知、WebSocket、聊天卡片、自动化、业务桥接、节点监听器和 HTTP Webhook 订阅。事件通过 `event_dispatch` 作业可靠分发，并为每个匹配的 Webhook 订阅生成独立 `webhook_delivery` 作业。
 
 ## 事件类型
 
-当前事件总线支持 15 种事件：
-
-| 事件 | 触发时机 | 典型用途 |
-| --- | --- | --- |
-| instance.created | 流程实例创建时 | 记录流程发起日志、通知相关人 |
-| instance.approved | 流程实例状态变为已通过时 | 通知发起人流程已完成、归档 |
-| instance.rejected | 流程实例状态变为已驳回时 | 通知发起人流程被驳回 |
-| instance.withdrawn | 实例发起人撤回时 | 通知相关人流程已撤回 |
-| node.entered | 进入某个节点时 | 触发节点级联操作 |
-| node.left | 离开某个节点时 | 清理节点相关资源 |
-| task.created | 审批/办理任务创建时 | 发送待办通知 |
-| task.assigned | 任务被指派给具体人时 | 发送即时消息提醒 |
-| task.approved | 任务被通过时 | 记录审批日志 |
-| task.rejected | 任务被拒绝时 | 记录驳回日志 |
-| task.skipped | 任务被跳过时 | 记录跳过原因 |
-| task.transferred | 任务被转交时 | 通知新审批人 |
-| task.addSigned | 加签产生新任务时（每个加签任务一次） | 通知被加签人 |
-| task.reduceSigned | 减签使任务变为已跳过时（每个被减签任务一次） | 通知相关人 |
-| task.urged | 任务被催办时 | 提醒审批人尽快处理 |
-
-## 事件订阅方式
-
-### 1. HTTP Webhook 订阅
-
-最常用的事件订阅方式，在「工作流 → 事件订阅」页面配置：
-
-1. 进入「事件订阅」页面
-2. 点击「新建」
-3. 填写订阅名称、目标 URL、订阅的事件类型
-4. 保存并启用
-
-配置完成后，当订阅的事件发生时，`webhook` 订阅者会向配置的 URL 发送 HTTP POST 请求。
-
-详见 [事件订阅（HTTP Webhook）](./event-subscriptions.md)。
-
-### 2. WebSocket 实时推送
-
-系统内置 `ws` 订阅者，针对任务创建、任务处理结果、实例结束等事件向在线用户实时推送。前端无需额外配置即可使用。
-
-### 3. 代码级订阅
-
-如果你需要在代码中响应事件，可以通过事件总线进行订阅：
-
-```ts
-import { workflowEventBus } from './lib/workflow-event-bus';
-
-workflowEventBus.on('node.entered', (e) => {
-  if (e.nodeKey === 'risk_review') {
-    // 自定义副作用，如调用风控接口
-  }
-});
-```
-
-> 节点级别过滤通过 `e.nodeKey` 判断；前提是在设计器里给目标节点设置了稳定的 `key`，参见 [节点配置指南](./node-config.md)。
-
-## 事件数据结构
-
-所有事件都包含以下基础字段：
-
-| 字段 | 说明 |
+| 事件 | 触发时机 |
 | --- | --- |
-| eventId | 事件唯一标识（UUID） |
-| type | 事件类型 |
-| occurredAt | 发生时间（`YYYY-MM-DD HH:mm:ss`） |
-| instanceId | 关联的流程实例 ID |
-| definitionId | 关联的流程定义 ID |
-| tenantId | 租户 ID（多租户场景） |
-| actor | 触发事件的用户信息 |
+| `instance.created` | 实例创建并进入运行 |
+| `instance.approved` | 实例通过 |
+| `instance.rejected` | 实例驳回终止 |
+| `instance.withdrawn` | 发起人撤回 |
+| `node.entered` | 进入节点 |
+| `node.left` | 离开节点 |
+| `task.created` | 任务创建 |
+| `task.assigned` | 任务指派给处理人 |
+| `task.approved` | 任务通过 |
+| `task.rejected` | 任务驳回 |
+| `task.skipped` | 任务跳过 |
+| `task.transferred` | 任务转办 |
+| `task.addSigned` | 加签任务创建 |
+| `task.reduceSigned` | 加签任务被减签跳过 |
+| `task.urged` | 任务被催办 |
 
-不同事件类型会附加不同的字段：
-
-| 事件类型 | 附加字段 |
-| --- | --- |
-| instance.* | instance（完整的流程实例数据） |
-| node.* | nodeKey、nodeName、nodeType |
-| task.* | task（完整的任务数据）、comment（审批意见） |
+所有事件都包含 `eventId`、`type`、`occurredAt`、`instanceId`、`definitionId`、`tenantId` 和可选 `actor`。实例事件带完整实例，节点事件带节点信息，任务事件带任务与意见。
 
 ## 内置订阅者
 
-服务启动时会注册以下订阅者：
-
 | 订阅者 | 说明 |
 | --- | --- |
-| `ws` | WebSocket 实时推送 |
-| `webhook` | HTTP Webhook 事件订阅与投递重试 |
-| `trigger` | 监听 `node.entered` 执行触发器节点 |
-| `external-approver` | 监听 `task.created` 派发外部审批 |
-| `node-listeners` | 执行节点级监听器 |
-| `notification` | 站内通知 |
-| `chat` | 聊天/机器人卡片通知 |
-| `workflow-automations` | 执行流程级自动化规则 |
+| WebSocket | 给在线用户推送待办和状态变化 |
+| 通知 | 生成站内消息 |
+| 聊天 | 发送聊天/机器人卡片 |
+| 节点监听器 | 执行节点上配置的 Webhook |
+| 自动化 | 执行流程级自动化规则 |
+| 业务桥接 | 将 `bizType` 对应流程结果回写业务模块 |
+| Webhook 订阅 | 按后台配置向外部系统投递事件 |
 
-## 事件订阅的签名验证
+进程内订阅者按 best-effort 执行，单个订阅者失败不会阻断其它订阅者。外部 Webhook 投递由作业账本记录、重试和死信。
 
-当配置 `signMode === 'hmacSha256'` 且订阅配置了 `secret` 时，系统会在请求头中附带签名：
+## 事件订阅
+
+页面入口为 `工作流引擎 → 事件订阅`。
+
+| 配置 | 说明 |
+| --- | --- |
+| 名称 / 描述 | 订阅基础信息 |
+| 流程定义 | 为空表示订阅所有流程；指定后只订阅该定义 |
+| 事件类型 | 可多选事件总线支持的事件 |
+| URL | 投递目标；使用连接器时可为相对路径 |
+| 连接器 | 可选；提供基础地址、鉴权、限流、熔断和调用审计 |
+| 签名方式 | `hmacSha256` 或 `none` |
+| Secret | HMAC 密钥，详情页脱敏显示，可按需查看明文 |
+| 请求头 | 附加 Header |
+| 启用状态 | 控制是否参与匹配 |
+
+## 投递请求
+
+Webhook 投递使用 `POST`，请求体为完整工作流事件。
 
 ```http
+X-Zenith-Event: task.approved
+X-Zenith-Event-Id: {eventId}
+X-Zenith-Delivery-Job: {jobId}
+X-Zenith-Attempt: {attempt}
 X-Zenith-Signature: t={timestamp},v1={hex_hmac}
 ```
 
-接收方应：
+签名内容为 `${timestamp}.${rawBody}`，算法为 HMAC-SHA256。接收方应校验时间戳偏差并使用相同 Secret 重算 `v1`。
 
-1. 校验 timestamp 与当前时间偏差（建议不超过 5 分钟）
-2. 用相同密钥重算 HMAC 并比对 v1
+## 投递记录与重放
 
-详见 [事件订阅（HTTP Webhook）](./event-subscriptions.md#签名)。
+事件订阅页面提供投递记录抽屉。记录来自 `workflow_job_executions` 中的 `webhook_delivery` 作业尝试，包含请求 URL、响应码、响应体、错误、耗时和下次重试时间。
 
-## 常见使用场景
+| 操作 | 说明 |
+| --- | --- |
+| 重试单条 | 将对应作业重新置为 `pending` |
+| 批量重试 | 按选中记录重试 |
+| 按筛选重放 | 按订阅、事件类型、状态和时间范围补发，包含已成功投递 |
 
-### 场景 1：流程完成后通知发起人
+重放有数量上限，适合外部系统恢复后补发一段时间内的事件。
 
-订阅 `instance.approved` 事件，收到事件后：
+## API 摘要
 
-1. 读取事件中的 `instance` 数据
-2. 获取发起人信息
-3. 发送邮件/短信通知
-
-### 场景 2：任务创建时发送待办提醒
-
-订阅 `task.created` 事件，收到事件后：
-
-1. 读取事件中的 `task` 数据
-2. 获取审批人信息
-3. 发送待办通知（App 推送、企业微信等）
-
-### 场景 3：节点进入时触发外部系统操作
-
-订阅 `node.entered` 事件，收到事件后：
-
-1. 判断 `nodeKey` 是否为特定节点
-2. 调用外部系统的 API
-3. 如调用失败，可记录到日志或触发告警
-
-### 场景 4：流程驳回时通知发起人
-
-订阅 `instance.rejected` 事件，收到事件后：
-
-1. 读取事件中的 `instance` 数据
-2. 获取发起人信息
-3. 发送驳回通知
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/workflows/event-subscriptions` | 订阅列表 |
+| `POST` | `/api/workflows/event-subscriptions` | 创建订阅 |
+| `PUT` | `/api/workflows/event-subscriptions/{id}` | 更新订阅 |
+| `PATCH` | `/api/workflows/event-subscriptions/{id}/toggle` | 启用 / 禁用 |
+| `GET` | `/api/workflows/event-subscriptions/deliveries/list` | 投递记录 |
+| `POST` | `/api/workflows/event-subscriptions/deliveries/{id}/retry` | 重试投递 |
+| `POST` | `/api/workflows/event-subscriptions/deliveries/replay` | 按筛选重放 |

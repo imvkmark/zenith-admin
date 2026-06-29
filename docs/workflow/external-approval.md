@@ -1,86 +1,23 @@
 # 外部审批
 
-外部审批用于把审批任务转交到外部系统（如钉钉、企业微信、第三方审批中心）。当审批节点开启 `externalApproval.enabled` 时，系统会创建一条 `waiting` 状态的审批任务并生成 `externalCallbackId`，该任务产生的 `task.created` 事件会被 `external-approver` 订阅者接管，对外发起派发请求，外部系统通过回调推进任务状态。
+外部审批是审批人节点的一种运行模式。启用后，审批任务会派发到第三方系统，第三方系统再通过公开回调完成通过或驳回。
 
-## 节点配置（`WorkflowNodeConfig.externalApproval`）
+完整配置与回调协议见 [触发器与外部审批](./trigger-nodes.md#外部审批)。
 
-| 字段 | 说明 |
+## 适用场景
+
+| 场景 | 说明 |
 | --- | --- |
-| `enabled` | 是否开启 |
-| `url` | 外部系统接收派发的 URL |
-| `secret` | 签名密钥 |
-| `signMode` | `'hmacSha256' \| 'none'`，默认 `hmacSha256` |
-| `timeoutMs` | 外呼超时，默认 `10_000` |
-| `fallbackStrategy` | `'manual' \| 'autoApprove' \| 'autoReject'`：派发失败时的兜底动作，详见下文 |
+| 企业微信 / 钉钉审批中心 | Zenith 负责编排流程，审批动作发生在外部系统 |
+| 第三方风控 / 法务系统 | 外部系统审核后回调结果 |
+| 跨系统人工审批 | 外部系统需要保留自己的任务和通知体系 |
 
-## 派发请求
+## 运行摘要
 
-POST 到 `node.externalApproval.url`，请求头：
+1. 审批节点创建 `waiting` 任务。
+2. 系统入队 `external_dispatch` 作业。
+3. 作业向外部系统 POST 派发请求。
+4. 外部系统调用 `/api/public/workflow/external-callback/{callbackId}`。
+5. 系统按 `approve` / `reject` 推进任务。
 
-```http
-Content-Type: application/json
-X-Zenith-Signature: t={timestamp},v1={hex_hmac}
-X-Zenith-Event: external-approval.requested
-X-Zenith-Callback-Id: {callbackId}
-```
-
-`X-Zenith-Signature` 与 [事件订阅签名](./event-subscriptions.md#签名) 算法一致，签名内容为 `${timestamp}.${rawBody}`，算法 `HMAC-SHA256`。当 `signMode === 'none'` 时不发送签名头。
-
-请求体包含回调标识、回调路径、实例摘要和任务摘要：
-
-```json
-{
-  "callbackId": "随机回调 ID",
-  "callbackPath": "/api/public/workflow/external-callback/{callbackId}",
-  "instance": {
-    "id": 1,
-    "title": "流程标题",
-    "initiatorId": 1,
-    "formData": {}
-  },
-  "task": {
-    "id": 1,
-    "nodeKey": "approve_1",
-    "nodeName": "审批节点"
-  }
-}
-```
-
-## 回调
-
-回调路径：
-
-```http
-POST /api/public/workflow/external-callback/:callbackId
-```
-
-`callbackId` 为派发时生成的随机 ID，外部系统须原样回传，并在请求体中提供决策结果与可选意见。回调命中后会推进对应任务的状态（通过/驳回），触发后续节点流转。
-
-回调 body：
-
-```json
-{
-  "action": "approve",
-  "comment": "审批意见",
-  "approverName": "外部审批人"
-}
-```
-
-`action` 支持 `approve` / `reject`。当节点 `signMode` 为 `hmacSha256` 时，回调请求也需要携带 `X-Zenith-Signature`，签名时间戳有效期为 5 分钟。
-
-## 派发失败
-
-派发失败（网络错误、超时、非 2xx 响应）会记录到任务的 `externalDispatchStatus` 字段，并按节点 `externalApproval.fallbackStrategy` 兜底：
-
-| 取值 | 行为 |
-| --- | --- |
-| `manual`（默认） | 不做处理，任务保持 `waiting`，等待人工介入 |
-| `autoApprove` | 自动通过该任务，写入「[系统] 外部审批服务调用失败，按节点 fallbackStrategy 自动处理」备注 |
-| `autoReject` | 自动驳回该任务，备注同上 |
-
-`externalDispatchStatus` 取值：
-
-- `pending`：派发中
-- `dispatched`：外部系统已接收，等待回调
-- `failed`：派发失败且为 `manual` 策略
-- `fallback`：派发失败且已按非 `manual` 策略自动处理
+派发失败会按节点 `fallbackStrategy` 保持人工处理、自动通过或自动驳回。

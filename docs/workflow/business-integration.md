@@ -1,57 +1,58 @@
 # 业务模块接入工作流
 
-除了「表单库设计器」与「自定义业务表单」（数据存流程 `formData`），工作流还支持**业务系统主导**的接入方式：业务模块拥有自己的实体表、Service、列表页，自己保存业务数据，再利用工作流引擎做审批编排。流程只通过 **businessKey（`bizType` + `bizId`）** 关联业务记录，业务数据**不进入流程**。
+业务模块接入工作流适合已有独立实体、Service、列表页和状态机的业务。业务数据保存在业务表，工作流只负责审批编排，并通过 `bizType + bizId` 建立关联。
 
-这对应流程定义的第三种表单类型 `formType = 'external'`。
+## 接入模式
 
-## 整体架构
+| 模式 | 数据存储 | 发起入口 | 适用场景 |
+| --- | --- | --- | --- |
+| `designer` | 流程实例 `formData` | 发起工作台 | 标准审批表单 |
+| `custom` | 流程实例 `formData` | 发起工作台 | 需要自定义 React 表单，但无独立业务表 |
+| `external` | 业务模块自有表 | 业务模块页面 | 已有业务实体，需要接审批 |
 
-```
-业务模块（自有表/Service/列表页）
-   │  ① 保存业务数据到自己的表（如 biz_leaves）
-   │  ② startWorkflowForBiz(definitionId, bizType, bizId, variables)
-   ▼
-工作流引擎  ──  workflow_instances 存 bizType + bizId + 路由变量(formData)，不存业务数据
-   │  ③ 审批流转（审批人通过 viewComponent 按 bizId 查看业务数据）
-   │  ④ instance.approved / rejected / withdrawn 事件
-   ▼
-业务订阅器 onWorkflowResult(bizType, ...)  ──  ⑤ 回写业务表状态
-```
+## 后端桥接 API
 
-## 提供的 SDK（`packages/server/src/lib/workflow-biz-bridge.ts`）
+`packages/server/src/lib/workflow-biz-bridge.ts` 提供三类函数：
 
-| 能力 | 函数 | 说明 |
-| --- | --- | --- |
-| 发起并关联 | `startWorkflowForBiz({ definitionId, title, bizType, bizId, variables?, priority?, caller? })` | 业务保存数据后调用，创建并关联工作流实例；`variables` 写入实例 `formData` 供条件分支/审批人使用 |
-| 结果回调 | `onWorkflowResult(bizType, { onApproved, onRejected, onWithdrawn, onCreated })` | 订阅该业务类型流程的生命周期事件，回写业务记录状态（基于 `workflowEventBus`） |
-| 状态查询 | `getWorkflowStatusByBiz(bizType, bizIds[])` | 按 businessKey 批量查询流程状态，供业务列表页展示 |
+| 函数 | 说明 |
+| --- | --- |
+| `startWorkflowForBiz` | 保存业务数据后发起流程，并写入 `bizType`、`bizId`、路由变量和优先级 |
+| `onWorkflowResult` | 监听指定 `bizType` 的创建、通过、驳回、撤回事件，回写业务状态 |
+| `getWorkflowStatusByBiz` | 按业务键批量查询工作流状态 |
 
-`workflow_instances` 新增 `biz_type` / `biz_id` 两列与 `(biz_type, biz_id)` 索引承载关联关系。
+## 接入步骤
 
-## 接入一个新业务模块（以请假 `biz_leave` 为参考）
+### 1. 业务表保存状态
 
-参考实现：后端 `services/biz-leave.service.ts` + `services/biz-leave-subscribers.ts` + `routes/biz-leave.ts`；前端 `pages/biz/leave/LeavePage.tsx`（列表页）+ `pages/biz/leave/LeaveApprovalView.tsx`（审批查看组件）。
+业务表建议保留：
 
-### 1. 业务实体表 + CRUD
+| 字段 | 说明 |
+| --- | --- |
+| `workflowInstanceId` | 关联流程实例 ID |
+| `workflowStatus` | 冗余流程状态，便于列表筛选和展示 |
+| 业务状态 | 业务自己的状态，如 `draft`、`pending`、`approved`、`rejected` |
 
-按常规 CRUD 流程创建业务表（如 `biz_leaves`），建议冗余 `workflow_instance_id` 与 `workflow_status` 字段便于列表展示。
-
-### 2. 提交时发起并关联流程
+### 2. 提交时发起流程
 
 ```ts
 import { startWorkflowForBiz } from '../lib/workflow-biz-bridge';
 
 const instance = await startWorkflowForBiz({
-  definitionId,                 // 已发布的 external 流程定义
+  definitionId,
   title: `请假申请 - ${applicant}`,
   bizType: 'biz_leave',
   bizId: leave.id,
-  variables: { days: leave.days, leaveType: leave.leaveType }, // 供条件分支/审批人
+  variables: {
+    days: leave.days,
+    leaveType: leave.leaveType,
+  },
+  priority: 'normal',
 });
-await db.update(bizLeaves).set({ status: 'pending', workflowInstanceId: instance.id, workflowStatus: instance.status }).where(eq(bizLeaves.id, id));
 ```
 
-### 3. 订阅流程结果回写状态
+`variables` 写入流程实例 `formData`，用于条件分支、审批人解析和触发器模板。完整业务数据仍从业务表读取。
+
+### 3. 订阅流程结果
 
 ```ts
 import { onWorkflowResult } from '../lib/workflow-biz-bridge';
@@ -65,26 +66,33 @@ export function registerBizLeaveSubscribers() {
 }
 ```
 
-在 `index.ts` 中调用 `registerBizLeaveSubscribers()`（与 `registerPaymentSubscribers()` 并列）。
-事件在请求上下文之外异步触发，审计 Proxy 会自动跳过 `created_by` / `updated_by` 注入，无需 `runAsUser`。
+订阅器在服务启动时注册，与其它事件订阅者一起响应 `instance.*` 事件。
 
-### 4. 流程定义：`formType = 'external'`
+### 4. 配置流程定义
 
-发布一个 `formType = 'external'` 的流程定义，配置 `customForm.viewComponent` 指向业务的审批查看组件（如 `biz/leave/LeaveApprovalView`），并声明 `variables`。审批人在「待我审批 / 流程详情」中会通过 `BusinessFormHost(view)` 渲染该组件，组件按 `props.bizId` 拉取业务数据（参与者鉴权见下）。
+流程定义选择 `formType = external`，并配置：
 
-> 业务查看接口需对**工作流参与者**放开读取权限。参考 `getBizLeaveDetail`：申请人本人，或在关联实例上有任务的人可见。
+| 配置 | 说明 |
+| --- | --- |
+| 查看组件 | 审批页和详情页渲染业务数据的 React 组件 |
+| 变量声明 | 条件分支和审批人解析可读取的业务变量 |
 
-### 5. 业务列表页展示流程状态 + 跳转流程详情
+审批查看组件通过实例关联的 `bizType + bizId` 拉取业务详情。业务详情接口应允许发起人、任务处理人、抄送人和监控管理员读取。
 
-列表页直接读冗余的 `workflow_status` 字段（或调用 `getWorkflowStatusByBiz`）；「流程详情」跳转到内置整页路由 `/workflow/instance/:id`。
+### 5. 前端跳转
 
-## 两种「自定义」方式对比
+业务列表页可展示冗余 `workflowStatus`，并跳转到内置流程详情：
 
-| | `custom`（表单中心） | `external`（实体中心 / businessKey） |
-| --- | --- | --- |
-| 业务数据存哪 | 流程 `workflow_instances.formData` | 业务模块自己的表 |
-| 谁保存 | 流程框架统一下单 | 业务模块自己保存后发起 |
-| 发起入口 | 工作流发起工作台 | 业务模块列表页（也可两者结合） |
-| 适用 | 轻量自定义交互、无独立实体 | 有独立实体/列表页、需复用既有业务页 |
+```text
+/workflow/instance/{workflowInstanceId}
+```
 
-两种方式与 `designer`（表单库）并存，按业务复杂度选择。
+## 参考实现
+
+| 文件 | 说明 |
+| --- | --- |
+| `packages/server/src/services/biz-leave.service.ts` | 业务保存、提交和详情权限 |
+| `packages/server/src/services/biz-leave-subscribers.ts` | 流程结果回写业务状态 |
+| `packages/server/src/routes/biz-leave.ts` | 业务 API |
+| `packages/web/src/pages/biz/leave/LeavePage.tsx` | 业务列表页 |
+| `packages/web/src/pages/biz/leave/LeaveApprovalView.tsx` | 审批查看组件 |

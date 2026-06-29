@@ -1,70 +1,50 @@
-# 事件订阅（HTTP Webhook）
+# 事件订阅
 
-事件订阅用于把工作流事件以 HTTP POST 形式投递到外部系统，由 `webhook` 订阅者监听总线后按数据库配置分发。
+事件订阅是 [事件总线与事件订阅](./event-bus.md) 的后台配置页面说明。订阅用于把工作流事件以 HTTP Webhook 形式推送给外部系统。
 
-## 订阅表字段（`workflow_event_subscriptions`）
+## 订阅配置
 
-| 字段 | 说明 |
+| 配置 | 说明 |
 | --- | --- |
-| `name` | 订阅名称 |
-| `description` | 订阅描述 |
-| `url` | 投递目标 URL |
-| `definitionId` | `null` = 订阅所有流程；非空 = 仅订阅指定流程定义 |
-| `events` | 订阅的事件类型数组（JSON）；接口支持事件总线 15 种事件 |
-| `signMode` | `hmacSha256 \| none` |
-| `secret` | HMAC 密钥 |
-| `headers` | 附加请求头 JSON |
-| `enabled` | 是否启用 |
-| `tenantId` | 租户隔离 |
-
-> 当前订阅表 **不支持按 `nodeKey` 过滤**，需在接收方按 payload 内 `nodeKey` 自行筛选。
-
-## 投递记录（`workflow_event_deliveries`）
-
-每次投递写入一条记录，包含：订阅 ID、实例 ID、任务 ID、事件 ID、事件类型、payload、状态（`pending / success / failed / retrying`）、请求 URL、请求头、响应码、响应体、错误信息、耗时、尝试次数、下次重试时间、开始/结束时间。
-
-投递层固定使用 10 秒超时。非 2xx 响应或网络异常会进入阶梯重试：约 5 分钟、30 分钟、3 小时、12 小时后再次投递；重试耗尽后状态为 `failed`。投递记录支持手动重试，手动重试会把记录置为 `retrying` 并立即进入重试队列。
+| 名称 | 订阅名称，同租户内唯一 |
+| 描述 | 订阅用途说明 |
+| 流程定义 | 为空订阅全部流程，指定后只订阅该流程 |
+| 事件类型 | 从工作流事件类型中多选 |
+| URL | 目标地址；使用连接器时可填相对路径 |
+| 连接器 | 可选，统一处理基础地址、鉴权、重试、熔断和限流 |
+| 签名 | `hmacSha256` 或 `none` |
+| Secret | HMAC 密钥 |
+| Header | 附加请求头 JSON |
+| 状态 | 启用 / 禁用 |
 
 ## 签名
 
-`signMode === 'hmacSha256'` 且订阅配置了 `secret` 时，请求头会带：
+启用 HMAC 后，每次投递带 `X-Zenith-Signature`：
 
 ```http
 X-Zenith-Signature: t={timestamp},v1={hex_hmac}
 ```
 
-请求还会包含以下头：
+签名内容是 `${timestamp}.${rawBody}`。接收方应校验 timestamp 与当前时间偏差，并用订阅 Secret 重算 HMAC。
 
-```http
-X-Zenith-Event: {eventType}
-X-Zenith-Event-Id: {eventId}
-X-Zenith-Delivery-Id: {deliveryId}
-X-Zenith-Attempt: {attempt}
-```
+## 投递记录
 
-签名内容为 `${timestamp}.${rawBody}`，密钥为订阅记录的 `secret`，算法 `HMAC-SHA256`。接收方应：
+投递记录展示 `webhook_delivery` 作业的执行尝试。状态包括：
 
-1. 校验 `timestamp` 与当前时间偏差（建议 ≤ 5 分钟）；
-2. 用相同密钥重算 HMAC 并比对 `v1`。
+| 状态 | 说明 |
+| --- | --- |
+| `pending` | 等待投递或正在投递 |
+| `success` | 投递成功 |
+| `retrying` | 投递失败但仍有重试预算 |
+| `failed` | 重试耗尽或进入死信 |
 
-## REST API
+页面支持按订阅、实例、状态筛选，支持单条重试、批量重试和按筛选重放。
 
-所有接口位于 `/api/workflows/event-subscriptions`：
+## 与其它集成方式的关系
 
-| 方法 | 路径 | 权限 | 说明 |
-| --- | --- | --- | --- |
-| GET | `/api/workflows/event-subscriptions` | `workflow:event-subscription:view` | 订阅列表，支持 `keyword` / `definitionId` / `enabled` 过滤 |
-| GET | `/api/workflows/event-subscriptions/:id` | `workflow:event-subscription:view` | 订阅详情 |
-| GET | `/api/workflows/event-subscriptions/:id/secret` | `workflow:event-subscription:view` | 查看订阅 secret 明文 |
-| POST | `/api/workflows/event-subscriptions` | `workflow:event-subscription:create` | 新建订阅 |
-| PUT | `/api/workflows/event-subscriptions/:id` | `workflow:event-subscription:edit` | 更新订阅 |
-| DELETE | `/api/workflows/event-subscriptions/:id` | `workflow:event-subscription:delete` | 删除订阅 |
-| PATCH | `/api/workflows/event-subscriptions/:id/toggle` | `workflow:event-subscription:edit` | 启用/禁用订阅 |
-| GET | `/api/workflows/event-subscriptions/deliveries/list` | `workflow:event-delivery:view` | 投递记录列表，支持 `subscriptionId` / `instanceId` / `status` 过滤 |
-| GET | `/api/workflows/event-subscriptions/deliveries/:id` | `workflow:event-delivery:view` | 投递记录详情 |
-| POST | `/api/workflows/event-subscriptions/deliveries/:id/retry` | `workflow:event-delivery:retry` | 重试单条投递 |
-| POST | `/api/workflows/event-subscriptions/deliveries/batch-retry` | `workflow:event-delivery:retry` | 批量重试投递 |
-
-## 管理 UI
-
-前端位于「工作流 → 事件订阅」。列表支持维护订阅、启停、查看密钥，并通过侧边抽屉查看该订阅的投递记录与手动重试。
+| 方式 | 使用场景 |
+| --- | --- |
+| 节点监听器 | 某个节点的进入/通过/驳回需要调用一个固定 URL |
+| 触发器节点 | 流程走到某个节点时必须执行外呼、等待回调或修改表单数据 |
+| 事件订阅 | 外部系统需要订阅跨节点、跨流程的标准事件流 |
+| 流程自动化 | 在 Zenith 内部做无代码联动 |

@@ -3,7 +3,8 @@
  * 支持多种指定策略：指定成员、角色、主管、发起人自己、表单联系人、发起人自选、
  * 连续多级上级、连续多级部门负责人、节点审批人、用户组、表单内部门
  */
-import { Form, Select, InputNumber, Input, Typography, RadioGroup, Radio, Tooltip, Checkbox, TextArea } from '@douyinfe/semi-ui';
+import { useEffect, useState } from 'react';
+import { Form, Select, InputNumber, Typography, RadioGroup, Radio, Tooltip, Checkbox, TextArea } from '@douyinfe/semi-ui';
 import type {
   AssigneeType,
   ApproveMethod,
@@ -22,6 +23,17 @@ import {
 } from '../../constants';
 import { CircleHelp } from 'lucide-react';
 import ApproverAdvancedSections from './ApproverAdvancedSections';
+import { request } from '@/utils/request';
+
+function DecisionTableSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [opts, setOpts] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    void request.get<{ list: Array<{ key: string; name: string }> }>('/api/rules/decision-tables?status=published&pageSize=100')
+      .then((res) => { if (res.code === 0) setOpts((res.data?.list ?? []).map((t) => ({ value: t.key, label: `${t.name}（${t.key}）` }))); });
+  }, []);
+  return <Select value={value || undefined} onChange={(v) => onChange(v as string)} optionList={opts} filter showClear style={{ width: '100%' }}
+    placeholder={opts.length === 0 ? '规则中心暂无已发布决策表' : '选择审批人矩阵决策表'} />;
+}
 
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
@@ -556,12 +568,8 @@ export default function ApproverSettingsTab({
           )}
 
           {assigneeType === 'decision' && (
-            <Form.Slot label="决策表 Key">
-              <Input
-                value={decisionRuleKey}
-                onChange={(v) => onChange({ decisionRuleKey: v })}
-                placeholder="如 approver_matrix：输出 { type: role/department/post/user, ids }"
-              />
+            <Form.Slot label="决策表">
+              <DecisionTableSelect value={decisionRuleKey} onChange={(v) => onChange({ decisionRuleKey: v })} />
               <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
                 运行时按 form/starter 求值，输出"来源类型+ID"后复用角色/部门/岗位/成员解析；无命中走空审批人兜底
               </Typography.Text>

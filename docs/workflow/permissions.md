@@ -1,164 +1,107 @@
 # 权限与范围控制
 
-工作流模块的权限分为两个层面：流程定义的**发起人范围控制**（谁能发起流程），以及功能操作的**权限点控制**（谁能做什么操作）。
+工作流权限由三层组成：流程定义的发起范围、后台菜单/按钮权限点、实例详情的数据可见性。
 
-## 发起人范围控制
+## 发起范围
 
-在流程设计器的「基础信息」步骤中，可配置「发起人范围」，限制哪些用户可以发起该流程。
+流程设计器基础信息中配置发起范围。
 
-### 范围类型
-
-| 类型 | 说明 |
+| 范围 | 说明 |
 | --- | --- |
-| 全部人员 | 所有人都可以发起（默认） |
-| 指定用户 | 只有选中的用户才能发起 |
-| 指定部门 | 只有选中部门的成员才能发起 |
-| 指定角色 | 只有拥有选中角色的用户才能发起 |
+| 全部人员 | 所有人可发起 |
+| 指定用户 | 仅选中用户可发起 |
+| 指定部门 | 仅选中部门成员可发起 |
+| 指定角色 | 仅拥有选中角色的用户可发起 |
 
-### 配置方式
+发起工作台只展示当前用户可发起的已发布流程。后端发起接口也会再次校验。
 
-在流程设计器中配置：
-1. 进入「基础信息」步骤
-2. 找到「发起人范围」配置
-3. 选择范围类型（全部/用户/部门/角色）
-4. 如果选择了非「全部」，则勾选对应的具体用户/部门/角色
+## 菜单与功能权限
 
-### 运行时校验
-
-用户发起流程时，系统会自动校验当前用户是否在流程的发起人范围内：
-
-- **全部人员**：直接通过
-- **指定用户**：校验用户 ID 是否在列表中
-- **指定部门**：校验用户所属部门 ID 是否在列表中
-- **指定角色**：校验用户拥有的角色 ID 是否与列表中的角色匹配
-
-如果不在范围内，系统会提示「当前流程不在你的可发起范围内」。
-
-## 功能权限点
-
-工作流模块涉及的权限点如下：
-
-### 流程定义相关
+### 定义资产
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:definition:list` | 查看流程定义列表（流程分类、流程模板、流程自动化也复用此读权限） |
-| `workflow:definition:create` | 创建流程定义（从模板创建、复制流程也复用此权限） |
-| `workflow:definition:edit` | 编辑流程定义（流程分类、流程模板、流程自动化的写操作也复用此权限） |
-| `workflow:definition:delete` | 删除流程定义 |
-| `workflow:definition:publish` | 发布/禁用流程定义 |
-
-### 表单库相关
-
-| 权限点 | 说明 |
-| --- | --- |
-| `workflow:form:list` | 查看表单库列表 |
-| `workflow:form:create` | 创建表单 |
-| `workflow:form:edit` | 编辑表单 |
+| `workflow:definition:list` | 流程定义、分类、模板、自动化读取 |
+| `workflow:definition:create` | 新建定义、复制定义、从模板创建 |
+| `workflow:definition:edit` | 编辑定义、分类、模板、自动化 |
+| `workflow:definition:delete` | 删除定义 |
+| `workflow:definition:publish` | 发布、禁用、启用定义 |
+| `workflow:form:list` | 表单库列表 |
+| `workflow:form:create` | 新建表单 |
+| `workflow:form:edit` | 编辑、复制表单 |
 | `workflow:form:delete` | 删除表单 |
 
-### 流程实例相关
+### 发起与任务
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:instance:list` | 查看我的申请列表和实例详情 |
-| `workflow:instance:create` | 发起流程申请、查看可发起流程、草稿提交/重提/撤回 |
-| `workflow:instance:monitor` | 查看全局流程实例列表（管理员权限） |
-| `workflow:instance:cancel` | 取消/终止流程实例（管理员） |
-| `workflow:instance:delete` | 删除流程实例（管理员） |
+| `workflow:instance:create` | 发起工作台、我的申请、草稿、撤回、重新提交 |
+| `workflow:instance:list` | 实例详情、抄送我的、保存视图 |
+| `workflow:task:handle` | 待我审批、我已办、审批处理、转办、委派、加签、减签、退回、协办、常用语 |
 
-### 任务相关
+### 监控与运维
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:task:handle` | 查看待我审批/我已办，处理任务（通过、驳回、转交、委派、加签、减签、退回、催办、快捷语等） |
+| `workflow:instance:monitor` | 全局实例监控、数据分析、诊断、运行轨迹 |
+| `workflow:instance:cancel` | 取消流程、强制跳转、Token 重放等高危操作 |
+| `workflow:instance:delete` | 删除流程实例 |
+| `workflow:engine:operate` | 引擎恢复动作、实例迁移、补偿工单处理 |
+| `workflow:health:view` | 健康巡检页面 |
 
-### 触发器与事件相关
+### 集成与计划
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:trigger-execution:view` | 查看触发器执行记录 |
 | `workflow:event-subscription:view` | 查看事件订阅 |
 | `workflow:event-subscription:create` | 创建事件订阅 |
-| `workflow:event-subscription:edit` | 编辑事件订阅 |
+| `workflow:event-subscription:edit` | 编辑、启停事件订阅 |
 | `workflow:event-subscription:delete` | 删除事件订阅 |
-| `workflow:event-delivery:view` | 查看事件投递记录 |
-| `workflow:event-delivery:retry` | 重试事件投递 |
-
-### 定时、代理相关
-
-| 权限点 | 说明 |
-| --- | --- |
-| `workflow:schedule:list` | 查看定时发起规则 |
-| `workflow:schedule:create` | 创建定时发起规则 |
-| `workflow:schedule:edit` | 编辑定时发起规则、立即执行一次 |
-| `workflow:schedule:delete` | 删除定时发起规则 |
+| `workflow:event-delivery:view` | 查看投递记录 |
+| `workflow:event-delivery:retry` | 重试、重放事件投递 |
+| `workflow:trigger-execution:view` | 查看触发器执行记录 |
+| `workflow:schedule:list` | 查看定时发起 |
+| `workflow:schedule:create` | 创建定时发起 |
+| `workflow:schedule:edit` | 编辑、立即执行定时发起 |
+| `workflow:schedule:delete` | 删除定时发起 |
 | `workflow:delegation:view` | 查看审批代理 |
-| `workflow:delegation:manage` | 新增、编辑、删除审批代理 |
+| `workflow:delegation:manage` | 管理审批代理 |
+| `workflow:datasource:list` | 查看远程数据源 |
+| `workflow:datasource:create` | 创建远程数据源 |
+| `workflow:datasource:update` | 更新远程数据源 |
+| `workflow:datasource:delete` | 删除远程数据源 |
+| `workflow:connector:list` | 查看连接器 |
+| `workflow:connector:create` | 创建连接器 |
+| `workflow:connector:update` | 更新连接器 |
+| `workflow:connector:delete` | 删除连接器 |
+| `workflow:connector:test` | 测试连接器 |
 
-## 权限配置建议
+## 实例详情可见性
 
-### 普通员工
+用户可查看以下实例：
 
-建议分配权限：
-- `workflow:instance:create` — 发起申请
-- `workflow:instance:list` — 查看我的申请
-- `workflow:task:handle` — 处理待我审批的任务
-
-### 流程管理员
-
-建议分配权限：
-- `workflow:definition:*` — 管理流程定义
-- `workflow:form:*` — 管理表单库
-- `workflow:instance:monitor` — 监控全局流程实例
-- `workflow:trigger-execution:view` — 查看触发器执行记录
-- `workflow:event-subscription:*` — 管理事件订阅
-- `workflow:schedule:*` — 管理定时发起
-- `workflow:delegation:*` — 管理审批代理
-
-### 系统管理员
-
-通常拥有全部权限，可在角色管理中为管理员角色分配所有 `workflow:*` 权限。
-
-## 数据权限（租户隔离）
-
-系统支持多租户模式，流程定义、实例、事件订阅、触发器执行、自动化等工作流数据通过 `tenantId` 隔离：
-
-- 关闭多租户模式时不追加租户过滤
-- 普通用户按当前租户过滤
-- 平台超级管理员可跨租户查看，或按当前查看租户过滤
-
-流程监控列表还会叠加角色/用户数据范围：`all` 查看全部；`dept` 查看本部门及子部门；`dept_only` 仅本部门；`custom` 查看指定部门；否则按发起人本人过滤。
-
-## 实例查看权限
-
-流程实例的查看遵循以下规则：
-
-| 用户类型 | 可查看的实例 |
+| 身份 | 可见范围 |
 | --- | --- |
 | 发起人 | 自己发起的实例 |
-| 任务处理人/抄送人 | 包含自己任务的实例 |
-| 管理员（`workflow:instance:monitor`） | 流程监控列表中按租户与数据范围可见的实例 |
+| 任务处理人 | 包含自己任务的实例 |
+| 抄送人 | 抄送给自己的实例 |
+| 子流程相关人 | 与自己可见实例存在父子关系的实例 |
+| 监控管理员 | 按租户和数据范围过滤后的全局实例 |
 
-在查看实例详情时，如果用户既不是发起人、任务处理人，也不是子流程祖先实例的发起人，系统会返回「无权查看」。
+## 数据范围与租户
+
+工作流数据带 `tenantId`。普通租户用户按当前租户过滤；平台超级管理员可跨租户查看或按当前查看租户过滤。
+
+流程监控还叠加角色数据范围：
+
+| 数据范围 | 说明 |
+| --- | --- |
+| 全部 | 查看全部实例 |
+| 本部门及子部门 | 查看发起人属于本部门树的实例 |
+| 本部门 | 仅本部门实例 |
+| 自定义部门 | 指定部门范围 |
+| 本人 | 仅本人发起或参与的实例 |
 
 ## 审批人解析范围
 
-审批节点、办理节点、抄送节点会通过审批人解析器把节点配置解析为具体用户：
-
-| 类型 | 说明 |
-| --- | --- |
-| 指定用户 | 取节点配置中的用户 ID |
-| 指定角色 | 取角色成员；若角色配置了管理部门范围，则仅包含范围部门及其子部门内成员 |
-| 指定部门 | 取指定部门的启用用户；未指定时取发起人部门负责人 |
-| 指定岗位 | 取指定岗位下启用用户 |
-| 用户组 | 取用户组成员 |
-| 发起人 | 取流程发起人 |
-| 发起人主管/主管 | 取发起人所在部门负责人，支持按层级向上查找 |
-| 发起人部门 | 取发起人所在部门启用用户 |
-| 多级主管/多级部门负责人 | 从发起人部门逐级向上收集负责人，可按层级或角色终止 |
-| 表单联系人 | 从表单字段读取用户 ID |
-| 表单部门负责人 | 从表单部门字段读取部门，并按配置层级取部门负责人 |
-| 前序节点审批人 | 取指定前序节点已通过任务的处理人 |
-| 发起人选择 / 审批人选择 | 使用发起或审批时选择的人员，并按配置范围过滤 |
-| 表达式 | 在 `form` 与 `starter.id` 作用域内计算用户 ID |
+审批人解析遵循组织、角色、岗位、用户组和表单变量。角色审批人会按角色的管理范围过滤部门；部门范围默认包含子部门。表达式审批人在 `form` 和 `starter` 作用域中计算用户 ID。

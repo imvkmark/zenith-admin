@@ -163,7 +163,7 @@ export const ASSIGNEE_TYPE_OPTIONS: Array<{ value: AssigneeType; label: string; 
   { value: 'userGroup',                label: '用户组',             description: '指定用户组的成员' },
   { value: 'formDepartment',           label: '表单内部门',         description: '关联表单中部门字段的负责人' },
   { value: 'expression',               label: '流程表达式',         description: '通过表达式动态计算审批人 ID' },
-  { value: 'decision',                 label: '决策表（审批人矩阵）', description: '查决策表输出来源类型+ID（金额×部门×类型→谁审）' },
+  { value: 'decision',                 label: '决策表',             description: '审批人矩阵：查决策表输出来源类型+ID（金额×部门×类型→谁审）' },
 ];
 
 export const APPROVE_METHOD_OPTIONS: Array<{ value: ApproveMethod; label: string; description: string }> = [
