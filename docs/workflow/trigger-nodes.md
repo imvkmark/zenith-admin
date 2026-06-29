@@ -21,7 +21,7 @@
 | 请求地址 / 路径 | 不使用连接器时为完整 URL；使用连接器时可为空或相对路径 |
 | 请求方法 | `GET`、`POST`、`PUT` |
 | 请求头 | JSON 键值对 |
-| 请求体模板 | 支持 `{{form.field}}`、`{{callbackUrl}}`、`{{callbackId}}` 等占位 |
+| 请求体模板 | 支持 <code v-pre>{{form.field}}</code>、<code v-pre>{{callbackUrl}}</code>、<code v-pre>{{callbackId}}</code> 等占位 |
 | 超时时间 | 单次请求超时，默认 10 秒 |
 | 失败策略 | 继续、重试、阻塞并走异常处理 |
 | 最大重试 | 作业最大尝试次数，耗尽后进入死信 |

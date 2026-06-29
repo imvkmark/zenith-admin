@@ -1,58 +1,50 @@
-# 节点类型与节点标识
+# 节点类型速查
 
-## 设计器节点类型清单
+节点类型决定流程图的运行语义。设计器使用面向用户的节点类型，引擎运行时使用共享层定义的节点类型。
 
-`FlowNodeType` 联合（定义于 `packages/web/src/pages/workflow/designer/types.ts`）：
+## 设计器节点
 
-| 类型 | 含义 |
+| 节点 | 说明 |
 | --- | --- |
-| `initiator` | 发起人节点（流程入口） |
-| `approver` | 审批人节点 |
-| `handler` | 办理人节点（任务执行型） |
-| `cc` | 抄送节点 |
-| `delay` | 延迟器节点 |
-| `trigger` | 触发器节点（详见 [触发器节点](./trigger-nodes.md)） |
-| `subProcess` | 子流程节点 |
-| `conditionBranch` | 条件分支（互斥单走） |
-| `parallelBranch` | 并行分支（全部走） |
-| `inclusiveBranch` | 包容分支（满足条件的全部走） |
-| `routeBranch` | 路由分支（按表达式路由） |
+| 发起人 | 流程入口，决定发起范围和发起人上下文 |
+| 审批人 | 创建审批待办，支持多人审批、驳回、转办、协办、加签、减签、退回和外部审批 |
+| 办理人 | 创建处理型待办，适合执行、确认、补充资料等任务 |
+| 抄送 | 向指定用户、角色、部门或表单字段用户发送抄送 |
+| 条件分支 | 按条件命中一条分支 |
+| 并行分支 | 多条分支同时执行，全部完成后汇聚 |
+| 包容分支 | 命中多条分支并行执行，命中的分支完成后汇聚 |
+| 路由分支 | 使用表达式决定路径 |
+| 延迟器 | 暂停流程，按相对时长或指定时间恢复 |
+| 触发器 | 执行外呼、等待回调或更新表单数据 |
+| 子流程 | 发起另一个流程，并按配置等待或继续 |
 
-分支节点子集 `BranchNodeType`：`conditionBranch | parallelBranch | inclusiveBranch | routeBranch`。
+## 运行态节点
 
-## 运行态节点类型映射
+| 运行态类型 | 说明 |
+| --- | --- |
+| `start` | 流程起点 |
+| `approve` | 审批人节点 |
+| `handler` | 办理人节点 |
+| `ccNode` | 抄送节点 |
+| `exclusiveGateway` | 条件分支 |
+| `parallelGateway` | 并行分支 |
+| `inclusiveGateway` | 包容分支 |
+| `routeGateway` | 路由分支 |
+| `delay` | 延迟器 |
+| `trigger` | 触发器 |
+| `subProcess` | 子流程 |
+| `catchNode` | 异常捕获节点 |
+| `end` | 流程结束节点 |
 
-流程保存后会转换为后端引擎使用的节点类型（定义于 `@zenith/shared`）：
+## 节点标识
 
-| 设计器类型 | 运行态类型 | 说明 |
-| --- | --- | --- |
-| `initiator` | `start` | 流程起点 |
-| `approver` | `approve` | 审批人节点 |
-| `handler` | `handler` | 办理人节点 |
-| `cc` | `ccNode` | 抄送节点 |
-| `conditionBranch` | `exclusiveGateway` | 条件分支，互斥命中一条分支 |
-| `parallelBranch` | `parallelGateway` | 并行分支，所有分支并行执行 |
-| `inclusiveBranch` | `inclusiveGateway` | 包容分支，满足条件的分支并行执行 |
-| `routeBranch` | `routeGateway` | 路由分支，按表达式选择分支 |
-| `delay` | `delay` | 延迟器节点 |
-| `trigger` | `trigger` | 触发器节点 |
-| `subProcess` | `subProcess` | 子流程节点 |
-| — | `end` | 引擎内部的流程结束节点 |
-| — | `catchNode` | 引擎支持的异常捕获节点，不在设计器加号面板中直接添加 |
+每个节点都有系统生成的 `id`，也可以配置可读的 `key`。`key` 用于：
 
-## 节点标识（nodeKey）
+| 用途 | 说明 |
+| --- | --- |
+| 事件订阅 | 外部系统可以按 `nodeKey` 识别事件来源 |
+| 驳回配置 | `rejectToNodeKey` 使用稳定节点标识作为目标 |
+| 外部审批 | 回调和诊断信息展示节点标识 |
+| 运行诊断 | 作业账本、引擎轨迹和诊断包按节点定位问题 |
 
-每个节点除了系统生成的 `id` 外，还可以设置一个可读的 `key` 字段，用于：
-
-- 在事件订阅的接收方代码中按节点过滤；
-- 在 `WorkflowNodeConfig.rejectToNodeKey` 中作为驳回目标的稳定引用；
-- 在 webhook payload 与外部审批回调中显示为 `nodeKey`。
-
-约束（在设计器 `NodeConfigDrawer` 中校验）：
-
-- 正则 `^[a-zA-Z][a-zA-Z0-9_]*$`，字母开头，仅字母/数字/下划线；
-- 保留字 `start` / `end` 不允许；
-- 同一流程内唯一；
-- 留空时回退到节点 `id`（设计器 `treeToFlat` 中 `node.key || node.id`）。
-
-> 设置后保存的流程定义中 `process` 字段会保留 `node.key`；事件 payload 的 `nodeKey` 字段会优先使用它。
+节点 `key` 必须以字母开头，只能包含字母、数字和下划线；同一流程内唯一；`start`、`end` 为保留字。未配置时，系统使用节点 `id` 作为运行标识。

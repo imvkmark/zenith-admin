@@ -95,4 +95,4 @@ stateDiagram-v2
 | 协办 | 协办请求和回复 |
 | 子流程 | 父子实例关系与跳转 |
 
-运行时技术诊断见 [监控、诊断与运维恢复](./monitoring-operations.md)。
+运行时技术诊断见 [监控、诊断与运维](./monitoring-operations.md)。
