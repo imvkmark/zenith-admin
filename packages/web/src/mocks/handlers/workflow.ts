@@ -2047,7 +2047,7 @@ export const workflowHandlers = [
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
     const now = mockDateTime();
-    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : null;
+    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     const current = mockWorkflowTasks[taskIdx];
 
     // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进流程
@@ -2118,7 +2118,7 @@ export const workflowHandlers = [
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return err('该任务已处理');
 
     const now = mockDateTime();
-    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : null;
+    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     const current = mockWorkflowTasks[taskIdx];
 
     // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不驳回流程
@@ -2193,7 +2193,7 @@ export const workflowHandlers = [
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[转办] ${body.comment ?? ''}`,
-      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : null,
+      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined,
       originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
       transferChain: current.assigneeId ? [...chain, current.assigneeId] : chain,
     };
@@ -2218,7 +2218,7 @@ export const workflowHandlers = [
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[委派] ${body.comment ?? ''}`,
-      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : null,
+      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined,
       originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
       transferChain: current.assigneeId ? [...chain, current.assigneeId] : chain,
       delegatedFromId: current.delegatedFromId ?? current.assigneeId,
@@ -2234,7 +2234,7 @@ export const workflowHandlers = [
     const current = mockWorkflowTasks[taskIdx];
     if (current.status !== 'pending') return err('该任务已处理');
     const now = mockDateTime();
-    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : null;
+    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     if (body.position === 'before') {
       mockWorkflowTasks[taskIdx] = { ...current, status: 'waiting' };
     }
@@ -2419,7 +2419,7 @@ export const workflowHandlers = [
       ...current,
       status: 'rejected',
       comment: `${tag} ${body.comment}`,
-      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : null,
+      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined,
       actionAt: now,
     };
     const instIdx = mockWorkflowInstances.findIndex(i => i.id === current.instanceId);
