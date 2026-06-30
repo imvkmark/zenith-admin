@@ -16,6 +16,7 @@ import { useWidgetData } from '../widgets/useWidgetData';
 import { FilterBar } from '../widgets/FilterBar';
 import { ConfigPanel } from './ConfigPanel';
 import { FilterConfigModal } from './FilterConfigModal';
+import AppModal from '@/components/AppModal';
 import type {
   ReportDashboard, ReportDataset, ReportWidget, ReportWidgetType, ReportGridItem, ReportCanvasItem,
   ReportWidgetOptions, ReportFilter, ReportDashboardConfig, ReportScreenConfig, ReportCarouselConfig,
@@ -380,7 +381,7 @@ export default function DashboardDesignerPage() {
 
       <FilterConfigModal visible={filterModal} filters={doc.filters} datasets={datasets} onChange={onFiltersChange} onClose={() => setFilterModal(false)} />
 
-      <Modal title="多屏轮播设置" visible={carouselModal} onCancel={() => setCarouselModal(false)} onOk={() => setCarouselModal(false)} okText="完成" cancelText="关闭" width={440}>
+      <AppModal title="多屏轮播设置" visible={carouselModal} onCancel={() => setCarouselModal(false)} onOk={() => setCarouselModal(false)} okText="完成" cancelText="关闭" width={440}>
         <Form key={carouselModal ? 'c-open' : 'c-closed'} labelPosition="left" labelWidth={96}
           initValues={{ enabled: !!carousel?.enabled, pageCount: carousel?.pageCount ?? 2, intervalSec: carousel?.intervalSec ?? 10, showDots: carousel?.showDots !== false }}>
           <Form.Switch field="enabled" label="启用轮播" onChange={(v) => applyCarousel({ enabled: !!v })} />
@@ -388,9 +389,9 @@ export default function DashboardDesignerPage() {
           <Form.InputNumber field="intervalSec" label="切换间隔" min={0} max={3600} step={1} onChange={(v) => applyCarousel({ intervalSec: Math.max(0, Number(v) || 0) })} suffix="秒" style={{ width: '100%' }} extraText="0 = 不自动切换（仅手动翻页）" />
           <Form.Switch field="showDots" label="显示页码点" onChange={(v) => applyCarousel({ showDots: !!v })} />
         </Form>
-      </Modal>
+      </AppModal>
 
-      <Modal title="大屏设置" visible={screenModal} onCancel={() => setScreenModal(false)} onOk={() => setScreenModal(false)} okText="完成" cancelText="关闭" width={460}>
+      <AppModal title="大屏设置" visible={screenModal} onCancel={() => setScreenModal(false)} onOk={() => setScreenModal(false)} okText="完成" cancelText="关闭" width={460}>
         <Form key={screenModal ? 'open' : 'closed'} labelPosition="left" labelWidth={96} initValues={{ ...screenConfig, theme: doc.config.theme ?? 'dark', refreshInterval: doc.config.refreshInterval ?? 0 }}>
           <Space>
             <Form.InputNumber field="width" label="设计宽度" min={320} max={7680} step={10} onChange={(v) => applyScreenConfig({ width: Number(v) || DEFAULT_SCREEN.width })} suffix="px" style={{ width: 150 }} />
@@ -404,7 +405,7 @@ export default function DashboardDesignerPage() {
           <Form.Input field="backgroundImage" label="背景图 URL" onChange={(v) => applyScreenConfig({ backgroundImage: v || undefined })} placeholder="选填，https://..." showClear />
           <Form.InputNumber field="refreshInterval" label="自动刷新" min={0} max={3600} step={5} onChange={(v) => mutate((d) => ({ ...d, config: { ...d.config, refreshInterval: Number(v) || 0 } }))} suffix="秒" style={{ width: '100%' }} extraText="0 = 不自动刷新" />
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

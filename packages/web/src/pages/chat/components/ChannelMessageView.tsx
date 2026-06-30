@@ -8,12 +8,13 @@
  * 复用 MessageBubble 渲染气泡，订阅 WS channel:message 实时追加（按 id 去重）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Empty, Modal, Rating, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Empty, Rating, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, BadgeCheck, ChevronUp, ExternalLink, Send, Star } from 'lucide-react';
 import type { Channel, ChannelMenu, ChannelMessage, ChatMessage, ChatCardAction, WsMessage } from '@zenith/shared';
 import { request } from '@/utils/request';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { UserAvatar } from '@/components/UserAvatar';
+import AppModal from '@/components/AppModal';
 import { MessageBubble } from './MessageBubble';
 
 const { Text } = Typography;
@@ -357,7 +358,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
         </div>
       )}
 
-      <Modal
+      <AppModal
         title="评价客服服务"
         visible={rateVisible}
         closeOnEsc
@@ -365,8 +366,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
         onOk={() => void handleSubmitRating()}
         okText="提交评价"
         cancelText="取消"
-        confirmLoading={rateSubmitting}
-        okButtonProps={{ disabled: rating < 1 }}
+        okButtonProps={{ loading: rateSubmitting, disabled: rating < 1 }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -381,7 +381,7 @@ export function ChannelMessageView({ channel, currentUserId, onBack, onUnsubscri
             autosize={{ minRows: 3, maxRows: 6 }}
           />
         </div>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

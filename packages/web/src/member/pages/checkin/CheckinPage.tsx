@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import dayjs from 'dayjs';
-import { Button, DatePicker, Modal, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, DatePicker, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
 import type { MemberCheckin, MemberCheckinStatus, MemberMilestoneStatus, MakeupCheckinResult, PaginatedResponse } from '@zenith/shared';
 import { CalendarCheck, CalendarPlus, Flame, Gift, Trophy } from 'lucide-react';
 import MonthCalendar from '@/components/MonthCalendar';
+import AppModal from '@/components/AppModal';
 import { memberRequest } from '../../utils/member-request';
 import { MemberPage } from '../../components/MemberPage';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
@@ -283,7 +284,7 @@ export default function CheckinPage() {
         />
       </div>
 
-      <Modal
+      <AppModal
         title="补签"
         visible={makeupVisible}
         onCancel={() => { setMakeupVisible(false); setMakeupDate(null); }}
@@ -308,7 +309,7 @@ export default function CheckinPage() {
             return calendarDates.has(d.format('YYYY-MM-DD'));
           }}
         />
-      </Modal>
+      </AppModal>
     </MemberPage>
   );
 }

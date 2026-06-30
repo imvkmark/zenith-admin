@@ -21,6 +21,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
 import { createdAtColumn } from '@/utils/table-columns';
+import AppModal from '@/components/AppModal';
 
 type TagColor = 'grey' | 'blue' | 'green' | 'orange';
 
@@ -364,12 +365,12 @@ export default function PayDemoPage() {
         </Collapse.Panel>
       </Collapse>
 
-      <Modal
+      <AppModal
         title="新建支付示例单"
         visible={createVisible}
         onCancel={() => setCreateVisible(false)}
         onOk={() => void handleCreate()}
-        confirmLoading={saving}
+        okButtonProps={{ loading: saving }}
         closeOnEsc
         width={480}
       >
@@ -377,14 +378,14 @@ export default function PayDemoPage() {
           <Form.Input field="subject" label="示例事项" placeholder="如 示例商品 A / 示例服务开通" rules={[{ required: true, message: '请输入示例事项名称' }]} />
           <Form.InputNumber field="amount" label="金额(元)" min={0.01} precision={2} style={{ width: '100%' }} rules={[{ required: true, message: '请输入金额' }]} />
         </Form>
-      </Modal>
+      </AppModal>
 
-      <Modal
+      <AppModal
         title={`发起支付${payTarget ? ` · ${payTarget.subject}（${yuan(payTarget.amount)}）` : ''}`}
         visible={!!payTarget}
         onCancel={() => setPayTarget(null)}
         onOk={() => void handlePay()}
-        confirmLoading={paying}
+        okButtonProps={{ loading: paying }}
         okText="发起支付"
         closeOnEsc
         width={480}
@@ -395,7 +396,7 @@ export default function PayDemoPage() {
         <Typography.Text type="tertiary" size="small">
           将调用统一支付门面 createPayment 下单。未配置可用默认渠道时此处会失败，可改用列表中的「模拟支付成功」。
         </Typography.Text>
-      </Modal>
+      </AppModal>
 
       <Modal title="支付下单结果" visible={!!payResult} onCancel={() => setPayResult(null)} footer={null} width={420} closeOnEsc>
         {payResult && (

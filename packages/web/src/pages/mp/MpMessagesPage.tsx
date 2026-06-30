@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Avatar, Button, Input, Toast, Banner, Spin, Empty, Modal, Select, Typography } from '@douyinfe/semi-ui';
+import { Avatar, Button, Input, Toast, Banner, Spin, Empty, Select, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Send, Paperclip } from 'lucide-react';
 import type { MpConversation, MpMessage, MpMessageType, MpMaterial, MpDraft } from '@zenith/shared';
 import { usePermission } from '@/hooks/usePermission';
@@ -7,6 +7,7 @@ import { request } from '@/utils/request';
 import type { PaginatedResponse } from '@zenith/shared';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
+import AppModal from '@/components/AppModal';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 
@@ -234,8 +235,8 @@ export default function MpMessagesPage() {
         />
       </div>
 
-      <Modal title="发送素材消息" visible={mediaModalVisible} onOk={() => void handleSendMedia()} onCancel={() => setMediaModalVisible(false)}
-        okText="发送" confirmLoading={sending} okButtonProps={{ disabled: !mediaId }} width={460}>
+      <AppModal title="发送素材消息" visible={mediaModalVisible} onOk={() => void handleSendMedia()} onCancel={() => setMediaModalVisible(false)}
+        okText="发送" okButtonProps={{ loading: sending, disabled: !mediaId }} width={460}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <Typography.Text type="secondary" size="small">消息类型</Typography.Text>
@@ -261,7 +262,7 @@ export default function MpMessagesPage() {
             </div>
           )}
         </div>
-      </Modal>
+      </AppModal>
     </div>
   );
 }
