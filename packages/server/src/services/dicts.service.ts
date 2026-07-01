@@ -3,7 +3,6 @@ import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { dicts, dictItems } from '../db/schema';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../lib/datetime';
 import { currentUser } from '../lib/context';
 import { HTTPException } from 'hono/http-exception';
@@ -184,39 +183,4 @@ export async function getDictItemBeforeAudit(itemId: number) {
   const [row] = await db.select().from(dictItems).where(eq(dictItems.id, itemId)).limit(1);
   if (!row) return null;
   return mapDictItem(row);
-}
-
-export async function exportDicts(): Promise<{ stream: ReadableStream; filename: string }> {
-  const user = currentUser();
-  const rows = await db.select().from(dicts).where(tenantCondition(dicts, user)).orderBy(asc(dicts.id));
-  const stream = await streamToExcel(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '字典名称', key: 'name', width: 20 },
-      { header: '字典编码', key: 'code', width: 20 },
-      { header: '备注', key: 'remark', width: 30 },
-      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '禁用') },
-      { header: '创建时间', key: 'createdAt', width: 22 },
-    ],
-    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
-    '字典列表',
-  );
-  return { stream, filename: 'dicts.xlsx' };
-}
-
-export async function exportDictsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
-  const user = currentUser();
-  const rows = await db.select().from(dicts).where(tenantCondition(dicts, user)).orderBy(asc(dicts.id));
-  const stream = streamToCsv(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '字典名称', key: 'name', width: 20 },
-      { header: '字典编码', key: 'code', width: 20 },
-      { header: '备注', key: 'remark', width: 30 },
-      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '停用') },
-      { header: '创建时间', key: 'createdAt', width: 22 },
-    ],
-    rows.map((r) => ({ ...r, createdAt: formatDateTimeForExcel(r.createdAt) })),
-  );
-  return { stream, filename: 'dicts.csv' };
 }

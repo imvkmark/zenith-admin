@@ -6,7 +6,6 @@ import { currentUser } from '../lib/context';
 import { tenantCondition } from '../lib/tenant';
 import { pageOffset } from '../lib/pagination';
 import { escapeLike } from '../lib/where-helpers';
-import { streamToExcel, type ExcelColumn } from '../lib/excel-export';
 import { formatDateTime } from '../lib/datetime';
 import type {
   WorkflowAnalytics,
@@ -284,8 +283,15 @@ const INSTANCE_STATUS_TEXT: Record<string, string> = {
   draft: '草稿', running: '审批中', approved: '已通过', rejected: '已驳回', withdrawn: '已撤回', cancelled: '已取消',
 };
 
-/** 导出流程实例列表为 Excel（与监控筛选一致，最多 10000 行） */
-export async function exportInstances(query: { status?: string; keyword?: string; categoryId?: number; initiatorKeyword?: string } = {}): Promise<{ stream: ReadableStream; filename: string }> {
+/** 流程实例导出查询条件（与监控筛选一致） */
+export interface WorkflowInstanceExportQuery {
+  status?: string;
+  keyword?: string;
+  categoryId?: number;
+  initiatorKeyword?: string;
+}
+
+function buildInstancesExportWhere(query: WorkflowInstanceExportQuery) {
   const user = currentUser();
   const conds: SQL[] = [];
   const tc = tenantCondition(workflowInstances, user);
@@ -297,7 +303,12 @@ export async function exportInstances(query: { status?: string; keyword?: string
   }
   if (query.categoryId) conds.push(eq(workflowDefinitions.categoryId, query.categoryId));
   if (query.initiatorKeyword) conds.push(ilike(users.nickname, `%${escapeLike(query.initiatorKeyword)}%`));
-  const where = conds.length ? and(...conds) : undefined;
+  return conds.length ? and(...conds) : undefined;
+}
+
+/** 导出流程实例列表（与监控筛选一致，最多 10000 行），返回展示就绪的行 */
+export async function getWorkflowInstancesForExport(query: WorkflowInstanceExportQuery = {}) {
+  const where = buildInstancesExportWhere(query);
   const rows = await db.select({
     serialNo: workflowInstances.serialNo,
     title: workflowInstances.title,
@@ -315,18 +326,7 @@ export async function exportInstances(query: { status?: string; keyword?: string
     .where(where)
     .orderBy(desc(workflowInstances.id))
     .limit(10000);
-
-  const columns: ExcelColumn[] = [
-    { header: '业务编号', key: 'serialNo', width: 20 },
-    { header: '申请标题', key: 'title', width: 30 },
-    { header: '流程', key: 'definitionName', width: 22 },
-    { header: '分类', key: 'categoryName', width: 14 },
-    { header: '发起人', key: 'initiatorName', width: 14 },
-    { header: '状态', key: 'status', width: 10 },
-    { header: '发起时间', key: 'createdAt', width: 20 },
-    { header: '最后更新', key: 'updatedAt', width: 20 },
-  ];
-  const data = rows.map((r) => ({
+  return rows.map((r) => ({
     serialNo: r.serialNo ?? '',
     title: r.title,
     definitionName: r.definitionName ?? '',
@@ -336,6 +336,15 @@ export async function exportInstances(query: { status?: string; keyword?: string
     createdAt: formatDateTime(r.createdAt),
     updatedAt: formatDateTime(r.updatedAt),
   }));
-  const stream = await streamToExcel(columns, data, '流程实例');
-  return { stream, filename: `workflow-instances-${dayjs().format('YYYYMMDD-HHmmss')}.xlsx` };
+}
+
+/** 统计流程实例导出行数（与导出筛选一致，封顶 10000） */
+export async function countWorkflowInstancesForExport(query: WorkflowInstanceExportQuery = {}): Promise<number> {
+  const where = buildInstancesExportWhere(query);
+  const [row] = await db.select({ value: sql<number>`count(*)` })
+    .from(workflowInstances)
+    .leftJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+    .leftJoin(users, eq(workflowInstances.initiatorId, users.id))
+    .where(where);
+  return Math.min(Number(row?.value ?? 0), 10000);
 }

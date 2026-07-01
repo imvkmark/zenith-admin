@@ -1,17 +1,63 @@
 import { registerExport } from '../registry';
+import type { AnyExportDefinition } from '../types';
 import { usersExportDefinition } from './users';
 import { reportDatasetExportDefinition } from './report-dataset';
 import { reportPrintExportDefinition } from './report-print';
-import { legacyExportDefinitions } from './legacy';
+import { departmentsExportDefinition } from './departments';
+import { positionsExportDefinition } from './positions';
+import { rolesExportDefinition } from './roles';
+import { dictsExportDefinition } from './dicts';
+import { tenantsExportDefinition } from './tenants';
+import { regionsExportDefinition } from './regions';
+import { systemConfigsExportDefinition } from './system-configs';
+import { fileStorageConfigsExportDefinition } from './file-storage-configs';
+import { cronJobsExportDefinition } from './cron-jobs';
+import { processesExportDefinition } from './processes';
+import { announcementsExportDefinition } from './announcements';
+import { loginLogsExportDefinition } from './login-logs';
+import { operationLogsExportDefinition } from './operation-logs';
+import { emailSendLogsExportDefinition } from './email-send-logs';
+import { smsSendLogsExportDefinition } from './sms-send-logs';
+import { membersExportDefinition } from './members';
+import { channelSubscribersExportDefinition } from './channel-subscribers';
+import { analyticsEventsExportDefinition } from './analytics-events';
+import { paymentOrdersExportDefinition } from './payment-orders';
+import { paymentRefundsExportDefinition } from './payment-refunds';
+import { workflowInstancesExportDefinition } from './workflow-instances';
 
 let registered = false;
 
+// 各业务域的导出定义（原生 defineExport，含真实 countRows / streamRows / 结构化 columns）
+const definitions = [
+  usersExportDefinition,
+  reportDatasetExportDefinition,
+  reportPrintExportDefinition,
+  departmentsExportDefinition,
+  positionsExportDefinition,
+  rolesExportDefinition,
+  dictsExportDefinition,
+  tenantsExportDefinition,
+  regionsExportDefinition,
+  systemConfigsExportDefinition,
+  fileStorageConfigsExportDefinition,
+  cronJobsExportDefinition,
+  processesExportDefinition,
+  announcementsExportDefinition,
+  loginLogsExportDefinition,
+  operationLogsExportDefinition,
+  emailSendLogsExportDefinition,
+  smsSendLogsExportDefinition,
+  membersExportDefinition,
+  channelSubscribersExportDefinition,
+  analyticsEventsExportDefinition,
+  paymentOrdersExportDefinition,
+  paymentRefundsExportDefinition,
+  workflowInstancesExportDefinition,
+] as unknown as AnyExportDefinition[];
+
 export function registerExportDefinitions(): void {
   if (registered) return;
-  registerExport(usersExportDefinition as unknown as Parameters<typeof registerExport>[0]);
-  registerExport(reportDatasetExportDefinition as unknown as Parameters<typeof registerExport>[0]);
-  registerExport(reportPrintExportDefinition as unknown as Parameters<typeof registerExport>[0]);
-  for (const definition of legacyExportDefinitions) {
+  for (const definition of definitions) {
     registerExport(definition);
   }
   registered = true;

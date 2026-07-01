@@ -2,7 +2,6 @@ import { eq, like, and, ne, desc, inArray } from 'drizzle-orm';
 import { mergeWhere, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { systemConfigs } from '../db/schema';
-import { streamToExcel, streamToCsv } from '../lib/excel-export';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { HTTPException } from 'hono/http-exception';
@@ -122,37 +121,4 @@ export async function getSystemConfigBeforeAudit(id: number) {
   const [row] = await db.select().from(systemConfigs).where(tc ? and(eq(systemConfigs.id, id), tc) : eq(systemConfigs.id, id)).limit(1);
   if (!row) return null;
   return mapConfig(row);
-}
-
-export async function exportSystemConfigs(): Promise<{ stream: ReadableStream; filename: string }> {
-  const user = currentUser();
-  const rows = await db.select().from(systemConfigs).where(tenantCondition(systemConfigs, user)).orderBy(desc(systemConfigs.id));
-  const stream = await streamToExcel(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '配置键', key: 'configKey', width: 30 },
-      { header: '配置值', key: 'configValue', width: 40 },
-      { header: '类型', key: 'configType', width: 10 },
-      { header: '描述', key: 'description', width: 30 },
-    ],
-    rows.map(mapConfig),
-    '系统配置',
-  );
-  return { stream, filename: 'system-configs.xlsx' };
-}
-
-export async function exportSystemConfigsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
-  const user = currentUser();
-  const rows = await db.select().from(systemConfigs).where(tenantCondition(systemConfigs, user)).orderBy(desc(systemConfigs.id));
-  const stream = streamToCsv(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '配置键', key: 'configKey', width: 30 },
-      { header: '配置値', key: 'configValue', width: 40 },
-      { header: '类型', key: 'configType', width: 10 },
-      { header: '描述', key: 'description', width: 30 },
-    ],
-    rows.map(mapConfig),
-  );
-  return { stream, filename: 'system-configs.csv' };
 }

@@ -2,7 +2,6 @@ import { count, desc, like, and, gte, lte, sql, eq } from 'drizzle-orm';
 import { mergeWhere, escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
-import { streamToExcel, streamToCsv, batchIterable, formatDateTimeForExcel } from '../lib/excel-export';
 import { tenantCondition } from '../lib/tenant';
 import { currentUser } from '../lib/context';
 import { formatDateTime, formatDate, parseDateTimeInput } from '../lib/datetime';
@@ -23,7 +22,7 @@ export interface ListOperationLogsQuery {
   maxDurationMs?: number;
 }
 
-function buildWhere(q: ListOperationLogsQuery) {
+export function buildWhere(q: ListOperationLogsQuery) {
   const user = currentUser();
   const conditions = [];
   if (q.username) conditions.push(like(operationLogs.username, `%${escapeLike(q.username)}%`));
@@ -125,47 +124,6 @@ export async function operationLogStats(daysRaw?: number) {
     methodStats: methodStats.map((r) => ({ method: r.method, count: r.count })),
     hourlyStats: Array.from({ length: 24 }, (_, h) => ({ hour: h, count: hourlyMap.get(h) ?? 0 })),
   };
-}
-
-const EXPORT_COLUMNS = [
-  { header: 'ID', key: 'id', width: 8 },
-  { header: '用户名', key: 'username', width: 14 },
-  { header: '模块', key: 'module', width: 14 },
-  { header: '描述', key: 'description', width: 20 },
-  { header: '方法', key: 'method', width: 8 },
-  { header: '路径', key: 'path', width: 24 },
-  { header: '状态码', key: 'responseCode', width: 10 },
-  { header: '耗时(ms)', key: 'duration', width: 12 },
-  { header: 'IP', key: 'ip', width: 16 },
-  { header: '时间', key: 'createdAt', width: 22 },
-];
-
-function mapRowForExport(r: typeof operationLogs.$inferSelect) {
-  return {
-    ...r,
-    duration: r.durationMs ?? '',
-    createdAt: formatDateTimeForExcel(r.createdAt),
-  } as Record<string, unknown>;
-}
-
-async function* streamExportRows(finalWhere: ReturnType<typeof buildWhere>) {
-  for await (const r of batchIterable((limit, offset) =>
-    db.select().from(operationLogs).where(finalWhere).orderBy(desc(operationLogs.id)).limit(limit).offset(offset),
-  )) {
-    yield mapRowForExport(r);
-  }
-}
-
-export async function exportOperationLogs(q: ListOperationLogsQuery = {}): Promise<{ stream: ReadableStream; filename: string }> {
-  const finalWhere = buildWhere(q);
-  const stream = await streamToExcel(EXPORT_COLUMNS, streamExportRows(finalWhere), '操作日志');
-  return { stream, filename: 'operation-logs.xlsx' };
-}
-
-export async function exportOperationLogsAsCsv(q: ListOperationLogsQuery = {}): Promise<{ stream: ReadableStream; filename: string }> {
-  const finalWhere = buildWhere(q);
-  const stream = streamToCsv(EXPORT_COLUMNS, streamExportRows(finalWhere));
-  return { stream, filename: 'operation-logs.csv' };
 }
 
 function buildCleanOperationLogsWhere(months: number) {

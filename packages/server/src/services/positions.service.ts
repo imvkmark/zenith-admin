@@ -5,7 +5,6 @@ import { positions, userPositions, users } from '../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../lib/context';
 import { tenantCondition, getCreateTenantId } from '../lib/tenant';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { formatDateTime, parseDateTimeInput } from '../lib/datetime';
 
@@ -245,47 +244,4 @@ export async function setPositionMembers(positionId: number, userIds: number[]) 
       await tx.insert(userPositions).values(userIds.map(uid => ({ positionId, userId: uid })));
     }
   });
-}
-
-export async function exportPositions(): Promise<{ stream: ReadableStream; filename: string }> {
-  const rows = await db
-    .select()
-    .from(positions)
-    .where(tenantCondition(positions, currentUser()))
-    .orderBy(asc(positions.sort));
-  const stream = await streamToExcel(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '岗位名称', key: 'name', width: 18 },
-      { header: '岗位编码', key: 'code', width: 18 },
-      { header: '排序', key: 'sort', width: 8 },
-      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '禁用') },
-      { header: '备注', key: 'remark', width: 24 },
-      { header: '创建时间', key: 'createdAt', width: 22 },
-    ],
-    rows.map((r) => ({ ...r, remark: r.remark ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
-    '岗位列表',
-  );
-  return { stream, filename: 'positions.xlsx' };
-}
-
-export async function exportPositionsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
-  const rows = await db
-    .select()
-    .from(positions)
-    .where(tenantCondition(positions, currentUser()))
-    .orderBy(asc(positions.sort));
-  const stream = streamToCsv(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '岗位名称', key: 'name', width: 18 },
-      { header: '岗位编码', key: 'code', width: 18 },
-      { header: '排序', key: 'sort', width: 8 },
-      { header: '状态', key: 'status', width: 10, transform: (v) => (v === 'enabled' ? '启用' : '停用') },
-      { header: '备注', key: 'remark', width: 24 },
-      { header: '创建时间', key: 'createdAt', width: 22 },
-    ],
-    rows.map((r) => ({ ...r, remark: r.remark ?? '', createdAt: formatDateTimeForExcel(r.createdAt) })),
-  );
-  return { stream, filename: 'positions.csv' };
 }

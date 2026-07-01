@@ -4,7 +4,6 @@ import { promises as fsp } from 'node:fs';
 import os from 'node:os';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime } from '../lib/datetime';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import type { ProcessInfo, ProcessListResponse, ProcessNetConn, SetProcessPriorityInput } from '@zenith/shared';
 
 const execFileAsync = promisify(execFile);
@@ -462,42 +461,4 @@ export async function setProcessPriority(pid: number, input: SetProcessPriorityI
     }
     throw new HTTPException(400, { message: `调整进程 ${pid} 优先级失败: ${stderr}` });
   }
-}
-
-const EXPORT_COLUMNS = [
-  { header: 'PID', key: 'pid', width: 10 },
-  { header: '进程名', key: 'name', width: 24 },
-  { header: '用户', key: 'user', width: 14 },
-  { header: '状态', key: 'status', width: 12 },
-  { header: 'CPU%', key: 'cpu', width: 10 },
-  { header: '内存%', key: 'memoryPercent', width: 10 },
-  { header: '内存(MB)', key: 'memoryMB', width: 12 },
-  { header: '线程数', key: 'threads', width: 10 },
-  { header: 'Nice', key: 'nice', width: 8 },
-  { header: '优先级类', key: 'priorityClass', width: 14 },
-  { header: '端口', key: 'ports', width: 20 },
-  { header: '启动时间', key: 'startTime', width: 22 },
-  { header: '命令', key: 'command', width: 60 },
-];
-
-function processesToExportRows(processes: ProcessInfo[]) {
-  return processes.map((p) => ({
-    ...p,
-    memoryMB: Math.round((p.memory / 1024 / 1024) * 100) / 100,
-    nice: p.nice ?? '',
-    priorityClass: p.priorityClass ?? '',
-    startTime: p.startTime ? formatDateTimeForExcel(p.startTime) : '',
-  }));
-}
-
-export async function exportProcesses(): Promise<{ stream: ReadableStream; filename: string }> {
-  const { processes } = await listProcesses();
-  const stream = await streamToExcel(EXPORT_COLUMNS, processesToExportRows(processes), '进程列表');
-  return { stream, filename: `processes_${new Date().toISOString().slice(0, 10)}.xlsx` };
-}
-
-export async function exportProcessesAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
-  const { processes } = await listProcesses();
-  const stream = streamToCsv(EXPORT_COLUMNS, processesToExportRows(processes));
-  return { stream, filename: `processes_${new Date().toISOString().slice(0, 10)}.csv` };
 }

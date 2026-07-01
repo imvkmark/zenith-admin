@@ -7,7 +7,7 @@ import { escapeLike } from '../lib/where-helpers';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
 import { currentUser, runWithCurrentUser } from '../lib/context';
 import { getUserPermissions, isSuperAdmin } from '../lib/permissions';
-import { getCreateTenantId, tenantCondition } from '../lib/tenant';
+import { getCreateTenantId } from '../lib/tenant';
 import { getStoredFileForRead, saveGeneratedManagedFile } from './files.service';
 import { deleteStoredFile, readStoredFile } from '../lib/file-storage';
 import { getExportDefinition, listExportDefinitions } from '../lib/export-center/registry';

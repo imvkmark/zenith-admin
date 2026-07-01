@@ -994,6 +994,10 @@ export async function listEventsForExport(q: EventListQuery, max = 50_000) {
   return rows.map((r) => ({ ...r, createdAt: formatDateTime(r.createdAt) }));
 }
 
+export async function countEventsForExport(q: EventListQuery, max = 50_000): Promise<number> {
+  return Math.min(await db.$count(userEvents, buildEventListWhere(q)), max);
+}
+
 export async function cleanAnalyticsEvents(days: number): Promise<number> {
   const where =
     days > 0

@@ -3,7 +3,6 @@ import { escapeLike } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 import { db } from '../db';
 import { tenants, users, departments, roles, positions, tenantPackageMenus } from '../db/schema';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { clearUserPermissionCache } from '../lib/permissions';
 import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../lib/datetime';
@@ -148,43 +147,4 @@ export async function getTenantBeforeAudit(id: number) {
   const [row] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
   if (!row) return null;
   return mapTenant(row);
-}
-
-export async function exportTenants(): Promise<{ stream: ReadableStream; filename: string }> {
-  const rows = await db.select().from(tenants).orderBy(desc(tenants.id));
-  const stream = await streamToExcel(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '租户名称', key: 'name', width: 20 },
-      { header: '租户编码', key: 'code', width: 16 },
-      { header: '联系人', key: 'contactName', width: 14 },
-      { header: '联系电话', key: 'contactPhone', width: 16 },
-      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'enabled' ? '启用' : '禁用' },
-      { header: '到期时间', key: 'expireAt', width: 22 },
-      { header: '最大用户数', key: 'maxUsers', width: 12 },
-      { header: '创建时间', key: 'createdAt', width: 22 },
-    ],
-    rows.map((r) => ({ ...r, expireAt: formatDateTimeForExcel(r.expireAt), createdAt: formatDateTimeForExcel(r.createdAt), updatedAt: formatDateTimeForExcel(r.updatedAt) })),
-    '租户列表',
-  );
-  return { stream, filename: 'tenants.xlsx' };
-}
-
-export async function exportTenantsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
-  const rows = await db.select().from(tenants).orderBy(desc(tenants.id));
-  const stream = streamToCsv(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '租户名称', key: 'name', width: 20 },
-      { header: '租户编码', key: 'code', width: 16 },
-      { header: '联系人', key: 'contactName', width: 14 },
-      { header: '联系电话', key: 'contactPhone', width: 16 },
-      { header: '状态', key: 'status', width: 10, transform: (v) => v === 'enabled' ? '启用' : '停用' },
-      { header: '到期时间', key: 'expireAt', width: 22 },
-      { header: '最大用户数', key: 'maxUsers', width: 12 },
-      { header: '创建时间', key: 'createdAt', width: 22 },
-    ],
-    rows.map((r) => ({ ...r, expireAt: formatDateTimeForExcel(r.expireAt), createdAt: formatDateTimeForExcel(r.createdAt), updatedAt: formatDateTimeForExcel(r.updatedAt) })),
-  );
-  return { stream, filename: 'tenants.csv' };
 }

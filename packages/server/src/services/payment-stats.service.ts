@@ -1,24 +1,14 @@
 /**
  * 支付统计与导出 Service。
  */
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { paymentOrders, paymentRefunds } from '../db/schema';
 import { currentUser } from '../lib/context';
 import { tenantCondition } from '../lib/tenant';
 import { mergeWhere } from '../lib/where-helpers';
 import { APP_TIME_ZONE, formatDate } from '../lib/datetime';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel, type ExcelColumn } from '../lib/excel-export';
-import {
-  PAYMENT_CHANNEL_LABELS,
-  PAYMENT_METHOD_LABELS,
-  PAYMENT_ORDER_STATUS_LABELS,
-  PAYMENT_REFUND_STATUS_LABELS,
-} from '@zenith/shared';
-import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus, PaymentStats, PaymentTrendPoint } from '@zenith/shared';
-import { buildOrdersWhere, buildRefundsWhere, type ListOrdersQuery, type ListRefundsQuery } from './payment.service';
-
-const EXPORT_LIMIT = 50000;
+import type { PaymentStats, PaymentTrendPoint } from '@zenith/shared';
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
@@ -127,58 +117,4 @@ export async function getPaymentTrend(days = 30): Promise<PaymentTrendPoint[]> {
     result.push({ date: key, amount: o?.amount ?? 0, count: o?.count ?? 0, refundAmount: refundMap.get(key) ?? 0 });
   }
   return result;
-}
-
-const yuan = (v: unknown): string => ((Number(v) || 0) / 100).toFixed(2);
-
-const ORDER_COLUMNS: ExcelColumn[] = [
-  { key: 'orderNo', header: '订单号', width: 22 },
-  { key: 'outTradeNo', header: '商户单号', width: 22 },
-  { key: 'channelTradeNo', header: '渠道交易号', width: 24, transform: (v) => (v as string) ?? '' },
-  { key: 'subject', header: '标题', width: 24 },
-  { key: 'amount', header: '金额(元)', width: 12, transform: yuan },
-  { key: 'channel', header: '渠道', width: 10, transform: (v) => PAYMENT_CHANNEL_LABELS[v as PaymentChannel] ?? String(v ?? '') },
-  { key: 'payMethod', header: '支付方式', width: 14, transform: (v) => PAYMENT_METHOD_LABELS[v as PaymentMethod] ?? String(v ?? '') },
-  { key: 'status', header: '状态', width: 10, transform: (v) => PAYMENT_ORDER_STATUS_LABELS[v as PaymentOrderStatus] ?? String(v ?? '') },
-  { key: 'bizType', header: '业务类型', width: 14 },
-  { key: 'bizId', header: '业务ID', width: 14 },
-  { key: 'paidAt', header: '支付时间', width: 20, transform: (v) => formatDateTimeForExcel(v as Date | null) },
-  { key: 'createdAt', header: '创建时间', width: 20, transform: (v) => formatDateTimeForExcel(v as Date) },
-];
-
-const REFUND_COLUMNS: ExcelColumn[] = [
-  { key: 'refundNo', header: '退款单号', width: 22 },
-  { key: 'orderNo', header: '原订单号', width: 22 },
-  { key: 'channelRefundNo', header: '渠道退款号', width: 22, transform: (v) => (v as string) ?? '' },
-  { key: 'refundAmount', header: '退款金额(元)', width: 14, transform: yuan },
-  { key: 'totalAmount', header: '原单金额(元)', width: 14, transform: yuan },
-  { key: 'channel', header: '渠道', width: 10, transform: (v) => PAYMENT_CHANNEL_LABELS[v as PaymentChannel] ?? String(v ?? '') },
-  { key: 'status', header: '状态', width: 10, transform: (v) => PAYMENT_REFUND_STATUS_LABELS[v as PaymentRefundStatus] ?? String(v ?? '') },
-  { key: 'reason', header: '退款原因', width: 24, transform: (v) => (v as string) ?? '' },
-  { key: 'refundedAt', header: '退款时间', width: 20, transform: (v) => formatDateTimeForExcel(v as Date | null) },
-  { key: 'createdAt', header: '创建时间', width: 20, transform: (v) => formatDateTimeForExcel(v as Date) },
-];
-
-export async function exportOrders(q: ListOrdersQuery): Promise<ReadableStream> {
-  const where = await buildOrdersWhere(q);
-  const rows = await db.select().from(paymentOrders).where(where).orderBy(desc(paymentOrders.id)).limit(EXPORT_LIMIT);
-  return streamToExcel(ORDER_COLUMNS, rows as unknown as Record<string, unknown>[], '支付订单');
-}
-
-export async function exportOrdersCsv(q: ListOrdersQuery): Promise<ReadableStream> {
-  const where = await buildOrdersWhere(q);
-  const rows = await db.select().from(paymentOrders).where(where).orderBy(desc(paymentOrders.id)).limit(EXPORT_LIMIT);
-  return streamToCsv(ORDER_COLUMNS, rows as unknown as Record<string, unknown>[]);
-}
-
-export async function exportRefunds(q: ListRefundsQuery): Promise<ReadableStream> {
-  const where = buildRefundsWhere(q);
-  const rows = await db.select().from(paymentRefunds).where(where).orderBy(desc(paymentRefunds.id)).limit(EXPORT_LIMIT);
-  return streamToExcel(REFUND_COLUMNS, rows as unknown as Record<string, unknown>[], '退款记录');
-}
-
-export async function exportRefundsCsv(q: ListRefundsQuery): Promise<ReadableStream> {
-  const where = buildRefundsWhere(q);
-  const rows = await db.select().from(paymentRefunds).where(where).orderBy(desc(paymentRefunds.id)).limit(EXPORT_LIMIT);
-  return streamToCsv(REFUND_COLUMNS, rows as unknown as Record<string, unknown>[]);
 }

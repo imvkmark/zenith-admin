@@ -142,7 +142,6 @@ import { asc, desc, eq, and, gte, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { withPagination } from '../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 
 export interface ListFileStorageConfigsQuery {
   page?: number;
@@ -267,27 +266,4 @@ export async function getFileStorageConfigBeforeAudit(id: number) {
   const [row] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, id)).limit(1);
   if (!row) return null;
   return mapFileStorageConfig(row);
-}
-
-const EXPORT_COLUMNS = [
-  { header: 'ID', key: 'id', width: 8 },
-  { header: '名称', key: 'name', width: 24 },
-  { header: '存储类型', key: 'provider', width: 12 },
-  { header: '状态', key: 'status', width: 10 },
-  { header: '是否默认', key: 'isDefault', width: 10, transform: (v: unknown) => (v ? '是' : '否') },
-  { header: '基础路径', key: 'basePath', width: 24, transform: (v: unknown) => (v as string | null) ?? '' },
-  { header: '备注', key: 'remark', width: 24, transform: (v: unknown) => (v as string | null) ?? '' },
-  { header: '创建时间', key: 'createdAt', width: 20, transform: (v: unknown) => formatDateTimeForExcel(v as Date) },
-];
-
-export async function exportFileStorageConfigs() {
-  const rows = await db.select().from(fileStorageConfigs).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id));
-  const stream = await streamToExcel(EXPORT_COLUMNS, rows, '文件存储配置');
-  return { stream, filename: 'file-storage-configs.xlsx' };
-}
-
-export async function exportFileStorageConfigsAsCsv() {
-  const rows = await db.select().from(fileStorageConfigs).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id));
-  const stream = streamToCsv(EXPORT_COLUMNS, rows[Symbol.iterator]());
-  return { stream, filename: 'file-storage-configs.csv' };
 }

@@ -14,10 +14,9 @@ import { escapeLike } from '../lib/where-helpers';
 import { pageOffset } from '../lib/pagination';
 import { rethrowPgUniqueViolation } from '../lib/db-errors';
 import { formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../lib/datetime';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel, type ExcelColumn } from '../lib/excel-export';
 import { mapPointAccount, mapPointTransaction, ensurePointAccount } from './member-points.service';
 import { mapWallet, mapWalletTransaction, ensureWallet } from './member-wallet.service';
-import { MEMBER_STATUS_LABELS, type MemberStatus } from '@zenith/shared';
+import type { MemberStatus } from '@zenith/shared';
 
 export interface ListMembersQuery {
   keyword?: string;
@@ -27,7 +26,7 @@ export interface ListMembersQuery {
   pageSize: number;
 }
 
-function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; levelId?: number }): SQL | undefined {
+export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; levelId?: number }): SQL | undefined {
   const conds: SQL[] = [];
   if (q.keyword) {
     const kw = `%${escapeLike(q.keyword)}%`;
@@ -383,87 +382,4 @@ export async function listMemberLoginLogs(q: MemberLoginLogQuery) {
     page: q.page,
     pageSize: q.pageSize,
   };
-}
-
-// ─── 导出 ─────────────────────────────────────────────────────────────────────
-export async function exportMembers(q: { keyword?: string; status?: MemberStatus; levelId?: number }) {
-  const where = buildMemberWhere(q);
-  const rows = await db.query.members.findMany({
-    where,
-    with: {
-      level: { columns: { name: true } },
-      pointAccount: { columns: { balance: true } },
-      wallet: { columns: { balance: true } },
-    },
-    orderBy: desc(members.id),
-  });
-  const data = rows.map((r) => ({
-    id: r.id,
-    username: r.username ?? '',
-    phone: r.phone ?? '',
-    email: r.email ?? '',
-    nickname: r.nickname,
-    levelName: r.level?.name ?? '',
-    status: MEMBER_STATUS_LABELS[r.status],
-    growthValue: r.growthValue,
-    pointBalance: r.pointAccount?.balance ?? 0,
-    walletBalance: ((r.wallet?.balance ?? 0) / 100).toFixed(2),
-    registerSource: r.registerSource,
-    lastLoginAt: r.lastLoginAt,
-    createdAt: r.createdAt,
-  }));
-  const columns: ExcelColumn[] = [
-    { header: 'ID', key: 'id', width: 8 },
-    { header: '用户名', key: 'username', width: 16 },
-    { header: '手机号', key: 'phone', width: 16 },
-    { header: '邮箱', key: 'email', width: 22 },
-    { header: '昵称', key: 'nickname', width: 16 },
-    { header: '等级', key: 'levelName', width: 12 },
-    { header: '状态', key: 'status', width: 10 },
-    { header: '成长值', key: 'growthValue', width: 10 },
-    { header: '积分', key: 'pointBalance', width: 10 },
-    { header: '余额(元)', key: 'walletBalance', width: 12 },
-    { header: '注册来源', key: 'registerSource', width: 10 },
-    { header: '最后登录', key: 'lastLoginAt', width: 20, transform: (v) => (v ? formatDateTimeForExcel(v as Date) : '') },
-    { header: '注册时间', key: 'createdAt', width: 20, transform: (v) => formatDateTimeForExcel(v as Date) },
-  ];
-  const stream = await streamToExcel(columns, data);
-  return { stream, filename: 'members.xlsx' };
-}
-
-export async function exportMembersAsCsv(q: { keyword?: string; status?: MemberStatus; levelId?: number }) {
-  const where = buildMemberWhere(q);
-  const rows = await db.query.members.findMany({
-    where,
-    with: { level: { columns: { name: true } } },
-    orderBy: desc(members.id),
-  });
-  const data = rows.map((r) => ({
-    id: r.id,
-    username: r.username ?? '',
-    phone: r.phone ?? '',
-    email: r.email ?? '',
-    nickname: r.nickname,
-    levelName: r.level?.name ?? '',
-    status: MEMBER_STATUS_LABELS[r.status],
-    growthValue: r.growthValue,
-    registerSource: r.registerSource,
-    lastLoginAt: r.lastLoginAt ? formatDateTimeForExcel(r.lastLoginAt) : '',
-    createdAt: formatDateTimeForExcel(r.createdAt),
-  }));
-  const columns: ExcelColumn[] = [
-    { header: 'ID', key: 'id', width: 8 },
-    { header: '用户名', key: 'username', width: 16 },
-    { header: '手机号', key: 'phone', width: 16 },
-    { header: '邮箱', key: 'email', width: 22 },
-    { header: '昵称', key: 'nickname', width: 16 },
-    { header: '等级', key: 'levelName', width: 12 },
-    { header: '状态', key: 'status', width: 10 },
-    { header: '成长值', key: 'growthValue', width: 10 },
-    { header: '注册来源', key: 'registerSource', width: 10 },
-    { header: '最后登录', key: 'lastLoginAt', width: 20 },
-    { header: '注册时间', key: 'createdAt', width: 20 },
-  ];
-  const stream = streamToCsv(columns, data[Symbol.iterator]());
-  return { stream, filename: 'members.csv' };
 }

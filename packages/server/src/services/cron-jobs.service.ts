@@ -3,7 +3,6 @@ import { escapeLike, withPagination } from '../lib/where-helpers';
 import { db } from '../db';
 import { cronJobs, cronJobLogs } from '../db/schema';
 import { scheduleJob, stopJob, runJobOnce, validateCronExpression, getRunningJobCount } from '../lib/pg-boss-scheduler';
-import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { formatDateTime, formatNullableDateTime } from '../lib/datetime';
 
@@ -91,43 +90,6 @@ export async function setCronJobStatus(id: number, status: 'enabled' | 'disabled
   if (status === 'enabled') await scheduleJob(row.id, row.name, row.cronExpression, row.handler, row.params, { retryCount: row.retryCount, retryDelay: row.retryInterval, retryBackoff: row.retryBackoff, monitorTimeout: row.monitorTimeout });
   else await stopJob(row.id, row.name);
   return status === 'enabled' ? '已启用' : '已停用';
-}
-
-export async function exportCronJobs(): Promise<{ stream: ReadableStream; filename: string }> {
-  const rows = await db.select().from(cronJobs).orderBy(desc(cronJobs.id));
-  const stream = await streamToExcel(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '任务名称', key: 'name', width: 20 },
-      { header: 'Cron 表达式', key: 'cronExpression', width: 18 },
-      { header: '处理器', key: 'handler', width: 20 },
-      { header: '状态', key: 'status', width: 10 },
-      { header: '最后执行', key: 'lastRunAt', width: 22 },
-      { header: '执行结果', key: 'lastRunStatus', width: 12 },
-      { header: '描述', key: 'description', width: 30 },
-    ],
-    rows.map((r) => ({ ...r, lastRunAt: formatDateTimeForExcel(r.lastRunAt), createdAt: formatDateTimeForExcel(r.createdAt) })),
-    '定时任务',
-  );
-  return { stream, filename: 'cron-jobs.xlsx' };
-}
-
-export async function exportCronJobsAsCsv(): Promise<{ stream: ReadableStream; filename: string }> {
-  const rows = await db.select().from(cronJobs).orderBy(desc(cronJobs.id));
-  const stream = streamToCsv(
-    [
-      { header: 'ID', key: 'id', width: 8 },
-      { header: '任务名称', key: 'name', width: 20 },
-      { header: 'Cron 表达式', key: 'cronExpression', width: 18 },
-      { header: '处理器', key: 'handler', width: 20 },
-      { header: '状态', key: 'status', width: 10 },
-      { header: '最后执行', key: 'lastRunAt', width: 22 },
-      { header: '执行结果', key: 'lastRunStatus', width: 12 },
-      { header: '描述', key: 'description', width: 30 },
-    ],
-    rows.map((r) => ({ ...r, lastRunAt: formatDateTimeForExcel(r.lastRunAt), createdAt: formatDateTimeForExcel(r.createdAt) })),
-  );
-  return { stream, filename: 'cron-jobs.csv' };
 }
 
 export async function listAllCronJobLogs(q: { page: number; pageSize: number; jobId?: number }) {
