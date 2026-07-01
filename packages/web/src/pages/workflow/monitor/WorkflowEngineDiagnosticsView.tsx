@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Dropdown, Empty, JsonViewer, Popover, Select, Skeleton, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Dropdown, Empty, JsonViewer, Popover, Select, Skeleton, Space, Spin, Tabs, TabPane, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, DatabaseZap, Download, GaugeCircle, GitBranch, Layers, LifeBuoy, Minus, RefreshCw, Stethoscope, Timer, TimerReset, TrendingUp, Wrench, Workflow, Zap } from 'lucide-react';
 import type {
@@ -412,46 +412,45 @@ function QueueSaturation({ queues, palette }: Readonly<{ queues: WorkflowEngineQ
   );
 }
 
-function ComponentCard({ component, palette }: Readonly<{ component: WorkflowEngineComponent; palette: ChartPalette }>) {
+function ComponentRow({ component, palette }: Readonly<{ component: WorkflowEngineComponent; palette: ChartPalette }>) {
   const color = statusColor(palette, component.status);
+  const abnormal = component.status !== 'healthy';
   return (
-    <div
-      style={{
-        padding: '12px 14px',
-        borderRadius: 8,
-        background: 'var(--semi-color-bg-1)',
-        border: '1px solid var(--semi-color-border)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 4px', borderTop: '1px solid var(--semi-color-border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 220, flex: '0 0 auto', minWidth: 0, overflow: 'hidden' }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flex: '0 0 auto' }} />
         {renderComponentIcon(component, color)}
-        <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{component.name}</Typography.Text>
-        {statusTag(component.status)}
+        <Tooltip content={component.description} position="top">
+          <Typography.Text strong ellipsis={{ showTooltip: false }} style={{ flex: 1, minWidth: 0 }}>{component.name}</Typography.Text>
+        </Tooltip>
+        {abnormal && statusTag(component.status)}
       </div>
-      <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{component.description}</Typography.Text>
-      <Space wrap spacing={6}>
-        {component.metrics.map((m) => {
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', rowGap: 2, flex: 1, minWidth: 0 }}>
+        {component.metrics.map((m, index) => {
+          const abnormalMetric = m.status === 'critical' || m.status === 'warning';
           const mColor = m.status === 'critical' ? palette.danger : m.status === 'warning' ? palette.warning : undefined;
           const mBg = m.status === 'critical'
             ? 'var(--semi-color-danger-light-default)'
-            : m.status === 'warning'
-              ? 'var(--semi-color-warning-light-default)'
-              : 'var(--semi-color-fill-0)';
+            : 'var(--semi-color-warning-light-default)';
           return (
-            <span
-              key={`${m.label}-${m.value}`}
-              style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, padding: '2px 8px', borderRadius: 4, background: mBg }}
-            >
+            <span key={`${m.label}-${m.value}`} style={{ display: 'inline-flex', alignItems: 'baseline' }}>
+              {index > 0 && <span aria-hidden style={{ color: palette.text2, opacity: 0.5, margin: '0 10px' }}>·</span>}
               <Typography.Text type="tertiary" size="small">{m.label}</Typography.Text>
-              <Typography.Text size="small" strong style={{ color: mColor }}>{m.unit ? `${m.value}${m.unit}` : m.value}</Typography.Text>
+              <Typography.Text
+                size="small"
+                strong
+                style={{
+                  color: mColor,
+                  marginLeft: 4,
+                  ...(abnormalMetric ? { padding: '0 6px', borderRadius: 4, background: mBg } : null),
+                }}
+              >
+                {m.unit ? `${m.value}${m.unit}` : m.value}
+              </Typography.Text>
             </span>
           );
         })}
-      </Space>
+      </div>
     </div>
   );
 }
@@ -638,6 +637,18 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const sortedComponents = useMemo(() => (
     [...(data?.components ?? [])].sort((a, b) => STATUS_RANK[b.status] - STATUS_RANK[a.status])
   ), [data]);
+
+  const componentHealth = useMemo(() => {
+    let healthy = 0;
+    let warning = 0;
+    let critical = 0;
+    for (const c of data?.components ?? []) {
+      if (c.status === 'critical') critical += 1;
+      else if (c.status === 'warning') warning += 1;
+      else healthy += 1;
+    }
+    return { healthy, warning, critical };
+  }, [data]);
 
   const taskRows = useMemo(() => (
     data?.runtime.taskQueue.map((item) => ({ ...item, rowId: `${item.queue}-${item.taskId}` })) ?? []
@@ -933,10 +944,21 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
 
       {/* 组件健康矩阵 */}
       <Card bordered bodyStyle={{ padding: 14 }} style={{ borderRadius: 8 }}>
-        <SectionTitle icon={<GaugeCircle size={16} color="var(--semi-color-primary)" />} title="组件健康矩阵" desc="引擎子系统状态（严重优先）" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+        <SectionTitle
+          icon={<GaugeCircle size={16} color="var(--semi-color-primary)" />}
+          title="组件健康矩阵"
+          desc="引擎子系统状态（严重优先）"
+          extra={(
+            <Space spacing={12}>
+              <Typography.Text size="small" style={{ color: palette.success }}>正常 {componentHealth.healthy}</Typography.Text>
+              {componentHealth.warning > 0 && <Typography.Text size="small" style={{ color: palette.warning }}>关注 {componentHealth.warning}</Typography.Text>}
+              {componentHealth.critical > 0 && <Typography.Text size="small" style={{ color: palette.danger }}>严重 {componentHealth.critical}</Typography.Text>}
+            </Space>
+          )}
+        />
+        <div>
           {sortedComponents.map((component) => (
-            <ComponentCard key={component.key} component={component} palette={palette} />
+            <ComponentRow key={component.key} component={component} palette={palette} />
           ))}
         </div>
       </Card>
