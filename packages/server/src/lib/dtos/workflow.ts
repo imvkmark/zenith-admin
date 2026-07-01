@@ -681,5 +681,19 @@ export const WorkflowInstanceMigrationDTO = z.object({
 export const WorkflowCompensationDTO = z.object({
   id: z.number().int(), instanceId: z.number().int(), nodeKey: z.string(), nodeName: z.string().nullable(),
   errorMessage: z.string().nullable(), action: z.string(), status: z.enum(['pending','resolved','terminated']),
+  compensationActionStatus: z.enum(['none','pending','running','succeeded','failed']),
+  failedNodeKey: z.string().nullable(),
   resolution: z.string().nullable(), resolvedBy: z.number().int().nullable(), resolvedAt: z.string().nullable(), createdAt: z.string(),
 }).openapi('WorkflowCompensation');
+
+export const WorkflowCompensationLogDTO = z.object({
+  id: z.number().int(), compensationId: z.number().int(),
+  action: z.enum(['note', 'attachment', 'auto', 'retry', 'resume', 'resolve', 'terminate']),
+  note: z.string().nullable(),
+  attachments: z.array(z.object({ id: z.number().int(), name: z.string(), url: z.string() })).nullable(),
+  operatorId: z.number().int().nullable(), operatorName: z.string().nullable(), createdAt: z.string(),
+}).openapi('WorkflowCompensationLog');
+
+export const WorkflowCompensationDetailDTO = WorkflowCompensationDTO.extend({
+  logs: z.array(WorkflowCompensationLogDTO),
+}).openapi('WorkflowCompensationDetail');

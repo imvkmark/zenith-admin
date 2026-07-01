@@ -16,12 +16,12 @@ import {
   urgeTask, listTaskUrges, listInstanceUrges, urgeInstance, addInstanceCc,
   updateInstanceDraft, submitDraftInstance, resubmitInstance,
   batchApproveTasks, batchRejectTasks, batchWithdrawInstances, batchUrgeInstances, jumpInstance, reassignTask, recallTask,
-  countMyCcUnread, markCcRead, forwardInstance, listRelationOptions,
+  countMyCcUnread, markCcRead, forwardInstance, listRelationOptions, resumeInstanceForCompensation,
 } from '../services/workflow-instances.service';
 import { listInstanceComments, addInstanceComment } from '../services/workflow-comments.service';
 import { preflightMigration, migrateInstance, batchMigrate, listMigrations } from '../services/workflow-migrations.service';
-import { listCompensations, resolveCompensation } from '../services/workflow-compensations.service';
-import { WorkflowMigrationPreflightDTO, WorkflowInstanceMigrationDTO, WorkflowCompensationDTO } from '../lib/openapi-dtos';
+import { listCompensations, resolveCompensation, getCompensationDetail, addCompensationNote, retryCompensationAction } from '../services/workflow-compensations.service';
+import { WorkflowMigrationPreflightDTO, WorkflowInstanceMigrationDTO, WorkflowCompensationDTO, WorkflowCompensationDetailDTO } from '../lib/openapi-dtos';
 import { createConsult, replyConsult, listMyConsults, getConsultInstanceIdForAudit } from '../services/workflow-consults.service';
 import { getWorkflowAnalytics, listOverdueTasks } from '../services/workflow-analytics.service';
 
@@ -1015,6 +1015,51 @@ const compensationResolveRoute = defineOpenAPIRoute({
   handler: async (c) => { const { id } = c.req.valid('param'); const b = c.req.valid('json'); return c.json(okBody(await resolveCompensation(id, b.action, b.resolution), '已处理'), 200); },
 });
 
-router.openapiRoutes([migratePreflightRoute, migrateRoute, migrationsRoute, migrateBatchRoute, compensationsRoute, compensationResolveRoute] as const);
+const compensationDetailRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'get', path: '/compensation/{id}', tags: ['WorkflowInstances'], summary: '补偿工单详情（含处理历史）',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:instance:monitor' })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(WorkflowCompensationDetailDTO, 'ok') },
+  }),
+  handler: async (c) => { const { id } = c.req.valid('param'); return c.json(okBody(await getCompensationDetail(id)), 200); },
+});
+
+const compensationNoteRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/compensation/{id}/note', tags: ['WorkflowInstances'], summary: '补偿工单：添加处理备注/附件',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { description: '补偿工单添加备注', module: '工作流管理' } })] as const,
+    request: { params: IdParam, body: { content: jsonContent(z.object({ note: z.string().max(4000).optional(), attachments: z.array(z.object({ id: z.number().int(), name: z.string(), url: z.string() })).optional() })), required: true } },
+    responses: { ...commonErrorResponses, ...ok(WorkflowCompensationDetailDTO, '已记录') },
+  }),
+  handler: async (c) => { const { id } = c.req.valid('param'); const b = c.req.valid('json'); return c.json(okBody(await addCompensationNote(id, b.note, b.attachments), '已记录'), 200); },
+});
+
+const compensationRetryRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/compensation/{id}/retry', tags: ['WorkflowInstances'], summary: '补偿工单：重试自动反向动作',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { description: '重试补偿动作', module: '工作流管理' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(WorkflowCompensationDetailDTO, '已重试') },
+  }),
+  handler: async (c) => { const { id } = c.req.valid('param'); return c.json(okBody(await retryCompensationAction(id), '已重新入队'), 200); },
+});
+
+const compensationResumeRoute = defineOpenAPIRoute({
+  route: createRoute({
+    method: 'post', path: '/compensation/{id}/resume', tags: ['WorkflowInstances'], summary: '补偿工单：恢复后继续推进',
+    security: [{ BearerAuth: [] }],
+    middleware: [authMiddleware, guard({ permission: 'workflow:engine:operate', audit: { description: '恢复流程推进', module: '工作流管理' } })] as const,
+    request: { params: IdParam },
+    responses: { ...commonErrorResponses, ...ok(WorkflowCompensationDetailDTO, '已恢复') },
+  }),
+  handler: async (c) => { const { id } = c.req.valid('param'); await resumeInstanceForCompensation(id); return c.json(okBody(await getCompensationDetail(id), '已恢复推进'), 200); },
+});
+
+// 静态路径 /compensation/list 必须在参数化 /compensation/{id} 之前注册（RegExpRouter 按注册顺序解析）
+router.openapiRoutes([migratePreflightRoute, migrateRoute, migrationsRoute, migrateBatchRoute, compensationsRoute, compensationResolveRoute, compensationNoteRoute, compensationRetryRoute, compensationResumeRoute, compensationDetailRoute] as const);
 
 export default router;

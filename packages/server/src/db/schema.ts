@@ -1602,6 +1602,7 @@ export const workflowApproveMethodEnum = pgEnum('workflow_approve_method', ['and
 export const workflowJobTypeEnum = pgEnum('workflow_job_type', [
   'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
   'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
+  'compensation_action',
 ]);
 export const workflowJobStatusEnum = pgEnum('workflow_job_status', ['pending', 'running', 'succeeded', 'failed', 'dead', 'canceled']);
 export const workflowJobExecutionStatusEnum = pgEnum('workflow_job_execution_status', ['running', 'succeeded', 'failed']);
@@ -2017,12 +2018,33 @@ export const workflowCompensations = pgTable('workflow_compensations', {
   errorMessage: varchar('error_message', { length: 1024 }),
   action: varchar('action', { length: 16 }).notNull().default('notify'),
   status: varchar('status', { length: 16 }).notNull().default('pending'),
+  /** 自动反向 / 兜底动作执行状态：none（无自动动作）| pending | running | succeeded | failed */
+  compensationActionStatus: varchar('compensation_action_status', { length: 16 }).notNull().default('none'),
+  /** 失败节点 key（用于「恢复后继续推进」时重注 token） */
+  failedNodeKey: varchar('failed_node_key', { length: 64 }),
+  /** 反向 / 兜底动作配置快照（WorkflowCompensationAction），供重试与审计 */
+  actionPayload: jsonb('action_payload'),
   resolution: text('resolution'),
   resolvedBy: integer('resolved_by').references(() => users.id, { onDelete: 'set null' }),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
   tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [index('wf_compensation_instance_idx').on(t.instanceId), index('wf_compensation_status_idx').on(t.status)]);
+
+/** 补偿工单处理历史（时间线：备注 / 附件 / 自动动作结果 / 恢复续跑 / 放行终止） */
+export const workflowCompensationLogs = pgTable('workflow_compensation_logs', {
+  id: serial('id').primaryKey(),
+  compensationId: integer('compensation_id').notNull().references(() => workflowCompensations.id, { onDelete: 'cascade' }),
+  /** 事件类型：note（备注）| attachment | auto（自动动作结果）| retry | resume（恢复续跑）| resolve | terminate */
+  action: varchar('action', { length: 16 }).notNull(),
+  note: text('note'),
+  /** 附件：managed_files 的 { id, name, url } 数组 */
+  attachments: jsonb('attachments'),
+  operatorId: integer('operator_id').references(() => users.id, { onDelete: 'set null' }),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => [index('wf_compensation_log_cid_idx').on(t.compensationId)]);
+
 
 export type WorkflowCompensationRow = typeof workflowCompensations.$inferSelect;
 export type NewWorkflowCompensation = typeof workflowCompensations.$inferInsert;

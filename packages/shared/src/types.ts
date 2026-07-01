@@ -2104,6 +2104,8 @@ export interface WorkflowNodeConfig {
   catchNotifyUserIds?: number[] | null;
   /** routeGateway：决策表 key，运行时进入网关前求值并把输出并入 formData，供出边条件选支 */
   decisionRuleKey?: string | null;
+  /** 统一失败策略（外部副作用节点 trigger/subProcess/externalApproval 等；设置后优先于 legacy onFailure/catch 语义） */
+  failurePolicy?: WorkflowNodeFailurePolicy;
 }
 
 /** 节点监听器触发事件 */
@@ -2154,6 +2156,83 @@ export interface WorkflowExternalApprovalConfig {
   timeoutMs?: number;
   /** 调用外部 URL 失败时的兜底策略 */
   fallbackStrategy?: 'manual' | 'autoApprove' | 'autoReject';
+}
+
+/**
+ * 副作用节点失败时的统一处理动作（Saga / 补偿）。
+ * - continue：忽略失败，继续流程
+ * - retry：按 maxRetries 重试（复用作业引擎指数退避）
+ * - compensate：执行反向 / 补偿动作（撤单、解锁库存等）并生成补偿工单
+ * - fallback：跳转备用节点 或 执行备选动作（如通知失败改发短信）
+ * - notify：通知管理员并挂起为「待人工修复」补偿工单
+ * - terminate：终止流程实例
+ */
+export type WorkflowNodeFailureAction =
+  | 'continue'
+  | 'retry'
+  | 'compensate'
+  | 'fallback'
+  | 'notify'
+  | 'terminate';
+
+/** 补偿 / 反向 / 兜底动作类型 */
+export type WorkflowCompensationActionType =
+  | 'none'
+  | 'http'
+  | 'connector'
+  | 'sms'
+  | 'email'
+  | 'updateData';
+
+/**
+ * 补偿 / 反向动作配置（可复用于 compensate 反向动作与 fallback 备选动作）。
+ * 占位符统一支持：{{form.字段}} / {{instanceId}} / {{nodeKey}} / {{error}}。
+ */
+export interface WorkflowCompensationAction {
+  type: WorkflowCompensationActionType;
+  /** connector：引用流程连接器 id（设置后 url 退化为相对连接器基础地址的路径） */
+  connectorId?: number;
+  /** http / connector：目标 URL */
+  url?: string;
+  httpMethod?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  headers?: Record<string, string>;
+  /** 请求体模板（支持占位符） */
+  bodyTemplate?: string;
+  /** sms / email：模板 id */
+  templateId?: number;
+  /** sms / email：收件人（手机号 / 邮箱，支持占位符）；留空回退发起人 */
+  recipients?: string[];
+  /** updateData：要回填 / 回滚的父实例表单字段 key 列表 */
+  fieldKeys?: string[];
+  /** updateData：字段 key → 新值（支持占位符） */
+  fieldValues?: Record<string, string>;
+  /** 幂等键模板（默认 compensate:{{instanceId}}:{{nodeKey}}） */
+  idempotencyKeyTemplate?: string;
+  /** 反向动作自身失败时的最大重试次数（默认 3） */
+  maxRetries?: number;
+  timeoutMs?: number;
+}
+
+/** 节点级统一失败策略（附加在任意外部副作用节点，设置后优先于 legacy 语义） */
+export interface WorkflowNodeFailurePolicy {
+  action: WorkflowNodeFailureAction;
+  /** action='retry' 时最大重试次数 */
+  maxRetries?: number;
+  /** action='fallback' 时跳转的备用节点 key（与 fallbackAction 二选一） */
+  fallbackNodeKey?: string;
+  /** action='fallback' 时执行的备选动作（与 fallbackNodeKey 二选一） */
+  fallbackAction?: WorkflowCompensationAction;
+  /** action='compensate' 时执行的反向动作 */
+  compensation?: WorkflowCompensationAction;
+  /** action='notify' 时额外通知的用户 ID */
+  notifyUserIds?: number[] | null;
+  /** 补偿 / 兜底动作完成后是否继续推进流程（默认按 action 语义：compensate/notify 挂起、fallback 继续） */
+  continueAfter?: boolean;
+  /**
+   * Saga 反序回滚：本节点失败时，是否触发对该实例此前所有已成功副作用的反序补偿（默认 false）。
+   * 开启后引擎按副作用成功顺序倒序逐个执行各节点配置的 compensation。
+   */
+  sagaRollback?: boolean;
 }
 
 // React Flow 数据结构（flowData JSON）
@@ -3401,7 +3480,8 @@ export interface WorkflowTriggerExecution {
 // ─── 统一作业账本（workflow_jobs）────────────────────────────────────────────
 export type WorkflowJobType =
   | 'delay_wake' | 'task_timeout' | 'trigger_dispatch' | 'external_dispatch'
-  | 'subprocess_spawn' | 'subprocess_join' | 'event_dispatch' | 'webhook_delivery';
+  | 'subprocess_spawn' | 'subprocess_join' | 'event_dispatch' | 'webhook_delivery'
+  | 'compensation_action';
 
 export type WorkflowJobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'dead' | 'canceled';
 export type WorkflowJobExecutionStatus = 'running' | 'succeeded' | 'failed';
@@ -7157,8 +7237,33 @@ export interface WorkflowInstanceMigration {
 }
 
 // ─── 工作流：补偿/人工修复工单 ──────────────────────────────────────────────────
+/** 补偿工单的自动反向/兜底动作执行状态 */
+export type WorkflowCompensationActionStatus = 'none' | 'pending' | 'running' | 'succeeded' | 'failed';
+
 export interface WorkflowCompensation {
   id: number; instanceId: number; nodeKey: string; nodeName: string | null;
   errorMessage: string | null; action: string; status: 'pending' | 'resolved' | 'terminated';
+  /** 自动反向/兜底动作执行状态 */
+  compensationActionStatus: WorkflowCompensationActionStatus;
+  /** 失败节点 key（用于恢复续跑重注 token） */
+  failedNodeKey: string | null;
   resolution: string | null; resolvedBy: number | null; resolvedAt: string | null; createdAt: string;
 }
+
+/** 补偿工单处理历史条目 */
+export interface WorkflowCompensationLog {
+  id: number;
+  compensationId: number;
+  action: 'note' | 'attachment' | 'auto' | 'retry' | 'resume' | 'resolve' | 'terminate';
+  note: string | null;
+  attachments: Array<{ id: number; name: string; url: string }> | null;
+  operatorId: number | null;
+  operatorName: string | null;
+  createdAt: string;
+}
+
+/** 补偿工单详情（含处理历史时间线） */
+export interface WorkflowCompensationDetail extends WorkflowCompensation {
+  logs: WorkflowCompensationLog[];
+}
+

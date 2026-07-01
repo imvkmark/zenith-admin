@@ -10,3 +10,4 @@ import './subprocess-spawn';
 import './subprocess-join';
 import './event-dispatch';
 import './webhook-delivery';
+import './compensation-action';

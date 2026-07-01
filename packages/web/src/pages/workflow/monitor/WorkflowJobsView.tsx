@@ -46,6 +46,7 @@ const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> 
   subprocess_join: { text: '子流程汇聚', color: 'green' },
   event_dispatch: { text: '事件派发', color: 'orange' },
   webhook_delivery: { text: 'Webhook 投递', color: 'orange' },
+  compensation_action: { text: '补偿动作', color: 'red' },
 };
 
 const JOB_TYPES = Object.keys(JOB_TYPE_META) as WorkflowJobType[];

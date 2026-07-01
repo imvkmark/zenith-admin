@@ -4,7 +4,7 @@
  * 放在 shared 是为了让「前端审批弹窗 / 后端校验 / MSW Mock」三处对
  * 「下一节点审批人自选」的判定保持**完全一致**，避免各自实现产生偏差。
  */
-import type { WorkflowFlowData } from './types';
+import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowNodeFailurePolicy } from './types';
 
 type WorkflowFlowNode = WorkflowFlowData['nodes'][number];
 
@@ -77,3 +77,27 @@ export function findNextApproverSelectNodes(
 
   return result;
 }
+
+/**
+ * 解析节点的统一失败策略（Saga / 补偿）。
+ *
+ * 返回 `null` 表示「无显式策略」——引擎应回退到 legacy 的**异常边 → catchNode → catchAction** 路径，
+ * 保证既有流程 100% 向后兼容。
+ *
+ * 兼容映射（仅当节点未显式配置 `failurePolicy` 时）：
+ * - trigger.onFailure='continue' → { action:'continue' }
+ * - trigger.onFailure='retry'    → { action:'retry', maxRetries }
+ * - trigger.onFailure='block'    → null（沿用异常边/catch 挂起语义）
+ * - 其余节点                      → null（沿用异常边/catch）
+ */
+export function resolveFailurePolicy(node: WorkflowNodeConfig | null | undefined): WorkflowNodeFailurePolicy | null {
+  if (!node) return null;
+  if (node.failurePolicy) return node.failurePolicy;
+  if (node.type === 'trigger') {
+    const of = node.triggerConfig?.onFailure;
+    if (of === 'continue') return { action: 'continue' };
+    if (of === 'retry') return { action: 'retry', maxRetries: node.triggerConfig?.maxRetries };
+  }
+  return null;
+}
+

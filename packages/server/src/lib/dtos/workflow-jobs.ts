@@ -4,6 +4,7 @@ import { WorkflowDiagnosticBundleDTO } from './workflow-events';
 const WORKFLOW_JOB_TYPES = [
   'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
   'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
+  'compensation_action',
 ] as const;
 
 const WORKFLOW_JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'dead', 'canceled'] as const;

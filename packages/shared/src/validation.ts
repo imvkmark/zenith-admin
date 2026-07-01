@@ -752,6 +752,32 @@ export const workflowTimeoutConfigSchema = z.object({
   escalateFallbackAction: z.enum(['none', 'autoApprove', 'autoReject']).optional(),
 });
 
+export const workflowCompensationActionSchema = z.object({
+  type: z.enum(['none', 'http', 'connector', 'sms', 'email', 'updateData']),
+  connectorId: z.number().int().optional(),
+  url: z.string().max(1000).optional(),
+  httpMethod: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  bodyTemplate: z.string().max(8000).optional(),
+  templateId: z.number().int().optional(),
+  recipients: z.array(z.string().max(200)).optional(),
+  fieldKeys: z.array(z.string()).optional(),
+  fieldValues: z.record(z.string(), z.string()).optional(),
+  idempotencyKeyTemplate: z.string().max(200).optional(),
+  maxRetries: z.number().int().min(0).max(10).optional(),
+  timeoutMs: z.number().int().min(0).max(600000).optional(),
+});
+export const workflowNodeFailurePolicySchema = z.object({
+  action: z.enum(['continue', 'retry', 'compensate', 'fallback', 'notify', 'terminate']),
+  maxRetries: z.number().int().min(0).max(10).optional(),
+  fallbackNodeKey: z.string().optional(),
+  fallbackAction: workflowCompensationActionSchema.optional(),
+  compensation: workflowCompensationActionSchema.optional(),
+  notifyUserIds: z.array(z.number().int()).nullable().optional(),
+  continueAfter: z.boolean().optional(),
+  sagaRollback: z.boolean().optional(),
+});
+
 export const workflowNodeConfigSchema = z.looseObject({
   key: z.string().min(1),
   type: workflowNodeTypeSchema,
@@ -814,6 +840,7 @@ export const workflowNodeConfigSchema = z.looseObject({
   subProcessIgnoreReject: z.boolean().optional(),
   catchAction: z.enum(['toAdmin', 'notify', 'terminate']).optional(),
   catchNotifyUserIds: z.array(z.number().int()).nullable().optional(),
+  failurePolicy: workflowNodeFailurePolicySchema.optional(),
   isAsync: z.boolean().optional(),
   nodeListeners: z.array(z.object({
     type: z.literal('webhook'),

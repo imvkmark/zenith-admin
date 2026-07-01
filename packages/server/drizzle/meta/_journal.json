@@ -1387,6 +1387,13 @@
       "when": 1782885152889,
       "tag": "0197_young_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1782895258591,
+      "tag": "0198_gigantic_misty_knight",
+      "breakpoints": true
     }
   ]
 }

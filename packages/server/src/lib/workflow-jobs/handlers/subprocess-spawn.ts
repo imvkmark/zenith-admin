@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowTasks, workflowInstances } from '../../../db/schema';
-import { maybeSpawnSubProcessChild } from '../../../services/workflow-instances.service';
+import { maybeSpawnSubProcessChild, handleNodeExecutionError } from '../../../services/workflow-instances.service';
 import { registerJobHandler } from '../registry';
-import { WorkflowJobSkip, WorkflowJobPermanentError } from '../errors';
+import { WorkflowJobSkip, WorkflowJobPermanentError, WorkflowJobError } from '../errors';
 import type { WorkflowJobContext } from '../types';
 import { requireNumber } from './shared';
 
@@ -12,9 +12,10 @@ const ACTOR = { userId: 0, name: 'system:subprocess-spawn' } as const;
 /**
  * subprocess_spawn：为 subProcess 节点发起子实例（含多实例展开）。
  * 取代 subprocess-recovery 的 spawn 扫描分支；maybeSpawnSubProcessChild 内部幂等。
+ * 最终失败时走统一失败策略（handleNodeExecutionError），与 trigger/external 一致。
  * payload: { taskId }
  */
-async function handle({ payload }: WorkflowJobContext): Promise<void> {
+async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<void> {
   let taskId: number;
   try {
     taskId = requireNumber(payload, 'taskId');
@@ -34,7 +35,14 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst || inst.status !== 'running') throw new WorkflowJobSkip('父实例不在运行中');
 
-  await maybeSpawnSubProcessChild(inst, task, ACTOR);
+  try {
+    await maybeSpawnSubProcessChild(inst, task, ACTOR);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    if (attempt < job.maxAttempts) throw new WorkflowJobError(errorMessage);
+    await handleNodeExecutionError({ instance: inst, task, nodeKey: task.nodeKey, nodeName: task.nodeName, errorMessage, actor: ACTOR });
+    throw new WorkflowJobError(errorMessage, { permanent: true });
+  }
 }
 
 registerJobHandler('subprocess_spawn', handle);

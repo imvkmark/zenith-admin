@@ -621,13 +621,29 @@ export const workflowExtraHandlers = [
   http.get('/api/workflows/compensation/list', ({ request }) => {
     const status = new URL(request.url).searchParams.get('status');
     const all = [
-      { id: 1, instanceId: 1001, nodeKey: 'catch1', nodeName: '异常捕获', errorMessage: '审批人解析为空', action: 'toAdmin', status: 'pending', resolution: null, resolvedBy: null, resolvedAt: null, createdAt: mockDateTime() },
-      { id: 2, instanceId: 1002, nodeKey: 'catch1', nodeName: '异常捕获', errorMessage: '外部审批回调超时', action: 'toAdmin', status: 'resolved', resolution: '已重派', resolvedBy: 1, resolvedAt: mockDateTime(), createdAt: mockDateTime() },
+      { id: 1, instanceId: 1001, nodeKey: 'trigger1', nodeName: '扣减库存', errorMessage: '库存服务 500', action: 'compensate', status: 'pending', compensationActionStatus: 'succeeded', failedNodeKey: 'trigger1', resolution: null, resolvedBy: null, resolvedAt: null, createdAt: mockDateTime() },
+      { id: 2, instanceId: 1002, nodeKey: 'catch1', nodeName: '异常捕获', errorMessage: '外部审批回调超时', action: 'toAdmin', status: 'resolved', compensationActionStatus: 'none', failedNodeKey: null, resolution: '已重派', resolvedBy: 1, resolvedAt: mockDateTime(), createdAt: mockDateTime() },
+      { id: 3, instanceId: 1003, nodeKey: 'notify1', nodeName: '通知供应商', errorMessage: 'Webhook 连接被拒', action: 'fallback', status: 'pending', compensationActionStatus: 'failed', failedNodeKey: 'notify1', resolution: null, resolvedBy: null, resolvedAt: null, createdAt: mockDateTime() },
     ];
     const list = status ? all.filter((c) => c.status === status) : all;
     return ok({ list, total: list.length, page: 1, pageSize: 20 });
   }),
+  http.get('/api/workflows/compensation/:id', ({ params }) => {
+    const id = Number(params.id);
+    return ok({
+      id, instanceId: 1000 + id, nodeKey: 'trigger1', nodeName: '扣减库存', errorMessage: '库存服务 500',
+      action: 'compensate', status: 'pending', compensationActionStatus: 'succeeded', failedNodeKey: 'trigger1',
+      resolution: null, resolvedBy: null, resolvedAt: null, createdAt: mockDateTime(),
+      logs: [
+        { id: 1, compensationId: id, action: 'auto', note: '自动动作成功：已回滚库存锁定', attachments: null, operatorId: null, operatorName: null, createdAt: mockDateTime() },
+        { id: 2, compensationId: id, action: 'note', note: '已联系库存组确认，可放行', attachments: null, operatorId: 1, operatorName: '管理员', createdAt: mockDateTime() },
+      ],
+    });
+  }),
   http.post('/api/workflows/compensation/:id/resolve', () => ok(null, '已处理')),
+  http.post('/api/workflows/compensation/:id/note', ({ params }) => ok({ id: Number(params.id), logs: [] }, '已记录')),
+  http.post('/api/workflows/compensation/:id/retry', ({ params }) => ok({ id: Number(params.id), compensationActionStatus: 'pending' }, '已重新入队')),
+  http.post('/api/workflows/compensation/:id/resume', ({ params }) => ok({ id: Number(params.id), status: 'resolved' }, '已恢复推进')),
   http.get('/api/workflows/instances/:id/migrate/preflight', ({ params }) => {
     const inst = mockWorkflowInstances.find((i) => i.id === Number(params.id));
     if (!inst) return err('流程实例不存在', 404);

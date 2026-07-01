@@ -21,6 +21,8 @@ import ApprovalRequirementsTab from './tabs/ApprovalRequirementsTab';
 import ActionButtonsTab from './tabs/ActionButtonsTab';
 import { normalizeActionButtons } from '../action-buttons';
 import NodeListenersTab from './tabs/NodeListenersTab';
+import FailurePolicySection from './FailurePolicySection';
+import type { WorkflowNodeFailurePolicy } from '@zenith/shared';
 
 interface UserOption { id: number; nickname: string; }
 interface RoleOption { id: number; name: string; }
@@ -753,6 +755,16 @@ export default function NodeConfigDrawer({
             )}
           </div>
         </div>
+      )}
+
+      {/* 统一失败策略（Saga / 补偿）：外部副作用节点（触发器 / 子流程） */}
+      {(isTrigger || isSubProcess) && (
+        <FailurePolicySection
+          value={props.failurePolicy as WorkflowNodeFailurePolicy | undefined}
+          onChange={(v) => handlePropsChange({ failurePolicy: v })}
+          nodeOptions={allNodes.filter((n) => n.id !== node?.id && n.key).map((n) => ({ value: n.key as string, label: n.name || (n.key as string) }))}
+          connectorOptions={connectorOptions}
+        />
       )}
 
       {/* 子流程配置 */}
