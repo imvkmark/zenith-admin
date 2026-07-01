@@ -777,7 +777,7 @@ export interface ErrorAlertRule {
 export type MonitorMetric =
   | 'cpu' | 'memory' | 'disk' | 'swap' | 'load1' | 'procCpu' | 'heap'
   | 'loopLag' | 'qps' | 'errorRate' | 'netRxBps' | 'netTxBps' | 'diskReadBps' | 'diskWriteBps'
-  | 'workflowHealth' | 'workflowBacklog';
+  | 'workflowHealth' | 'workflowBacklog' | 'workflowDeadLetter' | 'workflowFailureRate' | 'workflowStuckRunning';
 export type MonitorAlertOperator = 'gt' | 'gte' | 'lt' | 'lte';
 export type MonitorAlertLevel = 'info' | 'warning' | 'critical';
 export type MonitorAlertState = 'ok' | 'firing';
@@ -4106,7 +4106,8 @@ export type WorkflowEngineActionKey =
   | 'recover-delays'
   | 'recover-subprocess'
   | 'process-timeouts'
-  | 'recover-triggers';
+  | 'recover-triggers'
+  | 'recover-webhooks';
 
 export interface WorkflowEngineActionResult {
   action: WorkflowEngineActionKey;

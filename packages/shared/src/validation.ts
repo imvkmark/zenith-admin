@@ -2265,6 +2265,7 @@ export const updateErrorAlertRuleSchema = createErrorAlertRuleSchema.partial();
 // ─── 系统监控告警规则 ─────────────────────────────────────────────────────────
 export const monitorMetricValues = [
   'cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps',
+  'workflowHealth', 'workflowBacklog', 'workflowDeadLetter', 'workflowFailureRate', 'workflowStuckRunning',
 ] as const;
 
 export const createMonitorAlertRuleSchema = z.object({

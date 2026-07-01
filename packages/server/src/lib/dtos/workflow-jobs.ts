@@ -118,3 +118,95 @@ export const WorkflowJobBatchResultDTO = z
     skipped: z.number().int(),
   })
   .openapi('WorkflowJobBatchResult');
+
+/** 死信条件重放过滤条件（多维：类型/实例/traceId/错误原因/入库时长） */
+export const WorkflowJobReplayFilterBody = z.object({
+  status: z.enum(['dead', 'failed']).optional(),
+  jobType: z.enum(WORKFLOW_JOB_TYPES).optional(),
+  instanceId: z.number().int().positive().optional(),
+  traceId: z.string().trim().min(1).max(128).optional(),
+  reasonKeyword: z.string().trim().min(1).max(200).optional(),
+  olderThanMinutes: z.number().int().min(0).max(60 * 24 * 30).optional(),
+});
+
+/** 死信重放 body：过滤条件 + 限流（ratePerSecond 条/秒错峰）+ 单次上限 limit */
+export const WorkflowJobReplayBody = WorkflowJobReplayFilterBody.extend({
+  ratePerSecond: z.number().int().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+
+/** 条件重放预览结果 */
+export const WorkflowJobReplayPreviewDTO = z
+  .object({ matched: z.number().int() })
+  .openapi('WorkflowJobReplayPreview');
+
+/** 死信重放结果（含匹配总数与实际生效限流） */
+export const WorkflowJobReplayResultDTO = z
+  .object({
+    total: z.number().int(),
+    success: z.number().int(),
+    skipped: z.number().int(),
+    matched: z.number().int(),
+    ratePerSecond: z.number().int(),
+    limit: z.number().int(),
+  })
+  .openapi('WorkflowJobReplayResult');
+
+/** 批量重试 body：选中的作业 id + 可选限流速率 */
+export const WorkflowJobBatchRetryBody = z.object({
+  ids: z.array(z.number().int().positive()).min(1),
+  ratePerSecond: z.number().int().min(1).max(200).optional(),
+});
+
+/** 失败聚类维度 query */
+export const WorkflowJobFailureClusterQuery = z.object({
+  dimension: z.enum(['reason', 'jobType', 'instance', 'trace']).optional(),
+});
+
+/** 失败聚类项（多维，支持对某簇直接重放） */
+export const WorkflowJobFailureClusterDTO = z
+  .object({
+    dimension: z.enum(['reason', 'jobType', 'instance', 'trace']),
+    key: z.string(),
+    label: z.string(),
+    count: z.number().int(),
+    jobTypes: z.array(z.string()),
+    instanceId: z.number().int().nullable(),
+    traceId: z.string().nullable(),
+    reasonKeyword: z.string().nullable(),
+  })
+  .openapi('WorkflowJobFailureCluster');
+
+/** 作业平台运行状态（worker 心跳聚合 + 作业维度派生指标） */
+export const WorkflowJobRuntimeStatusDTO = z
+  .object({
+    /** 存活 worker（心跳新鲜的调度节点）数 */
+    activeWorkers: z.number().int(),
+    /** 已注册节点总数 */
+    totalWorkers: z.number().int(),
+    /** 各存活节点明细 */
+    workers: z.array(z.object({
+      nodeId: z.string(),
+      hostname: z.string().nullable(),
+      runningJobCount: z.number().int(),
+      lastHeartbeatAt: z.string().nullable(),
+      fresh: z.boolean(),
+    })),
+    /** 在途（running）作业数 */
+    runningJobs: z.number().int(),
+    /** 卡死（running 且锁定超过宽限期）作业数 */
+    stuckRunningJobs: z.number().int(),
+    /** 到期待处理（pending 且 runAt<=now）作业数 = 积压 */
+    backlog: z.number().int(),
+    /** 死信作业数 */
+    deadLetter: z.number().int(),
+    /** 最后领取时间（max lockedAt） */
+    lastClaimedAt: z.string().nullable(),
+    /** 近 60 分钟执行失败率（%） */
+    failureRate: z.number(),
+    /** 近 60 分钟平均处理耗时（ms） */
+    avgDurationMs: z.number().int().nullable(),
+    /** 近 60 分钟执行总数 */
+    recentExecutions: z.number().int(),
+  })
+  .openapi('WorkflowJobRuntimeStatus');

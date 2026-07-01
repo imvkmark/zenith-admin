@@ -4493,7 +4493,7 @@ export type NewSystemMetricSample = typeof systemMetricSamples.$inferInsert;
 // 可监控的指标维度（与 system_metric_samples 字段对应；workflow* 为流程引擎健康指标，由引擎健康快照提供）
 export const monitorMetricEnum = pgEnum('monitor_metric', [
   'cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps',
-  'workflowHealth', 'workflowBacklog',
+  'workflowHealth', 'workflowBacklog', 'workflowDeadLetter', 'workflowFailureRate', 'workflowStuckRunning',
 ]);
 export const monitorAlertOperatorEnum = pgEnum('monitor_alert_operator', ['gt', 'gte', 'lt', 'lte']);
 export const monitorAlertLevelEnum = pgEnum('monitor_alert_level', ['info', 'warning', 'critical']);

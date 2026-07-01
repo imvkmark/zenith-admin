@@ -1557,6 +1557,7 @@ export const workflowHandlers = [
       'recover-subprocess': '子流程恢复扫描',
       'process-timeouts': '超时任务处理',
       'recover-triggers': '触发器恢复重派',
+      'recover-webhooks': 'Webhook 投递恢复',
     };
     if (!(action in labels)) return err('未知运维动作', 400);
     const detail: Record<string, number> = { scanned: 2, dispatched: 1, failed: 0 };
@@ -1705,18 +1706,81 @@ export const workflowHandlers = [
     const skipped = ids.length - success;
     return ok({ total: ids.length, success, skipped }, `已跳过 ${success} 项${skipped > 0 ? `，${skipped} 项状态不满足已跳过` : ''}`);
   }),
-  http.post('/api/workflows/engine/jobs/replay-dead', () => {
-    const dead = mockWorkflowJobs.filter((j) => j.status === 'dead');
-    dead.forEach((j) => { j.status = 'pending'; j.attempts = 0; j.updatedAt = mockDateTime(); });
-    return ok({ total: dead.length, success: dead.length, skipped: 0 }, `已重放 ${dead.length}`);
+  http.post('/api/workflows/engine/jobs/replay-dead', async ({ request }) => {
+    const b = await request.json().catch(() => ({})) as { status?: string; jobType?: string; instanceId?: number; traceId?: string; reasonKeyword?: string; olderThanMinutes?: number; ratePerSecond?: number; limit?: number };
+    const status = b.status === 'failed' ? 'failed' : 'dead';
+    const rate = Math.min(Math.max(Math.floor(b.ratePerSecond ?? 20) || 20, 1), 200);
+    const limit = Math.min(Math.max(Math.floor(b.limit ?? 500) || 500, 1), 500);
+    const kw = b.reasonKeyword?.trim().toLowerCase();
+    const match = (j: typeof mockWorkflowJobs[number]) => j.status === status
+      && (!b.jobType || j.jobType === b.jobType)
+      && (b.instanceId == null || j.instanceId === b.instanceId)
+      && (!b.traceId || j.traceId === b.traceId)
+      && (!kw || (j.lastError ?? '').toLowerCase().includes(kw))
+      && (b.olderThanMinutes == null || b.olderThanMinutes <= 0 || (Date.now() - new Date(j.createdAt).getTime()) >= b.olderThanMinutes * 60000);
+    const matchedList = mockWorkflowJobs.filter(match);
+    const target = matchedList.slice(0, limit);
+    target.forEach((j) => { j.status = 'pending'; j.attempts = 0; j.lockedAt = null; j.lockedBy = null; j.lastError = null; j.runAt = mockDateTime(); j.updatedAt = mockDateTime(); });
+    const more = matchedList.length > target.length ? `，剩余 ${matchedList.length - target.length} 条超单次上限未处理` : '';
+    return ok({ total: target.length, success: target.length, skipped: 0, matched: matchedList.length, ratePerSecond: rate, limit }, `已按 ${rate} 条/秒错峰重放 ${target.length}/${target.length}（匹配 ${matchedList.length} 条）${more}`);
   }),
-  http.get('/api/workflows/engine/jobs/failure-clusters', () => {
-    const map = new Map<string, { count: number; types: Set<string> }>();
-    mockWorkflowJobs.filter((j) => j.status === 'dead' || j.status === 'failed').forEach((j) => {
-      const reason = (j.lastError ?? '未知错误').replace(/\d+/g, 'N').slice(0, 60);
-      const e = map.get(reason) ?? { count: 0, types: new Set<string>() }; e.count++; e.types.add(j.jobType); map.set(reason, e);
+  http.post('/api/workflows/engine/jobs/replay-preview', async ({ request }) => {
+    const b = await request.json().catch(() => ({})) as { status?: string; jobType?: string; instanceId?: number; traceId?: string; reasonKeyword?: string; olderThanMinutes?: number };
+    const status = b.status === 'failed' ? 'failed' : 'dead';
+    const kw = b.reasonKeyword?.trim().toLowerCase();
+    const matched = mockWorkflowJobs.filter((j) => j.status === status
+      && (!b.jobType || j.jobType === b.jobType)
+      && (b.instanceId == null || j.instanceId === b.instanceId)
+      && (!b.traceId || j.traceId === b.traceId)
+      && (!kw || (j.lastError ?? '').toLowerCase().includes(kw))
+      && (b.olderThanMinutes == null || b.olderThanMinutes <= 0 || (Date.now() - new Date(j.createdAt).getTime()) >= b.olderThanMinutes * 60000)).length;
+    return ok({ matched });
+  }),
+  http.get('/api/workflows/engine/jobs/failure-clusters', ({ request }) => {
+    const dim = (new URL(request.url).searchParams.get('dimension') || 'reason') as 'reason' | 'jobType' | 'instance' | 'trace';
+    const rows = mockWorkflowJobs.filter((j) => j.status === 'dead' || j.status === 'failed');
+    const map = new Map<string, { dimension: string; key: string; label: string; count: number; instanceId: number | null; traceId: string | null; reasonKeyword: string | null; _types: Set<string> }>();
+    const bump = (key: string, base: { dimension: string; key: string; label: string; instanceId: number | null; traceId: string | null; reasonKeyword: string | null }, jobType: string) => {
+      const e = map.get(key) ?? { ...base, count: 0, _types: new Set<string>() };
+      e.count++; e._types.add(jobType); map.set(key, e);
+    };
+    for (const j of rows) {
+      if (dim === 'jobType') {
+        bump(j.jobType, { dimension: dim, key: j.jobType, label: j.jobType, instanceId: null, traceId: null, reasonKeyword: null }, j.jobType);
+      } else if (dim === 'instance') {
+        if (j.instanceId == null) continue;
+        const k = String(j.instanceId);
+        bump(k, { dimension: dim, key: k, label: `实例 #${j.instanceId}`, instanceId: j.instanceId, traceId: null, reasonKeyword: null }, j.jobType);
+      } else if (dim === 'trace') {
+        if (!j.traceId) continue;
+        bump(j.traceId, { dimension: dim, key: j.traceId, label: j.traceId, instanceId: null, traceId: j.traceId, reasonKeyword: null }, j.jobType);
+      } else {
+        const reason = (j.lastError ?? '未知错误').replace(/\d+/g, 'N').slice(0, 60);
+        const lead = (j.lastError ?? '').trim().split(/\d/)[0]?.trim() ?? '';
+        const kwRaw = (lead.length >= 4 ? lead : (j.lastError ?? '').trim()).slice(0, 40).trim();
+        bump(reason, { dimension: dim, key: reason, label: reason, instanceId: null, traceId: null, reasonKeyword: kwRaw.length >= 2 ? kwRaw : null }, j.jobType);
+      }
+    }
+    return ok([...map.values()].map(({ _types, ...c }) => ({ ...c, jobTypes: [..._types] })).sort((a, b) => b.count - a.count).slice(0, 20));
+  }),
+  http.get('/api/workflows/engine/jobs/runtime-status', () => {
+    const running = mockWorkflowJobs.filter((j) => j.status === 'running');
+    const dead = mockWorkflowJobs.filter((j) => j.status === 'dead').length;
+    const backlog = mockWorkflowJobs.filter((j) => j.status === 'pending').length;
+    const lastClaimed = running.map((j) => j.lockedAt).filter(Boolean).sort().pop() ?? null;
+    return ok({
+      activeWorkers: 1,
+      totalWorkers: 1,
+      workers: [{ nodeId: 'mock-node-1', hostname: 'mock-scheduler', runningJobCount: running.length, lastHeartbeatAt: mockDateTime(), fresh: true }],
+      runningJobs: running.length,
+      stuckRunningJobs: 0,
+      backlog,
+      deadLetter: dead,
+      lastClaimedAt: lastClaimed,
+      failureRate: dead > 0 ? 12.5 : 0,
+      avgDurationMs: 420,
+      recentExecutions: mockWorkflowJobs.length,
     });
-    return ok([...map.entries()].map(([reason, v]) => ({ reason, count: v.count, jobTypes: [...v.types] })));
   }),
 
   http.get('/api/workflows/instances/:id/diagnostics', ({ params }) => {

@@ -140,11 +140,13 @@ async function claimJob(jobId: number): Promise<WorkflowJobRow | null> {
   return claimed ?? null;
 }
 
-/** 批量领取到期的 pending 作业：FOR UPDATE SKIP LOCKED，多 drain 并发安全 */
-async function claimDueJobs(limit: number): Promise<WorkflowJobRow[]> {
+/** 批量领取到期的 pending 作业：FOR UPDATE SKIP LOCKED，多 drain 并发安全。可选按 jobType 限定（恢复动作细分用）。 */
+async function claimDueJobs(limit: number, jobTypes?: WorkflowJobType[]): Promise<WorkflowJobRow[]> {
   return db.transaction(async (tx) => {
+    const conds = [eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, new Date())];
+    if (jobTypes && jobTypes.length > 0) conds.push(inArray(workflowJobs.jobType, jobTypes));
     const due = await tx.select({ id: workflowJobs.id }).from(workflowJobs)
-      .where(and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, new Date())))
+      .where(and(...conds))
       .orderBy(asc(workflowJobs.priority), asc(workflowJobs.runAt))
       .limit(limit)
       .for('update', { skipLocked: true });
@@ -258,25 +260,36 @@ export async function runJob(jobId: number): Promise<void> {
   await executeClaimedJob(job);
 }
 
-/** 回收卡死的 running 作业（领取后超过宽限时间仍未结束，多因进程崩溃）→ 回 pending 重跑 */
-async function recoverStuckRunning(): Promise<number> {
+/** 回收卡死的 running 作业（领取后超过宽限时间仍未结束，多因进程崩溃）→ 回 pending 重跑。可选按 jobType 限定。 */
+async function recoverStuckRunning(jobTypes?: WorkflowJobType[]): Promise<number> {
   const cutoff = new Date(Date.now() - STUCK_RUNNING_GRACE_MS);
+  const conds = [eq(workflowJobs.status, 'running'), isNotNull(workflowJobs.lockedAt), lt(workflowJobs.lockedAt, cutoff)];
+  if (jobTypes && jobTypes.length > 0) conds.push(inArray(workflowJobs.jobType, jobTypes));
   const reset = await db.update(workflowJobs).set({ status: 'pending', lockedAt: null, updatedAt: new Date() })
-    .where(and(eq(workflowJobs.status, 'running'), isNotNull(workflowJobs.lockedAt), lt(workflowJobs.lockedAt, cutoff)))
+    .where(and(...conds))
     .returning({ id: workflowJobs.id });
   if (reset.length > 0) logger.warn('[workflow-jobs] recovered stuck running jobs', { count: reset.length });
   return reset.length;
 }
 
+export interface DrainWorkflowJobsOptions {
+  /** 单轮领取批量大小 */
+  batch?: number;
+  /** 仅处理指定作业类型（恢复动作细分用；缺省=全部类型） */
+  jobTypes?: WorkflowJobType[];
+}
+
 /**
- * 兜底扫描 + 崩溃恢复：由周期任务（每分钟）调用。
+ * 兜底扫描 + 崩溃恢复：由周期任务（每分钟）调用，也被引擎运维恢复动作按 jobType 细分调用。
  * 1) 回收卡死 running；2) 批量领取到期 pending 并执行（SKIP LOCKED 并发安全）。
  */
-export async function drainWorkflowJobs(batch = 50): Promise<{ recovered: number; processed: number }> {
-  const recovered = await recoverStuckRunning();
+export async function drainWorkflowJobs(opts: DrainWorkflowJobsOptions = {}): Promise<{ recovered: number; processed: number }> {
+  const batch = opts.batch ?? 50;
+  const { jobTypes } = opts;
+  const recovered = await recoverStuckRunning(jobTypes);
   let processed = 0;
   for (let round = 0; round < 20; round++) {
-    const claimed = await claimDueJobs(batch);
+    const claimed = await claimDueJobs(batch, jobTypes);
     if (claimed.length === 0) break;
     for (const job of claimed) {
       await executeClaimedJob(job);

@@ -36,19 +36,22 @@ const METRIC_LABELS: Record<MonitorMetric, string> = {
   diskWriteBps: '磁盘写入',
   workflowHealth: '流程引擎健康分',
   workflowBacklog: '流程引擎队列积压',
+  workflowDeadLetter: '流程作业死信数',
+  workflowFailureRate: '流程作业失败率',
+  workflowStuckRunning: '流程作业卡死数',
 };
 
 const OPERATOR_SYMBOL: Record<MonitorAlertOperator, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };
 
 function formatMetricValue(metric: MonitorMetric, value: number): string {
   switch (metric) {
-    case 'cpu': case 'memory': case 'disk': case 'swap': case 'heap': case 'procCpu': case 'errorRate':
+    case 'cpu': case 'memory': case 'disk': case 'swap': case 'heap': case 'procCpu': case 'errorRate': case 'workflowFailureRate':
       return `${Math.round(value * 10) / 10}%`;
     case 'load1':
       return `${Math.round(value * 100) / 100}`;
     case 'workflowHealth':
       return `${Math.round(value)} 分`;
-    case 'workflowBacklog':
+    case 'workflowBacklog': case 'workflowDeadLetter': case 'workflowStuckRunning':
       return `${Math.round(value)} 项`;
     case 'loopLag':
       return `${Math.round(value * 100) / 100}ms`;

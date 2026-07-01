@@ -2,6 +2,7 @@
  * 服务器监控相关 DTO
  */
 import { z } from '@hono/zod-openapi';
+import { monitorMetricValues } from '@zenith/shared';
 
 export const MonitorDTO = z
   .object({
@@ -287,9 +288,7 @@ export const MonitorAlertEventDTO = z
   .openapi('MonitorAlertEvent');
 
 // ─── 请求体 DTO（与 shared validation 保持一致）─────────────────────────
-const monitorMetricEnumDTO = z.enum([
-  'cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps',
-]);
+const monitorMetricEnumDTO = z.enum(monitorMetricValues);
 
 export const CreateMonitorAlertRuleDTO = z
   .object({

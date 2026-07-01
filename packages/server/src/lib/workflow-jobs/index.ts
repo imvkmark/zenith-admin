@@ -19,7 +19,7 @@ export {
   type EnqueueJobInput,
 } from './engine';
 
-export { WORKFLOW_JOB_QUEUE, WORKFLOW_JOB_DRAIN_TASK } from './types';
+export { WORKFLOW_JOB_QUEUE, WORKFLOW_JOB_DRAIN_TASK, STUCK_RUNNING_GRACE_MS } from './types';
 export type {
   WorkflowJobContext,
   WorkflowJobHandler,

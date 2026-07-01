@@ -15,6 +15,7 @@ import type {
   WorkflowEngineComponentStatus,
   WorkflowEngineHealthHistory,
   WorkflowEngineHealthPoint,
+  WorkflowJobType,
 } from '@zenith/shared';
 import { getWorkflowEngineIntrospection, getWorkflowEngineThresholds, severityFromHealth } from './workflow-engine-introspection.service';
 
@@ -116,47 +117,25 @@ export async function getLatestEngineHealthMetrics(): Promise<{ workflowHealth: 
   return { workflowHealth: row?.healthScore ?? 100, workflowBacklog: row?.backlog ?? 0 };
 }
 
+/** 构造一个"按 jobType 细分"的恢复动作：仅 drain 指定类型的作业，避免"全部只 drain 一遍"。 */
+function drainAction(label: string, jobTypes: WorkflowJobType[]): { label: string; run: () => Promise<Record<string, number>> } {
+  return {
+    label,
+    run: async () => {
+      const { drainWorkflowJobs } = await import('../lib/workflow-jobs');
+      const r = await drainWorkflowJobs({ jobTypes });
+      return { recovered: r.recovered, processed: r.processed };
+    },
+  };
+}
+
 const ACTION_META: Record<WorkflowEngineActionKey, { label: string; run: () => Promise<Record<string, number>> }> = {
-  'replay-outbox': {
-    label: '事件派发重放（作业账本）',
-    run: async () => {
-      const { drainWorkflowJobs } = await import('../lib/workflow-jobs');
-      const r = await drainWorkflowJobs();
-      return { recovered: r.recovered, processed: r.processed };
-    },
-  },
-  'recover-delays': {
-    label: '延时任务兜底（作业账本）',
-    run: async () => {
-      const { drainWorkflowJobs } = await import('../lib/workflow-jobs');
-      const r = await drainWorkflowJobs();
-      return { recovered: r.recovered, processed: r.processed };
-    },
-  },
-  'recover-subprocess': {
-    label: '子流程兜底（作业账本）',
-    run: async () => {
-      const { drainWorkflowJobs } = await import('../lib/workflow-jobs');
-      const r = await drainWorkflowJobs();
-      return { recovered: r.recovered, processed: r.processed };
-    },
-  },
-  'process-timeouts': {
-    label: '超时任务兜底（作业账本）',
-    run: async () => {
-      const { drainWorkflowJobs } = await import('../lib/workflow-jobs');
-      const r = await drainWorkflowJobs();
-      return { recovered: r.recovered, processed: r.processed };
-    },
-  },
-  'recover-triggers': {
-    label: '触发器兜底（作业账本）',
-    run: async () => {
-      const { drainWorkflowJobs } = await import('../lib/workflow-jobs');
-      const r = await drainWorkflowJobs();
-      return { recovered: r.recovered, processed: r.processed };
-    },
-  },
+  'replay-outbox': drainAction('事件派发重放（作业账本）', ['event_dispatch']),
+  'recover-delays': drainAction('延时任务兜底（作业账本）', ['delay_wake']),
+  'recover-subprocess': drainAction('子流程兜底（作业账本）', ['subprocess_spawn', 'subprocess_join']),
+  'process-timeouts': drainAction('超时任务兜底（作业账本）', ['task_timeout']),
+  'recover-triggers': drainAction('触发器兜底（作业账本）', ['trigger_dispatch']),
+  'recover-webhooks': drainAction('Webhook 投递兜底（作业账本）', ['webhook_delivery']),
 };
 
 export function isWorkflowEngineActionKey(value: string): value is WorkflowEngineActionKey {

@@ -1380,6 +1380,13 @@
       "when": 1782711771975,
       "tag": "0196_minor_killer_shrike",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1782885152889,
+      "tag": "0197_young_chimera",
+      "breakpoints": true
     }
   ]
 }

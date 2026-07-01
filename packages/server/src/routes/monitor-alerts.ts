@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, defineOpenAPIRoute, z } from '@hono/zod-openapi';
+import { monitorMetricValues } from '@zenith/shared';
 import { authMiddleware } from '../middleware/auth';
 import { guard, setAuditBeforeData } from '../middleware/guard';
 import {
@@ -17,7 +18,7 @@ const MANAGE_PERM = 'system:monitor:alert:manage';
 const VIEW_PERM = 'system:monitor:alert';
 
 const EventQuery = PaginationQuery.extend({
-  metric: z.enum(['cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps']).optional(),
+  metric: z.enum(monitorMetricValues).optional(),
   level: z.enum(['info', 'warning', 'critical']).optional(),
   status: z.enum(['firing', 'resolved']).optional(),
   ruleId: z.coerce.number().int().positive().optional(),

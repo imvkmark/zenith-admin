@@ -21,9 +21,10 @@ const METRIC_LABELS: Record<MonitorMetric, string> = {
   qps: '请求 QPS', errorRate: 'HTTP 错误率', netRxBps: '网络下行', netTxBps: '网络上行',
   diskReadBps: '磁盘读取', diskWriteBps: '磁盘写入',
   workflowHealth: '流程引擎健康分', workflowBacklog: '流程引擎队列积压',
+  workflowDeadLetter: '流程作业死信数', workflowFailureRate: '流程作业失败率', workflowStuckRunning: '流程作业卡死数',
 };
 const METRIC_OPTIONS = (Object.keys(METRIC_LABELS) as MonitorMetric[]).map((v) => ({ value: v, label: METRIC_LABELS[v] }));
-const PERCENT_METRICS = new Set<MonitorMetric>(['cpu', 'memory', 'disk', 'swap', 'heap', 'procCpu', 'errorRate']);
+const PERCENT_METRICS = new Set<MonitorMetric>(['cpu', 'memory', 'disk', 'swap', 'heap', 'procCpu', 'errorRate', 'workflowFailureRate']);
 const BYTES_METRICS = new Set<MonitorMetric>(['netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps']);
 
 const OP_SYMBOL: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };

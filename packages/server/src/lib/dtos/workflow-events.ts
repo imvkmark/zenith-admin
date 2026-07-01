@@ -547,7 +547,7 @@ export const WorkflowEngineHealthHistoryDTO = z
 
 export const WorkflowEngineActionResultDTO = z
   .object({
-    action: z.enum(['replay-outbox', 'recover-delays', 'recover-subprocess', 'process-timeouts', 'recover-triggers']),
+    action: z.enum(['replay-outbox', 'recover-delays', 'recover-subprocess', 'process-timeouts', 'recover-triggers', 'recover-webhooks']),
     ok: z.boolean(),
     message: z.string(),
     detail: z.record(z.string(), z.number()),

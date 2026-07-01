@@ -14,6 +14,7 @@ import { formatDateTime } from '../lib/datetime';
 import logger from '../lib/logger';
 import { getDisks, getLinuxMemInfo } from './monitor.service';
 import { getLatestEngineHealthMetrics } from './workflow-engine-ops.service';
+import { getWorkflowJobAlertMetrics } from './workflow-jobs.service';
 import type { MonitorMetric } from '@zenith/shared';
 
 export type MetricSnapshot = Record<MonitorMetric, number>;
@@ -24,7 +25,7 @@ export type MetricSnapshot = Record<MonitorMetric, number>;
 export async function getCurrentMetricSnapshot(): Promise<MetricSnapshot> {
   const sample = metricsSampler.getLatest();
   const diskIo = metricsSampler.getDiskIo();
-  const [disks, memInfo, engineHealth] = await Promise.all([getDisks(), getLinuxMemInfo(), getLatestEngineHealthMetrics()]);
+  const [disks, memInfo, engineHealth, jobMetrics] = await Promise.all([getDisks(), getLinuxMemInfo(), getLatestEngineHealthMetrics(), getWorkflowJobAlertMetrics()]);
   const disk = disks && disks.length > 0 ? Math.max(...disks.map((d) => d.usagePercent)) : 0;
   const swap = memInfo?.swapUsagePercent ?? 0;
   const load1 = os.loadavg()[0] ?? 0;
@@ -45,6 +46,9 @@ export async function getCurrentMetricSnapshot(): Promise<MetricSnapshot> {
     diskWriteBps: diskIo.writeBps,
     workflowHealth: engineHealth.workflowHealth,
     workflowBacklog: engineHealth.workflowBacklog,
+    workflowDeadLetter: jobMetrics.workflowDeadLetter,
+    workflowFailureRate: jobMetrics.workflowFailureRate,
+    workflowStuckRunning: jobMetrics.workflowStuckRunning,
   };
 }
 

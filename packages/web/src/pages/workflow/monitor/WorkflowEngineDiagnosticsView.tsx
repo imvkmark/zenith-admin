@@ -95,6 +95,7 @@ const ACTION_ITEMS: Array<{ key: WorkflowEngineActionKey; label: string }> = [
   { key: 'recover-triggers', label: '恢复触发器重派' },
   { key: 'recover-delays', label: '恢复延时任务' },
   { key: 'process-timeouts', label: '处理超时任务' },
+  { key: 'recover-webhooks', label: '恢复 Webhook 投递' },
   { key: 'recover-subprocess', label: '恢复子流程' },
 ];
 

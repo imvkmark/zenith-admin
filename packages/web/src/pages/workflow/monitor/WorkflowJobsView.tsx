@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Button,
   Descriptions,
   Empty,
   Input,
+  InputNumber,
   JsonViewer,
   Modal,
   Popconfirm,
@@ -46,6 +47,63 @@ const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> 
 };
 
 const JOB_TYPES = Object.keys(JOB_TYPE_META) as WorkflowJobType[];
+const JOB_TYPE_OPTIONS = JOB_TYPES.map((value) => ({ value, label: JOB_TYPE_META[value].text }));
+
+// ── 死信聚类 / 条件重放（A2 限流 + B1 多维聚类） ──
+type ClusterDimension = 'reason' | 'jobType' | 'instance' | 'trace';
+interface FailureCluster {
+  dimension: ClusterDimension;
+  key: string;
+  label: string;
+  count: number;
+  jobTypes: string[];
+  instanceId: number | null;
+  traceId: string | null;
+  reasonKeyword: string | null;
+}
+interface WorkflowJobReplayResult {
+  total: number;
+  success: number;
+  skipped: number;
+  matched: number;
+  ratePerSecond: number;
+  limit: number;
+}
+interface WorkflowJobRuntimeStatus {
+  activeWorkers: number;
+  totalWorkers: number;
+  workers: Array<{ nodeId: string; hostname: string | null; runningJobCount: number; lastHeartbeatAt: string | null; fresh: boolean }>;
+  runningJobs: number;
+  stuckRunningJobs: number;
+  backlog: number;
+  deadLetter: number;
+  lastClaimedAt: string | null;
+  failureRate: number;
+  avgDurationMs: number | null;
+  recentExecutions: number;
+}
+interface ReplayFilterState {
+  status: 'dead' | 'failed';
+  jobType?: WorkflowJobType;
+  instanceId?: number;
+  traceId?: string;
+  reasonKeyword?: string;
+  olderThanMinutes?: number;
+  ratePerSecond: number;
+  limit: number;
+}
+const CLUSTER_DIM_OPTIONS: Array<{ value: ClusterDimension; label: string }> = [
+  { value: 'reason', label: '错误原因' },
+  { value: 'jobType', label: '作业类型' },
+  { value: 'instance', label: '实例' },
+  { value: 'trace', label: 'TraceId' },
+];
+const REPLAY_STATUS_OPTIONS = [
+  { value: 'dead', label: '死信 (dead)' },
+  { value: 'failed', label: '失败 (failed)' },
+];
+const REPLAY_ROW: CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, width: '100%' };
+const REPLAY_LABEL: CSSProperties = { width: 76, textAlign: 'right', flexShrink: 0 };
 
 const JOB_STATUS_META: Record<WorkflowJobStatus, { text: string; color: TagColor }> = {
   pending: { text: '待处理', color: 'grey' },
@@ -159,9 +217,79 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
   const [actingId, setActingId] = useState<number | null>(null);
   const [execView, setExecView] = useState<'timeline' | 'table'>('timeline');
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-  const [clusters, setClusters] = useState<Array<{ reason: string; count: number; jobTypes: string[] }> | null>(null);
-  const replayDead = async () => { const r = await request.post<{ total: number; success: number }>('/api/workflows/engine/jobs/replay-dead', {}); if (r.code === 0) { Toast.success(`已重放 ${r.data?.success ?? 0}/${r.data?.total ?? 0}`); void fetchList(); onMutated?.(); } };
-  const openClusters = async () => { const r = await request.get<Array<{ reason: string; count: number; jobTypes: string[] }>>('/api/workflows/engine/jobs/failure-clusters'); setClusters(r.data ?? []); };
+  const [clusters, setClusters] = useState<FailureCluster[] | null>(null);
+  const [clusterDim, setClusterDim] = useState<ClusterDimension>('reason');
+  const [clusterLoading, setClusterLoading] = useState(false);
+  const [replayOpen, setReplayOpen] = useState(false);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [replayPreview, setReplayPreview] = useState<number | null>(null);
+  const [replayFilter, setReplayFilter] = useState<ReplayFilterState>({ status: 'dead', jobType, ratePerSecond: 20, limit: 500 });
+  const setF = (patch: Partial<ReplayFilterState>) => { setReplayFilter((s) => ({ ...s, ...patch })); setReplayPreview(null); };
+
+  const openClusters = async (dim: ClusterDimension = clusterDim) => {
+    setClusterDim(dim);
+    setClusters((prev) => prev ?? []);
+    setClusterLoading(true);
+    try {
+      const r = await request.get<FailureCluster[]>(`/api/workflows/engine/jobs/failure-clusters?dimension=${dim}`);
+      setClusters(r.data ?? []);
+    } finally {
+      setClusterLoading(false);
+    }
+  };
+
+  const openReplay = (prefill?: Partial<ReplayFilterState>) => {
+    setReplayFilter({ status: 'dead', jobType, ratePerSecond: 20, limit: 500, ...prefill });
+    setReplayPreview(null);
+    setReplayOpen(true);
+  };
+
+  const replayCluster = (c: FailureCluster) => {
+    const prefill: Partial<ReplayFilterState> =
+      c.dimension === 'jobType' ? { jobType: c.key as WorkflowJobType, reasonKeyword: undefined, instanceId: undefined, traceId: undefined }
+        : c.dimension === 'instance' ? { instanceId: c.instanceId ?? undefined, jobType: undefined, reasonKeyword: undefined, traceId: undefined }
+          : c.dimension === 'trace' ? { traceId: c.traceId ?? undefined, jobType: undefined, reasonKeyword: undefined, instanceId: undefined }
+            : { reasonKeyword: c.reasonKeyword ?? undefined, jobType: undefined, instanceId: undefined, traceId: undefined };
+    setClusters(null);
+    openReplay(prefill);
+  };
+
+  const buildReplayBody = (f: ReplayFilterState) => ({
+    status: f.status,
+    jobType: f.jobType,
+    instanceId: f.instanceId,
+    traceId: f.traceId?.trim() || undefined,
+    reasonKeyword: f.reasonKeyword?.trim() || undefined,
+    olderThanMinutes: f.olderThanMinutes,
+  });
+
+  const doPreview = async () => {
+    setPreviewLoading(true);
+    try {
+      const r = await request.post<{ matched: number }>('/api/workflows/engine/jobs/replay-preview', buildReplayBody(replayFilter));
+      if (r.code === 0) setReplayPreview(r.data?.matched ?? 0);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const doReplay = async () => {
+    setReplayLoading(true);
+    try {
+      const r = await request.post<WorkflowJobReplayResult>('/api/workflows/engine/jobs/replay-dead', { ...buildReplayBody(replayFilter), ratePerSecond: replayFilter.ratePerSecond, limit: replayFilter.limit });
+      if (r.code === 0 && r.data) {
+        Toast.success(r.message || `已重放 ${r.data.success}/${r.data.total}`);
+        setReplayOpen(false);
+        void fetchList();
+        onMutated();
+      } else {
+        Toast.warning(r.message || '重放失败');
+      }
+    } finally {
+      setReplayLoading(false);
+    }
+  };
   const [batchLoading, setBatchLoading] = useState(false);
   const [chain, setChain] = useState<WorkflowJobChain | null>(null);
   const [chainVisible, setChainVisible] = useState(false);
@@ -463,9 +591,7 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
             <Button type="tertiary" icon={<RotateCcw size={14} />} onClick={handleReset}>重置</Button>
             <Button type="tertiary" onClick={() => void openClusters()}>失败聚类</Button>
             {canOperate && (
-              <Popconfirm title="重放全部死信作业？" content="最多重放 500 条死信作业" onConfirm={() => void replayDead()}>
-                <Button type="warning">重放死信</Button>
-              </Popconfirm>
+              <Button type="warning" onClick={() => openReplay()}>重放死信</Button>
             )}
           </>
         )}
@@ -645,19 +771,132 @@ function JobTypePanel({ jobType, summary, onMutated }: JobTypePanelProps) {
           </Space>
         )}
       </SideSheet>
-      <Modal title="失败原因聚类" visible={clusters !== null} onCancel={() => setClusters(null)} footer={null} width={620}>
-        {clusters?.length ? clusters.map((c, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
-            <Typography.Text style={{ maxWidth: 420 }} ellipsis={{ showTooltip: true }}>{c.reason}</Typography.Text>
-            <Typography.Text type="tertiary" size="small">{c.jobTypes.join(',')} · {c.count}</Typography.Text>
+      <Modal title="失败原因聚类" visible={clusters !== null} onCancel={() => setClusters(null)} footer={null} width={680}>
+        <div style={{ marginBottom: 12 }}>
+          <RadioGroup type="button" value={clusterDim} onChange={(e) => void openClusters(e.target.value as ClusterDimension)}>
+            {CLUSTER_DIM_OPTIONS.map((o) => <Radio key={o.value} value={o.value}>{o.label}</Radio>)}
+          </RadioGroup>
+        </div>
+        {clusterLoading ? (
+          <Typography.Text type="tertiary">加载中…</Typography.Text>
+        ) : clusters?.length ? clusters.map((c, i) => {
+          const canReplayCluster = canOperate && (c.dimension !== 'reason' || !!c.reasonKeyword);
+          return (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
+              <Typography.Text style={{ maxWidth: 380 }} ellipsis={{ showTooltip: true }}>{c.label}</Typography.Text>
+              <Space>
+                <Typography.Text type="tertiary" size="small">{c.jobTypes.join(',')} · {c.count}</Typography.Text>
+                {canReplayCluster && <Button theme="borderless" size="small" onClick={() => replayCluster(c)}>重放该簇</Button>}
+              </Space>
+            </div>
+          );
+        }) : <Typography.Text type="tertiary">暂无失败/死信作业</Typography.Text>}
+      </Modal>
+
+      <Modal
+        title="条件重放（死信 / 失败作业）"
+        visible={replayOpen}
+        onCancel={() => setReplayOpen(false)}
+        okText="确认重放"
+        cancelText="取消"
+        onOk={() => void doReplay()}
+        okButtonProps={{ loading: replayLoading, type: 'warning' }}
+        width={560}
+      >
+        <Space vertical align="start" spacing="loose" style={{ width: '100%' }}>
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">目标状态</Typography.Text>
+            <Select style={{ flex: 1 }} value={replayFilter.status} optionList={REPLAY_STATUS_OPTIONS} onChange={(v) => setF({ status: v as 'dead' | 'failed' })} />
           </div>
-        )) : <Typography.Text type="tertiary">暂无失败/死信作业</Typography.Text>}
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">作业类型</Typography.Text>
+            <Select style={{ flex: 1 }} placeholder="全部类型" value={replayFilter.jobType} optionList={JOB_TYPE_OPTIONS} showClear onChange={(v) => setF({ jobType: v as WorkflowJobType | undefined })} />
+          </div>
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">实例 ID</Typography.Text>
+            <InputNumber style={{ flex: 1 }} placeholder="不限" min={1} value={replayFilter.instanceId} onChange={(v) => setF({ instanceId: typeof v === 'number' ? v : undefined })} />
+          </div>
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">TraceId</Typography.Text>
+            <Input style={{ flex: 1 }} placeholder="不限" showClear value={replayFilter.traceId} onChange={(v) => setF({ traceId: v })} />
+          </div>
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">错误关键字</Typography.Text>
+            <Input style={{ flex: 1 }} placeholder="按 lastError 模糊匹配" showClear value={replayFilter.reasonKeyword} onChange={(v) => setF({ reasonKeyword: v })} />
+          </div>
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">入库超过</Typography.Text>
+            <InputNumber style={{ flex: 1 }} placeholder="不限" min={0} suffix="分钟" value={replayFilter.olderThanMinutes} onChange={(v) => setF({ olderThanMinutes: typeof v === 'number' ? v : undefined })} />
+          </div>
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">限流速率</Typography.Text>
+            <InputNumber style={{ flex: 1 }} min={1} max={200} suffix="条/秒" value={replayFilter.ratePerSecond} onChange={(v) => setReplayFilter((s) => ({ ...s, ratePerSecond: typeof v === 'number' ? v : 20 }))} />
+          </div>
+          <div style={REPLAY_ROW}>
+            <Typography.Text style={REPLAY_LABEL} type="tertiary">单次上限</Typography.Text>
+            <InputNumber style={{ flex: 1 }} min={1} max={500} suffix="条" value={replayFilter.limit} onChange={(v) => setReplayFilter((s) => ({ ...s, limit: typeof v === 'number' ? v : 500 }))} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+            <Button size="small" theme="light" loading={previewLoading} onClick={() => void doPreview()}>预览匹配数</Button>
+            {replayPreview !== null && (
+              <Typography.Text type="tertiary" size="small">
+                匹配 <b>{replayPreview}</b> 条，本次将重放 <b>{Math.min(replayPreview, replayFilter.limit)}</b> 条，预计约 {Math.max(1, Math.ceil(Math.min(replayPreview, replayFilter.limit) / Math.max(1, replayFilter.ratePerSecond)))} 秒错峰完成
+                {replayPreview > replayFilter.limit && '（超上限部分需再次重放）'}
+              </Typography.Text>
+            )}
+          </div>
+        </Space>
       </Modal>
     </>
   );
 }
 
 // ───────────────────────── 作业账本（按类型分 Tab） ─────────────────────────
+
+const RT_STAT: CSSProperties = { display: 'flex', flexDirection: 'column', minWidth: 84 };
+
+function RuntimeStatusBar() {
+  const [status, setStatus] = useState<WorkflowJobRuntimeStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await request.get<WorkflowJobRuntimeStatus>('/api/workflows/engine/jobs/runtime-status');
+      if (r.code === 0) setStatus(r.data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const stat = (label: string, value: ReactNode, danger?: boolean) => (
+    <div style={RT_STAT}>
+      <Typography.Text type="tertiary" size="small">{label}</Typography.Text>
+      <Typography.Text strong style={danger ? { color: 'var(--semi-color-danger)' } : undefined}>{value}</Typography.Text>
+    </div>
+  );
+
+  const workerTip = status?.workers.length
+    ? status.workers.map((w) => `${w.hostname ?? w.nodeId}｜在途 ${w.runningJobCount}｜心跳 ${w.lastHeartbeatAt ?? '—'}${w.fresh ? '' : '（离线）'}`).join('\n')
+    : '暂无注册节点';
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 24, padding: '10px 16px', marginBottom: 12, border: '1px solid var(--semi-color-border)', borderRadius: 8, background: 'var(--semi-color-bg-1)' }}>
+      <Typography.Text strong style={{ marginRight: 4 }}>运行状态</Typography.Text>
+      <Tooltip content={<pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{workerTip}</pre>}>
+        <div>{stat('存活 Worker', `${status?.activeWorkers ?? '-'} / ${status?.totalWorkers ?? '-'}`)}</div>
+      </Tooltip>
+      {stat('在途作业', status?.runningJobs ?? '-')}
+      {stat('卡死', status?.stuckRunningJobs ?? '-', !!status && status.stuckRunningJobs > 0)}
+      {stat('积压', status?.backlog ?? '-', !!status && status.backlog > 0)}
+      {stat('死信', status?.deadLetter ?? '-', !!status && status.deadLetter > 0)}
+      {stat('最后领取', status?.lastClaimedAt ?? '—')}
+      {stat('失败率(1h)', status ? `${status.failureRate}%` : '-', !!status && status.failureRate >= 20)}
+      {stat('平均耗时(1h)', status?.avgDurationMs != null ? `${status.avgDurationMs}ms` : '—')}
+      <Button size="small" theme="borderless" icon={<RotateCcw size={14} />} loading={loading} onClick={() => void load()} style={{ marginLeft: 'auto' }}>刷新</Button>
+    </div>
+  );
+}
 
 export default function WorkflowJobsView() {
   const [activeType, setActiveType] = useState<WorkflowJobType>(JOB_TYPES[0]);
@@ -675,36 +914,39 @@ export default function WorkflowJobsView() {
   useEffect(() => { void loadSummary(); }, [loadSummary]);
 
   return (
-    <Tabs
-      type="card"
-      collapsible
-      activeKey={activeType}
-      onChange={(k) => setActiveType(k as WorkflowJobType)}
-    >
-      {JOB_TYPES.map((t) => {
-        const item = summaryMap[t] ?? EMPTY_SUMMARY(t);
-        const problem = item.failed + item.dead;
-        return (
-          <TabPane
-            key={t}
-            itemKey={t}
-            tab={(
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {JOB_TYPE_META[t].text}
-                <Tag
-                  size="small"
-                  color={problem > 0 ? 'red' : 'grey'}
-                  style={{ minWidth: 18, textAlign: 'center', padding: '0 6px', borderRadius: 9 }}
-                >
-                  {item.total}
-                </Tag>
-              </span>
-            )}
-          >
-            {activeType === t && <JobTypePanel jobType={t} summary={item} onMutated={loadSummary} />}
-          </TabPane>
-        );
-      })}
-    </Tabs>
+    <>
+      <RuntimeStatusBar />
+      <Tabs
+        type="card"
+        collapsible
+        activeKey={activeType}
+        onChange={(k) => setActiveType(k as WorkflowJobType)}
+      >
+        {JOB_TYPES.map((t) => {
+          const item = summaryMap[t] ?? EMPTY_SUMMARY(t);
+          const problem = item.failed + item.dead;
+          return (
+            <TabPane
+              key={t}
+              itemKey={t}
+              tab={(
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {JOB_TYPE_META[t].text}
+                  <Tag
+                    size="small"
+                    color={problem > 0 ? 'red' : 'grey'}
+                    style={{ minWidth: 18, textAlign: 'center', padding: '0 6px', borderRadius: 9 }}
+                  >
+                    {item.total}
+                  </Tag>
+                </span>
+              )}
+            >
+              {activeType === t && <JobTypePanel jobType={t} summary={item} onMutated={loadSummary} />}
+            </TabPane>
+          );
+        })}
+      </Tabs>
+    </>
   );
 }
